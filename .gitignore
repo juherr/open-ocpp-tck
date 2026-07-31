@@ -1,0 +1,5 @@
+node_modules/
+
+# Campaign output. The runner writes to OCPP_TCK_RESULTS_DIR, defaulting to
+# ./results relative to the working directory.
+results/

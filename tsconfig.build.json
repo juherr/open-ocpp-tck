@@ -1,0 +1,30 @@
+{
+  "//": [
+    "Emits types/**/*.d.ts, which are COMMITTED. Two reasons.",
+    "",
+    "First, they have to exist. Pointing `exports.*.types` at the raw .ts would",
+    "put this package's sources inside the consumer's program, checked with the",
+    "consumer's options: skipLibCheck does not apply to .ts, so their",
+    "noUnusedLocals flags our files, and TypeScript 5.8's erasableSyntaxOnly",
+    "rejects UnsupportedOperationError's constructor parameter properties",
+    "outright -- an error inside node_modules that no consumer can fix.",
+    "",
+    "Second, they have to be committed rather than built on install. This",
+    "package is consumed as a pinned git dependency, and a git dependency does",
+    "not reliably run prepack/prepare under bun. Committing them also makes the",
+    "public API surface a reviewable diff, which is the same argument that",
+    "already keeps ASSERT-INVENTORY.txt and DRIVE-TRACE.txt in the tree: a",
+    "digest tells a reviewer THAT something moved, a diff tells them WHAT.",
+    "",
+    "tests/types-current.sh regenerates and diffs, so a stale types/ fails CI."
+  ],
+  "extends": "./tsconfig.json",
+  "compilerOptions": {
+    "noEmit": false,
+    "declaration": true,
+    "emitDeclarationOnly": true,
+    "outDir": "types"
+  },
+  "include": ["tck/**/*.ts", "drivers/steve/**/*.ts"],
+  "exclude": ["types"]
+}

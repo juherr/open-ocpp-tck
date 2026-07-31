@@ -1,0 +1,75 @@
+NOTICE
+======
+
+This directory (scripts/ocpp-verify/) vendors part of a third-party project.
+
+Upstream project : ocpp-cp-simulator
+Upstream URL     : https://github.com/shiv3/ocpp-cp-simulator
+Upstream author  : shiv3 and the ocpp-cp-simulator contributors
+License          : Apache License, Version 2.0 (full text in LICENSE.upstream)
+Imported commit  : 604054adb0d7d7129a26a5f1ad2d5fdc290d1ca1
+                   (branch main, authored 2026-07-31 11:59:04 +0900)
+Import date      : 2026-07-31
+Imported from    : scripts/steve-verify/runner/  and
+                   src/cp/application/verification/  (see VENDOR.md for the
+                   per-file provenance -- upstream's runner/assert.ts and
+                   runner/ocpp.ts are one-line re-export shims over the
+                   src/cp/application/verification/ modules, and it is those
+                   implementations that are vendored here)
+
+Purpose of the fork
+-------------------
+The upstream harness drives a SteVe CSMS. This copy keeps the scenario
+specifications and the OCPP-J assertion engine verbatim and replaces only
+the CSMS-facing driver, so the same certification scenarios can be run
+against a different CSMS.
+
+Files modified relative to upstream
+-----------------------------------
+  tck/spec-types.ts PATCHED    the drive/assert context carries the neutral
+                               CsmsOperations/CsmsRecords contract instead of
+                               SteVe's SteveOps/SteveTx
+  tck/specs/core.ts PATCHED    CSMS operations expressed as typed OCPP
+  tck/specs/authorize.ts PATCHED    observation surface renamed off SteVe's
+  tck/specs/authlist-reservation.ts PATCHED    CSMS operations expressed as typed OCPP
+  tck/specs/remotetrigger-smartcharging.ts PATCHED    CSMS operations expressed as typed OCPP
+  tck/specs/firmware.ts PATCHED    CSMS operations expressed as typed OCPP
+  tck/assert.ts     PATCHED    per-check SKIPPED degradation
+                               (UNVERIFIABLE_PREFIX sentinel)
+  tck/sim.ts        PATCHED    config-driven docker argv, published image
+                               pinned by digest, no repo bind-mount,
+                               outgoing WS Basic auth, secret redaction
+  tck/main.ts       PATCHED    driver loaded from a module specifier, scope
+                               table, NOT APPLICABLE + PARTIAL verdicts,
+                               exit-code policy, station-derived lanes
+This list and the `upstream-patched` rows of VENDOR.md are two statements of
+the same fact; tests/vendor-integrity.sh fails if they disagree.
+(They did: runner/tsconfig.json was listed here as ADAPTED while VENDOR.md
+called it verbatim. The file is byte-for-byte identical to upstream — verified
+2026-07-31 against the pinned commit — so this list was the wrong one.)
+
+Every other vendored file is byte-for-byte identical to upstream; VENDOR.md
+records both an upstream and a local sha256 for each, so drift is detectable
+and the two facts cannot be confused.
+
+Files that are NOT vendored (written for this project): the driver contract
+and its helpers under tck/ (driver.ts, driver-registry.ts, scope.ts,
+capabilities.ts, unverifiable.ts, wait.ts, time.ts, index.ts), the reference
+driver under drivers/steve/, and bin/ocpp-tck.ts. VENDOR.md marks each of them
+`local-upstreamable`; they are offered upstream under the same licence.
+
+Apache-2.0 obligations
+----------------------
+  - §4(a) The full license text is retained in LICENSE, which is the
+    upstream project's own Apache-2.0 licence, unmodified.
+  - §4(b) Every modified file carries a prominent notice in its first line
+    stating that it is derived from the upstream file and what was changed,
+    and patches/*.patch holds the exact diff against its upstream original.
+    tests/vendor-integrity.sh reverse-applies each patch and checks
+    that it reconstructs the pinned upstream digest, so the record cannot rot
+    into an unverifiable claim.
+  - §4(c) Upstream copyright, attribution and doc comments are retained in
+    every vendored file, including where interfaces were renamed.
+  - §4(d) Upstream ships NO NOTICE file at commit 604054ad (verified
+    2026-07-31), so there are no upstream attribution notices to reproduce.
+    The refresh procedure in VENDOR.md re-checks this on every re-import.

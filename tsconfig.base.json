@@ -1,0 +1,30 @@
+{
+  "//": [
+    "Shipped to consumers as `open-ocpp-tck/tsconfig`, so that writing a driver",
+    "does not start with an afternoon of compilerOptions archaeology.",
+    "",
+    "compilerOptions ONLY. No `include`, no `files`, no `paths`: relative paths",
+    "in an extended config resolve relative to THIS file, which lives inside",
+    "node_modules -- an `include` here would silently try to compile the",
+    "package instead of the consumer's driver.",
+    "",
+    "`moduleResolution: bundler` is the supported baseline. node16/nodenext",
+    "reject the extensionless relative imports in the generated declarations;",
+    "node10 ignores the exports map entirely and cannot resolve this package at",
+    "all. Both are documented in the README rather than papered over."
+  ],
+  "compilerOptions": {
+    "target": "ES2022",
+    "lib": ["ES2022"],
+    "module": "ESNext",
+    "moduleResolution": "bundler",
+    "allowImportingTsExtensions": true,
+    "resolveJsonModule": true,
+    "isolatedModules": true,
+    "moduleDetection": "force",
+    "skipLibCheck": true,
+    "noEmit": true,
+    "strict": true,
+    "noFallthroughCasesInSwitch": true
+  }
+}

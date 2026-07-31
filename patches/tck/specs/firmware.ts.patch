@@ -1,0 +1,87 @@
+--- a/scripts/steve-verify/runner/specs/firmware.ts (upstream @ 604054adb0d7d7129a26a5f1ad2d5fdc290d1ca1)
++++ b/scripts/ocpp-verify/tck/specs/firmware.ts
+@@ -12,12 +12,12 @@
+   assertReceived,
+ } from "../assert";
+ import type { ScenarioSpec } from "../spec-types";
+-import { retrieveDatetimeSoon } from "../steve";
++import { inSeconds } from "../time";
+ import { sleep } from "../util";
+ 
+ function warnOpFailed(op: string, err: unknown): void {
+   process.stderr.write(
+-    `[runner] WARN: steve_op ${op} failed (continuing): ${err instanceof Error ? err.message : String(err)}\n`,
++    `[runner] WARN: CSMS operation ${op} failed (continuing): ${err instanceof Error ? err.message : String(err)}\n`,
+   );
+ }
+ 
+@@ -37,13 +37,13 @@
+   bootWaitSecs: 4,
+   // retrieveDateTime wait (~90s) + ~10s status train + tail buffer.
+   holdSecs: 115,
+-  async drive({ cpId, steve }) {
++  async drive({ cpId, csms }) {
+     await sleep(2000);
+     try {
+-      await steve.op("v1.6/UpdateFirmware", {
+-        chargePointSelectList: steve.cpSelect(cpId),
++      await csms.execute(cpId, {
++        action: "UpdateFirmware",
+         location: "http://example.com/fw.bin",
+-        retrieveDateTime: retrieveDatetimeSoon(),
++        retrieveDate: inSeconds(90),
+       });
+     } catch (err) {
+       warnOpFailed("UpdateFirmware", err);
+@@ -119,13 +119,13 @@
+   connector: 1,
+   bootWaitSecs: 4,
+   holdSecs: 110,
+-  async drive({ cpId, steve }) {
++  async drive({ cpId, csms }) {
+     await sleep(2000);
+     try {
+-      await steve.op("v1.6/UpdateFirmware", {
+-        chargePointSelectList: steve.cpSelect(cpId),
++      await csms.execute(cpId, {
++        action: "UpdateFirmware",
+         location: "http://example.com/fw.bin",
+-        retrieveDateTime: retrieveDatetimeSoon(),
++        retrieveDate: inSeconds(90),
+       });
+     } catch (err) {
+       warnOpFailed("UpdateFirmware", err);
+@@ -184,13 +184,13 @@
+   connector: 1,
+   bootWaitSecs: 4,
+   holdSecs: 115,
+-  async drive({ cpId, steve }) {
++  async drive({ cpId, csms }) {
+     await sleep(2000);
+     try {
+-      await steve.op("v1.6/UpdateFirmware", {
+-        chargePointSelectList: steve.cpSelect(cpId),
++      await csms.execute(cpId, {
++        action: "UpdateFirmware",
+         location: "http://example.com/fw.bin",
+-        retrieveDateTime: retrieveDatetimeSoon(),
++        retrieveDate: inSeconds(90),
+       });
+     } catch (err) {
+       warnOpFailed("UpdateFirmware", err);
+@@ -277,13 +277,10 @@
+   connector: 1,
+   bootWaitSecs: 4,
+   holdSecs: 25,
+-  async drive({ cpId, steve }) {
++  async drive({ cpId, csms }) {
+     await sleep(2000);
+     try {
+-      await steve.op("v1.6/GetDiagnostics", {
+-        chargePointSelectList: steve.cpSelect(cpId),
+-        location: "http://app:9/upload",
+-      });
++      await csms.execute(cpId, { action: "GetDiagnostics", location: "http://app:9/upload" });
+     } catch (err) {
+       warnOpFailed("GetDiagnostics", err);
+     }

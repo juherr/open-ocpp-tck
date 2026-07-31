@@ -1,0 +1,412 @@
+--- a/scripts/steve-verify/runner/specs/core.ts (upstream @ 604054adb0d7d7129a26a5f1ad2d5fdc290d1ca1)
++++ b/scripts/ocpp-verify/tck/specs/core.ts
+@@ -96,7 +96,7 @@
+   bootWaitSecs: 4,
+   // delay-connect(2s) + delay-idtag(2s) + bounded meter block(30s) + tail.
+   holdSecs: 45,
+-  async assert({ cpId, frames, lines, rec, db }) {
++  async assert({ cpId, frames, lines, rec, records }) {
+     assertLineOrder(
+       rec,
+       lines,
+@@ -115,7 +115,7 @@
+       frames,
+       "StartTransaction",
+       "Accepted",
+-      "StartTransaction accepted by SteVe",
++      "StartTransaction accepted by the CSMS",
+     );
+     assertSent(rec, frames, "MeterValues", "MeterValues sent while charging");
+     assertLineOrder(
+@@ -133,7 +133,7 @@
+       "final StatusNotification(Available) sent",
+     );
+ 
+-    const txPk = await db.latestTxPk(cpId);
++    const txPk = await records.latestTransaction(cpId);
+     if (!txPk) {
+       rec.fail(
+         `DB: transaction row exists for ${cpId}`,
+@@ -142,10 +142,10 @@
+       return;
+     }
+     rec.pass(`DB: transaction row exists for ${cpId} (pk=${txPk})`);
+-    assertEq(rec, await db.txIdTag(txPk), "CERT003", "DB: id_tag is CERT003");
++    assertEq(rec, await records.transactionIdTag(txPk), "CERT003", "DB: id_tag is CERT003");
+     assertNonEmpty(
+       rec,
+-      await db.txStopTimestamp(txPk),
++      await records.transactionStopTimestamp(txPk),
+       "DB: transaction is closed (stop_timestamp set)",
+     );
+   },
+@@ -163,7 +163,7 @@
+   bootWaitSecs: 4,
+   // delay-idtag(2s) + bounded meter block(30s) + tail.
+   holdSecs: 40,
+-  async assert({ cpId, frames, lines, rec, db }) {
++  async assert({ cpId, frames, lines, rec, records }) {
+     assertLineMatches(
+       rec,
+       lines,
+@@ -175,7 +175,7 @@
+       frames,
+       "StartTransaction",
+       "Accepted",
+-      "StartTransaction accepted by SteVe",
++      "StartTransaction accepted by the CSMS",
+     );
+     assertSent(rec, frames, "MeterValues", "MeterValues sent while charging");
+     assertLineOrder(
+@@ -192,7 +192,7 @@
+       "final StatusNotification(Available) sent",
+     );
+ 
+-    const txPk = await db.latestTxPk(cpId);
++    const txPk = await records.latestTransaction(cpId);
+     if (!txPk) {
+       rec.fail(
+         `DB: transaction row exists for ${cpId}`,
+@@ -201,10 +201,10 @@
+       return;
+     }
+     rec.pass(`DB: transaction row exists for ${cpId} (pk=${txPk})`);
+-    assertEq(rec, await db.txIdTag(txPk), "CERT004", "DB: id_tag is CERT004");
++    assertEq(rec, await records.transactionIdTag(txPk), "CERT004", "DB: id_tag is CERT004");
+     assertNonEmpty(
+       rec,
+-      await db.txStopTimestamp(txPk),
++      await records.transactionStopTimestamp(txPk),
+       "DB: transaction is closed (stop_timestamp set)",
+     );
+   },
+@@ -222,7 +222,7 @@
+   bootWaitSecs: 4,
+   // bounded meter block(15s) + tail.
+   holdSecs: 25,
+-  async assert({ cpId, frames, lines, rec, db }) {
++  async assert({ cpId, frames, lines, rec, records }) {
+     assertLineMatches(
+       rec,
+       lines,
+@@ -237,7 +237,7 @@
+       "StopTransaction sent with reason EVDisconnected",
+     );
+ 
+-    const txPk = await db.latestTxPk(cpId);
++    const txPk = await records.latestTransaction(cpId);
+     if (!txPk) {
+       rec.fail(
+         `DB: transaction row exists for ${cpId}`,
+@@ -246,10 +246,10 @@
+       return;
+     }
+     rec.pass(`DB: transaction row exists for ${cpId} (pk=${txPk})`);
+-    assertEq(rec, await db.txIdTag(txPk), "CERT005", "DB: id_tag is CERT005");
++    assertEq(rec, await records.transactionIdTag(txPk), "CERT005", "DB: id_tag is CERT005");
+     assertEq(
+       rec,
+-      await db.txStopReason(txPk),
++      await records.transactionStopReason(txPk),
+       "EVDisconnected",
+       "DB: stop_reason is EVDisconnected",
+     );
+@@ -267,20 +267,17 @@
+   connector: 1,
+   bootWaitSecs: 4,
+   holdSecs: 25,
+-  async drive({ cpId, steve }) {
++  async drive({ cpId, csms }) {
+     await sleep(3000);
+     try {
+-      await steve.op("v1.6/Reset", {
+-        chargePointSelectList: steve.cpSelect(cpId),
+-        resetType: "HARD",
+-      });
++      await csms.execute(cpId, { action: "Reset", type: "Hard" });
+     } catch (err) {
+       process.stderr.write(
+-        `[runner] WARN: steve_op Reset(Hard) failed (continuing): ${err instanceof Error ? err.message : String(err)}\n`,
++        `[runner] WARN: CSMS operation Reset(Hard) failed (continuing): ${err instanceof Error ? err.message : String(err)}\n`,
+       );
+     }
+   },
+-  async assert({ cpId, frames, lines, rec, db }) {
++  async assert({ cpId, frames, lines, rec, records }) {
+     assertLineMatches(
+       rec,
+       lines,
+@@ -320,7 +317,7 @@
+       );
+     }
+ 
+-    const txPk = await db.latestTxPk(cpId);
++    const txPk = await records.latestTransaction(cpId);
+     if (!txPk) {
+       rec.fail(
+         `DB: transaction row exists for ${cpId}`,
+@@ -330,7 +327,7 @@
+     }
+     assertEq(
+       rec,
+-      await db.txStopReason(txPk),
++      await records.transactionStopReason(txPk),
+       "HardReset",
+       "DB: stop_reason is HardReset",
+     );
+@@ -355,20 +352,17 @@
+   connector: 1,
+   bootWaitSecs: 4,
+   holdSecs: 25,
+-  async drive({ cpId, steve }) {
++  async drive({ cpId, csms }) {
+     await sleep(3000);
+     try {
+-      await steve.op("v1.6/Reset", {
+-        chargePointSelectList: steve.cpSelect(cpId),
+-        resetType: "SOFT",
+-      });
++      await csms.execute(cpId, { action: "Reset", type: "Soft" });
+     } catch (err) {
+       process.stderr.write(
+-        `[runner] WARN: steve_op Reset(Soft) failed (continuing): ${err instanceof Error ? err.message : String(err)}\n`,
++        `[runner] WARN: CSMS operation Reset(Soft) failed (continuing): ${err instanceof Error ? err.message : String(err)}\n`,
+       );
+     }
+   },
+-  async assert({ cpId, frames, lines, rec, db }) {
++  async assert({ cpId, frames, lines, rec, records }) {
+     assertLineMatches(
+       rec,
+       lines,
+@@ -393,7 +387,7 @@
+       "CP sends a fresh BootNotification after Soft Reset (reboot on the same socket)",
+     );
+ 
+-    const txPk = await db.latestTxPk(cpId);
++    const txPk = await records.latestTransaction(cpId);
+     if (!txPk) {
+       rec.fail(
+         `DB: transaction row exists for ${cpId}`,
+@@ -403,7 +397,7 @@
+     }
+     assertEq(
+       rec,
+-      await db.txStopReason(txPk),
++      await records.transactionStopReason(txPk),
+       "SoftReset",
+       "DB: stop_reason is SoftReset",
+     );
+@@ -421,7 +415,7 @@
+   connector: 1,
+   bootWaitSecs: 4,
+   holdSecs: 35,
+-  async drive({ cpId, steve }) {
++  async drive({ cpId, csms }) {
+     // Timing: delay(2s) -> plug-in -> preparing -> tx-start -> charging ->
+     // meter-auto(maxTime 15s, BLOCKS) -> unlock pre-arm (instant) ->
+     // delay(10s window) -> tx-stop. The pre-arm window for
+@@ -430,17 +424,14 @@
+     // rationale, see .superpowers/sdd/steve-verify-results-g1.md).
+     await sleep(20_000);
+     try {
+-      await steve.op("v1.6/UnlockConnector", {
+-        chargePointSelectList: steve.cpSelect(cpId),
+-        connectorId: "1",
+-      });
++      await csms.execute(cpId, { action: "UnlockConnector", connectorId: 1 });
+     } catch (err) {
+       process.stderr.write(
+-        `[runner] WARN: steve_op UnlockConnector failed (continuing): ${err instanceof Error ? err.message : String(err)}\n`,
++        `[runner] WARN: CSMS operation UnlockConnector failed (continuing): ${err instanceof Error ? err.message : String(err)}\n`,
+       );
+     }
+   },
+-  async assert({ cpId, db, frames, rec }) {
++  async assert({ cpId, records, frames, rec }) {
+     assertReceived(
+       rec,
+       frames,
+@@ -461,7 +452,7 @@
+       "StopTransaction sent (session completes normally)",
+     );
+ 
+-    const txPk = await db.latestTxPk(cpId);
++    const txPk = await records.latestTransaction(cpId);
+     if (!txPk) {
+       rec.fail(
+         `DB: transaction row exists for ${cpId}`,
+@@ -471,7 +462,7 @@
+     }
+     assertNonEmpty(
+       rec,
+-      await db.txStopTimestamp(txPk),
++      await records.transactionStopTimestamp(txPk),
+       "DB: transaction is closed (stop_timestamp set)",
+     );
+   },
+@@ -488,21 +479,18 @@
+   connector: 1,
+   bootWaitSecs: 4,
+   holdSecs: 35,
+-  async drive({ cpId, steve }) {
++  async drive({ cpId, csms }) {
+     // Same timing window as TC_017 -- see that spec for the derivation.
+     await sleep(20_000);
+     try {
+-      await steve.op("v1.6/UnlockConnector", {
+-        chargePointSelectList: steve.cpSelect(cpId),
+-        connectorId: "1",
+-      });
++      await csms.execute(cpId, { action: "UnlockConnector", connectorId: 1 });
+     } catch (err) {
+       process.stderr.write(
+-        `[runner] WARN: steve_op UnlockConnector failed (continuing): ${err instanceof Error ? err.message : String(err)}\n`,
++        `[runner] WARN: CSMS operation UnlockConnector failed (continuing): ${err instanceof Error ? err.message : String(err)}\n`,
+       );
+     }
+   },
+-  async assert({ cpId, db, frames, rec }) {
++  async assert({ cpId, records, frames, rec }) {
+     assertReceived(
+       rec,
+       frames,
+@@ -523,7 +511,7 @@
+       "StopTransaction sent (session completes normally despite unlock failure)",
+     );
+ 
+-    const txPk = await db.latestTxPk(cpId);
++    const txPk = await records.latestTransaction(cpId);
+     if (!txPk) {
+       rec.fail(
+         `DB: transaction row exists for ${cpId}`,
+@@ -533,7 +521,7 @@
+     }
+     assertNonEmpty(
+       rec,
+-      await db.txStopTimestamp(txPk),
++      await records.transactionStopTimestamp(txPk),
+       "DB: transaction is closed (stop_timestamp set)",
+     );
+   },
+@@ -550,15 +538,13 @@
+   connector: 1,
+   bootWaitSecs: 4,
+   holdSecs: 12,
+-  async drive({ cpId, steve }) {
++  async drive({ cpId, csms }) {
+     await sleep(2000);
+     try {
+-      await steve.op("v1.6/GetConfiguration", {
+-        chargePointSelectList: steve.cpSelect(cpId),
+-      });
++      await csms.execute(cpId, { action: "GetConfiguration" });
+     } catch (err) {
+       process.stderr.write(
+-        `[runner] WARN: steve_op GetConfiguration failed (continuing): ${err instanceof Error ? err.message : String(err)}\n`,
++        `[runner] WARN: CSMS operation GetConfiguration failed (continuing): ${err instanceof Error ? err.message : String(err)}\n`,
+       );
+     }
+   },
+@@ -601,16 +587,13 @@
+   connector: 1,
+   bootWaitSecs: 4,
+   holdSecs: 12,
+-  async drive({ cpId, steve }) {
++  async drive({ cpId, csms }) {
+     await sleep(2000);
+     try {
+-      await steve.op("v1.6/GetConfiguration", {
+-        chargePointSelectList: steve.cpSelect(cpId),
+-        confKeyList: "HeartbeatInterval",
+-      });
++      await csms.execute(cpId, { action: "GetConfiguration", keys: ["HeartbeatInterval"] });
+     } catch (err) {
+       process.stderr.write(
+-        `[runner] WARN: steve_op GetConfiguration failed (continuing): ${err instanceof Error ? err.message : String(err)}\n`,
++        `[runner] WARN: CSMS operation GetConfiguration failed (continuing): ${err instanceof Error ? err.message : String(err)}\n`,
+       );
+     }
+   },
+@@ -641,19 +624,17 @@
+   connector: 1,
+   bootWaitSecs: 4,
+   holdSecs: 12,
+-  async drive({ cpId, steve }) {
++  async drive({ cpId, csms }) {
+     await sleep(2000);
+     try {
+-      await steve.op("v1.6/ChangeConfiguration", {
+-        chargePointSelectList: steve.cpSelect(cpId),
+-        keyType: "PREDEFINED",
+-        confKey: "MeterValueSampleInterval",
+-        customConfKey: "",
++      await csms.execute(cpId, {
++        action: "ChangeConfiguration",
++        key: "MeterValueSampleInterval",
+         value: "10",
+       });
+     } catch (err) {
+       process.stderr.write(
+-        `[runner] WARN: steve_op ChangeConfiguration failed (continuing): ${err instanceof Error ? err.message : String(err)}\n`,
++        `[runner] WARN: CSMS operation ChangeConfiguration failed (continuing): ${err instanceof Error ? err.message : String(err)}\n`,
+       );
+     }
+   },
+@@ -720,16 +701,13 @@
+   connector: 1,
+   bootWaitSecs: 4,
+   holdSecs: 10,
+-  async drive({ cpId, steve }) {
++  async drive({ cpId, csms }) {
+     await sleep(2000);
+     try {
+-      await steve.op("v1.6/UnlockConnector", {
+-        chargePointSelectList: steve.cpSelect(cpId),
+-        connectorId: "99",
+-      });
++      await csms.execute(cpId, { action: "UnlockConnector", connectorId: 99 });
+     } catch (err) {
+       process.stderr.write(
+-        `[runner] WARN: steve_op UnlockConnector failed (continuing): ${err instanceof Error ? err.message : String(err)}\n`,
++        `[runner] WARN: CSMS operation UnlockConnector failed (continuing): ${err instanceof Error ? err.message : String(err)}\n`,
+       );
+     }
+   },
+@@ -760,15 +738,13 @@
+   connector: 1,
+   bootWaitSecs: 4,
+   holdSecs: 15,
+-  async drive({ cpId, steve }) {
++  async drive({ cpId, csms }) {
+     await sleep(2000);
+     try {
+-      await steve.op("v1.6/ClearCache", {
+-        chargePointSelectList: steve.cpSelect(cpId),
+-      });
++      await csms.execute(cpId, { action: "ClearCache" });
+     } catch (err) {
+       process.stderr.write(
+-        `[runner] WARN: steve_op ClearCache failed (continuing): ${err instanceof Error ? err.message : String(err)}\n`,
++        `[runner] WARN: CSMS operation ClearCache failed (continuing): ${err instanceof Error ? err.message : String(err)}\n`,
+       );
+     }
+   },
+@@ -791,7 +767,7 @@
+ export const tc064DataTransferSpec: ScenarioSpec<void> = {
+   templateId: "cert16-tc064-data-transfer",
+   description:
+-    "TC_064 DataTransfer: CP sends DataTransfer.req unprompted; CSMS response status is SteVe's own policy (not asserted exactly).",
++    "TC_064 DataTransfer: CP sends DataTransfer.req unprompted; the CSMS response status is its own policy (not asserted exactly).",
+   connector: 1,
+   bootWaitSecs: 4,
+   holdSecs: 10,
+@@ -804,7 +780,7 @@
+     );
+ 
+     const description =
+-      "DataTransfer.conf received (status is SteVe's own policy, not asserted)";
++      "DataTransfer.conf received (status is the CSMS's own policy, not asserted)";
+     const call = findCall(frames, "sent", "DataTransfer");
+     if (!call) {
+       rec.fail(description, "no Sent CALL found for action=DataTransfer");

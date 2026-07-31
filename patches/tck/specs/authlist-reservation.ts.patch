@@ -1,0 +1,390 @@
+--- a/scripts/steve-verify/runner/specs/authlist-reservation.ts (upstream @ 604054adb0d7d7129a26a5f1ad2d5fdc290d1ca1)
++++ b/scripts/ocpp-verify/tck/specs/authlist-reservation.ts
+@@ -19,17 +19,13 @@
+   assertSent,
+ } from "../assert";
+ import type { ScenarioSpec } from "../spec-types";
+-import {
+-  defaultSteveConfig,
+-  reservationExpirySoon,
+-  SteveUiOps,
+-  waitForCondition,
+-} from "../steve";
++import { inMinutes } from "../time";
+ import { sleep } from "../util";
++import { waitForCondition } from "../wait";
+ 
+ function warnOpFailed(op: string, err: unknown): void {
+   process.stderr.write(
+-    `[runner] WARN: steve_op ${op} failed (continuing): ${err instanceof Error ? err.message : String(err)}\n`,
++    `[runner] WARN: CSMS operation ${op} failed (continuing): ${err instanceof Error ? err.message : String(err)}\n`,
+   );
+ }
+ 
+@@ -45,12 +41,10 @@
+   connector: 1,
+   bootWaitSecs: 4,
+   holdSecs: 12,
+-  async drive({ cpId, steve }) {
++  async drive({ cpId, csms }) {
+     await sleep(2000);
+     try {
+-      await steve.op("v1.6/GetLocalListVersion", {
+-        chargePointSelectList: steve.cpSelect(cpId),
+-      });
++      await csms.execute(cpId, { action: "GetLocalListVersion" });
+     } catch (err) {
+       warnOpFailed("GetLocalListVersion", err);
+     }
+@@ -96,12 +90,10 @@
+   // SendLocalList run against the same cpId (even earlier in the same
+   // group sweep) leaves nothing behind here. Do not "fix" this by
+   // resetting/isolating state -- there's no cross-run state to reset.
+-  async drive({ cpId, steve }) {
++  async drive({ cpId, csms }) {
+     await sleep(2000);
+     try {
+-      await steve.op("v1.6/GetLocalListVersion", {
+-        chargePointSelectList: steve.cpSelect(cpId),
+-      });
++      await csms.execute(cpId, { action: "GetLocalListVersion" });
+     } catch (err) {
+       warnOpFailed("GetLocalListVersion", err);
+     }
+@@ -132,14 +124,14 @@
+   connector: 1,
+   bootWaitSecs: 4,
+   holdSecs: 12,
+-  async drive({ cpId, steve }) {
++  async drive({ cpId, csms }) {
+     await sleep(2000);
+     try {
+-      await steve.op("v1.6/SendLocalList", {
+-        chargePointSelectList: steve.cpSelect(cpId),
+-        listVersion: "1",
+-        updateType: "FULL",
+-        addUpdateList: "CERT-TAG-1",
++      await csms.execute(cpId, {
++        action: "SendLocalList",
++        listVersion: 1,
++        updateType: "Full",
++        localAuthorizationList: [{ idTag: "CERT-TAG-1" }],
+       });
+     } catch (err) {
+       warnOpFailed("SendLocalList", err);
+@@ -167,14 +159,14 @@
+   connector: 1,
+   bootWaitSecs: 4,
+   holdSecs: 12,
+-  async drive({ cpId, steve }) {
++  async drive({ cpId, csms }) {
+     await sleep(2000);
+     try {
+-      await steve.op("v1.6/SendLocalList", {
+-        chargePointSelectList: steve.cpSelect(cpId),
+-        listVersion: "1",
+-        updateType: "FULL",
+-        addUpdateList: "CERT-TAG-1",
++      await csms.execute(cpId, {
++        action: "SendLocalList",
++        listVersion: 1,
++        updateType: "Full",
++        localAuthorizationList: [{ idTag: "CERT-TAG-1" }],
+       });
+     } catch (err) {
+       warnOpFailed("SendLocalList", err);
+@@ -202,14 +194,14 @@
+   connector: 1,
+   bootWaitSecs: 4,
+   holdSecs: 12,
+-  async drive({ cpId, steve }) {
++  async drive({ cpId, csms }) {
+     await sleep(2000);
+     try {
+-      await steve.op("v1.6/SendLocalList", {
+-        chargePointSelectList: steve.cpSelect(cpId),
+-        listVersion: "1",
+-        updateType: "FULL",
+-        addUpdateList: "CERT-TAG-1",
++      await csms.execute(cpId, {
++        action: "SendLocalList",
++        listVersion: 1,
++        updateType: "Full",
++        localAuthorizationList: [{ idTag: "CERT-TAG-1" }],
+       });
+     } catch (err) {
+       warnOpFailed("SendLocalList", err);
+@@ -247,25 +239,25 @@
+   connector: 1,
+   bootWaitSecs: 4,
+   holdSecs: 18,
+-  async drive({ cpId, steve }) {
++  async drive({ cpId, csms }) {
+     await sleep(2000);
+     try {
+-      await steve.op("v1.6/SendLocalList", {
+-        chargePointSelectList: steve.cpSelect(cpId),
+-        listVersion: "1",
+-        updateType: "FULL",
+-        addUpdateList: "CERT-TAG-1",
++      await csms.execute(cpId, {
++        action: "SendLocalList",
++        listVersion: 1,
++        updateType: "Full",
++        localAuthorizationList: [{ idTag: "CERT-TAG-1" }],
+       });
+     } catch (err) {
+       warnOpFailed("SendLocalList (Full)", err);
+     }
+     await sleep(3000);
+     try {
+-      await steve.op("v1.6/SendLocalList", {
+-        chargePointSelectList: steve.cpSelect(cpId),
+-        listVersion: "2",
+-        updateType: "DIFFERENTIAL",
+-        addUpdateList: "CERT-TAG-2",
++      await csms.execute(cpId, {
++        action: "SendLocalList",
++        listVersion: 2,
++        updateType: "Differential",
++        localAuthorizationList: [{ idTag: "CERT-TAG-2" }],
+       });
+     } catch (err) {
+       warnOpFailed("SendLocalList (Differential)", err);
+@@ -321,20 +313,20 @@
+   bootWaitSecs: 4,
+   // settle(2) + delay-arrival(2) + bounded meter block(30) + tail.
+   holdSecs: 45,
+-  async drive({ cpId, steve }) {
++  async drive({ cpId, csms }) {
+     await sleep(2000);
+     try {
+-      await steve.op("v1.6/ReserveNow", {
+-        chargePointSelectList: steve.cpSelect(cpId),
+-        connectorId: "1",
+-        expiry: reservationExpirySoon(),
++      await csms.execute(cpId, {
++        action: "ReserveNow",
++        connectorId: 1,
+         idTag: "CERT-TAG-1",
++        expiryDate: inMinutes(10),
+       });
+     } catch (err) {
+       warnOpFailed("ReserveNow", err);
+     }
+   },
+-  async assert({ cpId, frames, lines, rec, db }) {
++  async assert({ cpId, frames, lines, rec, records }) {
+     assertReceived(rec, frames, "ReserveNow", "ReserveNow.req received");
+     assertResponseStatus(
+       rec,
+@@ -364,7 +356,7 @@
+     );
+     assertSent(rec, frames, "StopTransaction", "StopTransaction sent");
+ 
+-    const txPk = await db.latestTxPk(cpId);
++    const txPk = await records.latestTransaction(cpId);
+     if (!txPk) {
+       rec.fail(
+         `DB: transaction row exists for ${cpId}`,
+@@ -375,13 +367,13 @@
+     rec.pass(`DB: transaction row exists for ${cpId} (pk=${txPk})`);
+     assertEq(
+       rec,
+-      await db.txIdTag(txPk),
++      await records.transactionIdTag(txPk),
+       "CERT-RES01",
+       "DB: id_tag is CERT-RES01",
+     );
+     assertNonEmpty(
+       rec,
+-      await db.txStopTimestamp(txPk),
++      await records.transactionStopTimestamp(txPk),
+       "DB: transaction is closed (stop_timestamp set)",
+     );
+   },
+@@ -398,14 +390,14 @@
+   connector: 1,
+   bootWaitSecs: 4,
+   holdSecs: 12,
+-  async drive({ cpId, steve }) {
++  async drive({ cpId, csms }) {
+     await sleep(2000);
+     try {
+-      await steve.op("v1.6/ReserveNow", {
+-        chargePointSelectList: steve.cpSelect(cpId),
+-        connectorId: "1",
+-        expiry: reservationExpirySoon(),
++      await csms.execute(cpId, {
++        action: "ReserveNow",
++        connectorId: 1,
+         idTag: "CERT-TAG-1",
++        expiryDate: inMinutes(10),
+       });
+     } catch (err) {
+       warnOpFailed("ReserveNow", err);
+@@ -454,14 +446,14 @@
+   connector: 1,
+   bootWaitSecs: 4,
+   holdSecs: 12,
+-  async drive({ cpId, steve }) {
++  async drive({ cpId, csms }) {
+     await sleep(2000);
+     try {
+-      await steve.op("v1.6/ReserveNow", {
+-        chargePointSelectList: steve.cpSelect(cpId),
+-        connectorId: "1",
+-        expiry: reservationExpirySoon(),
++      await csms.execute(cpId, {
++        action: "ReserveNow",
++        connectorId: 1,
+         idTag: "CERT-TAG-1",
++        expiryDate: inMinutes(10),
+       });
+     } catch (err) {
+       warnOpFailed("ReserveNow", err);
+@@ -503,14 +495,14 @@
+   connector: 1,
+   bootWaitSecs: 4,
+   holdSecs: 12,
+-  async drive({ cpId, steve }) {
++  async drive({ cpId, csms }) {
+     await sleep(2000);
+     try {
+-      await steve.op("v1.6/ReserveNow", {
+-        chargePointSelectList: steve.cpSelect(cpId),
+-        connectorId: "1",
+-        expiry: reservationExpirySoon(),
++      await csms.execute(cpId, {
++        action: "ReserveNow",
++        connectorId: 1,
+         idTag: "CERT-TAG-1",
++        expiryDate: inMinutes(10),
+       });
+     } catch (err) {
+       warnOpFailed("ReserveNow", err);
+@@ -552,14 +544,14 @@
+   connector: 1,
+   bootWaitSecs: 4,
+   holdSecs: 12,
+-  async drive({ cpId, steve }) {
++  async drive({ cpId, csms }) {
+     await sleep(2000);
+     try {
+-      await steve.op("v1.6/ReserveNow", {
+-        chargePointSelectList: steve.cpSelect(cpId),
+-        connectorId: "1",
+-        expiry: reservationExpirySoon(),
++      await csms.execute(cpId, {
++        action: "ReserveNow",
++        connectorId: 1,
+         idTag: "CERT-TAG-1",
++        expiryDate: inMinutes(10),
+       });
+     } catch (err) {
+       warnOpFailed("ReserveNow", err);
+@@ -593,27 +585,27 @@
+     connector: 1,
+     bootWaitSecs: 4,
+     holdSecs: 20,
+-    async drive({ cpId, db, steve }): Promise<CancelReservationDriveState> {
++    async drive({ cpId, records, csms }): Promise<CancelReservationDriveState> {
+       await sleep(2000);
+       try {
+-        await steve.op("v1.6/ReserveNow", {
+-          chargePointSelectList: steve.cpSelect(cpId),
+-          connectorId: "1",
+-          expiry: reservationExpirySoon(),
+-          idTag: "CERT-TAG-1",
+-        });
++        await csms.execute(cpId, {
++        action: "ReserveNow",
++        connectorId: 1,
++        idTag: "CERT-TAG-1",
++        expiryDate: inMinutes(10),
++      });
+       } catch (err) {
+         warnOpFailed("ReserveNow", err);
+       }
+ 
+-      // steve_op only confirms ReserveNow was QUEUED, not that SteVe has
++      // CSMS operation only confirms ReserveNow was QUEUED, not that SteVe has
+       // finished writing the reservation row -- a one-shot read right after
+       // queuing it can race the DB write and capture an empty/stale PK. Bound
+       // the poll like the bash spec's wait_for_condition (15s/1s); a timeout
+       // here throws and aborts the whole run, matching wait_for_condition's
+       // `die` (fail-hard) semantics.
+       const reservationPk = await waitForCondition(
+-        () => db.latestReservationPk(cpId),
++        () => records.reservations.latest(cpId),
+         {
+           timeoutMs: 15_000,
+           intervalMs: 1_000,
+@@ -622,17 +614,14 @@
+       );
+ 
+       try {
+-        await steve.op("v1.6/CancelReservation", {
+-          chargePointSelectList: steve.cpSelect(cpId),
+-          reservationId: reservationPk,
+-        });
++        await csms.execute(cpId, { action: "CancelReservation", reservation: reservationPk });
+       } catch (err) {
+         warnOpFailed("CancelReservation", err);
+       }
+ 
+       return { reservationPk };
+     },
+-    async assert({ frames, lines, rec, db, driveState }) {
++    async assert({ frames, lines, rec, records, driveState }) {
+       assertResponseStatus(
+         rec,
+         frames,
+@@ -675,7 +664,7 @@
+       }
+       assertEq(
+         rec,
+-        await db.reservationStatus(driveState.reservationPk),
++        await records.reservations.status(driveState.reservationPk),
+         "CANCELLED",
+         `DB: reservation ${driveState.reservationPk} is CANCELLED`,
+       );
+@@ -693,30 +682,16 @@
+   connector: 1,
+   bootWaitSecs: 4,
+   holdSecs: 12,
+-  async drive({ cpId }) {
++  async drive({ cpId, csms }) {
+     await sleep(2000);
+-    // Deliberately bypasses `steve` (the ambient STEVE_DRIVER=api|ui
+-    // driver) and always uses the manager-UI client for THIS ONE call --
+-    // discovered live while verifying issue #184 Task 3's --parallel
+-    // groups: SteVe 3.13.0's REST CancelReservation
+-    // (OcppOperationsService#cancelReservation ->
+-    // #validateReservationId, source-verified) checks the reservationId
+-    // against ReservationRepository#getActiveReservationIds(chargeBoxId)
+-    // BEFORE ever dispatching to the CP, and 400s
+-    // ("This reservation is not active at this station.") without
+-    // sending anything on the wire for a reservationId the station
+-    // doesn't have active -- which is exactly this scenario's whole
+-    // point (an intentionally-nonexistent 99999, so the CP ITSELF must
+-    // answer Rejected). The manager-UI path
+-    // (Ocpp15Controller#postCancelReserv -> ChargePointServiceClient
+-    // directly) has no such pre-check and always reaches the CP -- a
+-    // genuine, permanent REST capability gap (not a flake), so this one
+-    // call site stays UI-only regardless of STEVE_DRIVER.
+-    const uiSteve = new SteveUiOps(defaultSteveConfig());
++    // The reservationId is deliberately one the station does not have: the
++    // scenario's whole point is that the CHARGE POINT answers Rejected. A CSMS
++    // that validates the id server-side and never puts the request on the wire
++    // cannot drive this, and says so in its scope table.
+     try {
+-      await uiSteve.op("v1.6/CancelReservation", {
+-        chargePointSelectList: uiSteve.cpSelect(cpId),
+-        reservationId: "99999",
++      await csms.execute(cpId, {
++        action: "CancelReservation",
++        reservation: "99999",
+       });
+     } catch (err) {
+       warnOpFailed("CancelReservation", err);

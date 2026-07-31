@@ -1,0 +1,75 @@
+--- a/scripts/steve-verify/runner/specs/authorize.ts (upstream @ 604054adb0d7d7129a26a5f1ad2d5fdc290d1ca1)
++++ b/scripts/ocpp-verify/tck/specs/authorize.ts
+@@ -33,15 +33,15 @@
+   type AssertRecorder,
+ } from "../assert";
+ import type { ScenarioSpec } from "../spec-types";
+-import type { SteveTx } from "../steve";
++import type { CsmsRecords } from "../driver";
+ 
+ async function assertNoTransactionForTag(
+   cpId: string,
+   idTag: string,
+-  db: SteveTx,
++  records: CsmsRecords,
+   rec: AssertRecorder,
+ ): Promise<void> {
+-  const count = await db.txCountForTag(cpId, idTag);
++  const count = await records.transactionCountForIdTag(cpId, idTag);
+   assertEq(
+     rec,
+     count,
+@@ -62,7 +62,7 @@
+   bootWaitSecs: 4,
+   // plug-in (instant) + Authorize round-trip (~1s) + delay-1(2s) + plug-out + tail.
+   holdSecs: 15,
+-  async assert({ cpId, frames, lines, rec, db }) {
++  async assert({ cpId, frames, lines, rec, records }) {
+     assertLineMatches(
+       rec,
+       lines,
+@@ -97,7 +97,7 @@
+       "scenario ran to completion despite the denied transaction start",
+     );
+ 
+-    await assertNoTransactionForTag(cpId, "CERT023-INV", db, rec);
++    await assertNoTransactionForTag(cpId, "CERT023-INV", records, rec);
+   },
+ };
+ 
+@@ -112,7 +112,7 @@
+   connector: 1,
+   bootWaitSecs: 4,
+   holdSecs: 15,
+-  async assert({ cpId, frames, lines, rec, db }) {
++  async assert({ cpId, frames, lines, rec, records }) {
+     assertLineMatches(
+       rec,
+       lines,
+@@ -142,7 +142,7 @@
+       "scenario ran to completion despite the denied transaction start",
+     );
+ 
+-    await assertNoTransactionForTag(cpId, "CERT023-EXP", db, rec);
++    await assertNoTransactionForTag(cpId, "CERT023-EXP", records, rec);
+   },
+ };
+ 
+@@ -157,7 +157,7 @@
+   connector: 1,
+   bootWaitSecs: 4,
+   holdSecs: 15,
+-  async assert({ cpId, frames, lines, rec, db }) {
++  async assert({ cpId, frames, lines, rec, records }) {
+     assertLineMatches(
+       rec,
+       lines,
+@@ -187,7 +187,7 @@
+       "scenario ran to completion despite the denied transaction start",
+     );
+ 
+-    await assertNoTransactionForTag(cpId, "CERT023-BLK", db, rec);
++    await assertNoTransactionForTag(cpId, "CERT023-BLK", records, rec);
+   },
+ };
+ 

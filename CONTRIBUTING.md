@@ -1,0 +1,175 @@
+# Writing a CSMS driver
+
+A driver is the only thing standing between these 47 scenarios and your CSMS.
+It answers two questions and nothing else:
+
+- **`CsmsOperations.execute(cpId, op)`** — "make the CSMS send this OCPP
+  operation to this charge point."
+- **`CsmsRecords`** — "what does the CSMS believe happened?"
+
+Everything else — starting the simulator, parsing OCPP-J, asserting, verdicts,
+reporting — is the core's job. Your driver never learns which scenario is
+driving it, and the core never learns which CSMS it is testing.
+
+## Setup
+
+```sh
+mkdir acme-ocpp-tck && cd acme-ocpp-tck
+bun init -y
+bun add github:juherr/open-ocpp-tck#v0.1.0
+bun add -d @types/bun typescript
+```
+
+`tsconfig.json`:
+
+```json
+{
+  "extends": "open-ocpp-tck/tsconfig",
+  "compilerOptions": { "types": ["bun"] },
+  "include": ["*.ts", "src/**/*.ts"]
+}
+```
+
+## The module
+
+```ts
+import {
+  assertNever,
+  UnsupportedOperationError,
+  type CsmsDriverModule,
+  type CsmsOperation,
+} from "open-ocpp-tck/driver";
+import { unverifiable } from "open-ocpp-tck/unverifiable";
+import { waitForCondition } from "open-ocpp-tck/wait";
+import type { ScopeTable } from "open-ocpp-tck/scope";
+
+const SCOPE: ScopeTable = {
+  "cert16-tc013-hard-reset": {
+    status: "DRIVABLE",
+    reason: "POST /charge-points/{id}/reset",
+  },
+  // one row per registered scenario -- `ocpp-tck check-driver` lists the gaps
+};
+
+export const csmsDriver: CsmsDriverModule = {
+  id: "acme",
+  displayName: "Acme CSMS",
+  scope: SCOPE,
+  envHelp: "ACME_BASE_URL, ACME_TOKEN",
+
+  create(env) {
+    const token = env.ACME_TOKEN;
+    if (!token) throw new Error("ACME_TOKEN is not set");
+
+    return {
+      operations: {
+        async execute(cpId: string, op: CsmsOperation): Promise<string> {
+          switch (op.action) {
+            case "Reset":
+              return post(`/cp/${cpId}/reset`, { type: op.type });
+            case "ClearCache":
+              return post(`/cp/${cpId}/clear-cache`, {});
+            // ... 16 more. Omitting one is a COMPILE error, not a surprise
+            //     mid-campaign against somebody's acceptance environment.
+            default:
+              return assertNever(op, "acme.execute");
+          }
+        },
+      },
+
+      records: {
+        latestTransaction: (cpId) => findLatestSession(cpId),
+        waitForActiveTransaction: (cpId, idTag, timeoutSecs) =>
+          waitForCondition(() => findOpenSession(cpId, idTag), {
+            timeoutMs: (timeoutSecs ?? 60) * 1000,
+          }),
+        transactionIdTag: (tx) => sessionField(tx, "idTag"),
+        transactionStopTimestamp: (tx) => sessionField(tx, "stoppedAt"),
+        transactionStopReason: async () =>
+          unverifiable("the Acme API exposes no OCPP stop reason"),
+        transactionCountForIdTag: async () =>
+          unverifiable("no per-idTag session counter in the Acme API"),
+        // reservations / chargingProfiles omitted -> the runner substitutes
+        // stubs that throw UnsupportedOperationError -> NOT APPLICABLE.
+      },
+
+      simTransport: async () => ({ wsUrl: env.ACME_WS_URL }),
+    };
+  },
+};
+```
+
+Run it:
+
+```sh
+export CSMS_DRIVER="$PWD/index.ts"
+bunx tsc --noEmit
+bunx ocpp-tck check-driver      # offline
+bunx ocpp-tck run-all --group core
+```
+
+## Three things a driver may not do
+
+**1. Throw for an OCPP-level outcome.** `execute()` resolves as soon as the
+CSMS has *accepted or dispatched* the operation. A `Rejected` CALLRESULT, a
+CALLERROR, or no response at all are normal returns — every scenario asserts on
+the simulator's captured wire log, never on what `execute()` returned. Throw
+only for a genuine transport or request failure.
+
+**2. Invent an observation.** Every `CsmsRecords` method returns a **string**,
+the count included, and that is deliberate. If your CSMS cannot answer, return
+`unverifiable("<why>")`: the assertion helpers recognise the sentinel and
+record the check as `SKIPPED`, yielding `PARTIAL` instead of a false `FAIL`.
+
+Never return `""` for "I cannot know" — `""` is the legitimate "not set", so it
+turns a `SKIPPED` into a `FAIL`. And never use the sentinel for a value that is
+fed back into an operation field: a sentinel string reaching a request body
+asks the CSMS to act on the word "unverifiable". Throw
+`UnsupportedOperationError` there instead.
+
+**3. Branch on a scenario id.** A driver that wants per-scenario behaviour is
+describing a capability gap. Declare it in the scope table.
+
+## The scope table
+
+`ocpp-tck` consults it **before starting any container**, so a scenario your
+CSMS cannot drive costs nothing and is reported with its reason.
+`UnsupportedOperationError` is the second line of defence: when it fires, the
+runner records `NOT APPLICABLE` *and* warns that your table is out of date.
+
+- Every `reason` cites the precise limitation — an endpoint that does not
+  exist, a DTO member that is absent. If you cannot name the limitation, the
+  row is `CONDITIONAL`, not `NOT_APPLICABLE`.
+- `CONDITIONAL` means "expressible, but whether the CSMS emits the OCPP message
+  we need is unknown until a real run". State the question the first live run
+  must answer.
+- **Never** demote a row to `NOT_APPLICABLE` to make a red scenario go away.
+  That converts a finding about your CSMS into a silence about the harness, and
+  the two are indistinguishable afterwards.
+
+Put it on the **module**, not inside `create()`. `check-driver` and the
+preflight read it without calling `create()`, which is what lets them run with
+no credentials — including in your CI, which has none.
+
+## Contributing back
+
+Pull requests welcome for the core, the reference driver, and new scenarios.
+Two rules the test suite enforces rather than merely documents:
+
+- **`tests/generic-core.sh`** — nothing under `tck/` may name a CSMS, and the
+  core may not import a driver. Doc comments may *discuss* a CSMS-shaped design
+  they replaced; identifiers, string literals and imports may not.
+- **`tests/vendor-integrity.sh`** — files vendored from
+  `shiv3/ocpp-cp-simulator` are digest-pinned in `VENDOR.md`, and each patch is
+  reverse-applied to check it still reconstructs the pinned upstream bytes.
+  If you touch one, regenerate its patch and re-pin both digests; the procedure
+  is in `VENDOR.md`.
+
+Changing what a scenario *measures* also moves `tck/specs/ASSERT-INVENTORY.txt`
+or `DRIVE-TRACE.txt`. That is intended: the diff is the review. Regenerate with
+`bash tests/spec-invariants.sh --regenerate` and explain the change in the pull
+request.
+
+If you edit anything under `tck/` or `drivers/steve/`, run
+`bun run build:types` and commit the result — `tests/types-current.sh` fails
+otherwise.

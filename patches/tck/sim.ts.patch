@@ -1,0 +1,234 @@
+--- /tmp/ocpp-upstream/scripts/steve-verify/runner/sim.ts	2026-07-31 20:05:48
++++ tck/sim.ts	2026-07-31 20:10:22
+@@ -1,15 +1,52 @@
++// Derived from shiv3/ocpp-cp-simulator scripts/steve-verify/runner/sim.ts @ 604054adb0d7d7129a26a5f1ad2d5fdc290d1ca1 (Apache-2.0). Modified: the hardcoded docker argv is now built from SimConfig; the `-v <repoRoot>:/app -w /app` bind mount and `repoRoot` are gone (the published image ships the CLI sources); the image is pinned by digest; `--network` left the default path; outgoing WS Basic auth and an optional cpId-in-path WS URL were added; every trace of the command redacts the password. The line pump, waitForLine, stop(), container cleanup and signal handlers are byte-for-byte upstream.
++
+ /**
+- * sim.ts -- docker-spawned simulator process: launches `bun src/cli/main.ts
+- * --json` inside a container on SteVe's docker network (port of lib.sh's
+- * sim_start), feeds it JSON commands directly over the child's stdin (no
+- * intermediate feeder shell script -- lib.sh needed one only because its
+- * `docker run -d` detaches immediately; spawning attached via Bun.spawn
+- * lets this driver write commands with real timing control instead), and
+- * streams stdout back as lines for the caller to parse (ocpp.ts) or wait on.
++ * sim.ts -- docker-spawned simulator process: launches the ocpp-cp-simulator
++ * CLI in JSON Lines mode inside a container (port of lib.sh's sim_start),
++ * feeds it JSON commands directly over the child's stdin (no intermediate
++ * feeder shell script -- lib.sh needed one only because its `docker run -d`
++ * detaches immediately; spawning attached via Bun.spawn lets this driver
++ * write commands with real timing control instead), and streams stdout back
++ * as lines for the caller to parse (ocpp.ts) or wait on.
++ *
++ * Upstream ran `oven/bun:1.3-alpine` with the checkout bind-mounted at /app.
++ * Here the published image `ghcr.io/shiv3/ocpp-cp-simulator` carries the CLI
++ * sources itself, so there is no repo to mount -- but its default entrypoint
++ * (`/usr/local/bin/entrypoint.sh`) always appends
++ * `--http-host 0.0.0.0 --unsafe-remote --web-console $HTTP_PORT`, which puts
++ * the CLI in daemon/web-console mode: it auto-connects on startup and emits
++ * `[server] …` lines instead of the JSON Lines event stream this runner
++ * parses (verified live against 0.7.5 -- see P0-FINDINGS.md §9). The
++ * entrypoint is therefore overridden back to `bun src/cli/main.ts`, which
++ * runs the very same embedded sources in true JSON Lines mode.
+  */
+ 
+ const STOP_GRACE_MS = 10_000;
+ 
++/**
++ * Default simulator image, PINNED BY DIGEST (repo convention: never
++ * `latest`, never a bare tag). This is the multi-arch index digest of
++ * `ghcr.io/shiv3/ocpp-cp-simulator:0.7.5`, resolved 2026-07-31 with
++ * `docker buildx imagetools inspect`; it therefore still selects the right
++ * per-platform manifest on amd64 and arm64. Override with `SIM_IMAGE`.
++ *
++ * THE ONLY DECLARATION OF THIS DIGEST. A shell caller that needs to `docker
++ * pull` or smoke-test the image before a campaign must read it back with
++ * `ocpp-tck print-sim-image` rather than repeat the literal: a second copy in
++ * a wrapper script lets the preflight validate one image while the run uses
++ * another, and once the wrapper lives in a different repository from this
++ * file, nothing can ever make the two agree again.
++ */
++export const DEFAULT_SIM_IMAGE =
++  "ghcr.io/shiv3/ocpp-cp-simulator@sha256:ac35788f136c27db9371051b446af2b49270f1fc007d2172556fb761c7b01026";
++
++/** What the entrypoint override runs inside the image (WorkingDir /app). */
++const DEFAULT_SIM_ENTRYPOINT = "bun";
++const DEFAULT_SIM_COMMAND = ["src/cli/main.ts"];
++
++/** Replaces a secret in any human-visible rendering of the docker argv. */
++const REDACTED = "<redacted>";
++
+ // ---------------------------------------------------------------------------
+ // Signal-safe cleanup -- a bare try/finally around a run does NOT survive
+ // Ctrl-C (SIGINT) or a `docker stop`/CI-cancel-driven SIGTERM arriving while
+@@ -46,31 +83,116 @@
+ }
+ 
+ export interface SimConfig {
+-  /** docker network the sim container joins (must be SteVe's network so it
+-   *  can resolve the `app` hostname in wsUrl). */
+-  network: string;
+-  /** Simulator container image -- must ship `bun` (used to run the CLI). */
++  /** Simulator container image. Pinned by digest by default
++   *  ({@link DEFAULT_SIM_IMAGE}); `SIM_IMAGE` overrides. */
+   image: string;
+-  /** CSMS WebSocket URL, resolved from *inside* the docker network. */
++  /** CSMS WebSocket base URL the charge point dials out to. */
+   wsUrl: string;
+-  /** Repo root, bind-mounted read/write at /app so the container's `bun
+-   *  src/cli/main.ts` runs this checkout's own source. */
+-  repoRoot: string;
++  /** docker network for the container. Undefined (the default) means the
++   *  stock bridge network, which is what a PUBLIC CSMS needs: the container
++   *  must reach the internet. `SIM_NETWORK` is the escape hatch for a CSMS
++   *  reachable only on a user-defined docker network -- a CSMS addressed by
++   *  container name rather than by public hostname. */
++  network?: string;
++  /** Whether the charge point id is appended as a path segment to
++   *  {@link wsUrl} (`ws://host/path/<cpId>`) or passed only via `--cp-id`.
++   *  OCPP 1.6-J convention is to append it, and every CSMS this harness has
++   *  driven so far does -- but the target CSMS's exact URL shape is not
++   *  settled, so `SIM_WS_APPEND_CP_ID=0` turns it off. */
++  appendCpIdToWsPath: boolean;
++  /** Basic auth username for the OUTGOING CP -> CSMS WebSocket. Undefined
++   *  when `SIM_WS_BASIC_USER` is unset: no auth flags are passed at all. */
++  basicAuthUser?: string;
++  /** Basic auth password for the OUTGOING CP -> CSMS WebSocket
++   *  (`SIM_WS_BASIC_PASS`). NEVER rendered in a trace -- see
++   *  {@link renderDockerArgs}. */
++  basicAuthPass?: string;
++  /** Container entrypoint override. See this module's header for why the
++   *  image's own entrypoint is bypassed; `SIM_ENTRYPOINT` restores it (pass
++   *  an empty string to use the image default). */
++  entrypoint?: string;
++  /** Argv handed to {@link entrypoint} ahead of the connection flags. */
++  command: string[];
++  /** Extra CLI flags appended verbatim, whitespace-split from
++   *  `SIM_EXTRA_ARGS` (e.g. `--connectors 2`). */
++  extraArgs: string[];
+ }
+ 
++function splitArgs(raw: string | undefined): string[] {
++  if (!raw) return [];
++  return raw.split(/\s+/).filter((token) => token !== "");
++}
++
+ export function defaultSimConfig(
+-  repoRoot: string,
+   env: NodeJS.ProcessEnv = process.env,
+ ): SimConfig {
++  const entrypoint = env.SIM_ENTRYPOINT ?? DEFAULT_SIM_ENTRYPOINT;
+   return {
+-    network: env.STEVE_NETWORK ?? "steve_default",
+-    image: env.SIM_IMAGE ?? "oven/bun:1.3-alpine",
+-    wsUrl:
+-      env.SIM_WS_URL ?? "ws://app:8180/steve/websocket/CentralSystemService/",
+-    repoRoot,
++    image: env.SIM_IMAGE ?? DEFAULT_SIM_IMAGE,
++    wsUrl: env.SIM_WS_URL ?? "ws://localhost:8080/ocpp/",
++    network: env.SIM_NETWORK || undefined,
++    appendCpIdToWsPath: env.SIM_WS_APPEND_CP_ID !== "0",
++    basicAuthUser: env.SIM_WS_BASIC_USER || undefined,
++    basicAuthPass: env.SIM_WS_BASIC_PASS || undefined,
++    entrypoint: entrypoint === "" ? undefined : entrypoint,
++    command:
++      env.SIM_COMMAND !== undefined
++        ? splitArgs(env.SIM_COMMAND)
++        : [...DEFAULT_SIM_COMMAND],
++    extraArgs: splitArgs(env.SIM_EXTRA_ARGS),
+   };
+ }
+ 
++/** The WebSocket URL this charge point dials, honouring
++ *  {@link SimConfig.appendCpIdToWsPath}. Exported for the scope/driver
++ *  modules and tests. */
++export function resolveWsUrl(cpId: string, cfg: SimConfig): string {
++  if (!cfg.appendCpIdToWsPath) return cfg.wsUrl;
++  return cfg.wsUrl.endsWith("/")
++    ? `${cfg.wsUrl}${cpId}`
++    : `${cfg.wsUrl}/${cpId}`;
++}
++
++/**
++ * The full `docker` argv (without the leading "docker") for one simulator
++ * container. Pure -- exported so the runner and its tests can inspect what
++ * would be launched without launching it.
++ */
++export function buildDockerArgs(
++  cpId: string,
++  container: string,
++  cfg: SimConfig,
++): string[] {
++  const args = ["run", "-i", "--rm", "--name", container];
++  if (cfg.network) args.push("--network", cfg.network);
++  if (cfg.entrypoint) args.push("--entrypoint", cfg.entrypoint);
++  args.push(cfg.image, ...cfg.command);
++  args.push("--ws-url", resolveWsUrl(cpId, cfg));
++  args.push("--cp-id", cpId);
++  args.push("--json");
++  // Only when BOTH halves are configured -- a lone username would make the
++  // CLI dial with an empty password rather than no auth at all.
++  if (cfg.basicAuthUser && cfg.basicAuthPass) {
++    args.push("--basic-auth-user", cfg.basicAuthUser);
++    args.push("--basic-auth-pass", cfg.basicAuthPass);
++  }
++  args.push(...cfg.extraArgs);
++  return args;
++}
++
++/**
++ * Human-readable rendering of {@link buildDockerArgs} with the Basic auth
++ * password replaced. Everything that logs the command -- stderr traces,
++ * results/*.log, error messages -- MUST go through this: the raw argv holds
++ * `SIM_WS_BASIC_PASS` in clear text.
++ */
++export function renderDockerArgs(args: readonly string[]): string {
++  const out = [...args];
++  const idx = out.indexOf("--basic-auth-pass");
++  if (idx !== -1 && idx + 1 < out.length) out[idx + 1] = REDACTED;
++  return ["docker", ...out].join(" ");
++}
++
+ export interface SimProcess {
+   readonly cpId: string;
+   readonly container: string;
+@@ -147,32 +269,15 @@
+   // run with the same name (mirrors lib.sh's sim_start).
+   await runDocker(["rm", "-f", container]).catch(() => {});
+ 
+-  const proc = Bun.spawn(
+-    [
+-      "docker",
+-      "run",
+-      "-i",
+-      "--rm",
+-      "--name",
+-      container,
+-      "--network",
+-      cfg.network,
+-      "-v",
+-      `${cfg.repoRoot}:/app`,
+-      "-w",
+-      "/app",
+-      cfg.image,
+-      "bun",
+-      "src/cli/main.ts",
+-      "--ws-url",
+-      cfg.wsUrl,
+-      "--cp-id",
+-      cpId,
+-      "--json",
+-    ],
+-    { stdin: "pipe", stdout: "pipe", stderr: "pipe" },
+-  );
++  const dockerArgs = buildDockerArgs(cpId, container, cfg);
++  process.stderr.write(`[runner] ${renderDockerArgs(dockerArgs)}\n`);
+ 
++  const proc = Bun.spawn(["docker", ...dockerArgs], {
++    stdin: "pipe",
++    stdout: "pipe",
++    stderr: "pipe",
++  });
++
+   const lines: string[] = [];
+   const stderrLines: string[] = [];
+   interface Waiter {

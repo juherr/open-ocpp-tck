@@ -1,0 +1,1467 @@
+--- /tmp/ocpp-upstream/scripts/steve-verify/runner/main.ts	2026-07-31 20:05:48
++++ tck/main.ts	2026-07-31 20:12:10
+@@ -1,39 +1,57 @@
+ #!/usr/bin/env bun
++// Derived from shiv3/ocpp-cp-simulator scripts/steve-verify/runner/main.ts @ 604054adb0d7d7129a26a5f1ad2d5fdc290d1ca1 (Apache-2.0). Modified: the STEVE_DRIVER=api|ui selection is replaced by a CSMS driver loaded through ./driver-registry; a per-driver scope table (./scope) is consulted BEFORE any container starts and yields the NOT APPLICABLE verdict; UnsupportedOperationError (./driver) thrown out of drive() degrades to NOT APPLICABLE with a stderr WARNING; the PARTIAL verdict and the `skipped` summary column were added; the exit code is non-zero only for FAIL/ERROR; parallel lanes derive from the resolved station list instead of the fixed CERTCP1..3 trio; the SteVe capability probe is dropped.
++
+ /**
+- * main.ts -- TypeScript steve-verify runner CLI.
++ * main.ts -- TypeScript OCPP conformance runner CLI.
+  *
+- * Usage: bun scripts/steve-verify/runner/main.ts run <template-id> \
+- *          [--cp CERTCP1] [--timeout N] [--connector N]
+- *        bun scripts/steve-verify/runner/main.ts run --group core|authlist-reservation|remotetrigger-smartcharging|firmware|all [--parallel]
+- *        bun scripts/steve-verify/runner/main.ts run-all [--group <name>] [--parallel]
++ * Usage: ocpp-tck run <template-id> [--cp CP1] [--timeout N] [--connector N]
++ *        ocpp-tck run --group core|authlist-reservation|remotetrigger-smartcharging|firmware|authorize|all [--parallel]
++ *        ocpp-tck run-all [--group <name>] [--parallel]
+  *
+- * Brings its own simulator container up (sim.ts, mirrors lib.sh's
+- * sim_start), drives it over the JSON-Lines stdin protocol, captures its
+- * full stdout, parses OCPP-J frames (ocpp.ts) and runs the named spec's
+- * drive()/assert() against a live SteVe instance (steve.ts). Task 1 wired
+- * the runner core + two scenarios directly here; Task 2 grew a specs/
+- * directory (typed spec objects per group) + a sequential `run --group`
+- * sweep on top of the same runScenario() core; Task 3 finishes the spec
+- * registry (remotetrigger-smartcharging + firmware), adds `--parallel`
+- * (per-CP lanes, mirroring run-all.sh's batching), the `run-all` alias
+- * (mirrors run-all.sh's own CLI exactly: GROUP defaults to "all"), and the
+- * results/summary.md writer.
++ * Brings its own simulator container up (sim.ts), drives it over the JSON
++ * Lines stdin protocol, captures its full stdout, parses OCPP-J frames
++ * (ocpp.ts) and runs the named spec's drive()/assert() against a live CSMS
++ * through the loaded CSMS driver.
++ *
++ * Three verdicts beyond the upstream PASS/FAIL/ERROR pair:
++ *   - NOT APPLICABLE -- the scope table (scope.ts) marks the scenario
++ *     NOT_APPLICABLE for this CSMS, or the driver threw
++ *     UnsupportedOperationError out of drive(). No container is started in
++ *     the first case. Exit code 0.
++ *   - PARTIAL -- zero FAILs but at least one check degraded to SKIPPED
++ *     because the driver answered with assert.ts's UNVERIFIABLE sentinel.
++ *     Exit code 0: a check that could not be evaluated is not a defect.
++ * Only FAIL and ERROR make the process exit non-zero.
+  */
+ 
+ import { mkdirSync } from "node:fs";
+-import { fileURLToPath } from "node:url";
++import { resolve } from "node:path";
+ import { AssertRecorder } from "./assert";
+-import { printCapabilityProbe } from "./capability-probe";
++import { CSMS_OPERATION_ACTIONS, UnsupportedOperationError } from "./driver";
++import { loadDriverModule } from "./driver-registry";
++import {
++  scopeCoverage,
++  templateIdsWithStatus,
++  type ScopeStatus,
++} from "./scope";
++import {
++  unsupportedChargingProfiles,
++  unsupportedReservations,
++} from "./capabilities";
+ import { parseLog } from "./ocpp";
+-import { defaultSimConfig, startSim } from "./sim";
+ import {
+-  defaultSteveApiConfig,
+-  defaultSteveApiDbConfig,
+-  SteveApiDb,
+-  SteveApiOps,
+-} from "./steve-api";
+-import { defaultSteveConfig, SteveDb, SteveUiOps } from "./steve";
+-import type { SteveOps, SteveTx } from "./steve";
++  DEFAULT_SIM_IMAGE,
++  defaultSimConfig,
++  startSim,
++  type SimConfig,
++} from "./sim";
++import type {
++  CsmsDriverModule,
++  CsmsDriverParts,
++  CsmsEnv,
++  CsmsRecords,
++  SimTransportDefaults,
++} from "./driver";
+ import {
+   AUTHLIST_RESERVATION_SPECS,
+   AUTHORIZE_SPECS,
+@@ -44,12 +62,23 @@
+ import type { ScenarioSpec } from "./spec-types";
+ import { sleep } from "./util";
+ 
+-// scripts/steve-verify/runner/main.ts is 3 directories below the repo root.
+-const REPO_ROOT = fileURLToPath(new URL("../../../", import.meta.url));
+-// scripts/steve-verify/results/ -- one directory up from runner/, same
+-// location run-all.sh's $RESULTS_DIR writes to (gitignored).
+-const RESULTS_DIR = fileURLToPath(new URL("../results/", import.meta.url));
++/**
++ * Where per-scenario logs and summary.md are written.
++ *
++ * Rooted at the CURRENT WORKING DIRECTORY, never at this module. This package
++ * is installed under `node_modules/`, which is read-only in some installs,
++ * shared by every consumer in the workspace, and erased by the next
++ * `bun install` -- a run's evidence must not live there. `--results-dir` beats
++ * `OCPP_TCK_RESULTS_DIR` beats `./results`.
++ */
++function resultsDir(argvDir?: string, env: CsmsEnv = process.env): string {
++  const chosen = argvDir?.trim() || env.OCPP_TCK_RESULTS_DIR?.trim() || "results";
++  return resolve(process.cwd(), chosen) + "/";
++}
+ 
++/** Set once by the CLI, so the run functions below stay argument-clean. */
++let RESULTS_DIR = resultsDir();
++
+ // ---------------------------------------------------------------------------
+ // Runner core
+ // ---------------------------------------------------------------------------
+@@ -60,95 +89,193 @@
+   timeoutSecs?: number;
+ }
+ 
++/** Verdict for one scenario. PASS/FAIL/ERROR keep their upstream meaning. */
++type Verdict = "PASS" | "PARTIAL" | "FAIL" | "ERROR" | "NOT APPLICABLE";
++
++/** Only these two make the process exit non-zero. */
++function isFailure(verdict: Verdict): boolean {
++  return verdict === "FAIL" || verdict === "ERROR";
++}
++
++/** 0 FAIL + >=1 SKIPPED is PARTIAL; anything with a FAIL is FAIL. */
++function verdictForRecorder(rec: AssertRecorder): Verdict {
++  if (rec.failed > 0) return "FAIL";
++  return rec.skipped > 0 ? "PARTIAL" : "PASS";
++}
++
+ /**
+- * Issue #184 Task 2: picks the SteveOps driver for this run.
+- * `STEVE_DRIVER=api` (or unset -- REST is now the default) uses
+- * SteveApiOps (steve-api.ts, SteVe 3.13.0's typed `/api/v1/operations/*`);
+- * `STEVE_DRIVER=ui` falls back to SteveUiOps (steve.ts, the manager-UI
+- * form-POST client this runner used exclusively through Task 1). Every
+- * spec drives CSMS operations only through the SteveOps surface
+- * (steve.op()/steve.cpSelect()), so which driver is active is invisible
+- * to specs/*.ts.
++ * The scope table's answer for one scenario, or undefined when the table
++ * has no entry at all (treated as "run it and find out" -- the
++ * UnsupportedOperationError catch below is the backstop).
+  */
+-function createSteveOps(env: NodeJS.ProcessEnv = process.env): SteveOps {
+-  const driver = (env.STEVE_DRIVER ?? "api").toLowerCase();
+-  if (driver === "ui") {
+-    return new SteveUiOps(defaultSteveConfig(env));
+-  }
+-  if (driver !== "api") {
+-    process.stderr.write(
+-      `[runner] WARN: unrecognized STEVE_DRIVER="${env.STEVE_DRIVER}" -- falling back to "api"\n`,
+-    );
+-  }
+-  return new SteveApiOps(defaultSteveApiConfig(env));
++async function scopeEntryFor(
++  templateId: string,
++): Promise<{ status: string; reason: string } | undefined> {
++  // Reads the MODULE, and deliberately never calls create(). A driver is
++  // entitled to build its HTTP client in create() and throw when its token is
++  // unset -- so going through create() here made `run` demand a credential in
++  // order to tell you it was not going to use one, contradicting the promise
++  // three lines below. Importing a module does not contact the CSMS.
++  const module = await driverModule();
++  return module.scope?.[templateId];
+ }
+ 
++/** Result of one scenario execution -- either it produced checks, or the
++ *  driver declared the scenario undrivable partway through drive(). */
++type ScenarioRun =
++  | { kind: "checked"; rec: AssertRecorder }
++  | { kind: "not-applicable"; reason: string };
++
+ /**
+- * Issue #184 Task 3: picks the SteveTx (transaction/reservation-assertion)
+- * driver for this run, using the SAME `STEVE_DRIVER` flag as
+- * {@link createSteveOps} -- `api` (or unset) uses `SteveApiDb`
+- * (steve-api.ts, SteVe 3.13.0's `/api/v1/transactions`); `ui`/anything
+- * else falls back to `SteveDb` (steve.ts, direct MariaDB). `SteveApiDb`
+- * still needs a DB config even under `api` -- it delegates
+- * `latestReservationPk`/`reservationStatus` to a DB fallback internally
+- * (no REST reservations endpoint exists; see steve.ts's `SteveTx` doc
+- * comment).
++ * The driver, loaded once per process and shared by every lane. Replaces
++ * upstream's `STEVE_DRIVER=api|ui` fork: which CSMS is under test is a
++ * `CSMS_DRIVER` module specifier, and specs never learn which.
++ *
++ * TWO STAGES, and the split is the point. Importing the module is free and
++ * credential-free; `create()` is where a driver is allowed to demand its
++ * configuration. The scope table is consulted BEFORE any container starts, so
++ * a scenario this CSMS cannot drive is reported NOT APPLICABLE without the
++ * driver ever needing valid credentials -- which is what makes the scope table
++ * reviewable offline. That only holds because the preflight stops at stage one.
+  */
+-function createDb(env: NodeJS.ProcessEnv = process.env): SteveTx {
+-  const driver = (env.STEVE_DRIVER ?? "api").toLowerCase();
+-  const dbCfg = defaultSteveConfig(env);
+-  if (driver === "ui") {
+-    return new SteveDb(dbCfg);
+-  }
+-  return new SteveApiDb(defaultSteveApiDbConfig(env), dbCfg);
++let driverModulePromise: Promise<CsmsDriverModule> | undefined;
++let driverPartsPromise: Promise<CsmsDriverParts> | undefined;
++
++async function driverModule(): Promise<CsmsDriverModule> {
++  driverModulePromise ??= loadDriverModule();
++  return driverModulePromise;
+ }
+ 
++async function driver(): Promise<CsmsDriverParts> {
++  driverPartsPromise ??= (async () => {
++    const module = await driverModule();
++    return module.create(process.env);
++  })();
++  return driverPartsPromise;
++}
++
++/**
++ * Fills in the optional halves of CsmsRecords with stubs that throw
++ * UnsupportedOperationError, carrying the driver's own reason.
++ *
++ * This is what keeps `if (driver.hasReservations)` out of the scenarios: a
++ * spec calls records.reservations.latest() unconditionally, and on a CSMS
++ * without reservations the call produces a NOT APPLICABLE verdict through the
++ * normal escape instead of a branch inside a shared scenario.
++ */
++function withCapabilityStubs(parts: CsmsDriverParts): CsmsRecords {
++  const base = parts.records;
++  // Delegated explicitly, NOT spread. `{...base}` copies only own enumerable
++  // properties, so a driver whose records are a class instance loses every
++  // prototype method -- and tsc says nothing, because it types the spread as
++  // structurally complete. Found by running against a real CSMS: the object
++  // type-checked, and then `records.latestTransaction is not a function` at
++  // the first scenario that asked the CSMS a question.
++  return {
++    latestTransaction: (cpId) => base.latestTransaction(cpId),
++    waitForActiveTransaction: (cpId, idTag, timeoutSecs) =>
++      base.waitForActiveTransaction(cpId, idTag, timeoutSecs),
++    transactionIdTag: (tx) => base.transactionIdTag(tx),
++    transactionStopTimestamp: (tx) => base.transactionStopTimestamp(tx),
++    transactionStopReason: (tx) => base.transactionStopReason(tx),
++    transactionCountForIdTag: (cpId, idTag) =>
++      base.transactionCountForIdTag(cpId, idTag),
++    reservations:
++      base.reservations ??
++      unsupportedReservations("this CSMS has no reservation resource"),
++    chargingProfiles:
++      base.chargingProfiles ??
++      unsupportedChargingProfiles("this CSMS has no charging-profile registry"),
++  };
++}
++
++/**
++ * Driver transport defaults under operator overrides.
++ *
++ * Precedence is explicit `SIM_*` environment > driver default > harness
++ * default, and it is enforced by only filling a field the environment left
++ * unset. An operator who exported SIM_WS_URL to chase a handshake problem must
++ * not have it silently replaced by what the driver believes the URL should be.
++ */
++function mergeSimTransport(
++  base: SimConfig,
++  fromDriver: SimTransportDefaults | undefined,
++  env: CsmsEnv = process.env,
++): SimConfig {
++  if (!fromDriver) return base;
++  const keep = <T>(envVar: string, driverValue: T | undefined, current: T): T =>
++    env[envVar] ? current : (driverValue ?? current);
++  return {
++    ...base,
++    wsUrl: keep("SIM_WS_URL", fromDriver.wsUrl, base.wsUrl),
++    network: keep("SIM_NETWORK", fromDriver.network, base.network),
++    appendCpIdToWsPath: keep(
++      "SIM_WS_APPEND_CP_ID",
++      fromDriver.appendCpIdToWsPath,
++      base.appendCpIdToWsPath,
++    ),
++    basicAuthUser: keep(
++      "SIM_WS_BASIC_USER",
++      fromDriver.basicAuthUser,
++      base.basicAuthUser,
++    ),
++    basicAuthPass: keep(
++      "SIM_WS_BASIC_PASS",
++      fromDriver.basicAuthPass,
++      base.basicAuthPass,
++    ),
++  };
++}
++
+ async function runScenario<D>(
+   spec: ScenarioSpec<D>,
+   options: RunOptions,
+-): Promise<AssertRecorder> {
++): Promise<ScenarioRun> {
+   const connector = options.connector ?? spec.connector ?? 1;
+   const bootWaitSecs = spec.bootWaitSecs ?? 4;
+   const holdSecs = options.timeoutSecs ?? spec.holdSecs ?? 20;
+ 
+-  const simCfg = defaultSimConfig(REPO_ROOT);
+-  // A fresh driver instance per runScenario() call (one per parallel lane)
+-  // -- preserves the per-lane isolation Task 1's Finding 4 investigation
+-  // relied on (see main.ts's isolation note further down); SteveApiOps/
+-  // SteveApiDb are additionally stateless (no cookie jar at all, unlike
+-  // SteveUiOps/SteveDb's docker-exec-per-call), so this instantiation is
+-  // cheap either way.
+-  const db = createDb();
+-  const steve = createSteveOps();
++  const parts = await driver();
++  const simCfg = mergeSimTransport(
++    defaultSimConfig(),
++    await parts.simTransport?.(options.cpId),
++  );
++  const csms = parts.operations;
++  const records = withCapabilityStubs(parts);
+ 
+-  await db.closeStaleTx(options.cpId);
++  // A write, and the driver's own business: closing a transaction an
++  // interrupted run left open, so the next scenario is not blocked by it.
++  await parts.prepareStation?.(options.cpId);
+ 
+   process.stderr.write(
+-    `[runner] === ${spec.templateId} on ${options.cpId} (connector ${connector}, boot-wait ${bootWaitSecs}s, hold ${holdSecs}s, ` +
+-      `steve driver ${(process.env.STEVE_DRIVER ?? "api").toLowerCase()}) ===\n`,
++    `[runner] === ${spec.templateId} on ${options.cpId} (connector ${connector}, boot-wait ${bootWaitSecs}s, hold ${holdSecs}s) ===\n`,
+   );
+ 
+   const sim = await startSim(options.cpId, spec.templateId, simCfg);
+   process.stderr.write(`[runner] simulator container: ${sim.container}\n`);
+ 
+   let driveState!: D;
++  /** Set only when drive() reported an operation the CSMS cannot do. */
++  let unsupported: string | undefined;
+   try {
+     await sim.send({ command: "connect" });
+-    // Post-boot stdin method, made event-driven: the bash feeder (and Task
+-    // 1/2 of this runner) approximated "past BootNotification.conf" with
+-    // the fixed bootWaitSecs sleep alone. Under --parallel, three
+-    // simultaneous `docker run` cold starts can push connect+boot past
+-    // that fixed wait, and then run_scenario_template fires while the CP
+-    // is still booting -- either the scenario's opening traffic is dropped
+-    // by the boot gate (observed live: tc028's StartTransaction never hit
+-    // the wire) or the command lands before the CLI is ready at all
+-    // (observed live: tc057 never emitted scenario_started). Wait for the
+-    // actual BootNotification.conf line (bounded, warn-and-continue on
+-    // timeout like every other soft wait here), THEN apply the spec's
+-    // bootWaitSecs settle on top, preserving each spec's tuned timing.
++    // Post-boot stdin method, made event-driven: a fixed bootWaitSecs sleep
++    // alone can let run_scenario_template fire while the CP is still
++    // booting -- either the scenario's opening traffic is dropped by the
++    // boot gate or the command lands before the CLI is ready at all. Wait
++    // for the actual BootNotification.conf line (bounded,
++    // warn-and-continue on timeout like every other soft wait here), THEN
++    // apply the spec's bootWaitSecs settle on top, preserving each spec's
++    // tuned timing.
+     try {
++      // Upstream matched `"status":"Accepted","currentTime"` -- SteVe's key
++      // order. JSON object key order carries no meaning, and a CSMS serialises
++      // the same payload as {currentTime, interval, status}, so the wait
++      // always timed out: 30s burned per scenario, and the event-driven gate
++      // silently degraded back into the fixed sleep it exists to replace.
++      // Match both keys without constraining their order.
+       await sim.waitForLine(
+-        /Received: \[3,.*"status":"Accepted","currentTime"/,
++        /Received: \[3,(?=[^\]]*"status":"Accepted")(?=[^\]]*"currentTime")/,
+         30_000,
+       );
+     } catch (err) {
+@@ -176,13 +303,25 @@
+ 
+     if (spec.drive) {
+       process.stderr.write(`[runner] running drive() for ${spec.templateId}\n`);
+-      driveState = await spec.drive({
+-        cpId: options.cpId,
+-        connector,
+-        sim,
+-        steve,
+-        db,
+-      });
++      // The UnsupportedOperationError catch lives HERE, around the whole
++      // drive() call -- never inside a spec (the specs are vendored
++      // verbatim and must stay CSMS-agnostic). A driver that throws it is
++      // telling us the scope table missed this scenario.
++      try {
++        driveState = await spec.drive({
++          cpId: options.cpId,
++          connector,
++          sim,
++          csms,
++          records,
++        });
++      } catch (err) {
++        if (!(err instanceof UnsupportedOperationError)) throw err;
++        unsupported = `${err.operation}: ${err.reason}`;
++        process.stderr.write(
++          `WARNING: scope table out of date for ${spec.templateId} -- driver reported "${err.operation}" unsupported (${err.reason}); recording NOT APPLICABLE\n`,
++        );
++      }
+     } else {
+       process.stderr.write(
+         `[runner] no drive() defined (CP-only scenario) -- nothing to do while it runs\n`,
+@@ -190,15 +329,18 @@
+       driveState = undefined as D;
+     }
+ 
+-    await sleep(holdSecs * 1000);
++    // No point holding the wire open for a scenario we already know we
++    // cannot assert on.
++    if (unsupported === undefined) {
++      await sleep(holdSecs * 1000);
++    }
+   } finally {
+     await sim.stop();
+   }
+ 
+   const lines = sim.lines;
+ 
+-  // Persist the full captured wire log to results/<template-id>.log --
+-  // same artifact run-scenario.sh wrote (results/ is gitignored). Without
++  // Persist the full captured wire log to results/<template-id>.log. Without
+   // it a FAIL in a swept scenario is un-post-mortem-able: the sim container
+   // is already stopped+removed by the time assert() reports, so this
+   // capture is the only surviving record of what was (or wasn't) on the
+@@ -218,6 +360,10 @@
+     );
+   }
+ 
++  if (unsupported !== undefined) {
++    return { kind: "not-applicable", reason: unsupported };
++  }
++
+   const frames = parseLog(lines.join("\n"));
+   const rec = new AssertRecorder();
+ 
+@@ -228,34 +374,36 @@
+     frames,
+     lines,
+     rec,
+-    db,
++    records,
+     driveState,
+   });
+ 
+   for (const check of rec.results) {
+-    if (check.pass) {
++    if (check.status === "PASS") {
+       process.stdout.write(`  PASS: ${check.description}\n`);
++    } else if (check.status === "SKIPPED") {
++      process.stdout.write(`  SKIPPED: ${check.description}\n`);
++      if (check.detail) process.stdout.write(`           ${check.detail}\n`);
+     } else {
+       process.stdout.write(`  FAIL: ${check.description}\n`);
+       if (check.detail) process.stdout.write(`        ${check.detail}\n`);
+     }
+   }
+   process.stderr.write(
+-    `[runner] RESULT: ${spec.templateId} ${rec.verdict} (${rec.total} checks, ${rec.failed} failed)\n`,
++    `[runner] RESULT: ${spec.templateId} ${verdictForRecorder(rec)} (${rec.total} checks, ${rec.failed} failed, ${rec.skipped} skipped)\n`,
+   );
+ 
+-  return rec;
++  return { kind: "checked", rec };
+ }
+ 
+ // ---------------------------------------------------------------------------
+-// Spec registry -- groups mirror run-all.sh's group names and array
++// Spec registry -- groups mirror the upstream group names and array
+ // membership/order exactly (44 scenarios total: 15 core + 13
+ // authlist-reservation + 12 remotetrigger-smartcharging + 4 firmware).
+ //
+-// "authorize" (issue #181's 3 TC_023 Authorize-outcome scenarios) is a
+-// separate group, deliberately NOT folded into "all" -- run-all --parallel
+-// stays at its existing 44-scenario baseline; run `run-all --group
+-// authorize` (3 scenarios) as its own sweep.
++// "authorize" (the 3 TC_023 Authorize-outcome scenarios) is a separate
++// group, deliberately NOT folded into "all"; run `run-all --group authorize`
++// (3 scenarios) as its own sweep.
+ // ---------------------------------------------------------------------------
+ 
+ // eslint-disable-next-line @typescript-eslint/no-explicit-any
+@@ -265,8 +413,6 @@
+   "remotetrigger-smartcharging": REMOTETRIGGER_SMARTCHARGING_SPECS,
+   firmware: FIRMWARE_SPECS,
+   authorize: AUTHORIZE_SPECS,
+-  // Concatenation order mirrors run-all.sh's `all)` case exactly: CORE +
+-  // AUTHLIST_RESERVATION + REMOTETRIGGER_SMARTCHARGING + FIRMWARE.
+   all: [
+     ...CORE_SPECS,
+     ...AUTHLIST_RESERVATION_SPECS,
+@@ -286,66 +432,109 @@
+     .map((spec) => [spec.templateId, spec]),
+ );
+ 
+-// Round-robins scenarios across CERTCP1..3 so adjacent scenarios in a group
+-// sweep don't collide on the same charge point's transaction state --
+-// mirrors run-all.sh's CP_FOR assignment (computed once over the whole
+-// SCENARIOS array for the group being run, including "all").
+-const GROUP_CPS = ["CERTCP1", "CERTCP2", "CERTCP3"];
++/**
++ * Charge points a sweep round-robins over, so adjacent scenarios don't
++ * collide on the same station's transaction state. Upstream hardcoded the
++ * CERTCP1..3 trio provisioned by its own SteVe bootstrap; here the list is
++ * whatever the CSMS actually has registered, and the parallel lane count is
++ * derived from it -- one station means one lane, i.e. sequential.
++ */
++export function resolveStations(env: CsmsEnv = process.env): string[] {
++  // OCPP_CP_IDS is the roster (bare ocpp ids); OCPP_STATIONS is the separate
++  // `ocpp_id=station_id` resolution override, which a driver reads when the
++  // CSMS addresses a station by an internal id. Two names, two jobs, no
++  // overlap.
++  const raw = env.OCPP_CP_IDS ?? env.DEFAULT_CP_ID ?? "CERTCP1";
++  const stations = raw
++    .split(",")
++    .map((s) => s.trim())
++    .filter((s) => s !== "");
++  if (stations.length === 0) {
++    throw new Error(
++      "no charge point resolved: OCPP_CP_IDS/DEFAULT_CP_ID is set but empty",
++    );
++  }
++  return stations;
++}
+ 
+ // ---------------------------------------------------------------------------
+-// Group sweep -- sequential (default) or parallel (up to 3 concurrent, one
+-// per CERTCP1..3 lane, batched in groups of 3 exactly like run-all.sh's
+-// `pids=(); for bid in batch; do run_one & ...; done; wait` loop).
++// Group sweep -- sequential (default) or parallel (one lane per resolved
++// station, batched a station-count at a time).
+ // ---------------------------------------------------------------------------
+ 
+-interface ScenarioOutcome {
+-  templateId: string;
+-  cpId: string;
+-  verdict: "PASS" | "FAIL" | "ERROR";
+-  /** null only for ERROR (the scenario threw before producing an
+-   *  AssertRecorder -- e.g. a bounded wait's fail-hard timeout escaping
+-   *  drive()/assert() uncaught). Mirrors run-all.sh's summary row for a
+-   *  scenario whose .result file was never written ("ERROR | - | -"). */
++interface RetryOutcome {
++  verdict: Verdict;
+   checks: number | null;
+   failed: number | null;
++  skipped: number | null;
+   errorMessage?: string;
+-  /**
+-   * --retry-failed-isolated safety net (issue #184 Finding 4): set only for
+-   * an outcome whose PARALLEL verdict was not PASS, re-run once sequentially
+-   * (same CP, no concurrent lane) on the SAME SteVe/DB, so any difference is
+-   * attributable to parallel-lane contention rather than a spec/environment
+-   * change. isolatedRetry.verdict === "PASS" means the parallel FAIL/ERROR
+-   * was a flake; still non-PASS means it's a real failure, confirmed
+-   * isolated.
++}
++
++interface ScenarioOutcome extends RetryOutcome {
++  templateId: string;
++  cpId: string;
++  /** Why the scenario was NOT APPLICABLE (scope table entry or the
++   *  driver's UnsupportedOperationError message). */
++  reason?: string;
++  /**
++   * --retry-failed-isolated safety net: set only for an outcome whose
++   * PARALLEL verdict was a failure, re-run once sequentially (same CP, no
++   * concurrent lane) against the SAME CSMS, so any difference is
++   * attributable to parallel-lane contention rather than a spec/environment
++   * change. A non-failing isolated retry means the parallel FAIL/ERROR was
++   * a flake.
+    */
+-  isolatedRetry?: {
+-    verdict: "PASS" | "FAIL" | "ERROR";
+-    checks: number | null;
+-    failed: number | null;
+-    errorMessage?: string;
+-  };
++  isolatedRetry?: RetryOutcome;
+ }
+ 
+ /**
+- * Runs one scenario for a group sweep, isolating a thrown exception (e.g.
+- * waitForCondition/waitActiveTxPk's fail-hard timeout rejection propagating
+- * out of drive()) to THIS scenario's outcome instead of aborting the whole
+- * sweep -- bash's per-scenario isolation comes for free from each
+- * run-scenario.sh invocation being a separate subprocess; this is the
+- * same-process equivalent.
++ * Runs one scenario for a group sweep, isolating a thrown exception (e.g. a
++ * bounded wait's fail-hard timeout rejection propagating out of drive()) to
++ * THIS scenario's outcome instead of aborting the whole sweep.
++ *
++ * The scope table is consulted FIRST -- a NOT_APPLICABLE scenario never
++ * starts a container.
+  */
+ async function runOneForSweep<D>(
+   spec: ScenarioSpec<D>,
+   cpId: string,
+ ): Promise<ScenarioOutcome> {
++  const scope = await scopeEntryFor(spec.templateId);
++  if (scope?.status === "NOT_APPLICABLE") {
++    process.stderr.write(
++      `[runner] === ${spec.templateId} NOT APPLICABLE (no container started): ${scope.reason}\n`,
++    );
++    return {
++      templateId: spec.templateId,
++      cpId,
++      verdict: "NOT APPLICABLE",
++      checks: null,
++      failed: null,
++      skipped: null,
++      reason: scope.reason,
++    };
++  }
++
+   try {
+-    const rec = await runScenario(spec, { cpId });
++    const run = await runScenario(spec, { cpId });
++    if (run.kind === "not-applicable") {
++      return {
++        templateId: spec.templateId,
++        cpId,
++        verdict: "NOT APPLICABLE",
++        checks: null,
++        failed: null,
++        skipped: null,
++        reason: run.reason,
++      };
++    }
+     return {
+       templateId: spec.templateId,
+       cpId,
+-      verdict: rec.verdict,
+-      checks: rec.total,
+-      failed: rec.failed,
++      verdict: verdictForRecorder(run.rec),
++      checks: run.rec.total,
++      failed: run.rec.failed,
++      skipped: run.rec.skipped,
+     };
+   } catch (err) {
+     const message =
+@@ -359,58 +548,40 @@
+       verdict: "ERROR",
+       checks: null,
+       failed: null,
++      skipped: null,
+       errorMessage: message,
+     };
+   }
+ }
+ 
+ /**
+- * --retry-failed-isolated (issue #184 Finding 4 safety net): re-runs every
+- * non-PASS outcome from a --parallel sweep ONE more time, sequentially --
+- * one scenario at a time, no concurrent lane -- and records the second
+- * verdict on the SAME outcome object as `isolatedRetry`, mutating
+- * `outcomes` in place.
++ * --retry-failed-isolated: re-runs every FAIL/ERROR outcome from a
++ * --parallel sweep ONE more time, sequentially -- one scenario at a time,
++ * no concurrent lane -- and records the second verdict on the SAME outcome
++ * object as `isolatedRetry`, mutating `outcomes` in place.
+  *
+- * Why this exists instead of fixing lane isolation outright: juherr's
+- * independent SteVe pre-prod run hit 5 parallel-only false-negative FAILs
+- * (tc021/tc043-3/tc043-5/reservation-basic/tc054) that all PASSED run in
+- * isolation. Investigation here (see README's "Parallel lane isolation"
+- * section) found the TS runner's cookie jar is already per-SteveUiOps
+- * instance (a fresh `new SteveUiOps()` per runScenario() call, one per
+- * lane -- see steve.ts), and concurrent admin sessions were confirmed live
+- * not to invalidate each other, so cross-lane session/CSRF contamination is
+- * NOT the cause. All 5 flaky scenarios instead share one shape: a
+- * SteVe-initiated async CSMS push (steve.op()) whose assert() reads a wire
+- * log frozen after a FIXED `holdSecs` sleep (same runScenario() code path
+- * already documented above as racy for bootWaitSecs under 3-way parallel
+- * docker+JVM host contention). Under --parallel this fixed budget can run
+- * out before SteVe's push actually reaches the CP, producing a false FAIL
+- * that disappears with no contention. This function does not fix that
+- * timing race -- it gives the sweep a way to distinguish a flake from a
+- * real failure without giving up --parallel's wall-clock win.
++ * Parallel lanes are not fully isolated from each other: host CPU/docker
++ * contention can push a CSMS-initiated async push past a scenario's fixed
++ * holdSecs wire-log window, producing a false FAIL that disappears with no
++ * contention. This function does not fix that timing race -- it gives the
++ * sweep a way to distinguish a flake from a real failure without giving up
++ * --parallel's wall-clock win.
+  *
+- * Task 2 note: the default driver is now SteveApiOps (steve-api.ts),
+- * which holds no cookie/CSRF state at all (stateless Basic auth per
+- * request) -- strictly less shared state than SteveUiOps's already-cleared
+- * cookie-jar theory above, so it cannot be a NEW source of cross-lane
+- * contamination. Whether it changes the actual flake rate is a
+- * `--parallel` question this task didn't re-run (Task 2's live proof was
+- * 3 single scenarios + 1 UI-fallback single scenario, not a full sweep) --
+- * left for Task 4's full-verification pass to confirm or refute.
++ * PARTIAL and NOT APPLICABLE are never retried: neither is a failure.
+  */
+ async function retryFailedOutcomesIsolated(
+   outcomes: ScenarioOutcome[],
+ ): Promise<void> {
+-  const toRetry = outcomes.filter((o) => o.verdict !== "PASS");
++  const toRetry = outcomes.filter((o) => isFailure(o.verdict));
+   if (toRetry.length === 0) {
+     process.stderr.write(
+-      "[runner] --retry-failed-isolated: no non-PASS outcomes from the parallel sweep -- nothing to retry.\n",
++      "[runner] --retry-failed-isolated: no failing outcomes from the parallel sweep -- nothing to retry.\n",
+     );
+     return;
+   }
+ 
+   process.stderr.write(
+-    `[runner] --retry-failed-isolated: re-running ${toRetry.length} non-PASS outcome(s) sequentially, isolated from every other lane...\n`,
++    `[runner] --retry-failed-isolated: re-running ${toRetry.length} failing outcome(s) sequentially, isolated from every other lane...\n`,
+   );
+ 
+   for (const outcome of toRetry) {
+@@ -432,13 +603,14 @@
+       verdict: retryOutcome.verdict,
+       checks: retryOutcome.checks,
+       failed: retryOutcome.failed,
++      skipped: retryOutcome.skipped,
+       errorMessage: retryOutcome.errorMessage,
+     };
+-    const flake = retryOutcome.verdict === "PASS";
++    const flake = !isFailure(retryOutcome.verdict);
+     process.stderr.write(
+       `[runner] isolated retry result: ${outcome.templateId} ${retryOutcome.verdict}` +
+         (flake
+-          ? " -- FLAKE (parallel-only false negative, isolated PASS)\n"
++          ? " -- FLAKE (parallel-only false negative, isolated non-failure)\n"
+           : " -- CONFIRMED (fails isolated too, not a parallel-lane artifact)\n"),
+     );
+   }
+@@ -451,11 +623,10 @@
+   return new Date().toISOString().replace(/\.\d{3}Z$/, "Z");
+ }
+ 
+-/** Renders + writes results/summary.md -- SAME columns/format as
+- *  run-all.sh's summary table, so existing docs/screenshots stay truthful.
+- *  When any outcome carries an `isolatedRetry` (--retry-failed-isolated ran),
+- *  an extra "isolated retry" column and a flake-count note are added; a
+- *  sweep with no retries produces the original table unchanged. */
++/** Renders + writes results/summary.md. Same columns as upstream plus
++ *  `skipped`; when any outcome carries an `isolatedRetry`
++ *  (--retry-failed-isolated ran), an extra "isolated retry" column and a
++ *  flake-count note are added. */
+ async function writeSummary(
+   groupName: string,
+   outcomes: ScenarioOutcome[],
+@@ -465,43 +636,53 @@
+   const rows = outcomes.map((o) => {
+     const checks = o.checks === null ? "-" : String(o.checks);
+     const failed = o.failed === null ? "-" : String(o.failed);
+-    const base = `| ${o.templateId} | ${o.cpId} | ${o.verdict} | ${checks} | ${failed} |`;
++    const skipped = o.skipped === null ? "-" : String(o.skipped);
++    const verdict = o.reason ? `${o.verdict} (${o.reason})` : o.verdict;
++    const base = `| ${o.templateId} | ${o.cpId} | ${verdict} | ${checks} | ${failed} | ${skipped} |`;
+     if (!anyRetried) return base;
+     if (!o.isolatedRetry) return `${base} - |`;
+-    const flake = o.isolatedRetry.verdict === "PASS";
++    const flake = !isFailure(o.isolatedRetry.verdict);
+     const label = `${o.isolatedRetry.verdict}${flake ? " (flake)" : " (confirmed)"}`;
+     return `${base} ${label} |`;
+   });
+ 
+   const header = anyRetried
+-    ? "| scenario | cp | verdict | checks | failed | isolated retry |"
+-    : "| scenario | cp | verdict | checks | failed |";
++    ? "| scenario | cp | verdict | checks | failed | skipped | isolated retry |"
++    : "| scenario | cp | verdict | checks | failed | skipped |";
+   const separator = anyRetried
+-    ? "| --- | --- | --- | --- | --- | --- |"
+-    : "| --- | --- | --- | --- | --- |";
++    ? "| --- | --- | --- | --- | --- | --- | --- |"
++    : "| --- | --- | --- | --- | --- | --- |";
+ 
+   const notes: string[] = [];
++  const partialCount = outcomes.filter((o) => o.verdict === "PARTIAL").length;
++  const naCount = outcomes.filter(
++    (o) => o.verdict === "NOT APPLICABLE",
++  ).length;
++  if (partialCount > 0 || naCount > 0) {
++    notes.push(
++      "",
++      `${partialCount} PARTIAL (checks the driver could not evaluate were SKIPPED), ` +
++        `${naCount} NOT APPLICABLE (out of scope for this CSMS). Neither fails the sweep.`,
++    );
++  }
+   if (anyRetried) {
+     const flakeCount = outcomes.filter(
+-      (o) => o.isolatedRetry?.verdict === "PASS",
++      (o) => o.isolatedRetry !== undefined && !isFailure(o.isolatedRetry.verdict),
+     ).length;
+     const confirmedCount = outcomes.filter(
+-      (o) =>
+-        o.isolatedRetry !== undefined && o.isolatedRetry.verdict !== "PASS",
++      (o) => o.isolatedRetry !== undefined && isFailure(o.isolatedRetry.verdict),
+     ).length;
+     notes.push(
+       "",
+-      `--retry-failed-isolated: ${flakeCount} flake(s) (parallel FAIL/ERROR, isolated PASS), ` +
++      `--retry-failed-isolated: ${flakeCount} flake(s) (parallel FAIL/ERROR, isolated non-failure), ` +
+         `${confirmedCount} confirmed failure(s) (fails isolated too).`,
+-      "Sequential (`run-all` without `--parallel`) remains the reliable reporting " +
+-        "mode until parallel-lane isolation is guaranteed -- see README's " +
+-        '"Parallel lane isolation" section.',
++      "Sequential (`run-all` without `--parallel`) remains the reliable reporting mode.",
+     );
+   }
+ 
+   const content =
+     [
+-      `# SteVe verification results — group: ${groupName}`,
++      `# OCPP verification results — group: ${groupName}`,
+       "",
+       `Run at ${timestampUtc()}.`,
+       "",
+@@ -518,54 +699,53 @@
+ }
+ 
+ /** Sequential or parallel group sweep. Writes results/summary.md and exits
+- *  the process (non-zero if any scenario FAILed or errored, after
+- *  accounting for --retry-failed-isolated flakes -- see below). */
++ *  the process (non-zero only if a scenario FAILed or errored). */
+ async function runGroupSweep(
+   groupName: string,
+   parallel: boolean,
+   retryFailedIsolated: boolean,
+-): Promise<never> {
++): Promise<number> {
+   const specs = GROUPS[groupName];
+   if (!specs) {
+     process.stderr.write(
+       `Unknown group: ${groupName} (known: ${Object.keys(GROUPS).join(", ")})\n`,
+     );
+-    process.exit(1);
++    return 1;
+   }
+ 
++  const stations = resolveStations();
++  // Lane count IS the station count: one lane per station, never more. A
++  // single resolved station therefore forces sequential execution however
++  // --parallel was passed.
++  const lanes = stations.length;
++  const effectiveParallel = parallel && lanes > 1;
++  if (parallel && !effectiveParallel) {
++    process.stderr.write(
++      `[runner] --parallel requested but only ${lanes} station resolved (${stations.join(", ")}) -- running sequentially.\n`,
++    );
++  }
++
+   process.stderr.write(
+-    `[runner] group '${groupName}': ${specs.length} scenario(s), parallel=${parallel ? 1 : 0}\n`,
++    `[runner] group '${groupName}': ${specs.length} scenario(s), stations=[${stations.join(", ")}], lanes=${effectiveParallel ? lanes : 1}\n`,
+   );
+ 
+-  const cpFor = specs.map((_, i) => GROUP_CPS[i % GROUP_CPS.length]);
++  const cpFor = specs.map((_, i) => stations[i % lanes]);
+   const outcomes: ScenarioOutcome[] = [];
+ 
+-  if (parallel) {
+-    // Up to 3 concurrent, one per CP -- batch scenarios in groups of 3,
+-    // mirroring run-all.sh's `batch=(); ...; if [ "${#batch[@]}" -eq 3 ]`
+-    // loop (a final partial batch, if any, still runs concurrently as its
+-    // own smaller batch).
+-    for (let start = 0; start < specs.length; start += GROUP_CPS.length) {
+-      const batchSpecs = specs.slice(start, start + GROUP_CPS.length);
+-      const batchCps = cpFor.slice(start, start + GROUP_CPS.length);
++  if (effectiveParallel) {
++    for (let start = 0; start < specs.length; start += lanes) {
++      const batchSpecs = specs.slice(start, start + lanes);
++      const batchCps = cpFor.slice(start, start + lanes);
+       const batchOutcomes = await Promise.all(
+         batchSpecs.map((spec, idx) => runOneForSweep(spec, batchCps[idx])),
+       );
+       outcomes.push(...batchOutcomes);
+     }
+-    // Issue #184 Finding 4: parallel lanes are not fully isolated from each
+-    // other (host CPU/JVM/docker contention can push a SteVe-initiated
+-    // async push past a scenario's fixed holdSecs wire-log window -- see
+-    // retryFailedOutcomesIsolated()'s docstring). Sequential is the only
+-    // reporting mode proven not to produce that class of false negative;
+-    // until lane isolation is guaranteed, treat a --parallel FAIL/ERROR as
+-    // provisional, not final.
+     process.stderr.write(
+-      "[runner] NOTE: --parallel lanes are not fully isolated (issue #184 " +
+-        "Finding 4) -- a FAIL/ERROR here may be a parallel-only false " +
+-        "negative. Sequential (no --parallel) remains the reliable " +
+-        "reporting mode; pass --retry-failed-isolated for a same-run " +
+-        "safety net.\n",
++      "[runner] NOTE: --parallel lanes are not fully isolated -- a FAIL/ERROR " +
++        "here may be a parallel-only false negative. Sequential (no " +
++        "--parallel) remains the reliable reporting mode; pass " +
++        "--retry-failed-isolated for a same-run safety net.\n",
+     );
+   } else {
+     for (let i = 0; i < specs.length; i++) {
+@@ -574,11 +754,11 @@
+   }
+ 
+   if (retryFailedIsolated) {
+-    if (parallel) {
++    if (effectiveParallel) {
+       await retryFailedOutcomesIsolated(outcomes);
+     } else {
+       process.stderr.write(
+-        "[runner] --retry-failed-isolated has no effect without --parallel " +
++        "[runner] --retry-failed-isolated has no effect without parallel lanes " +
+           "(a sequential sweep is already isolated).\n",
+       );
+     }
+@@ -588,45 +768,51 @@
+   for (const o of outcomes) {
+     const retrySuffix = o.isolatedRetry
+       ? ` [isolated retry: ${o.isolatedRetry.verdict}${
+-          o.isolatedRetry.verdict === "PASS" ? " -- flake" : " -- confirmed"
++          isFailure(o.isolatedRetry.verdict) ? " -- confirmed" : " -- flake"
+         }]`
+       : "";
++    const reasonSuffix = o.reason ? ` -- ${o.reason}` : "";
+     process.stderr.write(
+-      `  ${o.verdict}: ${o.templateId} (${o.cpId}, ${o.checks ?? "-"} checks, ${o.failed ?? "-"} failed)${retrySuffix}\n`,
++      `  ${o.verdict}: ${o.templateId} (${o.cpId}, ${o.checks ?? "-"} checks, ${o.failed ?? "-"} failed, ${o.skipped ?? "-"} skipped)${retrySuffix}${reasonSuffix}\n`,
+     );
+   }
+ 
+   const summaryPath = await writeSummary(groupName, outcomes);
+   process.stderr.write(`[runner] results table: ${summaryPath}\n`);
+ 
+-  // A parallel-lane FAIL/ERROR that PASSed on its isolated retry is a flake
+-  // (issue #184 Finding 4), not a real failure -- it does not fail the
+-  // sweep. Anything else non-PASS (no retry attempted, or still non-PASS
+-  // isolated) counts as a real failure.
++  // A parallel-lane FAIL/ERROR that did not fail on its isolated retry is a
++  // flake, not a real failure -- it does not fail the sweep.
+   const badOutcomes = outcomes.filter(
+-    (o) => o.verdict !== "PASS" && o.isolatedRetry?.verdict !== "PASS",
++    (o) =>
++      isFailure(o.verdict) &&
++      (o.isolatedRetry === undefined || isFailure(o.isolatedRetry.verdict)),
+   );
+   const flakeCount = outcomes.filter(
+-    (o) => o.verdict !== "PASS" && o.isolatedRetry?.verdict === "PASS",
++    (o) =>
++      isFailure(o.verdict) &&
++      o.isolatedRetry !== undefined &&
++      !isFailure(o.isolatedRetry.verdict),
+   ).length;
+   if (flakeCount > 0) {
+     process.stderr.write(
+-      `[runner] ${flakeCount} parallel-only flake(s) in group '${groupName}' (PASSed on isolated retry) -- see ${summaryPath}\n`,
++      `[runner] ${flakeCount} parallel-only flake(s) in group '${groupName}' (did not fail on isolated retry) -- see ${summaryPath}\n`,
+     );
+   }
+   if (badOutcomes.length > 0) {
+     process.stderr.write(
+       `[runner] ${badOutcomes.length}/${outcomes.length} scenario(s) in group '${groupName}' FAILed or errored -- see ${summaryPath}\n`,
+     );
+-    process.exit(1);
++    return 1;
+   }
++  const partialCount = outcomes.filter((o) => o.verdict === "PARTIAL").length;
++  const naCount = outcomes.filter((o) => o.verdict === "NOT APPLICABLE").length;
+   process.stderr.write(
+-    `[runner] all ${outcomes.length} scenario(s) in group '${groupName}' PASSed` +
+-      (flakeCount > 0
+-        ? ` (${flakeCount} flake(s) resolved by isolated retry).\n`
+-        : ".\n"),
++    `[runner] no failures in group '${groupName}': ${outcomes.length} scenario(s), ` +
++      `${partialCount} PARTIAL, ${naCount} NOT APPLICABLE` +
++      (flakeCount > 0 ? `, ${flakeCount} flake(s) resolved by isolated retry` : "") +
++      ".\n",
+   );
+-  process.exit(0);
++  return 0;
+ }
+ 
+ // ---------------------------------------------------------------------------
+@@ -642,6 +828,8 @@
+   cpId: string;
+   connector?: number;
+   timeoutSecs?: number;
++  /** `--results-dir`; beats OCPP_TCK_RESULTS_DIR, which beats ./results. */
++  resultsDir?: string;
+ }
+ 
+ function requireValue(argv: string[], index: number, flag: string): string {
+@@ -663,37 +851,77 @@
+   return n;
+ }
+ 
+-function printUsage(): void {
++const VERBS = [
++  "run",
++  "run-all",
++  "list-scenarios",
++  "check-driver",
++  "print-sim-image",
++  "driver",
++] as const;
++
++async function printUsage(): Promise<void> {
+   process.stderr.write(
+-    "Usage (paths shown from the repo root; from scripts/steve-verify " +
+-      "use the shorter `bun runner/main.ts …`):\n" +
+-      "       bun scripts/steve-verify/runner/main.ts run <template-id> " +
+-      "[--cp CERTCP1] [--timeout N] [--connector N]\n" +
+-      "       bun scripts/steve-verify/runner/main.ts run --group " +
++    "Usage: ocpp-tck run <template-id> [--cp CP1] [--timeout N] " +
++      "[--connector N] [--results-dir DIR]\n" +
++      "       ocpp-tck run --group " +
+       `${Object.keys(GROUPS).join("|")} [--parallel] [--retry-failed-isolated]\n` +
+-      "       bun scripts/steve-verify/runner/main.ts run-all " +
+-      "[--group <name>] [--parallel] [--retry-failed-isolated]\n" +
++      "       ocpp-tck run-all [--group <name>] [--parallel] " +
++      "[--retry-failed-isolated] [--results-dir DIR]\n" +
++      "       ocpp-tck list-scenarios [--group <name>] [--json]\n" +
++      "       ocpp-tck check-driver [--driver SPEC] [--json]\n" +
++      "       ocpp-tck print-sim-image\n" +
++      "       ocpp-tck driver <verb> [args...]\n" +
+       "\n" +
+-      "--retry-failed-isolated: after a --parallel sweep, re-run any " +
+-      "non-PASS scenario once more, sequentially and isolated, and report " +
++      "check-driver is fully offline: it reads the driver MODULE (never " +
++      "create()), so it needs no CSMS, no docker, no network and no " +
++      "credentials.\n" +
++      "\n" +
++      "--retry-failed-isolated: after a parallel sweep, re-run any " +
++      "FAIL/ERROR scenario once more, sequentially and isolated, and report " +
+       "both verdicts (parallel-fail -> isolated-pass = flake; still fails " +
+-      "isolated = real fail). No effect without --parallel.\n",
++      "isolated = real fail). No effect without parallel lanes.\n" +
++      "\n" +
++      "Environment: CSMS_DRIVER (module specifier of the driver to load), " +
++      "OCPP_TCK_RESULTS_DIR (default ./results), OCPP_TCK_DRIVERS_DIR " +
++      "(default ./drivers, used only to list candidates in errors), " +
++      "OCPP_CP_IDS (comma-separated charge point ids; the " +
++      "parallel lane count derives from it -- one station means sequential), " +
++      "OCPP_STATIONS (ocpp_id=station_id[,...] override when the stations were " +
++      "created by hand), SIM_WS_URL, SIM_IMAGE, SIM_NETWORK, " +
++      "SIM_WS_APPEND_CP_ID, SIM_WS_BASIC_USER/SIM_WS_BASIC_PASS.\n",
+   );
+-}
+ 
+-function parseArgs(argv: string[]): CliArgs {
+-  if (argv[0] !== "run" && argv[0] !== "run-all") {
+-    printUsage();
+-    process.exit(1);
++  // The driver's own environment, if one is selected and declares it. Best
++  // effort: `--help` must still work when CSMS_DRIVER is unset or broken,
++  // which is exactly when somebody is reading it.
++  try {
++    const module = await driverModule();
++    if (module.envHelp) {
++      process.stderr.write(
++        `\nDriver environment (${module.displayName}):\n${module.envHelp}\n`,
++      );
++    }
++    const verbs = Object.keys(module.commands ?? {});
++    if (verbs.length > 0) {
++      process.stderr.write(
++        `\nDriver verbs (ocpp-tck driver <verb>): ${verbs.join(", ")}\n`,
++      );
++    }
++  } catch {
++    /* no driver selected, or it failed to load -- usage is still useful */
+   }
++}
+ 
++function parseArgs(argv: string[]): CliArgs {
+   let templateId: string | undefined;
+   let group: string | undefined;
+   let parallel = false;
+   let retryFailedIsolated = false;
+-  let cpId = process.env.DEFAULT_CP_ID ?? "CERTCP1";
++  let cpId = resolveStations()[0];
+   let connector: number | undefined;
+   let timeoutSecs: number | undefined;
++  let resultsDirArg: string | undefined;
+ 
+   if (argv[0] === "run-all") {
+     group = "all";
+@@ -708,18 +936,27 @@
+         case "--retry-failed-isolated":
+           retryFailedIsolated = true;
+           break;
++        case "--results-dir":
++          resultsDirArg = requireValue(argv, ++i, "--results-dir");
++          break;
+         default:
+           process.stderr.write(`Unknown argument: ${argv[i]}\n`);
+-          printUsage();
+           process.exit(1);
+       }
+     }
+-    return { group, runAll: true, parallel, retryFailedIsolated, cpId };
++    return {
++      group,
++      runAll: true,
++      parallel,
++      retryFailedIsolated,
++      cpId,
++      resultsDir: resultsDirArg,
++    };
+   }
+ 
+   // argv[0] === "run"
+   if (!argv[1]) {
+-    printUsage();
++    process.stderr.write("run needs a <template-id> or --group <name>.\n");
+     process.exit(1);
+   }
+ 
+@@ -749,9 +986,11 @@
+       case "--retry-failed-isolated":
+         retryFailedIsolated = true;
+         break;
++      case "--results-dir":
++        resultsDirArg = requireValue(argv, ++i, "--results-dir");
++        break;
+       default:
+         process.stderr.write(`Unknown argument: ${argv[i]}\n`);
+-        printUsage();
+         process.exit(1);
+     }
+   }
+@@ -764,35 +1003,286 @@
+     cpId,
+     connector,
+     timeoutSecs,
++    resultsDir: resultsDirArg,
+   };
+ }
+ 
+-async function main(): Promise<void> {
+-  const args = parseArgs(process.argv.slice(2));
++// ---------------------------------------------------------------------------
++// Offline verbs
++// ---------------------------------------------------------------------------
+ 
+-  // Issue #184 Task 4: print once per invocation, ahead of both a single
+-  // `run <id>` and a `run-all`/`run --group` sweep -- see
+-  // capability-probe.ts for what each line means and how it's derived.
+-  await printCapabilityProbe();
++/** Every registered templateId, with the group it is first reachable from. */
++function registeredScenarios(): Array<{ templateId: string; group: string }> {
++  const seen = new Map<string, string>();
++  for (const [group, specs] of Object.entries(GROUPS)) {
++    if (group === "all") continue;
++    for (const spec of specs) {
++      if (!seen.has(spec.templateId)) seen.set(spec.templateId, group);
++    }
++  }
++  return [...seen].map(([templateId, group]) => ({ templateId, group }));
++}
++
++function listScenarios(argv: string[]): number {
++  let group: string | undefined;
++  let asJson = false;
++  for (let i = 0; i < argv.length; i++) {
++    if (argv[i] === "--group") group = requireValue(argv, ++i, "--group");
++    else if (argv[i] === "--json") asJson = true;
++    else {
++      process.stderr.write(`Unknown argument: ${argv[i]}\n`);
++      return 1;
++    }
++  }
++  let rows = registeredScenarios();
++  if (group !== undefined) {
++    if (!(group in GROUPS)) {
++      process.stderr.write(
++        `Unknown group: ${group} (known: ${Object.keys(GROUPS).join(", ")})\n`,
++      );
++      return 1;
++    }
++    const ids = new Set(GROUPS[group].map((s) => s.templateId));
++    rows = rows.filter((r) => ids.has(r.templateId));
++  }
++  process.stdout.write(
++    asJson
++      ? `${JSON.stringify(rows, null, 2)}\n`
++      : `${rows.map((r) => `${r.templateId}\t${r.group}`).join("\n")}\n`,
++  );
++  return 0;
++}
++
++/**
++ * Offline conformance check of a driver against THIS core.
++ *
++ * Everything here reads the driver MODULE and the scenario registry, and
++ * nothing else -- no `create()`, so no credentials; no container, so no
++ * docker; no CSMS, so no network. That is what makes it runnable in CI by
++ * whoever wrote the driver, in a repository that has never seen the CSMS.
++ */
++async function checkDriver(argv: string[]): Promise<number> {
++  let asJson = false;
++  for (let i = 0; i < argv.length; i++) {
++    if (argv[i] === "--driver") {
++      process.env.CSMS_DRIVER = requireValue(argv, ++i, "--driver");
++    } else if (argv[i] === "--json") {
++      asJson = true;
++    } else {
++      process.stderr.write(`Unknown argument: ${argv[i]}\n`);
++      return 1;
++    }
++  }
+ 
++  const problems: string[] = [];
++  const warnings: string[] = [];
++
++  let module: CsmsDriverModule;
++  try {
++    module = await driverModule();
++  } catch (err) {
++    process.stderr.write(
++      `${err instanceof Error ? err.message : String(err)}\n`,
++    );
++    return 1;
++  }
++
++  if (!module.id?.trim()) problems.push("the module declares no `id`.");
++  if (!module.displayName?.trim()) {
++    problems.push("the module declares no `displayName`.");
++  }
++
++  const scenarios = registeredScenarios();
++  const registered = scenarios.map((s) => s.templateId);
++  const groupOf = new Map(scenarios.map((s) => [s.templateId, s.group]));
++
++  if (!module.scope) {
++    warnings.push(
++      "no scope table: every scenario will be run and undrivable ones " +
++        "discovered at runtime, after a container has started and touched " +
++        "the CSMS. Legal, but the table is what makes that cheap.",
++    );
++  } else {
++    const { missing, stale } = scopeCoverage(module.scope, registered);
++    if (missing.length > 0) {
++      problems.push(
++        `${missing.length} registered scenario(s) have NO row:\n` +
++          missing
++            .map((id) => `      ${id} (group ${groupOf.get(id) ?? "?"})`)
++            .join("\n") +
++          "\n    -> add a row with its status and a reason citing the precise " +
++          "API limitation.",
++      );
++    }
++    if (stale.length > 0) {
++      problems.push(
++        `${stale.length} row(s) point at a scenario nobody registers:\n` +
++          stale.map((id) => `      ${id}`).join("\n") +
++          "\n    -> delete the row, or fix the templateId if the scenario " +
++          "was renamed.",
++      );
++    }
++
++    const buckets: ScopeStatus[] = [
++      "DRIVABLE",
++      "CONDITIONAL",
++      "NOT_APPLICABLE",
++    ];
++    const classified = new Set(
++      buckets.flatMap((status) => templateIdsWithStatus(module.scope!, status)),
++    );
++    const unclassified = Object.keys(module.scope).filter(
++      (id) => !classified.has(id),
++    );
++    if (unclassified.length > 0) {
++      problems.push(
++        `${unclassified.length} row(s) carry a status outside ` +
++          `${buckets.join("/")}: ${unclassified.join(", ")}. ` +
++          "The runner only reacts to NOT_APPLICABLE, so such a row is " +
++          "invisible to every consumer.",
++      );
++    }
++
++    const reasonless = Object.entries(module.scope)
++      .filter(([, entry]) => !entry.reason?.trim())
++      .map(([id]) => id);
++    if (reasonless.length > 0) {
++      problems.push(
++        `${reasonless.length} row(s) carry an empty reason: ` +
++          `${reasonless.join(", ")}. A row without a cited limitation is a ` +
++          "claim nobody can review.",
++      );
++    }
++  }
++
++  if (module.capabilities) {
++    const known = new Set<string>(CSMS_OPERATION_ACTIONS);
++    const unknown = [...module.capabilities.operations].filter(
++      (op) => !known.has(op),
++    );
++    if (unknown.length > 0) {
++      problems.push(
++        `capabilities.operations names ${unknown.length} operation(s) this ` +
++          `core does not define: ${unknown.join(", ")}.`,
++      );
++    }
++    const undeclared = CSMS_OPERATION_ACTIONS.filter(
++      (op) => !module.capabilities!.operations.has(op),
++    );
++    if (undeclared.length > 0) {
++      warnings.push(
++        `${undeclared.length} operation(s) are not declared: ` +
++          `${undeclared.join(", ")}. Each MUST throw ` +
++          "UnsupportedOperationError from execute().",
++      );
++    }
++  }
++
++  const summary = {
++    driver: module.id ?? "",
++    displayName: module.displayName ?? "",
++    registeredScenarios: registered.length,
++    scope: module.scope
++      ? {
++          DRIVABLE: templateIdsWithStatus(module.scope, "DRIVABLE").length,
++          CONDITIONAL: templateIdsWithStatus(module.scope, "CONDITIONAL")
++            .length,
++          NOT_APPLICABLE: templateIdsWithStatus(module.scope, "NOT_APPLICABLE")
++            .length,
++        }
++      : null,
++    problems,
++    warnings,
++  };
++
++  if (asJson) {
++    process.stdout.write(`${JSON.stringify(summary, null, 2)}\n`);
++    return problems.length > 0 ? 1 : 0;
++  }
++
++  for (const warning of warnings) {
++    process.stderr.write(`  WARN: ${warning}\n`);
++  }
++  if (problems.length > 0) {
++    process.stderr.write(
++      `FAIL: driver "${module.id}" does not agree with this core.\n`,
++    );
++    for (const problem of problems) process.stderr.write(`  - ${problem}\n`);
++    return 1;
++  }
++  process.stderr.write(
++    `OK: driver "${module.id}" (${module.displayName}) covers all ` +
++      `${registered.length} registered scenario(s)` +
++      (summary.scope
++        ? ` -- ${summary.scope.DRIVABLE} DRIVABLE, ` +
++          `${summary.scope.CONDITIONAL} CONDITIONAL, ` +
++          `${summary.scope.NOT_APPLICABLE} NOT_APPLICABLE`
++        : "") +
++      ".\n",
++  );
++  return 0;
++}
++
++/** Runs a driver-contributed bootstrap verb. */
++async function runDriverCommand(argv: string[]): Promise<number> {
++  const name = argv[0];
++  const module = await driverModule();
++  const commands = module.commands ?? {};
++  if (!name || !(name in commands)) {
++    const known = Object.keys(commands);
++    process.stderr.write(
++      `Usage: ocpp-tck driver <verb> [args...]\n` +
++        (known.length > 0
++          ? `Verbs contributed by ${module.displayName}: ${known.join(", ")}\n`
++          : `${module.displayName} contributes no verbs.\n`),
++    );
++    return 1;
++  }
++  return commands[name](argv.slice(1));
++}
++
++/**
++ * The whole CLI, as a function of argv, RETURNING an exit code.
++ *
++ * The single `process.exit` for a completed run lives in bin/ocpp-tck.ts, not
++ * here: this module is also imported as a library (`open-ocpp-tck/runner`),
++ * and a library that can terminate its host process is not one.
++ */
++export async function cli(argv: string[]): Promise<number> {
++  const verb = argv[0];
++
++  if (verb === "--help" || verb === "-h" || verb === "help") {
++    await printUsage();
++    return 0;
++  }
++  if (!verb || !(VERBS as readonly string[]).includes(verb)) {
++    if (verb) process.stderr.write(`Unknown command: ${verb}\n`);
++    await printUsage();
++    return 1;
++  }
++
++  if (verb === "print-sim-image") {
++    process.stdout.write(`${DEFAULT_SIM_IMAGE}\n`);
++    return 0;
++  }
++  if (verb === "list-scenarios") return listScenarios(argv.slice(1));
++  if (verb === "check-driver") return checkDriver(argv.slice(1));
++  if (verb === "driver") return runDriverCommand(argv.slice(1));
++
++  const args = parseArgs(argv);
++  RESULTS_DIR = resultsDir(args.resultsDir);
++
+   if (args.runAll || args.group !== undefined) {
+-    await runGroupSweep(
++    return runGroupSweep(
+       args.group ?? "all",
+       args.parallel,
+       args.retryFailedIsolated,
+     );
+-    return;
+   }
+ 
+-  const options: RunOptions = {
+-    cpId: args.cpId,
+-    connector: args.connector,
+-    timeoutSecs: args.timeoutSecs,
+-  };
+-
+   if (!args.templateId) {
+-    printUsage();
+-    process.exit(1);
++    await printUsage();
++    return 1;
+   }
+ 
+   const spec = SPECS_BY_TEMPLATE_ID.get(args.templateId);
+@@ -800,18 +1290,29 @@
+     process.stderr.write(
+       `Unknown template id: ${args.templateId} (known: ${[...SPECS_BY_TEMPLATE_ID.keys()].join(", ")})\n`,
+     );
+-    process.exit(1);
++    return 1;
+   }
+ 
+-  const rec = await runScenario(spec, options);
+-  process.exit(rec.verdict === "PASS" ? 0 : 1);
+-}
++  // Scope table first -- a NOT_APPLICABLE scenario never starts a container.
++  const scope = await scopeEntryFor(spec.templateId);
++  if (scope?.status === "NOT_APPLICABLE") {
++    process.stderr.write(
++      `[runner] RESULT: ${spec.templateId} NOT APPLICABLE (no container started): ${scope.reason}\n`,
++    );
++    return 0;
++  }
+ 
+-if (import.meta.main) {
+-  main().catch((err) => {
++  const options: RunOptions = {
++    cpId: args.cpId,
++    connector: args.connector,
++    timeoutSecs: args.timeoutSecs,
++  };
++  const run = await runScenario(spec, options);
++  if (run.kind === "not-applicable") {
+     process.stderr.write(
+-      `Fatal: ${err instanceof Error ? (err.stack ?? err.message) : String(err)}\n`,
++      `[runner] RESULT: ${spec.templateId} NOT APPLICABLE: ${run.reason}\n`,
+     );
+-    process.exit(1);
+-  });
++    return 0;
++  }
++  return isFailure(verdictForRecorder(run.rec)) ? 1 : 0;
+ }

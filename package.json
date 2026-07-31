@@ -1,0 +1,115 @@
+{
+  "name": "open-ocpp-tck",
+  "version": "0.1.0",
+  "description": "OCPP 1.6 conformance TCK: 47 scenario specs, an OCPP-J assertion engine, a docker-run charge-point simulator, and a CSMS driver contract. Bring your own CSMS driver.",
+  "keywords": [
+    "ocpp",
+    "ocpp-1.6",
+    "ocpp-j",
+    "tck",
+    "conformance",
+    "csms",
+    "ev-charging",
+    "bun"
+  ],
+  "homepage": "https://github.com/juherr/open-ocpp-tck#readme",
+  "bugs": "https://github.com/juherr/open-ocpp-tck/issues",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/juherr/open-ocpp-tck.git"
+  },
+  "license": "Apache-2.0",
+  "author": "Julien Herr",
+  "type": "module",
+  "engines": {
+    "bun": ">=1.3.14"
+  },
+  "bin": {
+    "ocpp-tck": "./bin/ocpp-tck.ts"
+  },
+  "files": [
+    "bin/",
+    "tck/",
+    "drivers/steve/",
+    "types/",
+    "patches/",
+    "tsconfig.base.json",
+    "NOTICE",
+    "VENDOR.md",
+    "LICENSE"
+  ],
+  "exports": {
+    ".": {
+      "types": "./types/tck/index.d.ts",
+      "default": "./tck/index.ts"
+    },
+    "./driver": {
+      "types": "./types/tck/driver.d.ts",
+      "default": "./tck/driver.ts"
+    },
+    "./scope": {
+      "types": "./types/tck/scope.d.ts",
+      "default": "./tck/scope.ts"
+    },
+    "./unverifiable": {
+      "types": "./types/tck/unverifiable.d.ts",
+      "default": "./tck/unverifiable.ts"
+    },
+    "./capabilities": {
+      "types": "./types/tck/capabilities.d.ts",
+      "default": "./tck/capabilities.ts"
+    },
+    "./wait": {
+      "types": "./types/tck/wait.d.ts",
+      "default": "./tck/wait.ts"
+    },
+    "./time": {
+      "types": "./types/tck/time.d.ts",
+      "default": "./tck/time.ts"
+    },
+    "./specs": {
+      "types": "./types/tck/specs/index.d.ts",
+      "default": "./tck/specs/index.ts"
+    },
+    "./spec-types": {
+      "types": "./types/tck/spec-types.d.ts",
+      "default": "./tck/spec-types.ts"
+    },
+    "./assert": {
+      "types": "./types/tck/assert.d.ts",
+      "default": "./tck/assert.ts"
+    },
+    "./ocpp": {
+      "types": "./types/tck/ocpp.d.ts",
+      "default": "./tck/ocpp.ts"
+    },
+    "./sim": {
+      "types": "./types/tck/sim.d.ts",
+      "default": "./tck/sim.ts"
+    },
+    "./runner": {
+      "types": "./types/tck/main.d.ts",
+      "default": "./tck/main.ts"
+    },
+    "./driver-registry": {
+      "types": "./types/tck/driver-registry.d.ts",
+      "default": "./tck/driver-registry.ts"
+    },
+    "./drivers/steve": {
+      "types": "./types/drivers/steve/index.d.ts",
+      "default": "./drivers/steve/index.ts"
+    },
+    "./tsconfig": "./tsconfig.base.json",
+    "./package.json": "./package.json"
+  },
+  "scripts": {
+    "typecheck": "tsc --noEmit",
+    "build:types": "tsc -p tsconfig.build.json",
+    "check:reference-driver": "CSMS_DRIVER=./drivers/steve/index.ts bun bin/ocpp-tck.ts check-driver",
+    "test": "bash tests/vendor-integrity.sh && bash tests/generic-core.sh && bash tests/spec-invariants.sh"
+  },
+  "devDependencies": {
+    "@types/bun": "1.3.14",
+    "typescript": "5.9.2"
+  }
+}

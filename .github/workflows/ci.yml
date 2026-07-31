@@ -1,0 +1,50 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  check:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v5
+
+      - uses: oven-sh/setup-bun@v2
+        with:
+          # Pinned, not "latest": the declaration output and the container the
+          # extractors run in are both version-sensitive, and a silent bun bump
+          # would show up as an unexplained types/ or artifact diff.
+          bun-version: 1.3.14
+
+      - run: bun install --frozen-lockfile
+
+      - name: Type-check
+        run: bun run typecheck
+
+      - name: Committed declarations match the sources
+        run: bash tests/types-current.sh
+
+      # Offline: reads the driver module and the scenario registry, nothing
+      # else. No CSMS, no container, no credentials.
+      - name: Reference driver agrees with the core
+        run: bun run check:reference-driver
+
+      - name: Core names no CSMS
+        run: bash tests/generic-core.sh
+
+      - name: Vendored files match VENDOR.md
+        run: bash tests/vendor-integrity.sh
+
+      # Docker-backed: the extractors run in the pinned bun image, with the
+      # repository mounted read-only.
+      - name: Scenario assertions and CSMS call sequences unchanged
+        run: bash tests/spec-invariants.sh
+
+      - name: Shell guards lint clean
+        run: shellcheck tests/*.sh tools/*.sh

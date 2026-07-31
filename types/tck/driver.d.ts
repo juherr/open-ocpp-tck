@@ -1,0 +1,398 @@
+/**
+ * driver.ts -- THE CSMS DRIVER CONTRACT.
+ *
+ * Every scenario spec in specs/ is written against this file and nothing else.
+ * A driver (drivers/<id>/) implements it; the core never learns which CSMS it
+ * is driving, and a driver never learns which scenario is driving it.
+ *
+ * WHY THE OPERATION VOCABULARY IS SHAPED LIKE OCPP AND NOT LIKE A CSMS
+ * -------------------------------------------------------------------
+ * The contract this replaces was `op(opPath: string, fields: Record<string,
+ * string>)`, where the keys were literally the input names of SteVe's manager
+ * UI forms: `chargePointSelectList`, `confKey`, `keyType`, `availType`,
+ * `chargingProfilePk`, `retrieveDateTime`. That is not a contract, it is one
+ * CSMS's HTML serialised -- and every other driver paid to undo it. The second
+ * driver written against it carried roughly 340 lines whose only job was to
+ * reverse the encoding, and `ChangeAvailability`, which no spec drives, had to
+ * accept four plausible spellings of its own field name because no call site
+ * pinned it. A driver guessing at four spellings is the contract failing at its
+ * one job.
+ *
+ * The vocabulary below is derived from the OCPP 1.6 request payloads instead:
+ * `Reset.type`, `ReserveNow.expiryDate`, `SendLocalList.updateType` are named
+ * and typed as the specification names and types them. That is the only
+ * vocabulary two independent CSMSs are guaranteed to share, and it is already
+ * the vocabulary the assertions are written in -- they match on the wire frame.
+ *
+ * Three consequences worth stating, because each replaces a runtime failure
+ * with a compile-time one:
+ *
+ *  - There is no in-band `""` sentinel anywhere in this union. Absence is `?:`.
+ *    Previously `chargingProfilePk: ""`, `transactionId: ""` and
+ *    `connectorId: ""` each meant "absent", and every driver had to learn that
+ *    independently.
+ *  - `switch (op.action)` plus `assertNever` makes adding an operation to this
+ *    union a COMPILE ERROR in every driver that has not handled it. Before,
+ *    a new upstream operation was discovered at runtime, mid-campaign, against
+ *    a third party's acceptance environment.
+ *  - Numbers are numbers and instants are `Date`s. Formatting an instant into
+ *    whatever a particular CSMS's API wants is that driver's problem, which is
+ *    where it belongs.
+ *
+ * THREE THINGS A DRIVER MAY NOT DO
+ * --------------------------------
+ *  1. Throw for an OCPP-level outcome. `execute()` resolves as soon as the
+ *     CSMS has ACCEPTED or DISPATCHED the operation. A `Rejected` CALLRESULT, a
+ *     CALLERROR, or no response at all are NORMAL returns: every spec asserts
+ *     on the simulator's own captured wire log, never on this call's result.
+ *     Throw only for a genuine transport or request failure -- bad auth, a
+ *     malformed request, an HTTP error.
+ *  2. Invent an observation it cannot make. See {@link CsmsRecords}.
+ *  3. Branch on a scenario id. A driver that wants per-scenario behaviour is
+ *     describing a capability gap; declare it in the driver's scope table.
+ */
+import type { ScopeTable } from "./scope";
+/** A CSMS-side transaction / charging-session handle. `""` = none. */
+export type TransactionRef = string;
+/** A CSMS-side reservation handle. `""` = none. */
+export type ReservationRef = string;
+/** A CSMS-side charging-profile handle. `""` = none. */
+export type ChargingProfileRef = string;
+export type ResetType = "Hard" | "Soft";
+export type AvailabilityType = "Operative" | "Inoperative";
+export type UpdateType = "Full" | "Differential";
+export type ChargingRateUnit = "A" | "W";
+export type ChargingProfilePurpose = "ChargePointMaxProfile" | "TxDefaultProfile" | "TxProfile";
+export type MessageTrigger = "BootNotification" | "DiagnosticsStatusNotification" | "FirmwareStatusNotification" | "Heartbeat" | "MeterValues" | "StatusNotification";
+export type AuthorizationStatus = "Accepted" | "Blocked" | "Expired" | "Invalid" | "ConcurrentTx";
+/**
+ * One `AuthorizationData` entry of a SendLocalList payload.
+ *
+ * A CSMS whose local-list API carries only tag NAMES -- SteVe's manager UI
+ * does -- honours `idTag` and must DOCUMENT in its driver that it ignores the
+ * rest. It must not silently pretend it applied `status` or `expiryDate`:
+ * a scenario asserting on the resulting list would then pass for a reason that
+ * never happened.
+ */
+export interface LocalAuthorizationEntry {
+    idTag: string;
+    status?: AuthorizationStatus;
+    expiryDate?: Date;
+    parentIdTag?: string;
+}
+export type CsmsOperation = {
+    action: "Reset";
+    type: ResetType;
+} | {
+    action: "UnlockConnector";
+    connectorId: number;
+} | {
+    action: "ClearCache";
+} | {
+    action: "ChangeAvailability";
+    connectorId: number;
+    type: AvailabilityType;
+} | {
+    action: "GetConfiguration";
+    /** Absent = every key. A CSMS that can only ask for all keys throws
+     *  {@link UnsupportedOperationError} when this is present and non-empty,
+     *  rather than silently widening the request. */
+    keys?: string[];
+} | {
+    action: "ChangeConfiguration";
+    key: string;
+    value: string;
+} | {
+    action: "RemoteStartTransaction";
+    idTag: string;
+    /** Absent = let the charge point choose the connector. */
+    connectorId?: number;
+    /** Absent = start without a charging profile. Present means the profile
+     *  must travel INSIDE RemoteStartTransaction.req -- that is what the
+     *  scenario asserts on the wire, so a CSMS that can only apply it out of
+     *  band must throw rather than apply it another way. */
+    chargingProfile?: ChargingProfileRef;
+} | {
+    action: "RemoteStopTransaction";
+    transaction: TransactionRef;
+} | {
+    action: "TriggerMessage";
+    requestedMessage: MessageTrigger;
+    /** Absent = station-wide, i.e. no connectorId on the wire. */
+    connectorId?: number;
+} | {
+    action: "SetChargingProfile";
+    connectorId: number;
+    chargingProfile: ChargingProfileRef;
+    /** Present = scoped to this running transaction (TxProfile). */
+    transaction?: TransactionRef;
+} | {
+    action: "GetCompositeSchedule";
+    connectorId: number;
+    /** Seconds. */
+    duration: number;
+    chargingRateUnit?: ChargingRateUnit;
+} | {
+    action: "ClearChargingProfile";
+    chargingProfile?: ChargingProfileRef;
+    connectorId?: number;
+    purpose?: ChargingProfilePurpose;
+    stackLevel?: number;
+} | {
+    action: "UpdateFirmware";
+    location: string;
+    /** An absolute instant. A CSMS whose API takes a minute-resolution local
+     *  string formats it ITSELF, and rounds UP to the next whole minute so
+     *  that any strictly-future instant stays strictly future -- truncating
+     *  can land in the already-past current minute. */
+    retrieveDate: Date;
+    retries?: number;
+    /** Seconds. */
+    retryInterval?: number;
+} | {
+    action: "GetDiagnostics";
+    location: string;
+    startTime?: Date;
+    stopTime?: Date;
+    retries?: number;
+    retryInterval?: number;
+} | {
+    action: "GetLocalListVersion";
+} | {
+    action: "SendLocalList";
+    listVersion: number;
+    updateType: UpdateType;
+    /** Absent = an empty list. A Full update with no entries clears it. */
+    localAuthorizationList?: LocalAuthorizationEntry[];
+} | {
+    action: "ReserveNow";
+    connectorId: number;
+    idTag: string;
+    expiryDate: Date;
+    parentIdTag?: string;
+    /** Absent = let the CSMS allocate the reservation id. */
+    reservation?: ReservationRef;
+} | {
+    action: "CancelReservation";
+    reservation: ReservationRef;
+};
+export type CsmsOperationAction = CsmsOperation["action"];
+/** Every action name, for capability declarations and run reporting. */
+export declare const CSMS_OPERATION_ACTIONS: readonly ["Reset", "UnlockConnector", "ClearCache", "ChangeAvailability", "GetConfiguration", "ChangeConfiguration", "RemoteStartTransaction", "RemoteStopTransaction", "TriggerMessage", "SetChargingProfile", "GetCompositeSchedule", "ClearChargingProfile", "UpdateFirmware", "GetDiagnostics", "GetLocalListVersion", "SendLocalList", "ReserveNow", "CancelReservation"];
+/**
+ * "This CSMS's API cannot express this operation or observation AT ALL."
+ *
+ * Not a transport failure, not a rejection, not a timeout: a permanent
+ * statement about an API surface. The runner catches it around `drive()` and
+ * records NOT APPLICABLE, printing a warning that the scope table is out of
+ * date -- because a driver forced to throw this at runtime is telling you its
+ * own scope table missed a scenario, and the scope table is what keeps a
+ * campaign from starting containers it cannot use.
+ *
+ * Lives in the core, not in a driver: it is part of the contract, and the
+ * runner plus every driver need the SAME class -- the runner recognises it
+ * with `instanceof`, so a second copy would silently degrade NOT APPLICABLE
+ * into ERROR.
+ */
+export declare class UnsupportedOperationError extends Error {
+    readonly operation: string;
+    readonly reason: string;
+    constructor(operation: string, reason: string);
+}
+/**
+ * Compile-time exhaustiveness guard for a driver's `switch (op.action)`.
+ *
+ * Adding an operation to {@link CsmsOperation} becomes a type error in every
+ * driver that has not handled it -- which is the entire reason the vocabulary
+ * is a discriminated union rather than a string map.
+ */
+export declare function assertNever(value: never, context: string): never;
+export interface CsmsOperations {
+    /**
+     * Drives one CSMS operation against one charge point.
+     *
+     * Resolves once the CSMS has accepted or dispatched it. This does NOT imply
+     * the charge point has responded, or ever will. The returned string is a
+     * driver-defined receipt for the run log ONLY -- a redirect Location, a
+     * serialized REST body, a task id. Specs MUST NOT branch on it; they assert
+     * on the simulator's captured wire log.
+     *
+     * Throws {@link UnsupportedOperationError} when this CSMS cannot express the
+     * operation at all, and anything else for a genuine transport failure.
+     */
+    execute(cpId: string, op: CsmsOperation): Promise<string>;
+}
+/**
+ * The CSMS-side state a spec may inspect. READ-ONLY: every method answers
+ * "what does the CSMS believe happened", never "make the CSMS do something".
+ * The one write that used to live on this interface, `closeStaleTx`, was a
+ * per-run lifecycle concern with no spec call site at all; it is now
+ * {@link CsmsDriverParts.prepareStation}.
+ *
+ * EVERY METHOD RETURNS A STRING, THE COUNT INCLUDED. That is deliberate and
+ * load-bearing: a driver that cannot answer returns `unverifiable("<why>")`
+ * (see unverifiable.ts), a sentinel-carrying string that assertEq and
+ * assertNonEmpty recognise and degrade to a SKIPPED check -- yielding PARTIAL
+ * instead of a false FAIL. A numeric return type would leave no room for it.
+ *
+ * A driver must NEVER invent a plausible value, and must never return `""` for
+ * "I cannot know": `""` is assertNonEmpty's legitimate "not set", so doing so
+ * converts a SKIPPED into a FAIL. The two escapes are the sentinel, for values
+ * consumed directly by an assertion, and {@link UnsupportedOperationError} for
+ * values consumed any other way -- assigned, compared, interpolated, or fed
+ * back into an operation field.
+ */
+export interface CsmsRecords {
+    /** Most recent transaction, open or closed, for a charge point. `""` = none. */
+    latestTransaction(cpId: string): Promise<TransactionRef>;
+    /**
+     * Polls, bounded, for an OPEN transaction on `cpId` started with `idTag`.
+     * REJECTS on timeout -- fail-hard, matching the bash harness this was ported
+     * from, which killed the whole run rather than returning a value a caller
+     * might handle gracefully and then assert against.
+     */
+    waitForActiveTransaction(cpId: string, idTag: string, timeoutSecs?: number): Promise<TransactionRef>;
+    /** The idTag a transaction was started with. `""` if it does not exist. */
+    transactionIdTag(tx: TransactionRef): Promise<string>;
+    /** `""` while still open or nonexistent, a timestamp string once closed. */
+    transactionStopTimestamp(tx: TransactionRef): Promise<string>;
+    /** OCPP stop reason, e.g. "EVDisconnected", "SoftReset". `""` if unset. */
+    transactionStopReason(tx: TransactionRef): Promise<string>;
+    /** Transactions for a charge point + idTag, as a decimal STRING -- see this
+     *  interface's header for why it is not a number. */
+    transactionCountForIdTag(cpId: string, idTag: string): Promise<string>;
+    /** Reservation registry. See {@link CsmsReservationRecords}. */
+    reservations: CsmsReservationRecords;
+    /** Charging-profile registry. See {@link CsmsChargingProfileRecords}. */
+    chargingProfiles: CsmsChargingProfileRecords;
+}
+/**
+ * OPTIONAL CAPABILITY. A CSMS with no reservation resource at all -- no
+ * ReserveNow, no reservation entity -- omits this from its
+ * {@link CsmsDriverParts}, and the runner substitutes a stub whose every
+ * method throws {@link UnsupportedOperationError}. Specs therefore call it
+ * unconditionally and never branch on which driver is loaded.
+ */
+export interface CsmsReservationRecords {
+    /** Most recent reservation for a charge point. `""` = none. */
+    latest(cpId: string): Promise<ReservationRef>;
+    /** Reservation state, uppercase, e.g. "CANCELLED". */
+    status(reservation: ReservationRef): Promise<string>;
+}
+/**
+ * OPTIONAL CAPABILITY, same substitution rule as
+ * {@link CsmsReservationRecords}.
+ *
+ * `refByDescription` exists because the SmartCharging scenarios need a
+ * PRE-PROVISIONED profile they can name, and OCPP offers no way to look one
+ * up. It is the most CSMS-shaped method in this file, which is exactly why it
+ * sits behind an optional capability instead of in the core interface: all of
+ * its call sites feed the result back into an operation field rather than into
+ * an assertion, so the unverifiable sentinel is NOT a safe degradation for it.
+ * Absence has to be structural, or a sentinel string ends up inside a request
+ * body and the CSMS is asked to act on the word "unverifiable".
+ */
+export interface CsmsChargingProfileRecords {
+    /** Handle of a pre-provisioned charging profile named by its human-readable
+     *  description. `""` if no such profile exists. */
+    refByDescription(description: string): Promise<ChargingProfileRef>;
+}
+/**
+ * Coarse capability declaration, for the run report and a driver's own
+ * load-time self-check.
+ *
+ * Deliberately NOT used to skip scenarios before they run: the core cannot
+ * know which operations a scenario will attempt without running it. That is
+ * what the per-driver scope table is for.
+ */
+export interface CsmsCapabilities {
+    /** Operations this driver can express. Anything outside it MUST throw
+     *  {@link UnsupportedOperationError} from `execute()`; the driver's own
+     *  switch is where that is enforced, this set is what gets printed. */
+    readonly operations: ReadonlySet<CsmsOperationAction>;
+    readonly reservations: boolean;
+    readonly chargingProfiles: boolean;
+}
+/** Transport defaults a driver contributes for the simulator container. An
+ *  explicit `SIM_*` value in the environment always wins: an operator's
+ *  override is the last word, a driver only states what it knows about its own
+ *  CSMS. */
+export interface SimTransportDefaults {
+    wsUrl?: string;
+    appendCpIdToWsPath?: boolean;
+    basicAuthUser?: string;
+    basicAuthPass?: string;
+    network?: string;
+    extraArgs?: string[];
+}
+/**
+ * An extra CLI verb a driver contributes, reachable as
+ * `ocpp-tck driver <name> [args...]`. This is how environment bootstrap --
+ * provisioning, probing, teardown -- stays a driver concern while the runner
+ * stays driver-agnostic.
+ *
+ * Returns a process exit code rather than void, because "neither success nor
+ * breakage" is a real outcome: a provisioner that finds the API refusing
+ * writes wants to report VERIFY-ONLY, and collapsing that to a boolean would
+ * lose it.
+ */
+export type CsmsDriverCommand = (argv: string[]) => Promise<number>;
+/**
+ * The environment a driver reads, structurally.
+ *
+ * Deliberately NOT `NodeJS.ProcessEnv`: that type is ambient, so naming it here
+ * would make this package's published declarations require `@types/node` (or
+ * `@types/bun`) in every consumer that only wants to write a driver.
+ * `process.env` is assignable to this, so no call site changes.
+ */
+export type CsmsEnv = Readonly<Record<string, string | undefined>>;
+/**
+ * What a driver hands the runner. Everything optional is a CAPABILITY that the
+ * runner substitutes or skips when absent, so a minimal driver is
+ * `{ operations, records }` and nothing else.
+ */
+export interface CsmsDriverParts {
+    operations: CsmsOperations;
+    records: Omit<CsmsRecords, "reservations" | "chargingProfiles"> & {
+        reservations?: CsmsReservationRecords;
+        chargingProfiles?: CsmsChargingProfileRecords;
+    };
+    /** Runs before the simulator container starts -- where a CSMS closes a stale
+     *  transaction left by a previous scenario. It is a WRITE, which is why it
+     *  is here and not on {@link CsmsRecords}. */
+    prepareStation?(cpId: string): Promise<void>;
+    simTransport?(cpId: string): Promise<SimTransportDefaults>;
+    /** Released at the end of a lane: connection pools, caches. */
+    close?(): Promise<void>;
+}
+export interface CsmsDriverModule {
+    /** Stable id, for logs and results/summary.md. */
+    readonly id: string;
+    readonly displayName: string;
+    /**
+     * Per-scenario static declaration, consulted BEFORE any container starts.
+     * Absent = "run everything and find out", with the
+     * {@link UnsupportedOperationError} net as the backstop.
+     *
+     * ON THE MODULE, NOT ON {@link CsmsDriverParts}, and that placement is the
+     * whole point: the runner promises that a scenario this CSMS cannot drive is
+     * reported NOT APPLICABLE *without the driver ever needing valid
+     * credentials*. Reaching the table through `create(env)` broke that promise,
+     * because a driver is entitled to build its HTTP client there and throw when
+     * its token is unset -- so `ocpp-tck run` demanded credentials to tell you it
+     * was not going to use them. Reading it off the module keeps the preflight,
+     * and `ocpp-tck check-driver`, genuinely offline.
+     */
+    readonly scope?: ScopeTable;
+    /** Same reasoning as {@link CsmsDriverModule.scope}: read without credentials,
+     *  printed by `ocpp-tck check-driver` and the run report. */
+    readonly capabilities?: CsmsCapabilities;
+    /** One instance per parallel lane. Free to read the environment, and free to
+     *  throw a clear configuration error. */
+    create(env: CsmsEnv): Promise<CsmsDriverParts> | CsmsDriverParts;
+    /** Environment-bootstrap verbs, reachable as `ocpp-tck driver <name>`.
+     *  Never invoked during a scenario run. */
+    readonly commands?: Readonly<Record<string, CsmsDriverCommand>>;
+    /** Printed by `ocpp-tck --help` under "driver environment". */
+    readonly envHelp?: string;
+}
