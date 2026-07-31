@@ -59,12 +59,32 @@ strip_comments() {
   # Block comments, then line comments, then shell comments -- the last one
   # matters: a .sh file's `#` lines were NOT stripped by the first draft, so a
   # shell comment naming a CSMS was reported while the equivalent TypeScript
-  # comment was not. Deliberately naive about "//" or "#" inside a string
-  # literal, which only ever makes the scan STRICTER, never laxer.
+  # comment was not.
+  #
+  # A block comment only ever OPENS when `/*` is the first thing on the line.
+  # An earlier version moved every `/*` to the start of a line and then used a
+  # sed range delete, so a `/*` inside a STRING LITERAL opened a comment that
+  # ran to the next `*/`. In the downstream repository this was extracted from,
+  # a single "/commands/*" in a driver hid the following 336 lines from the
+  # scan, which went on reporting the tree clean. Found by mutation, not by
+  # reading: a planted identifier SURVIVED.
+  #
+  # Being naive about `//` or `#` inside a string literal only ever makes the
+  # scan stricter. Being naive about `/*` made it LAXER, which is the one
+  # direction a guard must not fail in.
   case "$1" in
     *.sh) sed -e 's@#.*@@' "$1" ;;
-    *) sed -e 's@/\*@\n&@g' "$1" |
-         sed -e '/\/\*/,/\*\//d' -e 's@//.*@@' -e 's/^[[:space:]]*\*.*//' ;;
+    *)
+      awk '
+        in_block { if ($0 ~ /\*\//) in_block = 0; next }
+        /^[[:space:]]*\/\*/ {
+          if ($0 ~ /\*\//) { sub(/^[[:space:]]*\/\*.*\*\//, "") }
+          else { in_block = 1; next }
+        }
+        /^[[:space:]]*\*/ { next }
+        { sub(/\/\/.*/, ""); print }
+      ' "$1"
+      ;;
   esac
 }
 
