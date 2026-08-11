@@ -51,7 +51,11 @@ services:
       # `docker exec`), so its STEVE_URL is http://localhost:8180/... while the
       # simulator container, on steve-internal, uses ws://steve:8180/... .
       # That asymmetry is why STEVE_URL and STEVE_WS_URL are separate settings.
-      - "8180:8180"
+      # Loopback only: the driver reaches SteVe as localhost and the
+      # simulator reaches it by service name on the internal network, so
+      # nothing needs this port exposed to the host's other interfaces --
+      # and the OCPP endpoint shares it with the unauthenticated UI.
+      - "127.0.0.1:8180:8180"
     networks:
       - steve-internal
     healthcheck:

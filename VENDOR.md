@@ -161,7 +161,7 @@ conformance run that cannot name the bytes it tested proves nothing.
 | field | value |
 |---|---|
 | image | `ghcr.io/juherr/steve` |
-| tag resolved | `steve-3.14.0` (the newest published; the repository also ships `steve-3.13.0`) |
+| tag resolved | `steve-3.14.0` |
 | digest | `sha256:aa56949a639328a11461a3e448d40549b521f232ee0fdeef22389ddff3c9901f` |
 | image | `mariadb` |
 | tag resolved | `11.8` |
