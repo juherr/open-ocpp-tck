@@ -151,9 +151,29 @@ Put it on the **module**, not inside `create()`. `check-driver` and the
 preflight read it without calling `create()`, which is what lets them run with
 no credentials — including in your CI, which has none.
 
+### Two worked examples
+
+Two drivers ship here, and they are worth reading together because they solve
+the same problem through completely different surfaces — which is the strongest
+evidence that the contract is not shaped around either of them.
+
+`drivers/steve/` drives operations through an HTML manager UI and reads state
+from MariaDB. `drivers/citrineos/` posts JSON to a generated REST API and reads
+from Postgres, and additionally supports two incompatible releases of its CSMS
+behind one `CITRINE_VARIANT` setting.
+
+For the mechanics of the contract — the operation switch, the record queries,
+the bootstrap verbs — either one works as a model. For **what to do when your
+CSMS cannot do something**, read `drivers/citrineos/`: it is the one with gaps,
+so it is the one that shows a scope table with `NOT_APPLICABLE` rows each citing
+the endpoint that does not exist, a `records` object that omits `reservations`
+outright rather than faking it, and a
+[README](drivers/citrineos/README.md) whose gap table names a source fact per
+row.
+
 ## Contributing back
 
-Pull requests welcome for the core, the reference driver, and new scenarios.
+Pull requests welcome for the core, either bundled driver, and new scenarios.
 Two rules the test suite enforces rather than merely documents:
 
 - **`tests/generic-core.sh`** — nothing under `tck/` may name a CSMS, and the

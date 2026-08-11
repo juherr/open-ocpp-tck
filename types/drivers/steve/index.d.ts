@@ -1,12 +1,17 @@
 /**
  * The SteVe driver.
  *
- * SteVe is the CSMS this harness was originally written against, which makes
- * it the reference implementation of the driver contract: if an operation
- * cannot be expressed here, the contract has drifted away from OCPP rather
- * than towards it. Its scope table claims every scenario, and a guard asserts
- * that -- the day it needs a NOT_APPLICABLE row, the generalization lost a
+ * SteVe is the CSMS this harness was originally written against, which gives
+ * this driver one job the other bundled one cannot do: if an operation cannot
+ * be expressed here, the contract has drifted away from OCPP rather than
+ * towards it. Its scope table claims every scenario, and a guard asserts that
+ * -- the day it needs a NOT_APPLICABLE row, the generalization lost a
  * capability it used to have.
+ *
+ * That is a different question from the one drivers/citrineos/ answers, not a
+ * lesser or greater one: this driver catches the harness losing something, the
+ * other catches the core assuming something about SteVe. Neither is "the
+ * reference".
  *
  * Why the manager UI and not the REST API
  * ---------------------------------------

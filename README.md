@@ -8,7 +8,17 @@ the OCPP-J frames both directions, and asserts on the captured wire log. What
 it does *not* bring is any knowledge of your CSMS: telling it "reset this
 charge point" is a **driver**, and a driver is one file you write.
 
+The scenarios trace to the Open Charge Alliance's OCPP 1.6 certification
+material — the [OCPP 1.6 certification page][octt], and in particular its
+*Test Procedure & Test Plans* and *OCPP Compliancy Testing Tool — Test Case
+Document*. Scenario `cert16-tcNNN-…` corresponds to OCA test case `TC_NNN`,
+and because the CSMS is the system under test here, the **`_CSMS` variant** is
+the one that applies: it is the Central System that must answer. This is not a
+certification tool and passing it is not certification — but the reference is
+where a disagreement about what a scenario *should* assert gets settled.
+
 [sim]: https://github.com/shiv3/ocpp-cp-simulator
+[octt]: https://openchargealliance.org/certificationocpp/certification-ocpp-1-6/
 
 ```
        your CSMS  <--- REST/UI/SQL ---  your driver  ---.
@@ -31,10 +41,29 @@ green one.
   Node cannot run it, and `bin/ocpp-tck.ts` says so rather than failing later.
 - docker — one simulator container per scenario.
 
-## Quick start, against the reference driver
+## Bundled drivers
 
-SteVe is the CSMS these scenarios were originally written against, so its
-driver ships here as the reference implementation.
+Two ship here, on equal footing. They reach their CSMS through completely
+different surfaces, and each answers a question the other cannot:
+
+| Driver | Transport | What it answers | Result |
+|---|---|---|---|
+| [`drivers/steve`](drivers/steve) | HTML manager UI + MariaDB | *Has the harness lost a capability?* SteVe is the CSMS the scenarios were originally written against, so a scope row that had to be demoted would mean the core dropped something. | All 47 `DRIVABLE` |
+| [`drivers/citrineos`](drivers/citrineos/README.md) | JSON REST API + Postgres | *Is the contract actually CSMS-neutral?* [CitrineOS](https://github.com/citrineos/citrineos-core) (LF Energy / S44) had no part in writing the scenarios and has a smaller OCPP 1.6 surface. | 38 `PASS`, 7 `NOT APPLICABLE`, 2 `FAIL` |
+
+An abstraction with one implementation is neutral by assertion, so the second
+driver is what turns that into a measurement — and the result is the useful
+part: 38 scenarios pass unmodified against a CSMS that had no part in writing
+them, 7 report a capability it does not have for OCPP 1.6, and 2 stay red
+because they found something. That two drivers this different need no change to
+a single scenario is the claim the pair exists to support.
+
+## Quick start, against SteVe
+
+Either bundled driver will do; SteVe is shown here because its environment is a
+single container pair.
+[`drivers/citrineos/README.md`](drivers/citrineos/README.md) is the equivalent
+walkthrough for the other one.
 
 ```sh
 bun add open-ocpp-tck            # or: bun add github:juherr/open-ocpp-tck#v0.1.0
@@ -111,10 +140,10 @@ re-sync, and your driver can live in a completely different repository.
 | `ocpp-tck print-sim-image` | nothing | The pinned simulator image digest |
 | `ocpp-tck driver <verb>` | driver-defined | A bootstrap verb your driver contributes |
 
-The SteVe driver contributes three: `provision` (seed the fixtures, idempotent),
-`verify` (read-only — are they there?), `teardown` (remove them). A driver that
-needs no bootstrap contributes none, and the runner never calls them during a
-scenario.
+Both bundled drivers contribute the same three: `provision` (seed the fixtures,
+idempotent), `verify` (read-only — are they there?), `teardown` (remove them).
+A driver that needs no bootstrap contributes none, and the runner never calls
+them during a scenario.
 
 `check-driver` reads the driver **module** and never calls `create()`, so it
 works with no credentials — which is the same property that lets a scenario
@@ -177,7 +206,8 @@ even where the code is new.
 ```sh
 bun install
 bun run typecheck                 # tsc --noEmit
-bun run check:reference-driver    # offline
+bun run check:steve-driver       # offline
+bun run check:citrineos-driver    # offline
 bun test                          # vendor integrity, genericity, spec invariants
 bash tests/types-current.sh       # committed declarations match the sources
 bash tools/vendor-diff.sh         # network: how far upstream has moved
