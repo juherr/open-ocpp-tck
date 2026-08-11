@@ -434,7 +434,7 @@
    const frames = parseLog(lines.join("\n"));
    const rec = new AssertRecorder();
  
-@@ -228,34 +374,36 @@
+@@ -228,34 +374,53 @@
      frames,
      lines,
      rec,
@@ -477,10 +477,27 @@
 +// "authorize" (the 3 TC_023 Authorize-outcome scenarios) is a separate
 +// group, deliberately NOT folded into "all"; run `run-all --group authorize`
 +// (3 scenarios) as its own sweep.
++//
++// TODO(upstream): fold "authorize" into "all" and delete this carve-out.
++// There is nothing about TC_023 that warrants special handling -- it needs no
++// capability the other 44 do not, and its only distinguishing trait is that it
++// asserts on CSMS-held state. It sits outside "all" solely because this
++// registry mirrors upstream's group membership and order exactly, and upstream
++// puts it outside. That fidelity is worth more than the tidiness, so the fix
++// belongs upstream rather than here: folding it in locally would make this
++// file disagree with the pinned upstream for a cosmetic reason, and every
++// future re-sync would have to re-litigate it.
++//
++// The carve-out is not free. Anyone running "all" and reading "44 scenarios,
++// no failures" will believe they ran the suite; they did not run the three
++// scenarios that most directly exercise CSMS-side authorization state. Every
++// caller therefore has to know to add a second sweep -- see the two sweep
++// steps in .github/workflows/ci.yml. Until upstream folds it in, that
++// duplication is the cost of not diverging.
  // ---------------------------------------------------------------------------
  
  // eslint-disable-next-line @typescript-eslint/no-explicit-any
-@@ -265,8 +413,6 @@
+@@ -265,8 +430,6 @@
    "remotetrigger-smartcharging": REMOTETRIGGER_SMARTCHARGING_SPECS,
    firmware: FIRMWARE_SPECS,
    authorize: AUTHORIZE_SPECS,
@@ -489,7 +506,7 @@
    all: [
      ...CORE_SPECS,
      ...AUTHLIST_RESERVATION_SPECS,
-@@ -286,66 +432,109 @@
+@@ -286,66 +449,109 @@
      .map((spec) => [spec.templateId, spec]),
  );
  
@@ -545,14 +562,6 @@
    failed: number | null;
 +  skipped: number | null;
    errorMessage?: string;
--  /**
--   * --retry-failed-isolated safety net (issue #184 Finding 4): set only for
--   * an outcome whose PARALLEL verdict was not PASS, re-run once sequentially
--   * (same CP, no concurrent lane) on the SAME SteVe/DB, so any difference is
--   * attributable to parallel-lane contention rather than a spec/environment
--   * change. isolatedRetry.verdict === "PASS" means the parallel FAIL/ERROR
--   * was a flake; still non-PASS means it's a real failure, confirmed
--   * isolated.
 +}
 +
 +interface ScenarioOutcome extends RetryOutcome {
@@ -561,11 +570,17 @@
 +  /** Why the scenario was NOT APPLICABLE (scope table entry or the
 +   *  driver's UnsupportedOperationError message). */
 +  reason?: string;
-+  /**
+   /**
+-   * --retry-failed-isolated safety net (issue #184 Finding 4): set only for
+-   * an outcome whose PARALLEL verdict was not PASS, re-run once sequentially
+-   * (same CP, no concurrent lane) on the SAME SteVe/DB, so any difference is
 +   * --retry-failed-isolated safety net: set only for an outcome whose
 +   * PARALLEL verdict was a failure, re-run once sequentially (same CP, no
 +   * concurrent lane) against the SAME CSMS, so any difference is
-+   * attributable to parallel-lane contention rather than a spec/environment
+    * attributable to parallel-lane contention rather than a spec/environment
+-   * change. isolatedRetry.verdict === "PASS" means the parallel FAIL/ERROR
+-   * was a flake; still non-PASS means it's a real failure, confirmed
+-   * isolated.
 +   * change. A non-failing isolated retry means the parallel FAIL/ERROR was
 +   * a flake.
     */
@@ -639,7 +654,7 @@
      };
    } catch (err) {
      const message =
-@@ -359,58 +548,40 @@
+@@ -359,58 +565,40 @@
        verdict: "ERROR",
        checks: null,
        failed: null,
@@ -713,7 +728,7 @@
    );
  
    for (const outcome of toRetry) {
-@@ -432,13 +603,14 @@
+@@ -432,13 +620,14 @@
        verdict: retryOutcome.verdict,
        checks: retryOutcome.checks,
        failed: retryOutcome.failed,
@@ -730,7 +745,7 @@
            : " -- CONFIRMED (fails isolated too, not a parallel-lane artifact)\n"),
      );
    }
-@@ -451,11 +623,10 @@
+@@ -451,11 +640,10 @@
    return new Date().toISOString().replace(/\.\d{3}Z$/, "Z");
  }
  
@@ -746,7 +761,7 @@
  async function writeSummary(
    groupName: string,
    outcomes: ScenarioOutcome[],
-@@ -465,43 +636,53 @@
+@@ -465,43 +653,53 @@
    const rows = outcomes.map((o) => {
      const checks = o.checks === null ? "-" : String(o.checks);
      const failed = o.failed === null ? "-" : String(o.failed);
@@ -814,7 +829,7 @@
        "",
        `Run at ${timestampUtc()}.`,
        "",
-@@ -518,54 +699,53 @@
+@@ -518,54 +716,53 @@
  }
  
  /** Sequential or parallel group sweep. Writes results/summary.md and exits
@@ -894,7 +909,7 @@
      );
    } else {
      for (let i = 0; i < specs.length; i++) {
-@@ -574,11 +754,11 @@
+@@ -574,11 +771,11 @@
    }
  
    if (retryFailedIsolated) {
@@ -908,7 +923,7 @@
            "(a sequential sweep is already isolated).\n",
        );
      }
-@@ -588,45 +768,51 @@
+@@ -588,45 +785,51 @@
    for (const o of outcomes) {
      const retrySuffix = o.isolatedRetry
        ? ` [isolated retry: ${o.isolatedRetry.verdict}${
@@ -975,7 +990,7 @@
  }
  
  // ---------------------------------------------------------------------------
-@@ -642,6 +828,8 @@
+@@ -642,6 +845,8 @@
    cpId: string;
    connector?: number;
    timeoutSecs?: number;
@@ -984,11 +999,20 @@
  }
  
  function requireValue(argv: string[], index: number, flag: string): string {
-@@ -663,37 +851,77 @@
+@@ -663,37 +868,77 @@
    return n;
  }
  
 -function printUsage(): void {
+-  process.stderr.write(
+-    "Usage (paths shown from the repo root; from scripts/steve-verify " +
+-      "use the shorter `bun runner/main.ts …`):\n" +
+-      "       bun scripts/steve-verify/runner/main.ts run <template-id> " +
+-      "[--cp CERTCP1] [--timeout N] [--connector N]\n" +
+-      "       bun scripts/steve-verify/runner/main.ts run --group " +
+-      `${Object.keys(GROUPS).join("|")} [--parallel] [--retry-failed-isolated]\n` +
+-      "       bun scripts/steve-verify/runner/main.ts run-all " +
+-      "[--group <name>] [--parallel] [--retry-failed-isolated]\n" +
 +const VERBS = [
 +  "run",
 +  "run-all",
@@ -999,18 +1023,11 @@
 +] as const;
 +
 +async function printUsage(): Promise<void> {
-   process.stderr.write(
--    "Usage (paths shown from the repo root; from scripts/steve-verify " +
--      "use the shorter `bun runner/main.ts …`):\n" +
--      "       bun scripts/steve-verify/runner/main.ts run <template-id> " +
--      "[--cp CERTCP1] [--timeout N] [--connector N]\n" +
--      "       bun scripts/steve-verify/runner/main.ts run --group " +
++  process.stderr.write(
 +    "Usage: ocpp-tck run <template-id> [--cp CP1] [--timeout N] " +
 +      "[--connector N] [--results-dir DIR]\n" +
 +      "       ocpp-tck run --group " +
-       `${Object.keys(GROUPS).join("|")} [--parallel] [--retry-failed-isolated]\n` +
--      "       bun scripts/steve-verify/runner/main.ts run-all " +
--      "[--group <name>] [--parallel] [--retry-failed-isolated]\n" +
++      `${Object.keys(GROUPS).join("|")} [--parallel] [--retry-failed-isolated]\n` +
 +      "       ocpp-tck run-all [--group <name>] [--parallel] " +
 +      "[--retry-failed-isolated] [--results-dir DIR]\n" +
 +      "       ocpp-tck list-scenarios [--group <name>] [--json]\n" +
@@ -1079,7 +1096,7 @@
  
    if (argv[0] === "run-all") {
      group = "all";
-@@ -708,18 +936,27 @@
+@@ -708,18 +953,27 @@
          case "--retry-failed-isolated":
            retryFailedIsolated = true;
            break;
@@ -1110,7 +1127,7 @@
      process.exit(1);
    }
  
-@@ -749,9 +986,11 @@
+@@ -749,9 +1003,11 @@
        case "--retry-failed-isolated":
          retryFailedIsolated = true;
          break;
@@ -1123,7 +1140,7 @@
          process.exit(1);
      }
    }
-@@ -764,35 +1003,286 @@
+@@ -764,35 +1020,286 @@
      cpId,
      connector,
      timeoutSecs,
@@ -1182,7 +1199,7 @@
 +  );
 +  return 0;
 +}
-+
+ 
 +/**
 + * Offline conformance check of a driver against THIS core.
 + *
@@ -1203,7 +1220,7 @@
 +      return 1;
 +    }
 +  }
- 
++
 +  const problems: string[] = [];
 +  const warnings: string[] = [];
 +
@@ -1426,7 +1443,7 @@
    }
  
    const spec = SPECS_BY_TEMPLATE_ID.get(args.templateId);
-@@ -800,18 +1290,29 @@
+@@ -800,18 +1307,29 @@
      process.stderr.write(
        `Unknown template id: ${args.templateId} (known: ${[...SPECS_BY_TEMPLATE_ID.keys()].join(", ")})\n`,
      );

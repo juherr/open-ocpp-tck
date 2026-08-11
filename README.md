@@ -40,13 +40,30 @@ driver ships here as the reference implementation.
 bun add open-ocpp-tck            # or: bun add github:juherr/open-ocpp-tck#v0.1.0
 
 export CSMS_DRIVER=open-ocpp-tck/drivers/steve
-export STEVE_URL=http://steve:8180/steve/manager
-export STEVE_WS_URL=ws://steve:8180/steve/websocket/CentralSystemService
+export STEVE_URL=http://localhost:8180/steve/manager
 export OCPP_CP_IDS=CERTCP1,CERTCP2,CERTCP3
 
 bunx ocpp-tck check-driver       # offline: no CSMS, no docker, no credentials
+
+# A SteVe to point at, and the fixtures the scenarios assume.
+docker compose -f node_modules/open-ocpp-tck/drivers/steve/compose.yaml up -d --wait
+bunx ocpp-tck driver provision
+
 bunx ocpp-tck run-all --group core
 ```
+
+`compose.yaml` pins [`ghcr.io/juherr/steve`][image] by digest — the `.war` is
+built into the image and the schema migrates itself on boot, so there is
+nothing to compile. `driver provision` then seeds what no scenario creates for
+itself: the idTags TC_023 needs in three different states, and the two charging
+profiles TC_056 and TC_066 assert on. It is idempotent, and
+`ocpp-tck driver verify` answers the same question read-only.
+
+`STEVE_URL` is `localhost` because the driver runs on your host, while the
+simulator container reaches the same SteVe as `ws://steve:8180/...` from inside
+the compose network. That asymmetry is why the two are separate settings.
+
+[image]: https://github.com/juherr/steve-ocpp-csms-image
 
 ## Writing a driver for your CSMS
 
@@ -87,6 +104,11 @@ re-sync, and your driver can live in a completely different repository.
 | `ocpp-tck list-scenarios [--json]` | nothing | The 47 registered scenarios |
 | `ocpp-tck print-sim-image` | nothing | The pinned simulator image digest |
 | `ocpp-tck driver <verb>` | driver-defined | A bootstrap verb your driver contributes |
+
+The SteVe driver contributes three: `provision` (seed the fixtures, idempotent),
+`verify` (read-only — are they there?), `teardown` (remove them). A driver that
+needs no bootstrap contributes none, and the runner never calls them during a
+scenario.
 
 `check-driver` reads the driver **module** and never calls `create()`, so it
 works with no credentials — which is the same property that lets a scenario
