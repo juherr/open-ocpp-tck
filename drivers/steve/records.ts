@@ -46,10 +46,11 @@ export class SteveRecords implements CsmsRecords {
         "docker",
         "exec",
         "-i",
-        // The password travels in the environment, never in argv: `docker exec`
-        // arguments are visible in `ps` to every user on the host.
+        // `-e NAME` without a value forwards the variable from OUR environment,
+        // which is the whole point: `-e NAME=VALUE` would put the password in
+        // docker's own argv, where `ps` shows it to every user on the host.
         "-e",
-        `MYSQL_PWD=${this.cfg.dbPass}`,
+        "MYSQL_PWD",
         this.cfg.dbContainer,
         "mariadb",
         "-N",
@@ -59,7 +60,11 @@ export class SteveRecords implements CsmsRecords {
         "-e",
         sql,
       ],
-      { stdout: "pipe", stderr: "pipe" },
+      {
+        stdout: "pipe",
+        stderr: "pipe",
+        env: { ...process.env, MYSQL_PWD: this.cfg.dbPass },
+      },
     );
     const [stdout, stderr, exitCode] = await Promise.all([
       new Response(proc.stdout).text(),
