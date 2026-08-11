@@ -261,9 +261,15 @@ fi
 # unattributed, unlicensed, untracked file wherever it sits.
 while IFS= read -r f; do
   rel="${f#"$vendor_dir/"}"
-  if ! grep -Fq "\`$rel\`" "$manifest"; then
-    echo "FAIL[$rel]: present under the harness but absent from $manifest." >&2
+  # An inventory ROW, not the path mentioned anywhere in the file. The looser
+  # match was satisfiable by ordinary prose: drivers/steve/provision.ts shipped
+  # with no row at all and passed this check because a paragraph elsewhere in
+  # the manifest happened to name it. `| `path` |` is the row's own shape, and
+  # -F keeps the path's dots and slashes literal.
+  if ! grep -Fq "| \`$rel\` |" "$manifest"; then
+    echo "FAIL[$rel]: present under the harness but has no row in $manifest." >&2
     echo "  → add a row (origin, provenance, digests), or delete the file." >&2
+    echo "  → a mention in prose is not a row; the table column must contain it." >&2
     status=1
   fi
 done < <(find "$vendor_dir/tck" "$vendor_dir/drivers" -type f \

@@ -106,6 +106,9 @@
     "typecheck": "tsc --noEmit",
     "build:types": "tsc -p tsconfig.build.json",
     "check:reference-driver": "CSMS_DRIVER=./drivers/steve/index.ts bun bin/ocpp-tck.ts check-driver",
+    "e2e": "bun bin/ocpp-tck.ts run-all --parallel --retry-failed-isolated && bun bin/ocpp-tck.ts run-all --group authorize",
+    "e2e:smoke": "bun bin/ocpp-tck.ts run cert16-tc023-1-authorize-invalid && bun bin/ocpp-tck.ts run cert16-tc023-2-authorize-expired && bun bin/ocpp-tck.ts run cert16-tc023-3-authorize-blocked && bun bin/ocpp-tck.ts run cert16-tc066-get-composite-schedule && bun bin/ocpp-tck.ts run cert16-tc003-charging-plugin-first",
+    "check:fixture-tags": "bash tools/extract-fixture-tags.sh --diff",
     "test": "bash tests/vendor-integrity.sh && bash tests/generic-core.sh && bash tests/spec-invariants.sh"
   },
   "devDependencies": {

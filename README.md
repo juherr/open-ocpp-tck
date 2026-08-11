@@ -52,6 +52,12 @@ bunx ocpp-tck driver provision
 bunx ocpp-tck run-all --group core
 ```
 
+A **full** sweep is two commands, not one: `run-all` covers 44 scenarios and the
+`authorize` group (TC_023) sits outside `all`, so "no failures, 44 scenarios"
+is not the whole suite — and TC_023 is what proves the fixtures took. Working in
+a clone, `bun run e2e` runs both, and `bun run e2e:smoke` runs the handful that
+exercise provisioning when a full sweep is too slow to iterate on.
+
 `compose.yaml` pins [`ghcr.io/juherr/steve`][image] by digest — the `.war` is
 built into the image and the schema migrates itself on boot, so there is
 nothing to compile. `driver provision` then seeds what no scenario creates for
