@@ -457,16 +457,34 @@ export class SteveProvisioner {
       );
     }
 
-    const found = new Set(
-      (
-        await this.db.rows(
-          `SELECT description FROM charging_profile WHERE description IN (${PROFILES.map((p) => sqlLiteral(p.description)).join(", ")});`,
-        )
-      ).map((row) => row[0]),
-    );
+    // The limit is checked, not just the name. A profile carrying the wrong
+    // limit is exactly the case verify() exists to catch: TC_066 asserts
+    // "limit":11000 on the composite schedule, so a profile that is present but
+    // wrong turns into a scenario FAIL that reads like a CSMS defect, while
+    // verify would have answered that the environment was fine.
+    // LEFT JOIN so a profile with no schedule period at all is reported as a
+    // wrong limit rather than silently vanishing from the result set.
+    const limits = new Map<string, string[]>();
+    for (const [description, limit] of await this.db.rows(
+      `SELECT p.description, IFNULL(csp.power_limit, '')
+       FROM charging_profile p
+       LEFT JOIN charging_schedule_period csp
+         ON csp.charging_profile_pk = p.charging_profile_pk
+       WHERE p.description IN (${PROFILES.map((p) => sqlLiteral(p.description)).join(", ")});`,
+    )) {
+      const seen = limits.get(description) ?? [];
+      seen.push(limit);
+      limits.set(description, seen);
+    }
     for (const profile of PROFILES) {
-      if (!found.has(profile.description)) {
+      const seen = limits.get(profile.description);
+      if (!seen) {
         problems.push(`charging profile '${profile.description}': missing`);
+        // decimal(15,1) renders as "11000.0", so compare as numbers.
+      } else if (!seen.some((l) => l !== "" && Number(l) === profile.limitW)) {
+        problems.push(
+          `charging profile '${profile.description}': no schedule period with limit ${profile.limitW} (found ${seen.map((l) => l || "none").join(", ")})`,
+        );
       }
     }
 
@@ -488,8 +506,30 @@ export class SteveProvisioner {
     const tags = [...VALID_TAGS, BLOCKED_TAG, EXPIRED_TAG, INVALID_TAG]
       .map(sqlLiteral)
       .join(", ");
-    await this.db.scalar(`DELETE FROM ocpp_tag WHERE id_tag IN (${tags});`);
-    this.log("tags: removed");
+
+    // Only tags nothing refers to. `transaction_start.id_tag` and
+    // `reservation.id_tag` are ON DELETE CASCADE onto ocpp_tag, so a plain
+    // DELETE here does not fail on a used tag -- it silently takes the run's
+    // transaction history with it. Measured: one scenario, then teardown, and
+    // transaction_start went from 1 row to 0.
+    //
+    // The NOT NULL guards are not decoration: `x NOT IN (SELECT ...)` is NULL,
+    // hence false, the moment the subquery yields a single NULL, which would
+    // turn this into a no-op that deletes nothing at all.
+    const deletable = `id_tag IN (${tags})
+        AND id_tag NOT IN (SELECT id_tag FROM transaction_start WHERE id_tag IS NOT NULL)
+        AND id_tag NOT IN (SELECT id_tag FROM reservation WHERE id_tag IS NOT NULL)`;
+
+    const kept = await this.db.scalar(
+      `SELECT COUNT(*) FROM ocpp_tag WHERE id_tag IN (${tags})
+         AND NOT (${deletable});`,
+    );
+    await this.db.scalar(`DELETE FROM ocpp_tag WHERE ${deletable};`);
+    this.log(
+      kept === "0"
+        ? "tags: removed"
+        : `tags: removed, ${kept} kept because transactions or reservations still reference them`,
+    );
 
     for (const profile of PROFILES) {
       const pk = await this.db.chargingProfiles.refByDescription(
