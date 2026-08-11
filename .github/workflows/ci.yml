@@ -19,9 +19,14 @@ jobs:
   check:
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v5
+      - uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09 # v5.1.0
+        with:
+          # Neither job pushes anything, so the token has no reason to stay
+          # in .git/config where every later step -- install scripts, the
+          # sweep, the containers it spawns -- could read it.
+          persist-credentials: false
 
-      - uses: oven-sh/setup-bun@v2
+      - uses: oven-sh/setup-bun@0c5077e51419868618aeaa5fe8019c62421857d6 # v2.2.0
         with:
           # Pinned, not "latest": the declaration output and the container the
           # extractors run in are both version-sensitive, and a silent bun bump
@@ -73,7 +78,12 @@ jobs:
       STEVE_URL: http://localhost:8180/steve/manager
       OCPP_CP_IDS: CERTCP1,CERTCP2,CERTCP3
     steps:
-      - uses: actions/checkout@v5
+      - uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09 # v5.1.0
+        with:
+          # Neither job pushes anything, so the token has no reason to stay
+          # in .git/config where every later step -- install scripts, the
+          # sweep, the containers it spawns -- could read it.
+          persist-credentials: false
 
       # Started before the toolchain, and deliberately without --wait: pulling
       # two pinned images and cold-booting SteVe (its healthcheck allows 150s
@@ -82,7 +92,7 @@ jobs:
       - name: Start the reference CSMS
         run: docker compose -f drivers/steve/compose.yaml up -d
 
-      - uses: oven-sh/setup-bun@v2
+      - uses: oven-sh/setup-bun@0c5077e51419868618aeaa5fe8019c62421857d6 # v2.2.0
         with:
           bun-version: ${{ env.BUN_VERSION }}
 
@@ -137,7 +147,7 @@ jobs:
       # always(): the wire logs are worth most precisely when the sweep failed.
       - name: Upload results
         if: always()
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
         with:
           name: ocpp-tck-results-${{ github.run_id }}
           path: results/
