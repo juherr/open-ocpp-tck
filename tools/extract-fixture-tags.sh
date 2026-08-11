@@ -16,7 +16,7 @@
 # `bun run test`, which stays offline and deterministic.
 #
 #   bash tools/extract-fixture-tags.sh           # print the tags the image uses
-#   bash tools/extract-fixture-tags.sh --diff    # compare with the SteVe driver
+#   bash tools/extract-fixture-tags.sh --diff    # compare with every bundled driver
 set -euo pipefail
 
 repo_root="$(CDPATH='' cd -- "$(dirname -- "$0")/.." && pwd)"
@@ -56,34 +56,56 @@ if [ "$mode" = "print" ]; then
   exit 0
 fi
 
-driver_tags="$(
-  grep -oE '"CERT[A-Za-z0-9-]+"' drivers/steve/provision.ts |
-    tr -d '"' | sort -u
-)"
-
 # Tags the CSMS supplies (RemoteStartTransaction, ReserveNow, SendLocalList)
-# come from tck/specs/, so the driver legitimately knows tags the image does not.
+# come from tck/specs/, so a driver legitimately knows tags the image does not.
 spec_tags="$(
   grep -rhoE '"CERT[A-Za-z0-9-]+"' tck/specs/*.ts | tr -d '"' | sort -u
 )"
 
-missing="$(comm -23 <(printf '%s\n' "$image_tags") \
-  <(printf '%s\n' "$driver_tags"))"
-unexplained="$(comm -13 <(sort -u <(printf '%s\n' "$image_tags" "$spec_tags")) \
-  <(printf '%s\n' "$driver_tags"))"
+# Every bundled provisioner, discovered rather than listed. Each is an
+# independent hard-coded copy of the same tag list -- they cannot share a
+# constant, because the list is a property of the simulator image and a driver
+# may live in another repository entirely. So a second driver reintroduces
+# exactly the drift this script exists to catch: a hard-coded list would say
+# "add it to SteVe", SteVe would go green, and the other driver would keep
+# failing TC_013/014/017/018 with an Authorize:Invalid that looks like a CSMS
+# bug. A glob means a third driver is covered the day it lands, and an empty
+# glob is itself a failure rather than a silent pass.
+shopt -s nullglob
+provisioners=(drivers/*/provision.ts)
+shopt -u nullglob
+
+if [ "${#provisioners[@]}" -eq 0 ]; then
+  echo "FAIL: no drivers/*/provision.ts found -- nothing was checked." >&2
+  exit 1
+fi
+
+# Loop-invariant: what a driver is ALLOWED to know, image plus specs.
+explained="$(sort -u <(printf '%s\n' "$image_tags" "$spec_tags"))"
 
 status=0
-if [ -n "$missing" ]; then
-  echo "FAIL: the image uses tags the SteVe driver does not provision:" >&2
-  printf '%s\n' "$missing" | sed 's/^/  /' >&2
-  echo "  → add them to VALID_TAGS in drivers/steve/provision.ts." >&2
-  status=1
-fi
-if [ -n "$unexplained" ]; then
-  echo "WARN: the driver provisions tags neither the image nor the specs use:" >&2
-  printf '%s\n' "$unexplained" | sed 's/^/  /' >&2
-fi
-if [ "$status" -eq 0 ] && [ -z "$unexplained" ]; then
-  echo "The SteVe driver provisions every tag the pinned simulator image uses."
-fi
+for provisioner in "${provisioners[@]}"; do
+  name="$(basename "$(dirname "$provisioner")")"
+
+  driver_tags="$(grep -oE '"CERT[A-Za-z0-9-]+"' "$provisioner" | tr -d '"' | sort -u)"
+
+  missing="$(comm -23 <(printf '%s\n' "$image_tags") \
+    <(printf '%s\n' "$driver_tags"))"
+  unexplained="$(comm -13 <(printf '%s\n' "$explained") \
+    <(printf '%s\n' "$driver_tags"))"
+
+  if [ -n "$missing" ]; then
+    echo "FAIL: the image uses tags the $name driver does not provision:" >&2
+    printf '%s\n' "$missing" | sed 's/^/  /' >&2
+    echo "  → add them to VALID_TAGS in $provisioner." >&2
+    status=1
+  fi
+  if [ -n "$unexplained" ]; then
+    echo "WARN: the $name driver provisions tags neither the image nor the specs use:" >&2
+    printf '%s\n' "$unexplained" | sed 's/^/  /' >&2
+  fi
+  if [ -z "$missing" ] && [ -z "$unexplained" ]; then
+    echo "The $name driver provisions every tag the pinned simulator image uses."
+  fi
+done
 exit "$status"
