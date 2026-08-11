@@ -75,6 +75,15 @@ strongest available demonstration that the core names no CSMS.
 | `drivers/steve/ui-client.ts` | `local-upstreamable` | `—` | `—` | `—` | `—` |
 | `drivers/steve/scope.ts` | `local-upstreamable` | `—` | `—` | `—` | `—` |
 | `drivers/steve/provision.ts` | `local-upstreamable` | `—` | `—` | `—` | `—` |
+| `drivers/citrineos/index.ts` | `local-upstreamable` | `—` | `—` | `—` | `—` |
+| `drivers/citrineos/config.ts` | `local-upstreamable` | `—` | `—` | `—` | `—` |
+| `drivers/citrineos/api-client.ts` | `local-upstreamable` | `—` | `—` | `—` | `—` |
+| `drivers/citrineos/requests.ts` | `local-upstreamable` | `—` | `—` | `—` | `—` |
+| `drivers/citrineos/profiles.ts` | `local-upstreamable` | `—` | `—` | `—` | `—` |
+| `drivers/citrineos/records.ts` | `local-upstreamable` | `—` | `—` | `—` | `—` |
+| `drivers/citrineos/scope.ts` | `local-upstreamable` | `—` | `—` | `—` | `—` |
+| `drivers/citrineos/variant.ts` | `local-upstreamable` | `—` | `—` | `—` | `—` |
+| `drivers/citrineos/provision.ts` | `local-upstreamable` | `—` | `—` | `—` | `—` |
 
 Deliberately **not** imported from upstream: `steve-api.ts` (SteVe 3.13.0 REST
 client, 763 lines), `capability-probe.ts` (probes a live SteVe container),
@@ -151,10 +160,10 @@ Verified on that digest:
   therefore passes `--entrypoint bun` and runs `src/cli/main.ts` from the
   image's own embedded sources. See `P0-FINDINGS.md` §9.
 
-## Reference CSMS container images
+## CSMS container images
 
 Not vendored code — the environment `drivers/steve/compose.yaml` brings up so
-that the reference driver can be exercised. Pinned by digest for the same
+that the SteVe driver can be exercised. Pinned by digest for the same
 reason as the simulator: these tags are republished in place, and a
 conformance run that cannot name the bytes it tested proves nothing.
 
@@ -171,7 +180,7 @@ conformance run that cannot name the bytes it tested proves nothing.
 
 ### Validation history
 
-Which SteVe releases the reference driver has actually been run against, and
+Which SteVe releases the driver has actually been run against, and
 what happened. A row is added only for a **full** run — `run-all --parallel
 --retry-failed-isolated` plus the separate `--group authorize` sweep — never
 for a version that was merely booted.
@@ -240,3 +249,139 @@ TC_052 passes on this digest. If TC_052 ever regresses, read that header first.
 
 [sc2069]: https://github.com/steve-community/steve/issues/2069
 [sc2100]: https://github.com/steve-community/steve/issues/2100
+
+### CitrineOS
+
+The second driver's environment, pinned on the same terms. Same two-column
+shape as the table above, for the same structural reason: a six-column table
+anywhere in this file is read as a vendored-file row.
+
+| field | value |
+|---|---|
+| image | `ghcr.io/citrineos/citrineos-server` |
+| tag resolved | `v2.0.0-beta1` |
+| digest | `sha256:58800f45acd82c976e2f55dd9aab85baee61507938bb2cb0d0f81fc70853c6ef` |
+| image | `postgis/postgis` |
+| tag resolved | `16-3.5` |
+| digest | `sha256:4e07b425403ba55c20b541884db2e80c686dd6476bf9265046ac9c163895605d` |
+| image | `rabbitmq` |
+| tag resolved | `3-management` |
+| digest | `sha256:e582c0bc7766f3342496d8485efb5a1df782b5ce3886ad017e2eaae442311f69` |
+| resolved on | 2026-08-11, from the registry manifest `Docker-Content-Digest` |
+| declared in | `drivers/citrineos/compose.yaml` |
+
+A **prerelease**, which is the one thing here that needs defending. The OCPP
+1.6 `getLocalListVersion` and `sendLocalList` message endpoints exist only from
+the v2 line, and six scenarios need them; `v2.0.0-beta1` currently resolves to
+the same bytes as `:latest` and will not for long. Pinning by digest is what
+makes depending on a moving tag safe — the alternative is `v1.9.1`, whose cost
+is spelled out in `drivers/citrineos/README.md`.
+
+The statements the driver is built on, each read from citrineos-core at
+`v2.0.0-beta1` and cross-checked at `v1.9.1` and `main`. Re-check them before
+moving the pin — several are the difference between a driver and a fiction:
+
+- **No `@AsMessageEndpoint` binds `ReserveNow` or `CancelReservation` to
+  `OCPPVersion.OCPP1_6`.** Confirmed against the running container, whose
+  `/docs/json` advertises 18 `/ocpp/1.6/` paths with neither among them. Seven
+  scenarios are `NOT_APPLICABLE` because of this one fact.
+- `AuthorizeRequestOcpp16Handler` reaches its status mapper **only** through
+  the `status === 'Accepted'` branch, and consults `cacheExpiryDateTime` inside
+  it. So `CERT023-EXP` is provisioned `Accepted`-with-a-past-expiry, and a
+  stored `Blocked` answers `Invalid`.
+- The container registers `authorizers: asValue([])` with no setting that
+  changes it, which is what makes `Blocked` unreachable.
+- More than one `Authorizations` row for an idToken makes that handler answer
+  `Invalid` outright — the invariant `provision` upserts for and `verify`
+  counts.
+- **Four foreign keys reference `Authorizations`** and none cascades:
+  `Transactions.authorizationId`, `LocalListAuthorizations.authorizationId`,
+  `LocalListAuthorizations.groupAuthorizationId`, and the self-reference
+  `Authorizations.groupAuthorizationId`. `teardown` derives its guards from
+  `pg_constraint` rather than listing them, so a fifth does not silently break
+  it.
+- `createTransactionByStartTransaction` requires a `Connectors` row matching
+  the OCPP connectorId and **throws** without one;
+  `processOcpp16StatusNotification` auto-commissions it for ad-hoc 1.6 stations.
+- `LocalAuthListService` refuses a `listVersion` not strictly greater than the
+  station's stored one, before anything reaches the wire — hence the local-list
+  reset in `prepareStation`.
+- The shipped `docker` app-env selects `LocalBypassAuthProvider`, so the
+  message API takes no credentials at all.
+- **No 1.6 request handler for `FirmwareStatusNotification`**: every one is
+  answered with a `NotSupported` CALLERROR, which is the only CALLERROR the
+  CSMS emits anywhere in the suite. OCA `TC_044_{1,2,3}_CSMS` require a
+  `FirmwareStatusNotification.conf` instead, so this is a non-conformance —
+  and one the scenarios do not detect, because they assert only on what the
+  charge point sent. Recorded in `drivers/citrineos/README.md`.
+
+#### Validation history
+
+Same rule as SteVe's table above: a row is added only for a full run, and the
+table stays at five columns so the structural file-inventory selector does not
+pick it up. Two runs are recorded rather than one, the second from `down -v` —
+the claim being checked is that the verdict SET is reproducible, and a single
+run cannot distinguish a stable result from a lucky one.
+
+Numbers are the **parallel pass**, before `--retry-failed-isolated`, because
+that is what the sweep prints; the retry column says which of those failures
+were lane artifacts.
+
+| CitrineOS | digest | validated | `all` (44), parallel pass | `authorize` (3) |
+|---|---|---|---|---|
+| `v2.0.0-beta1` — **current pin**, `CITRINE_VARIANT=v2` | `sha256:58800f45…` | 2026-08-11 | 34 PASS, 7 N/A, 3 FAIL — two lane flakes PASS on isolated retry, `tc044-2` confirmed | 2 PASS, 1 FAIL (`tc023-3`) |
+| `v1.9.1` — `CITRINE_VARIANT=v1` | `sha256:4f879151…` | 2026-08-11 | 16 PASS, 13 N/A, 15 FAIL — **all 15 confirmed on isolated retry, no flakes** | 2 PASS, 1 FAIL (`tc023-3`) |
+
+One row, two runs: the second was taken from `down -v` and **agreed exactly in
+shape** — 34/7/3 in the parallel pass, two of the three failures reclassified as
+lane artifacts by the isolated retry, the same confirmed failure. Only the
+identity of the lane flakes differed (`tc056`+`tc044-1`, then `tc013`+`tc044-1`),
+which is the same pattern the SteVe table shows across its two versions and the
+reason `--retry-failed-isolated` is not optional in CI. Counting the isolated
+retry as the verdict, that is **38 PASS, 7 NOT APPLICABLE, 2 FAIL across all
+47**.
+
+**The `v1.9.1` row is a report, not a recommendation.** 18 PASS, 13 NOT
+APPLICABLE and 16 FAIL across all 47 — against 38 / 7 / 2 on v2 — and the gap
+is one upstream defect, not a driver limitation.
+
+Fourteen of the fifteen `all`-group failures carry an identical wire signature:
+`{"idTagInfo":{"status":"Invalid"},"transactionId":0}` in answer to every
+`StartTransaction`, with `Connectors: 0` and `Transactions: 0` in the database
+after the whole sweep. That is **citrineos/citrineos#160** — the Connector model
+requires non-null `evseId` / `evseTypeConnectorId`, so a 1.6 `StatusNotification`
+from an ad-hoc station cannot create a connector row, and nothing that needs a
+transaction can start. The issue was closed 2026-05-19, *after* v1.9.1 shipped
+on 2026-04-29; the fix is in the v2 line only. Nothing was reported upstream for
+this: it is already fixed where it matters.
+
+The fifteenth, `tc045-1`, fails on an incomplete `DiagnosticsStatusNotification`
+train and is **not** attributed to #160 — same shape as `tc044-2` on v2, and
+unexplained on both.
+
+The thirteen NOT APPLICABLE are the seven reservation scenarios plus the six
+local-auth-list ones, whose 1.6 endpoints v1.9.1 does not route (16 advertised
+`/ocpp/1.6/` paths against v2's 18).
+
+`tc023-3` fails identically on both lines, which is the useful control: it is a
+property of the `Authorize` handler, not of either release.
+
+**So the pin stays on v2**, and v1 support exists to make that statement
+measured rather than asserted.
+
+`tc044-1` flaked in the parallel pass of *both* runs, and `tc044-2` failed its
+isolated retry in both while passing a third standalone run. Neither is
+surprising: they are the two thinnest timing margins in the suite (a +90 s
+`retrieveDate` against a 115 s and a 110 s hold respectively), so the firmware
+status train has 25 s and 20 s to complete.
+
+The two failures are findings, not driver defects, and both are argued in
+`drivers/citrineos/scope.ts` and `drivers/citrineos/README.md`. `tc023-3` is the
+one worth reporting upstream: CitrineOS answers
+`{"idTagInfo":{"status":"Invalid"}}` where OCPP 1.6 requires `Blocked`.
+Reproduced 3 runs out of 3.
+
+Worth recording because it is the claim the second driver exists to test:
+**every other group passed unmodified** — core, remote-trigger, smart charging,
+local auth list and firmware — against a CSMS that had no part in writing the
+scenarios, and no scenario needed editing to accommodate it.

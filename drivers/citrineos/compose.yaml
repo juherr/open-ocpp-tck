@@ -1,0 +1,142 @@
+# Copyright 2026 Julien Herr
+# SPDX-License-Identifier: Apache-2.0
+#
+# The CitrineOS environment: what `ocpp-tck run-all` needs on the other end of
+# the wire when CSMS_DRIVER=./drivers/citrineos/index.ts. Not a production
+# deployment -- the message API is unauthenticated here (CitrineOS's shipped
+# `docker` app-env selects LocalBypassAuthProvider), and the credentials below
+# are the driver's documented defaults, in the clear, on purpose.
+#
+# Every name in this file is load-bearing, because the driver's defaults
+# (drivers/citrineos/config.ts defaultCitrineConfig) resolve to them:
+#
+#   name: citrineos + network citrineos-internal -> CITRINE_NETWORK=citrineos_citrineos-internal
+#   container_name                               -> CITRINE_DB_CONTAINER=citrine-db
+#   service name citrine                         -> the DNS name in CITRINE_WS_URL=ws://citrine:8081/
+#
+# Two service names are load-bearing for CITRINEOS rather than for the driver,
+# and cannot be renamed at all: the shipped config hardcodes the database host
+# through BOOTSTRAP_CITRINEOS_DATABASE_HOST (set below) and the broker as
+# `amqp://guest:guest@amqp-broker:5672` (apps/ocpp-server/src/config/envs/docker.ts,
+# util.messageBroker.amqp.url), which no environment variable overrides.
+#
+# The project name is pinned here rather than inherited from the directory, so
+# that `docker compose -f drivers/citrineos/compose.yaml up` produces the same
+# network name as `docker compose -p citrineos ...` and as CI.
+name: citrineos
+
+# Derived from citrineos-core's own docker-compose.yml @ v2.0.0-beta1
+# (Apache-2.0). Modified: the operator UI, the OCPI server and the Hasura
+# sidecar are dropped (this harness reads Postgres directly); minio is dropped
+# because BOOTSTRAP_CITRINEOS_FILE_ACCESS_TYPE=local means nothing reaches S3;
+# every volume is dropped; images are pinned by digest; only the HTTP API port
+# is published, on loopback.
+services:
+  # Images are pinned by digest, not tag: `latest` is republished on every
+  # build, and a conformance run that cannot say which bytes it tested is not a
+  # conformance run. Same discipline as DEFAULT_SIM_IMAGE in tck/sim.ts and as
+  # drivers/steve/compose.yaml.
+  #
+  # v2.0.0-beta1 rather than the v1.9.1 stable, deliberately: the OCPP 1.6
+  # GetLocalListVersion and SendLocalList message endpoints exist only from the
+  # v2 line (packages/core/src/modules/EVDriver/src/module/1.6/MessageApi.ts),
+  # and six scenarios need them. See drivers/citrineos/README.md for the v1.9.1
+  # variant and what it costs.
+  #
+  # Re-pin with:
+  #   T=$(curl -sS "https://ghcr.io/token?scope=repository:citrineos/citrineos-server:pull&service=ghcr.io" \
+  #        | sed -n 's/.*"token":"\([^"]*\)".*/\1/p')
+  #   curl -sSI -H "Authorization: Bearer $T" \
+  #     -H "Accept: application/vnd.oci.image.index.v1+json" \
+  #     https://ghcr.io/v2/citrineos/citrineos-server/manifests/v2.0.0-beta1 \
+  #     | grep -i docker-content-digest
+  citrine:
+    image: ghcr.io/citrineos/citrineos-server:v2.0.0-beta1@sha256:58800f45acd82c976e2f55dd9aab85baee61507938bb2cb0d0f81fc70853c6ef
+    container_name: citrine
+    restart: unless-stopped
+    depends_on:
+      ocpp-db:
+        condition: service_healthy
+      amqp-broker:
+        condition: service_healthy
+    environment:
+      APP_NAME: "all"
+      APP_ENV: "docker"
+      DB_STRATEGY: "migrate"
+      BOOTSTRAP_CITRINEOS_DATABASE_HOST: "ocpp-db"
+      BOOTSTRAP_CITRINEOS_CONFIG_FILENAME: "config.json"
+      # Local disk, not S3. This is why there is no minio service here: with
+      # `local` the file-access layer never builds an S3 client, so the two
+      # upstream containers (minio, minio-init) have nothing to serve.
+      BOOTSTRAP_CITRINEOS_FILE_ACCESS_TYPE: "local"
+      BOOTSTRAP_CITRINEOS_FILE_ACCESS_LOCAL_DEFAULT_FILE_PATH: "/data"
+      CONFIG_CITRINEOS_WIPE_FILE_ON_START: "false"
+    ports:
+      # Published because the driver runs on the HOST (it reaches Postgres via
+      # `docker exec`), so its CITRINE_API_URL is http://localhost:8080 while
+      # the simulator container, on citrineos-internal, uses ws://citrine:8081/ .
+      # That asymmetry is why CITRINE_API_URL and CITRINE_WS_URL are separate
+      # settings.
+      #
+      # Loopback only, and 8080 only: the OCPP endpoints (8081 plaintext, 8082
+      # basic-auth, 8443/8444 TLS) are reached by the simulator over the
+      # internal network, and 8080 carries an API that accepts every request
+      # unauthenticated.
+      - "127.0.0.1:8080:8080"
+    networks:
+      - citrineos-internal
+    healthcheck:
+      # `node -e` rather than curl: curl is not in this image. Verbatim from
+      # upstream's compose, which is the only reason it is this baroque.
+      test:
+        [
+          "CMD-SHELL",
+          "node -e \"const net = require('net'); const c = net.createConnection(8080, '127.0.0.1', () => { c.end(); process.exit(0); }); c.on('error', () => process.exit(1)); c.setTimeout(5000, () => { c.destroy(); process.exit(1); });\"",
+        ]
+      interval: 5s
+      timeout: 10s
+      retries: 40
+      # A cold first boot runs the whole migration set before the port opens.
+      start_period: 120s
+
+  ocpp-db:
+    image: postgis/postgis:16-3.5@sha256:4e07b425403ba55c20b541884db2e80c686dd6476bf9265046ac9c163895605d
+    container_name: citrine-db
+    restart: unless-stopped
+    # Upstream pins this because postgis publishes no arm64 tag; without it,
+    # `up` fails outright on an Apple Silicon host rather than falling back.
+    platform: linux/amd64
+    environment:
+      POSTGRES_DB: citrine
+      POSTGRES_USER: citrine
+      POSTGRES_PASSWORD: citrine
+    networks:
+      - citrineos-internal
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -h 127.0.0.1 -p 5432 -U citrine -d citrine"]
+      interval: 5s
+      timeout: 10s
+      retries: 10
+      start_period: 30s
+
+  amqp-broker:
+    image: rabbitmq:3-management@sha256:e582c0bc7766f3342496d8485efb5a1df782b5ce3886ad017e2eaae442311f69
+    container_name: citrine-amqp
+    restart: unless-stopped
+    environment:
+      RABBITMQ_DEFAULT_USER: "guest"
+      RABBITMQ_DEFAULT_PASS: "guest"
+    networks:
+      - citrineos-internal
+    healthcheck:
+      test: rabbitmq-diagnostics -q check_port_connectivity
+      interval: 10s
+      timeout: 10s
+      retries: 6
+      start_period: 20s
+
+# No volume: every run starts from an empty schema and re-provisions. State
+# that survives a run is state a scenario can accidentally depend on.
+networks:
+  citrineos-internal:
+    driver: bridge
