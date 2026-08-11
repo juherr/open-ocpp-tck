@@ -126,23 +126,15 @@ jobs:
       # parallel lanes are not fully isolated, so a bare --parallel turns
       # cross-lane interference into a red build. The retry re-runs only the
       # failures, sequentially, which is the mode the runner calls reliable.
+      # `bun run e2e`, not the two commands spelled out here. A full sweep is
+      # two invocations -- `all` is 44 scenarios and the authorize group
+      # (TC_023) sits outside it, see TODO(upstream) at the GROUPS registry in
+      # tck/main.ts -- and that fact used to live only in this file. Anyone
+      # running `run-all` by hand got 44/47 and read "no failures", missing
+      # exactly the three scenarios that prove `driver provision` seeded
+      # anything. One script means CI and a human run the same thing.
       - name: Conformance sweep
-        run: bun bin/ocpp-tck.ts run-all --parallel --retry-failed-isolated
-
-      # `all` is 44 scenarios, not 47 -- TC_023 sits outside it. This second
-      # sweep exists only to compensate, and it should not have to:
-      # see TODO(upstream) at the GROUPS registry in tck/main.ts. Delete this
-      # step when upstream folds "authorize" into "all".
-      #
-      # It matters here more than anywhere: these three are the scenarios that
-      # prove `driver provision` actually seeded the CSMS-side state. A green
-      # sweep above with this step missing would be a green build that never
-      # tested the fixtures.
-      #
-      # Sequential: three scenarios are not worth a lane, and a sequential
-      # sweep is already isolated, so --retry-failed-isolated would be a no-op.
-      - name: Authorize outcomes (TC_023)
-        run: bun bin/ocpp-tck.ts run-all --group authorize
+        run: bun run e2e
 
       # always(): the wire logs are worth most precisely when the sweep failed.
       - name: Upload results
