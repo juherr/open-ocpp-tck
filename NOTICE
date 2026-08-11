@@ -41,7 +41,9 @@ Files modified relative to upstream
                                outgoing WS Basic auth, secret redaction
   tck/main.ts       PATCHED    driver loaded from a module specifier, scope
                                table, NOT APPLICABLE + PARTIAL verdicts,
-                               exit-code policy, station-derived lanes
+                               exit-code policy, station-derived lanes,
+                               TODO(upstream) proposing "authorize" be folded
+                               into the "all" group
 This list and the `upstream-patched` rows of VENDOR.md are two statements of
 the same fact; tests/vendor-integrity.sh fails if they disagree.
 (They did: runner/tsconfig.json was listed here as ADAPTED while VENDOR.md

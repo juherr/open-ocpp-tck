@@ -57,7 +57,7 @@ strongest available demonstration that the core names no CSMS.
 | `tck/specs/index.ts` | `upstream-verbatim` | `scripts/steve-verify/runner/specs/index.ts` | `be8595765f4d66965bfd58498622c26a696962fabae8a2700f080ae5cd55d832` | `be8595765f4d66965bfd58498622c26a696962fabae8a2700f080ae5cd55d832` | `—` |
 | `tck/assert.ts` | `upstream-patched` | `src/cp/application/verification/assert.ts` | `2431f5f6c0df997d4d821d9af55689c1f0f2df199de1e9e4ed6f3fbaad4fc89e` | `76d0f293db4f6ecc5768affea0ca76d2841c147fa3687dbea1f9e950bfbd9298` | `patches/tck/assert.ts.patch` |
 | `tck/sim.ts` | `upstream-patched` | `scripts/steve-verify/runner/sim.ts` | `2bf2f78afe3434e7139cd62c3ff6d70f02defd39dd700611e7c5f7614260cd35` | `45f897f273ea73227bb9b30766127eb9ecae0a319ab9048cbc30428fafff7f32` | `patches/tck/sim.ts.patch` |
-| `tck/main.ts` | `upstream-patched` | `scripts/steve-verify/runner/main.ts` | `a757b0d35d29c7627336c0e858ad7d2f305a33c0acad819b5296f3847382f4e2` | `0fe75846f18f2fd03eb904acfff7bb6f72e6eafbab4b64f353092745db737585` | `patches/tck/main.ts.patch` |
+| `tck/main.ts` | `upstream-patched` | `scripts/steve-verify/runner/main.ts` | `a757b0d35d29c7627336c0e858ad7d2f305a33c0acad819b5296f3847382f4e2` | `c527fd437a6366404bf0c329c8f481e7e0254e66695c9d4bdf965e45f8d2f06b` | `patches/tck/main.ts.patch` |
 | `tck/driver.ts` | `local-upstreamable` | `—` | `—` | `—` | `—` |
 | `tck/index.ts` | `local-upstreamable` | `—` | `—` | `—` | `—` |
 | `tck/driver-registry.ts` | `local-upstreamable` | `—` | `—` | `—` | `—` |
@@ -74,12 +74,20 @@ strongest available demonstration that the core names no CSMS.
 | `drivers/steve/records.ts` | `local-upstreamable` | `—` | `—` | `—` | `—` |
 | `drivers/steve/ui-client.ts` | `local-upstreamable` | `—` | `—` | `—` | `—` |
 | `drivers/steve/scope.ts` | `local-upstreamable` | `—` | `—` | `—` | `—` |
+| `drivers/steve/provision.ts` | `local-upstreamable` | `—` | `—` | `—` | `—` |
 
 Deliberately **not** imported from upstream: `steve-api.ts` (SteVe 3.13.0 REST
 client, 763 lines), `capability-probe.ts` (probes a live SteVe container),
 `__tests__/` (upstream's own bun tests — this repo writes its own),
 `01-setup-steve.sh` / `02-provision.sh` / `99-teardown.sh` / `lib.sh` /
 `README.md` (SteVe environment bootstrap).
+
+The bootstrap scripts have a replacement rather than a port:
+`drivers/steve/compose.yaml` plus `drivers/steve/provision.ts`, reachable as
+`ocpp-tck driver provision|verify|teardown`. It is not a translation of
+upstream's shell — it seeds through SteVe's WebAPI where that works, and the
+image builds the `.war` at build time, so there is no equivalent of
+`01-setup-steve.sh`'s compile step to port at all.
 
 ### Provenance note — upstream's re-export shims
 
@@ -142,3 +150,93 @@ Verified on that digest:
   `[server] …` lines, no JSON Lines event stream on stdout). `sim.ts`
   therefore passes `--entrypoint bun` and runs `src/cli/main.ts` from the
   image's own embedded sources. See `P0-FINDINGS.md` §9.
+
+## Reference CSMS container images
+
+Not vendored code — the environment `drivers/steve/compose.yaml` brings up so
+that the reference driver can be exercised. Pinned by digest for the same
+reason as the simulator: these tags are republished in place, and a
+conformance run that cannot name the bytes it tested proves nothing.
+
+| field | value |
+|---|---|
+| image | `ghcr.io/juherr/steve` |
+| tag resolved | `steve-3.14.0` |
+| digest | `sha256:aa56949a639328a11461a3e448d40549b521f232ee0fdeef22389ddff3c9901f` |
+| image | `mariadb` |
+| tag resolved | `11.8` |
+| digest | `sha256:d9f7eb2637296652f24b484afd5d246f759f49f5babcadc6a9e344c9acb75fbf` |
+| resolved on | 2026-08-11, from the registry manifest `Docker-Content-Digest` |
+| declared in | `drivers/steve/compose.yaml` |
+
+### Validation history
+
+Which SteVe releases the reference driver has actually been run against, and
+what happened. A row is added only for a **full** run — `run-all --parallel
+--retry-failed-isolated` plus the separate `--group authorize` sweep — never
+for a version that was merely booted.
+
+The point of keeping the superseded rows is that the current pin's green run
+says nothing about range. Two independent versions passing unchanged is the
+evidence that the driver targets SteVe rather than one build of it, and it is
+what makes a rollback a known quantity instead of a guess.
+
+Keep this table at five columns. `tests/vendor-integrity.sh` selects the file
+inventory structurally, by row width — any six-column table in this file is
+read as a vendored-file row and fails the build.
+
+| SteVe | digest | validated | `all` (44) | `authorize` (3) |
+|---|---|---|---|---|
+| `steve-3.14.0` — **current pin** | `sha256:aa56949a…` | 2026-08-11 | 44 PASS, 0 PARTIAL, 0 N/A; 1 parallel-only flake (`tc013-hard-reset`) PASS on isolated retry | 3 PASS |
+| `steve-3.13.0` | `sha256:a1e6647d…` | 2026-08-11 | 44 PASS, 0 PARTIAL, 0 N/A; 1 parallel-only flake (`tc014-soft-reset`) PASS on isolated retry | 3 PASS |
+
+Neither version needed a single line of driver or provisioner change — that is
+the column that would have mattered most, and it is uniform, so it is stated
+here rather than repeated per row.
+
+Both flakes were parallel-lane interference, not CSMS behaviour: each passed on
+the isolated sequential retry, and they were different scenarios on the two
+runs. That is the pattern `--retry-failed-isolated` exists for.
+
+Moving this pin is not a version bump — every statement below is what the
+provisioner is built on, so each was re-measured against the running 3.14.0
+container before the pin moved. All of them still hold, and held identically on
+3.13.0:
+
+- SteVe's WebAPI exposes `ocppTags`, `operations` and `transactions` — and
+  nothing else. There is no chargeBox and no chargingProfile endpoint, per its
+  own `/steve/manager/v3/api-docs`. That is why provisioning uses three
+  channels and not one. This is the bullet most likely to change:
+  [steve-community/steve#2069][sc2069] proposes charging-profile CRUD, and
+  would let the UI channel fold into REST.
+- `POST /api/v1/ocppTags` with a past `expiryDate` is rejected **400**:
+  `OcppTagForm.expiryDate` carries `@Future`. The manager UI binds the same
+  form object, so it refuses it too — hence the one SQL write in
+  `provision.ts`. Raised upstream as [steve-community/steve#2100][sc2100];
+  if it is relaxed, that SQL write goes away.
+- API access is off until `web_user.api_password` (bcrypt, distinct from the
+  UI password) is set, and SteVe reads that column once at startup. There is
+  still no environment variable for it, so `provision` writes it and restarts
+  the container — once; it probes first and skips when already on.
+- The `chargingProfiles/add` form binds the same field names, including the
+  indexed `schedulePeriods[N].powerLimit`.
+- Unknown idTags are **not** auto-inserted on Authorize, which is what makes
+  `CERT023-INV` stay absent across runs and TC_023.1 repeatable.
+
+To move the pin: re-measure the bullets above against the new container, run
+both sweeps, then update the pin table **and add a validation-history row**.
+Add the row from an actual run — a row nobody ran is worse than no row, because
+it converts an untested version into apparent evidence.
+
+`drivers/steve/` names no SteVe version, on purpose: a driver targets a CSMS,
+not a release of one, and a version written into the driver is a claim nothing
+re-checks. This table is the single place a bump is a reviewable edit — so it
+is also the place that has to carry the re-measurement above.
+
+The one driver claim that is version-sensitive without being version-stamped is
+the manager-UI-over-REST rationale in `drivers/steve/index.ts`. It is pinned by
+a scenario rather than by a version number: TC_052 is the reason it exists, and
+TC_052 passes on this digest. If TC_052 ever regresses, read that header first.
+
+[sc2069]: https://github.com/steve-community/steve/issues/2069
+[sc2100]: https://github.com/steve-community/steve/issues/2100

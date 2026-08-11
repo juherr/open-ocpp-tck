@@ -64,10 +64,12 @@ function extractCsrf(html: string): string {
 }
 
 /**
- * SteVe manager-UI client: login + operation POST, one cookie jar per
- * instance. Retained ONLY for specs/authlist-reservation.ts's TC_052, which
- * instantiates it directly (see this module's header). It is SteVe-specific
- * and cannot drive any other CSMS.
+ * SteVe manager-UI client: login, CSRF, form POST -- one cookie jar per
+ * instance. It is SteVe-specific and cannot drive any other CSMS.
+ *
+ * Two callers: the operations path (index.ts) and provisioning
+ * (provision.ts), which posts the charging-profile form through the same
+ * session rather than opening a second one.
  */
 export class SteveUiOps {
   private cookies = new Map<string, string>();
@@ -135,22 +137,23 @@ export class SteveUiOps {
     await this.login();
   }
 
-  /** steve_cp_select CP_ID equivalent -- the chargePointSelectList form value
-   *  SteVe expects for an OCPP 1.6J charge point. */
-  cpSelect(cpId: string): string {
-    return `V_16_JSON;${cpId};-`;
-  }
-
   /**
-   * steve_op OP_PATH FIELDS equivalent. POSTs one CSMS operation,
-   * form-encoded, exactly like the manager UI would. Returns the redirect
-   * `Location` on success (SteVe 302s to /operations/tasks/<id>); throws on
-   * failure (missing CSRF token or no redirect).
+   * GET a manager page for its CSRF token, then POST the form back to the same
+   * path. Returns the redirect `Location`, which is how SteVe signals success;
+   * throws when there is none, because a 200 here means the form came back with
+   * validation errors rather than being accepted.
+   *
+   * `path` is relative to the manager base, so it spans more than operations:
+   * provisioning posts to `chargingProfiles/add` through this same method,
+   * which is the point of it being separate from op().
    */
-  async op(opPath: string, fields: Record<string, string>): Promise<string> {
+  async postForm(
+    path: string,
+    fields: Record<string, string>,
+  ): Promise<string> {
     await this.ensureLogin();
 
-    let res = await fetch(`${this.cfg.baseUrl}/operations/${opPath}`, {
+    let res = await fetch(`${this.cfg.baseUrl}/${path}`, {
       redirect: "manual",
       headers: { cookie: this.cookieHeader() },
       signal: AbortSignal.timeout(DEFAULT_TIMEOUT_MS),
@@ -162,7 +165,7 @@ export class SteveUiOps {
     for (const [key, value] of Object.entries(fields)) form.set(key, value);
     form.set("_csrf", csrf);
 
-    res = await fetch(`${this.cfg.baseUrl}/operations/${opPath}`, {
+    res = await fetch(`${this.cfg.baseUrl}/${path}`, {
       method: "POST",
       redirect: "manual",
       headers: {
@@ -178,9 +181,19 @@ export class SteveUiOps {
     if (!location) {
       const body = await res.text().catch(() => "<unreadable body>");
       throw new Error(
-        `steve_op: no redirect Location header for ${opPath} (status ${res.status}): ${body.slice(0, 300)}`,
+        `steve postForm: no redirect Location header for ${path} (status ${res.status}): ${body.slice(0, 300)}`,
       );
     }
     return location;
+  }
+
+  /**
+   * steve_op OP_PATH FIELDS equivalent. POSTs one CSMS operation,
+   * form-encoded, exactly like the manager UI would. Returns the redirect
+   * `Location` on success (SteVe 302s to /operations/tasks/<id>); throws on
+   * failure (missing CSRF token or no redirect).
+   */
+  async op(opPath: string, fields: Record<string, string>): Promise<string> {
+    return this.postForm(`operations/${opPath}`, fields);
   }
 }

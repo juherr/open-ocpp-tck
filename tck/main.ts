@@ -404,6 +404,23 @@ async function runScenario<D>(
 // "authorize" (the 3 TC_023 Authorize-outcome scenarios) is a separate
 // group, deliberately NOT folded into "all"; run `run-all --group authorize`
 // (3 scenarios) as its own sweep.
+//
+// TODO(upstream): fold "authorize" into "all" and delete this carve-out.
+// There is nothing about TC_023 that warrants special handling -- it needs no
+// capability the other 44 do not, and its only distinguishing trait is that it
+// asserts on CSMS-held state. It sits outside "all" solely because this
+// registry mirrors upstream's group membership and order exactly, and upstream
+// puts it outside. That fidelity is worth more than the tidiness, so the fix
+// belongs upstream rather than here: folding it in locally would make this
+// file disagree with the pinned upstream for a cosmetic reason, and every
+// future re-sync would have to re-litigate it.
+//
+// The carve-out is not free. Anyone running "all" and reading "44 scenarios,
+// no failures" will believe they ran the suite; they did not run the three
+// scenarios that most directly exercise CSMS-side authorization state. Every
+// caller therefore has to know to add a second sweep -- see the two sweep
+// steps in .github/workflows/ci.yml. Until upstream folds it in, that
+// duplication is the cost of not diverging.
 // ---------------------------------------------------------------------------
 
 // eslint-disable-next-line @typescript-eslint/no-explicit-any

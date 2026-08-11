@@ -20,20 +20,37 @@ import {
 import { waitForCondition } from "../../tck/wait";
 import type { SteveConfig } from "./ui-client";
 
+/**
+ * Single-quoted SQL literal.
+ *
+ * Backslash is escaped as well as the quote, and the order matters -- doing the
+ * quote first would then double the backslashes it just introduced. MariaDB
+ * does not run with NO_BACKSLASH_ESCAPES by default, so a value ending in a
+ * backslash escapes the closing quote and swallows the rest of the statement.
+ *
+ * Lives here because this module owns the only path to the database, so this is
+ * the one place a caller can be given the guarantee driver-wide rather than
+ * per-file.
+ */
+export function sqlLiteral(value: string): string {
+  return `'${value.replace(/\\/g, "\\\\").replace(/'/g, "''")}'`;
+}
+
 export class SteveRecords implements CsmsRecords {
   constructor(private readonly cfg: SteveConfig) {}
 
-  /** Runs SQL, returns the first column of the first row ("" if no rows). */
-  async scalar(sql: string): Promise<string> {
+  /** Runs SQL, returns stdout verbatim. The single path to the database. */
+  private async raw(sql: string): Promise<string> {
     const proc = Bun.spawn(
       [
         "docker",
         "exec",
         "-i",
-        // The password travels in the environment, never in argv: `docker exec`
-        // arguments are visible in `ps` to every user on the host.
+        // `-e NAME` without a value forwards the variable from OUR environment,
+        // which is the whole point: `-e NAME=VALUE` would put the password in
+        // docker's own argv, where `ps` shows it to every user on the host.
         "-e",
-        `MYSQL_PWD=${this.cfg.dbPass}`,
+        "MYSQL_PWD",
         this.cfg.dbContainer,
         "mariadb",
         "-N",
@@ -43,7 +60,11 @@ export class SteveRecords implements CsmsRecords {
         "-e",
         sql,
       ],
-      { stdout: "pipe", stderr: "pipe" },
+      {
+        stdout: "pipe",
+        stderr: "pipe",
+        env: { ...process.env, MYSQL_PWD: this.cfg.dbPass },
+      },
     );
     const [stdout, stderr, exitCode] = await Promise.all([
       new Response(proc.stdout).text(),
@@ -55,7 +76,29 @@ export class SteveRecords implements CsmsRecords {
         `SteVe db query failed (exit ${exitCode}): ${stderr.trim() || "<no stderr>"}`,
       );
     }
-    return stdout.split("\n")[0]?.trim() ?? "";
+    return stdout;
+  }
+
+  /** Runs SQL, returns the first column of the first row ("" if no rows). */
+  async scalar(sql: string): Promise<string> {
+    return (await this.raw(sql)).split("\n")[0]?.trim() ?? "";
+  }
+
+  /**
+   * Runs SQL, returns every row as its list of columns ([] if no rows).
+   *
+   * `mariadb -N -B` already emits one tab-separated row per line, so a caller
+   * that needs several columns -- or several rows -- does not have to smuggle
+   * them through a delimiter in a CONCAT and unpack them by hand. Each such
+   * query is one process spawn, which is what makes the difference between
+   * asking about twenty tags and asking twenty times.
+   */
+  async rows(sql: string): Promise<string[][]> {
+    const raw = await this.raw(sql);
+    return raw
+      .split("\n")
+      .filter((line) => line !== "")
+      .map((line) => line.split("\t"));
   }
 
   /**
@@ -74,7 +117,7 @@ export class SteveRecords implements CsmsRecords {
 
   async latestTransaction(cpId: string): Promise<string> {
     return this.scalar(
-      `SELECT t.transaction_pk FROM transaction t JOIN evse e ON e.evse_pk = t.evse_pk WHERE e.charge_box_id = '${cpId}' ORDER BY t.transaction_pk DESC LIMIT 1;`,
+      `SELECT t.transaction_pk FROM transaction t JOIN evse e ON e.evse_pk = t.evse_pk WHERE e.charge_box_id = ${sqlLiteral(cpId)} ORDER BY t.transaction_pk DESC LIMIT 1;`,
     );
   }
 
@@ -82,7 +125,7 @@ export class SteveRecords implements CsmsRecords {
    *  for the stale-transaction cleanup below. */
   async latestOpenTransaction(cpId: string): Promise<string> {
     return this.scalar(
-      `SELECT t.transaction_pk FROM transaction t JOIN evse e ON e.evse_pk = t.evse_pk WHERE e.charge_box_id = '${cpId}' AND t.stop_timestamp IS NULL ORDER BY t.transaction_pk DESC LIMIT 1;`,
+      `SELECT t.transaction_pk FROM transaction t JOIN evse e ON e.evse_pk = t.evse_pk WHERE e.charge_box_id = ${sqlLiteral(cpId)} AND t.stop_timestamp IS NULL ORDER BY t.transaction_pk DESC LIMIT 1;`,
     );
   }
 
@@ -100,7 +143,7 @@ export class SteveRecords implements CsmsRecords {
     return waitForCondition(
       () =>
         this.scalar(
-          `SELECT t.transaction_pk FROM transaction t JOIN evse e ON e.evse_pk = t.evse_pk WHERE e.charge_box_id = '${cpId}' AND t.id_tag = '${idTag}' AND t.stop_timestamp IS NULL ORDER BY t.transaction_pk DESC LIMIT 1;`,
+          `SELECT t.transaction_pk FROM transaction t JOIN evse e ON e.evse_pk = t.evse_pk WHERE e.charge_box_id = ${sqlLiteral(cpId)} AND t.id_tag = ${sqlLiteral(idTag)} AND t.stop_timestamp IS NULL ORDER BY t.transaction_pk DESC LIMIT 1;`,
         ),
       {
         timeoutMs: timeoutSecs * 1000,
@@ -141,14 +184,14 @@ export class SteveRecords implements CsmsRecords {
 
   async transactionCountForIdTag(cpId: string, idTag: string): Promise<string> {
     return this.scalar(
-      `SELECT COUNT(*) FROM transaction t JOIN evse e ON e.evse_pk = t.evse_pk WHERE e.charge_box_id = '${cpId}' AND t.id_tag = '${idTag}';`,
+      `SELECT COUNT(*) FROM transaction t JOIN evse e ON e.evse_pk = t.evse_pk WHERE e.charge_box_id = ${sqlLiteral(cpId)} AND t.id_tag = ${sqlLiteral(idTag)};`,
     );
   }
 
   readonly reservations: CsmsReservationRecords = {
     latest: (cpId: string) =>
       this.scalar(
-        `SELECT r.reservation_pk FROM reservation r JOIN evse e ON e.evse_pk = r.evse_pk WHERE e.charge_box_id = '${cpId}' ORDER BY r.reservation_pk DESC LIMIT 1;`,
+        `SELECT r.reservation_pk FROM reservation r JOIN evse e ON e.evse_pk = r.evse_pk WHERE e.charge_box_id = ${sqlLiteral(cpId)} ORDER BY r.reservation_pk DESC LIMIT 1;`,
       ),
     status: (reservation: string) =>
       this.nullSafe(
@@ -159,7 +202,7 @@ export class SteveRecords implements CsmsRecords {
   readonly chargingProfiles: CsmsChargingProfileRecords = {
     refByDescription: (description: string) =>
       this.scalar(
-        `SELECT charging_profile_pk FROM charging_profile WHERE description = '${description}' LIMIT 1;`,
+        `SELECT charging_profile_pk FROM charging_profile WHERE description = ${sqlLiteral(description)} LIMIT 1;`,
       ),
   };
 }

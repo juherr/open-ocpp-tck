@@ -11,7 +11,7 @@
  * Why the manager UI and not the REST API
  * ---------------------------------------
  * Operations go through the manager UI on purpose, not for lack of a REST
- * client. SteVe 3.13.0's REST CancelReservation
+ * client. SteVe's REST CancelReservation
  * (OcppOperationsService#cancelReservation -> #validateReservationId,
  * source-verified) checks the reservationId against
  * ReservationRepository#getActiveReservationIds(chargeBoxId) BEFORE dispatching
