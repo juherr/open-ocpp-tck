@@ -8,11 +8,36 @@
  */
 import { type CsmsChargingProfileRecords, type CsmsRecords, type CsmsReservationRecords } from "../../tck/driver";
 import type { SteveConfig } from "./ui-client";
+/**
+ * Single-quoted SQL literal.
+ *
+ * Backslash is escaped as well as the quote, and the order matters -- doing the
+ * quote first would then double the backslashes it just introduced. MariaDB
+ * does not run with NO_BACKSLASH_ESCAPES by default, so a value ending in a
+ * backslash escapes the closing quote and swallows the rest of the statement.
+ *
+ * Lives here because this module owns the only path to the database, so this is
+ * the one place a caller can be given the guarantee driver-wide rather than
+ * per-file.
+ */
+export declare function sqlLiteral(value: string): string;
 export declare class SteveRecords implements CsmsRecords {
     private readonly cfg;
     constructor(cfg: SteveConfig);
+    /** Runs SQL, returns stdout verbatim. The single path to the database. */
+    private raw;
     /** Runs SQL, returns the first column of the first row ("" if no rows). */
     scalar(sql: string): Promise<string>;
+    /**
+     * Runs SQL, returns every row as its list of columns ([] if no rows).
+     *
+     * `mariadb -N -B` already emits one tab-separated row per line, so a caller
+     * that needs several columns -- or several rows -- does not have to smuggle
+     * them through a delimiter in a CONCAT and unpack them by hand. Each such
+     * query is one process spawn, which is what makes the difference between
+     * asking about twenty tags and asking twenty times.
+     */
+    rows(sql: string): Promise<string[][]>;
     /**
      * scalar(), normalising a genuine SQL NULL to "".
      *

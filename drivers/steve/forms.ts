@@ -35,6 +35,46 @@ export function cpSelect(cpId: string): string {
   return `V_16_JSON;${cpId};-`;
 }
 
+/** SteVe's ChargingProfileForm purpose enum. */
+export type SteveChargingProfilePurpose =
+  | "CHARGE_POINT_MAX_PROFILE"
+  | "TX_DEFAULT_PROFILE"
+  | "TX_PROFILE";
+
+export interface ChargingProfileFields {
+  description: string;
+  purpose: SteveChargingProfilePurpose;
+  /** Watts, as the single schedule period's limit. */
+  limitW: number;
+}
+
+/**
+ * The `chargingProfiles/add` form, as the manager UI posts it.
+ *
+ * Lives here rather than at the call site for the same reason toSteveForm()
+ * does: these field names -- including the indexed `schedulePeriods[N].*` that
+ * the page builds in JavaScript -- are SteVe's serialisation, and a version
+ * that renames one should break in a single place.
+ *
+ * `RELATIVE` avoids a startSchedule, which SteVe requires for `ABSOLUTE` and
+ * which would age out of validity between runs.
+ */
+export function chargingProfileForm(
+  profile: ChargingProfileFields,
+): Record<string, string> {
+  return {
+    description: profile.description,
+    stackLevel: "0",
+    chargingProfilePurpose: profile.purpose,
+    chargingProfileKind: "RELATIVE",
+    recurrencyKind: "",
+    chargingRateUnit: "W",
+    "schedulePeriods[0].startPeriodInSeconds": "0",
+    "schedulePeriods[0].powerLimit": String(profile.limitW),
+    add: "Add",
+  };
+}
+
 export function toSteveForm(op: CsmsOperation): {
   opPath: string;
   fields: Record<string, string>;

@@ -18,6 +18,26 @@ import { type CsmsOperation } from "../../tck/driver";
 export declare function steveLocalDateTime(d: Date): string;
 /** The manager-UI select-list token for an OCPP 1.6J charge point. */
 export declare function cpSelect(cpId: string): string;
+/** SteVe's ChargingProfileForm purpose enum. */
+export type SteveChargingProfilePurpose = "CHARGE_POINT_MAX_PROFILE" | "TX_DEFAULT_PROFILE" | "TX_PROFILE";
+export interface ChargingProfileFields {
+    description: string;
+    purpose: SteveChargingProfilePurpose;
+    /** Watts, as the single schedule period's limit. */
+    limitW: number;
+}
+/**
+ * The `chargingProfiles/add` form, as the manager UI posts it.
+ *
+ * Lives here rather than at the call site for the same reason toSteveForm()
+ * does: these field names -- including the indexed `schedulePeriods[N].*` that
+ * the page builds in JavaScript -- are SteVe's serialisation, and a version
+ * that renames one should break in a single place.
+ *
+ * `RELATIVE` avoids a startSchedule, which SteVe requires for `ABSOLUTE` and
+ * which would age out of validity between runs.
+ */
+export declare function chargingProfileForm(profile: ChargingProfileFields): Record<string, string>;
 export declare function toSteveForm(op: CsmsOperation): {
     opPath: string;
     fields: Record<string, string>;

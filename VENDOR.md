@@ -74,6 +74,7 @@ strongest available demonstration that the core names no CSMS.
 | `drivers/steve/records.ts` | `local-upstreamable` | `—` | `—` | `—` | `—` |
 | `drivers/steve/ui-client.ts` | `local-upstreamable` | `—` | `—` | `—` | `—` |
 | `drivers/steve/scope.ts` | `local-upstreamable` | `—` | `—` | `—` | `—` |
+| `drivers/steve/provision.ts` | `local-upstreamable` | `—` | `—` | `—` | `—` |
 
 Deliberately **not** imported from upstream: `steve-api.ts` (SteVe 3.13.0 REST
 client, 763 lines), `capability-probe.ts` (probes a live SteVe container),

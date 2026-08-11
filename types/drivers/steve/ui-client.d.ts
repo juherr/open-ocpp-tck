@@ -16,10 +16,12 @@ export interface SteveConfig {
 }
 export declare function defaultSteveConfig(env?: NodeJS.ProcessEnv): SteveConfig;
 /**
- * SteVe manager-UI client: login + operation POST, one cookie jar per
- * instance. Retained ONLY for specs/authlist-reservation.ts's TC_052, which
- * instantiates it directly (see this module's header). It is SteVe-specific
- * and cannot drive any other CSMS.
+ * SteVe manager-UI client: login, CSRF, form POST -- one cookie jar per
+ * instance. It is SteVe-specific and cannot drive any other CSMS.
+ *
+ * Two callers: the operations path (index.ts) and provisioning
+ * (provision.ts), which posts the charging-profile form through the same
+ * session rather than opening a second one.
  */
 export declare class SteveUiOps {
     private readonly cfg;
@@ -30,9 +32,17 @@ export declare class SteveUiOps {
     isLoggedIn(): Promise<boolean>;
     login(): Promise<void>;
     ensureLogin(): Promise<void>;
-    /** steve_cp_select CP_ID equivalent -- the chargePointSelectList form value
-     *  SteVe expects for an OCPP 1.6J charge point. */
-    cpSelect(cpId: string): string;
+    /**
+     * GET a manager page for its CSRF token, then POST the form back to the same
+     * path. Returns the redirect `Location`, which is how SteVe signals success;
+     * throws when there is none, because a 200 here means the form came back with
+     * validation errors rather than being accepted.
+     *
+     * `path` is relative to the manager base, so it spans more than operations:
+     * provisioning posts to `chargingProfiles/add` through this same method,
+     * which is the point of it being separate from op().
+     */
+    postForm(path: string, fields: Record<string, string>): Promise<string>;
     /**
      * steve_op OP_PATH FIELDS equivalent. POSTs one CSMS operation,
      * form-encoded, exactly like the manager UI would. Returns the redirect

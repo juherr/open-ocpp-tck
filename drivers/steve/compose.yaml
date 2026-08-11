@@ -1,0 +1,89 @@
+# Copyright 2026 Julien Herr
+# SPDX-License-Identifier: Apache-2.0
+#
+# The reference SteVe environment: what `ocpp-tck run-all` needs on the other
+# end of the wire. Not a production deployment -- the OCPP endpoint and the
+# manager UI share port 8180 here, and the credentials below are the driver's
+# documented defaults, in the clear, on purpose.
+#
+# Every name in this file is load-bearing, because the driver's defaults
+# (drivers/steve/ui-client.ts defaultSteveConfig) resolve to them:
+#
+#   name: steve      + network steve-internal -> STEVE_NETWORK=steve_steve-internal
+#   container_name   -> STEVE_DB_CONTAINER=steve-db
+#   service name     -> the DNS name in STEVE_WS_URL=ws://steve:8180/...
+#
+# Renaming any of them means passing the matching STEVE_* variable by hand.
+#
+# The project name is pinned here rather than inherited from the directory, so
+# that `docker compose -f drivers/steve/compose.yaml up` produces the same
+# network name as `docker compose -p steve ...` and as CI.
+name: steve
+
+services:
+  # Images are pinned by digest, not tag: the tag is republished on every
+  # rebuild, and a conformance run that cannot say which bytes it tested is
+  # not a conformance run. Same discipline as DEFAULT_SIM_IMAGE in tck/sim.ts.
+  steve:
+    image: ghcr.io/juherr/steve:steve-3.14.0@sha256:aa56949a639328a11461a3e448d40549b521f232ee0fdeef22389ddff3c9901f
+    container_name: steve
+    restart: unless-stopped
+    depends_on:
+      steve-db:
+        condition: service_healthy
+    environment:
+      - DB_IP=steve-db
+      - DB_PORT=3306
+      - DB_SCHEMA=stevedb
+      - DB_USER=steve
+      - DB_PASSWORD=changeme
+      - AUTH_USER=admin
+      - AUTH_PASSWORD=1234
+      # The scenarios never assert that an unknown station is rejected, and no
+      # REST endpoint can register one (SteVe's WebAPI exposes ocppTags and
+      # transactions only). So the roster registers itself on first
+      # BootNotification instead of being seeded. runScenario waits for
+      # BootNotification.conf before drive(), so a station is always known by
+      # the time the driver posts an operation for it.
+      - AUTO_REGISTER_UNKNOWN_STATIONS=true
+    ports:
+      # Published because the driver runs on the HOST (it reaches MariaDB via
+      # `docker exec`), so its STEVE_URL is http://localhost:8180/... while the
+      # simulator container, on steve-internal, uses ws://steve:8180/... .
+      # That asymmetry is why STEVE_URL and STEVE_WS_URL are separate settings.
+      - "8180:8180"
+    networks:
+      - steve-internal
+    healthcheck:
+      test: ["CMD", "curl", "-fsS", "-o", "/dev/null", "http://127.0.0.1:8180/steve/manager/signin"]
+      interval: 10s
+      timeout: 5s
+      retries: 30
+      # SteVe replays its Flyway migrations at startup; a cold first boot is
+      # far slower than a restart, and `up --wait` must not give up on it.
+      start_period: 150s
+
+  steve-db:
+    image: mariadb:11.8@sha256:d9f7eb2637296652f24b484afd5d246f759f49f5babcadc6a9e344c9acb75fbf
+    container_name: steve-db
+    restart: unless-stopped
+    environment:
+      - TZ=+00:00
+      - MARIADB_ROOT_PASSWORD=changeme-root
+      - MARIADB_DATABASE=stevedb
+      - MARIADB_USER=steve
+      - MARIADB_PASSWORD=changeme
+    networks:
+      - steve-internal
+    healthcheck:
+      test: ["CMD", "healthcheck.sh", "--connect", "--innodb_initialized"]
+      start_period: 30s
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+# No volume: every run starts from an empty schema and re-provisions. State
+# that survives a run is state a scenario can accidentally depend on.
+networks:
+  steve-internal:
+    driver: bridge

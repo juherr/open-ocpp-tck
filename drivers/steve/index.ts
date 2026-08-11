@@ -13,7 +13,7 @@
  * Why the manager UI and not the REST API
  * ---------------------------------------
  * Operations go through the manager UI on purpose, not for lack of a REST
- * client. SteVe 3.13.0's REST CancelReservation
+ * client. SteVe's REST CancelReservation
  * (OcppOperationsService#cancelReservation -> #validateReservationId,
  * source-verified) checks the reservationId against
  * ReservationRepository#getActiveReservationIds(chargeBoxId) BEFORE dispatching
@@ -46,7 +46,12 @@ import {
   type CsmsOperation,
   type CsmsOperations,
 } from "../../tck/driver";
-import { toSteveForm } from "./forms";
+import { cpSelect, toSteveForm } from "./forms";
+import {
+  provisionCommand,
+  teardownCommand,
+  verifyCommand,
+} from "./provision";
 import { SteveRecords } from "./records";
 import { defaultSteveConfig, SteveUiOps, type SteveConfig } from "./ui-client";
 import { STEVE_SCOPE } from "./scope";
@@ -56,7 +61,7 @@ function createOperations(cfg: SteveConfig): CsmsOperations {
   return {
     async execute(cpId: string, op: CsmsOperation): Promise<string> {
       const { opPath, fields } = toSteveForm(op);
-      return ui.op(opPath, { chargePointSelectList: ui.cpSelect(cpId), ...fields });
+      return ui.op(opPath, { chargePointSelectList: cpSelect(cpId), ...fields });
     },
   };
 }
@@ -90,6 +95,14 @@ export const csmsDriver: CsmsDriverModule = {
       }),
     };
   },
+  // Bootstrap lives here rather than in the runner: what a CSMS needs before it
+  // can be tested is a fact about that CSMS. drivers/steve/compose.yaml brings
+  // the environment up; these put the fixtures in it.
+  commands: {
+    provision: provisionCommand,
+    verify: verifyCommand,
+    teardown: teardownCommand,
+  },
   envHelp: [
     "STEVE_URL          manager UI base, e.g. http://steve:8180/steve/manager",
     "STEVE_WS_URL       OCPP endpoint, e.g. ws://steve:8180/steve/websocket/CentralSystemService",
@@ -100,5 +113,13 @@ export const csmsDriver: CsmsDriverModule = {
     "STEVE_DB_PASS      MariaDB password",
     "STEVE_DB_NAME      MariaDB schema (default stevedb)",
     "STEVE_NETWORK      docker network the simulator joins to reach SteVe",
+    "",
+    "provisioning only (ocpp-tck driver provision):",
+    "STEVE_API_URL      WebAPI base (default: STEVE_URL with /manager -> /api/v1)",
+    "STEVE_API_USER     WebAPI user (default: STEVE_USER)",
+    "STEVE_API_PASS     WebAPI password (default ocpp-tck). Stored bcrypt-hashed in",
+    "                   web_user.api_password, which is NOT the manager UI password.",
+    "STEVE_APP_CONTAINER SteVe container, restarted once to enable the WebAPI",
+    "                   (default steve)",
   ].join("\n"),
 };
