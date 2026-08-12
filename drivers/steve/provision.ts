@@ -29,8 +29,14 @@
  *         asserts. The write path forbids the state the read path exists to
  *         report, so the SQL below is working around an input rule, not
  *         around the protocol. Raised upstream as
- *         steve-community/steve#2100; if it is relaxed, this channel goes
- *         away and tags become REST-only.
+ *         steve-community/steve#2100.
+ *
+ *         What that SQL writes is deliberately the same thing the endpoint
+ *         proposed there would: the tag is expired AS OF THIS RUN, from the
+ *         database's own clock, never a fabricated historical date -- see
+ *         EXPIRED_FIXTURE_BACKDATE_MINUTES in tck/time.ts. So if
+ *         `PATCH /ocppTags/{pk}/expire` lands, this channel goes away and tags
+ *         become REST-only without any fixture changing meaning.
  *   UI    for the two charging profiles. SteVe's WebAPI exposes exactly
  *         ocppTags, operations and transactions (confirmed against its own
  *         /v3/api-docs); there is no chargingProfile endpoint at all.
@@ -46,6 +52,7 @@
  * must be a no-op that still exits 0, because CI reruns it and an operator
  * chasing a failure will run it twice before believing it.
  */
+import { EXPIRED_FIXTURE_BACKDATE_MINUTES } from "../../tck/time";
 import { waitForCondition } from "../../tck/wait";
 import { chargingProfileForm, type ChargingProfileFields } from "./forms";
 import { SteveRecords, sqlLiteral } from "./records";
@@ -104,11 +111,20 @@ const EXPIRED_TAG = "CERT023-EXP";
 const BLOCKED_TAG = "CERT023-BLK";
 
 /**
- * The expiry written for EXPIRED_TAG. Fixed rather than "now minus a day" so
- * that a provisioned environment is byte-identical between runs, which is what
- * makes `verify` able to tell "expired on purpose" from "expired by accident".
+ * The expiry written for EXPIRED_TAG: an EXPRESSION, not a literal, so MariaDB
+ * dates the row from its own clock at provisioning time. `verify` asks the same
+ * server the same way (`expiry_date < NOW()`), so neither this process's clock
+ * nor its timezone enters the fixture at any point.
+ *
+ * The backdate is what makes both readers agree, and each is strict in its own
+ * way: SteVe's `isExpired` is `now.isAfter(expiry)`, and `verify`'s `NOW()` is
+ * second-granular while `ocpp_tag.expiry_date` is `timestamp(6)` -- so an
+ * expiry written at exactly "now" reads as not-yet-expired for the rest of that
+ * second, which `provision` would hit on the spot since it verifies itself.
+ * `NOW(6)` rather than `NOW()` for the same reason: truncating the written
+ * value would narrow the margin for nothing.
  */
-const PAST_EXPIRY = "2020-01-01 00:00:00";
+const EXPIRED_AT_RUN_START = `NOW(6) - INTERVAL ${EXPIRED_FIXTURE_BACKDATE_MINUTES} MINUTE`;
 
 /** `limitW` on the first: TC_066 asserts that exact number on the composite
  *  schedule. The field names it turns into live in forms.ts. */
@@ -361,6 +377,12 @@ export class SteveProvisioner {
 
     // Created through the API for the row, then aged through SQL: @Future makes
     // the API refuse to write a past date, but says nothing about reading one.
+    //
+    // The UPDATE is unconditional, and that is the idempotency wanted here
+    // rather than a departure from it: every provision re-expires the tag as of
+    // that run, which is exactly what an `expire` endpoint called with now()
+    // would do. Skipping it when the row is already expired would keep an older
+    // run's instant alive for no gain.
     if (!existing.has(EXPIRED_TAG)) {
       await this.createTag({
         idTag: EXPIRED_TAG,
@@ -368,9 +390,11 @@ export class SteveProvisioner {
       });
     }
     await this.db.scalar(
-      `UPDATE ocpp_tag SET expiry_date = ${sqlLiteral(PAST_EXPIRY)} WHERE id_tag = ${sqlLiteral(EXPIRED_TAG)};`,
+      `UPDATE ocpp_tag SET expiry_date = ${EXPIRED_AT_RUN_START} WHERE id_tag = ${sqlLiteral(EXPIRED_TAG)};`,
     );
-    this.log(`tag: ${EXPIRED_TAG} expired ${PAST_EXPIRY}`);
+    this.log(
+      `tag: ${EXPIRED_TAG} expired ${EXPIRED_FIXTURE_BACKDATE_MINUTES} min before this run's provisioning`,
+    );
 
     const invalid = existing.get(INVALID_TAG);
     if (invalid) {

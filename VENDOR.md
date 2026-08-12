@@ -221,8 +221,11 @@ container before the pin moved. All of them still hold, and held identically on
 - `POST /api/v1/ocppTags` with a past `expiryDate` is rejected **400**:
   `OcppTagForm.expiryDate` carries `@Future`. The manager UI binds the same
   form object, so it refuses it too — hence the one SQL write in
-  `provision.ts`. Raised upstream as [steve-community/steve#2100][sc2100];
-  if it is relaxed, that SQL write goes away.
+  `provision.ts`. That write dates `CERT023-EXP` from MariaDB's own clock at
+  provisioning time, not from a fabricated historical date, which is what
+  [steve-community/steve#2100][sc2100] settled on: a `PATCH
+  /ocppTags/{pk}/expire` endpoint expiring with `now()`. If it lands, the SQL
+  write folds into REST and the fixture keeps the same meaning.
 - API access is off until `web_user.api_password` (bcrypt, distinct from the
   UI password) is set, and SteVe reads that column once at startup. There is
   still no environment variable for it, so `provision` writes it and restarts

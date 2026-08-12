@@ -28,6 +28,9 @@
  * chasing a failure will run it twice before believing it.
  */
 import { defaultCitrineConfig, type CitrineConfig } from "./config";
+// After ./config, not before: tsc elides this import from the generated .d.ts,
+// and the header above travels with whichever import survives.
+import { EXPIRED_FIXTURE_BACKDATE_MINUTES } from "../../tck/time";
 import { CitrineRecords, sqlLiteral } from "./records";
 import { stationColumn } from "./variant";
 
@@ -72,9 +75,11 @@ const EXPIRED_TAG = "CERT023-EXP";
 const BLOCKED_TAG = "CERT023-BLK";
 
 /**
- * The expiry written for EXPIRED_TAG. Fixed rather than "now minus a day" so
- * that a provisioned environment is identical between runs, which is what lets
- * `verify` tell "expired on purpose" from "expired by accident".
+ * The expiry written for EXPIRED_TAG: an EXPRESSION, not a literal, so Postgres
+ * dates the row from its own clock at provisioning time -- the run's start,
+ * never a fabricated historical instant. tck/time.ts owns the offset and the
+ * policy; `verify` reads it back through the same server's `NOW()`, so no
+ * instant this process computed ever reaches the fixture.
  *
  * The status stays `Accepted` and only the instant makes it expired, which
  * reads backwards until you follow the handler: AuthorizeRequestOcpp16Handler
@@ -82,7 +87,15 @@ const BLOCKED_TAG = "CERT023-BLK";
  * branch, and every other stored status falls through to the default. A row
  * stored as `status = 'Expired'` therefore answers Invalid, not Expired.
  */
-const PAST_EXPIRY = "2020-01-01T00:00:00Z";
+const EXPIRED_AT_RUN_START = `NOW() - INTERVAL '${EXPIRED_FIXTURE_BACKDATE_MINUTES} minutes'`;
+
+/** How a fixture expires. A domain value, not a SQL fragment: the table below
+ *  declares WHAT each tag is, and `expiryOf` decides how to say it. */
+type FixtureExpiry = "never" | "at-run-start";
+
+function expiryOf(expiry: FixtureExpiry): string {
+  return expiry === "never" ? "NULL" : EXPIRED_AT_RUN_START;
+}
 
 /**
  * Why CERT023-BLK is provisioned anyway, and what it does NOT achieve.
@@ -110,26 +123,23 @@ const ID_TOKEN_TYPE = "Central";
 interface TagFixture {
   idToken: string;
   status: string;
-  /** ISO instant, or null for "never expires". */
-  expiry: string | null;
+  expiry: FixtureExpiry;
 }
 
 const FIXTURES: readonly TagFixture[] = [
-  ...VALID_TAGS.map((idToken) => ({ idToken, status: "Accepted", expiry: null })),
-  { idToken: EXPIRED_TAG, status: "Accepted", expiry: PAST_EXPIRY },
-  { idToken: BLOCKED_TAG, status: "Blocked", expiry: null },
+  ...VALID_TAGS.map((idToken) => ({
+    idToken,
+    status: "Accepted",
+    expiry: "never" as const,
+  })),
+  { idToken: EXPIRED_TAG, status: "Accepted", expiry: "at-run-start" },
+  { idToken: BLOCKED_TAG, status: "Blocked", expiry: "never" },
 ];
 
 /** Every tag this driver owns. Spelled once so that a fixture added to
  *  provision but not to teardown cannot leave rows behind that verify still
  *  demands. */
 const ALL_TAGS = [...VALID_TAGS, BLOCKED_TAG, EXPIRED_TAG, INVALID_TAG];
-
-/** A SQL timestamptz literal, or NULL. Free of `this`, so it lives beside
- *  sqlLiteral rather than on the class. */
-function nullableInstant(value: string | null): string {
-  return value === null ? "NULL" : `${sqlLiteral(value)}::timestamptz`;
-}
 
 export class CitrineProvisioner {
   private readonly db: CitrineRecords;
@@ -164,13 +174,13 @@ export class CitrineProvisioner {
       statements.push(
         `UPDATE "Authorizations"
             SET "status" = ${sqlLiteral(fixture.status)},
-                "cacheExpiryDateTime" = ${nullableInstant(fixture.expiry)},
+                "cacheExpiryDateTime" = ${expiryOf(fixture.expiry)},
                 "updatedAt" = NOW()
           WHERE ${where};`,
         `INSERT INTO "Authorizations"
             ("idToken", "idTokenType", "status", "cacheExpiryDateTime", "tenantId", "createdAt", "updatedAt")
           SELECT ${idToken}, ${sqlLiteral(ID_TOKEN_TYPE)}, ${sqlLiteral(fixture.status)},
-                 ${nullableInstant(fixture.expiry)}, ${this.tenant}, NOW(), NOW()
+                 ${expiryOf(fixture.expiry)}, ${this.tenant}, NOW(), NOW()
           WHERE NOT EXISTS (SELECT 1 FROM "Authorizations" WHERE ${where});`,
       );
     }
@@ -187,7 +197,8 @@ export class CitrineProvisioner {
 
     await this.db.scalar(statements.join("\n"));
     this.log(
-      `tags: ${VALID_TAGS.length} valid, ${EXPIRED_TAG} expired at ${PAST_EXPIRY}, ` +
+      `tags: ${VALID_TAGS.length} valid, ${EXPIRED_TAG} expired ` +
+        `${EXPIRED_FIXTURE_BACKDATE_MINUTES} min before this run's provisioning, ` +
         `${BLOCKED_TAG} (${BLOCKED_TAG_CAVEAT}), ${INVALID_TAG} absent`,
     );
   }
@@ -287,9 +298,9 @@ export class CitrineProvisioner {
     if (!expired || expired[3] === "") {
       problems.push(`${EXPIRED_TAG}: missing or has no cacheExpiryDateTime`);
     } else if (expired[2] !== "Accepted") {
-      // The trap PAST_EXPIRY's comment describes, checked rather than merely
-      // documented: any other status makes the handler answer Invalid and the
-      // expiry is never consulted.
+      // The trap EXPIRED_AT_RUN_START's comment describes, checked rather than
+      // merely documented: any other status makes the handler answer Invalid
+      // and the expiry is never consulted.
       problems.push(
         `${EXPIRED_TAG}: status ${expired[2]}, expected Accepted -- only the ` +
           "Accepted branch consults cacheExpiryDateTime",
