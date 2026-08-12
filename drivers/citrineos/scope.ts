@@ -38,7 +38,9 @@ const OBSERVED =
 const d = (reason: string) => ({ status: "DRIVABLE" as const, reason });
 const na = (reason: string) => ({ status: "NOT_APPLICABLE" as const, reason });
 
-const V2_SCOPE: ScopeTable = {
+// `satisfies` rather than `: ScopeTable`, so the keys stay literal and
+// V1_LOCAL_LIST below can be typed against them.
+const V2_SCOPE = {
   // --- Reservation: the whole capability is absent for OCPP 1.6 -----------
   "cert16-reservation-basic": na(NO_RESERVATIONS),
   "cert16-tc048-1-reserve-now-faulted": na(NO_RESERVATIONS),
@@ -191,21 +193,8 @@ const V2_SCOPE: ScopeTable = {
       "response handler, and DiagnosticsStatusNotification has a 1.6 request " +
       "handler -- so nothing here is answered with a CALLERROR.",
   ),
-};
+} satisfies ScopeTable;
 
-/**
- * The v1.9.1 table, derived from V2_SCOPE rather than written out again.
- *
- * Two edits, and the second one matters more than it looks. The six
- * local-auth-list rows become NOT_APPLICABLE, from the id list in variant.ts so
- * the table and `unroutedActions` cannot disagree. And EVERY INHERITED REASON
- * IS REPLACED, because V2_SCOPE's reasons say "driven green against the pinned
- * image" and that measurement was taken on v2 -- carrying the sentence over
- * would make this table assert a run that never happened on this line.
- *
- * The v1.9.1 line has a defect that most of the suite depends on, so a blanket
- * "driven green" would be wrong twice over. See V1_KNOWN.
- */
 /**
  * Still DRIVABLE, and deliberately not demoted: the driver expresses every one
  * of these operations against v1.9.1 exactly as it does against v2. What fails
@@ -227,12 +216,35 @@ const V1_KNOWN =
   "Connectors row can be created for an ad-hoc 1.6 station, so StartTransaction " +
   "is answered Invalid. Fixed in the v2 line -- use CITRINE_VARIANT=v2.";
 
+/**
+ * The ids variant.ts demotes, restated as keys of V2_SCOPE.
+ *
+ * The annotation is the whole point: it makes a typo in that list a build
+ * error. `check-driver` would also catch it, but only when run with
+ * CITRINE_VARIANT=v1, and CI runs the v2 table.
+ */
+const V1_LOCAL_LIST: readonly (keyof typeof V2_SCOPE)[] =
+  V1_LOCAL_LIST_SCENARIOS;
+
+/**
+ * The v1.9.1 table, derived from V2_SCOPE rather than written out again.
+ *
+ * Two edits, and the second one matters more than it looks. The six
+ * local-auth-list rows become NOT_APPLICABLE, from the id list in variant.ts so
+ * the table and `unroutedActions` cannot disagree. And EVERY INHERITED REASON
+ * IS REPLACED, because V2_SCOPE's reasons say "driven green against the pinned
+ * image" and that measurement was taken on v2 -- carrying the sentence over
+ * would make this table assert a run that never happened on this line.
+ *
+ * The v1.9.1 line has a defect that most of the suite depends on, so a blanket
+ * "driven green" would be wrong twice over. See V1_KNOWN.
+ */
 function v1Scope(): ScopeTable {
   const table: Record<string, ScopeEntry> = {};
   for (const [id, entry] of Object.entries(V2_SCOPE)) {
     table[id] = entry.status === "DRIVABLE" ? d(V1_KNOWN) : entry;
   }
-  for (const id of V1_LOCAL_LIST_SCENARIOS) {
+  for (const id of V1_LOCAL_LIST) {
     table[id] = na(NO_LOCAL_LIST);
   }
   return table;
