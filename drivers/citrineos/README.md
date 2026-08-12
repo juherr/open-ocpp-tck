@@ -54,7 +54,7 @@ while the simulator container reaches the same CitrineOS as `ws://citrine:8081/`
 from inside the compose network. That asymmetry is why the two are separate
 settings — the same one SteVe's driver has, for the same reason.
 
-**No credentials anywhere.** CitrineOS's shipped `docker` app-env selects
+**No HTTP API credentials are required.** CitrineOS's shipped `docker` app-env selects
 `LocalBypassAuthProvider`, which accepts every HTTP request and synthesises an
 admin principal; it logs a warning saying so on startup. That is a property of
 this development environment, not of CitrineOS in production, and swapping in
