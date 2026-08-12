@@ -15,9 +15,32 @@
    );
  }
  
-@@ -37,13 +37,13 @@
+@@ -27,6 +27,19 @@
+ // before starting the FirmwareStatusNotification train (confirmed live in
+ // the bash suite: this is correct OCPP 1.6 semantics, not a bug), then
+ // progresses Downloading -> Downloaded -> Installing -> Installed.
++//
++// THE OFFSET IS SMALL ON PURPOSE, and the three TC_044 scenarios below share
++// the reason. A driver may only round a retrieveDate UP -- the contract says
++// so, because a CSMS whose form has no seconds field must still receive a
++// strictly future instant -- so the CP can wait up to a whole resolution step
++// LONGER than asked. SteVe's UpdateFirmware form is minute-resolution, which
++// makes the real wait `offset + up to 60s`. At the +90s this used to ask for,
++// that is up to 150s against a 115s window: the scenario passed or failed on
++// where the wall clock happened to sit within the minute, and the three ran
++// back to back at a ~120s period, so they drew the same unlucky phase together.
++//
++// Budget, which any edit here has to keep: offset + 60s of driver rounding +
++// ~10s of status train + tail buffer <= holdSecs.
+ // ---------------------------------------------------------------------------
+ 
+ export const tc0441FirmwareUpdateSpec: ScenarioSpec<void> = {
+@@ -35,15 +48,15 @@
+     "TC_044.1 Firmware Update: full Downloading -> Downloaded -> Installing -> Installed train.",
+   connector: 1,
    bootWaitSecs: 4,
-   // retrieveDateTime wait (~90s) + ~10s status train + tail buffer.
+-  // retrieveDateTime wait (~90s) + ~10s status train + tail buffer.
++  // 15s + up to 60s of rounding + ~10s train, inside a 115s window.
    holdSecs: 115,
 -  async drive({ cpId, steve }) {
 +  async drive({ cpId, csms }) {
@@ -29,11 +52,11 @@
 +        action: "UpdateFirmware",
          location: "http://example.com/fw.bin",
 -        retrieveDateTime: retrieveDatetimeSoon(),
-+        retrieveDate: inSeconds(90),
++        retrieveDate: inSeconds(15),
        });
      } catch (err) {
        warnOpFailed("UpdateFirmware", err);
-@@ -119,13 +119,13 @@
+@@ -119,13 +132,13 @@
    connector: 1,
    bootWaitSecs: 4,
    holdSecs: 110,
@@ -47,11 +70,11 @@
 +        action: "UpdateFirmware",
          location: "http://example.com/fw.bin",
 -        retrieveDateTime: retrieveDatetimeSoon(),
-+        retrieveDate: inSeconds(90),
++        retrieveDate: inSeconds(15),
        });
      } catch (err) {
        warnOpFailed("UpdateFirmware", err);
-@@ -184,13 +184,13 @@
+@@ -184,13 +197,13 @@
    connector: 1,
    bootWaitSecs: 4,
    holdSecs: 115,
@@ -65,11 +88,11 @@
 +        action: "UpdateFirmware",
          location: "http://example.com/fw.bin",
 -        retrieveDateTime: retrieveDatetimeSoon(),
-+        retrieveDate: inSeconds(90),
++        retrieveDate: inSeconds(15),
        });
      } catch (err) {
        warnOpFailed("UpdateFirmware", err);
-@@ -277,13 +277,10 @@
+@@ -277,13 +290,10 @@
    connector: 1,
    bootWaitSecs: 4,
    holdSecs: 25,

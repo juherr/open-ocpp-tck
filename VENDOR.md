@@ -53,7 +53,7 @@ strongest available demonstration that the core names no CSMS.
 | `tck/specs/authorize.ts` | `upstream-patched` | `scripts/steve-verify/runner/specs/authorize.ts` | `aaf1c5f2b4888df41cd1f0b8637b47eedc376ff2d61d29841d3668d26b66e7da` | `a627d704d62ccc5e47c60974859a12975827a4727da57cd3fd01a1bc96b57062` | `patches/tck/specs/authorize.ts.patch` |
 | `tck/specs/authlist-reservation.ts` | `upstream-patched` | `scripts/steve-verify/runner/specs/authlist-reservation.ts` | `3ee302032025a889053d108d0813cc644819e58879b6cd554d56f85b804d0cd6` | `1c6726e0522ccce2cea16fb490e4351852d28986b778f5940258bf4337c2f7d8` | `patches/tck/specs/authlist-reservation.ts.patch` |
 | `tck/specs/remotetrigger-smartcharging.ts` | `upstream-patched` | `scripts/steve-verify/runner/specs/remotetrigger-smartcharging.ts` | `f0d2b720c8b6343d08e2506f4d6e4fcbf68069bb586e5bfea841ca9e37fdbca2` | `26ccd319a566955f384d0d93e423033a6538ba471ff0ff0219542a8904b30bad` | `patches/tck/specs/remotetrigger-smartcharging.ts.patch` |
-| `tck/specs/firmware.ts` | `upstream-patched` | `scripts/steve-verify/runner/specs/firmware.ts` | `e1bc6c288fe5c56e2cceae6f4ea650e901d852637ecdec914fc7ccdbdd5d1fe8` | `c3bb42861902f0b7f70ca6e2dcd02d5d96af29238f2e2081f018e64fe10a2927` | `patches/tck/specs/firmware.ts.patch` |
+| `tck/specs/firmware.ts` | `upstream-patched` | `scripts/steve-verify/runner/specs/firmware.ts` | `e1bc6c288fe5c56e2cceae6f4ea650e901d852637ecdec914fc7ccdbdd5d1fe8` | `e80494f65f4b2cf958742f297607af0612ce34193ca8fde3fa2ada99d55958f7` | `patches/tck/specs/firmware.ts.patch` |
 | `tck/specs/index.ts` | `upstream-verbatim` | `scripts/steve-verify/runner/specs/index.ts` | `be8595765f4d66965bfd58498622c26a696962fabae8a2700f080ae5cd55d832` | `be8595765f4d66965bfd58498622c26a696962fabae8a2700f080ae5cd55d832` | `—` |
 | `tck/assert.ts` | `upstream-patched` | `src/cp/application/verification/assert.ts` | `2431f5f6c0df997d4d821d9af55689c1f0f2df199de1e9e4ed6f3fbaad4fc89e` | `76d0f293db4f6ecc5768affea0ca76d2841c147fa3687dbea1f9e950bfbd9298` | `patches/tck/assert.ts.patch` |
 | `tck/sim.ts` | `upstream-patched` | `scripts/steve-verify/runner/sim.ts` | `2bf2f78afe3434e7139cd62c3ff6d70f02defd39dd700611e7c5f7614260cd35` | `45f897f273ea73227bb9b30766127eb9ecae0a319ab9048cbc30428fafff7f32` | `patches/tck/sim.ts.patch` |
@@ -72,6 +72,7 @@ strongest available demonstration that the core names no CSMS.
 | `drivers/steve/index.ts` | `local-upstreamable` | `—` | `—` | `—` | `—` |
 | `drivers/steve/forms.ts` | `local-upstreamable` | `—` | `—` | `—` | `—` |
 | `drivers/steve/records.ts` | `local-upstreamable` | `—` | `—` | `—` | `—` |
+| `drivers/steve/api-client.ts` | `local-upstreamable` | `—` | `—` | `—` | `—` |
 | `drivers/steve/ui-client.ts` | `local-upstreamable` | `—` | `—` | `—` | `—` |
 | `drivers/steve/scope.ts` | `local-upstreamable` | `—` | `—` | `—` | `—` |
 | `drivers/steve/provision.ts` | `local-upstreamable` | `—` | `—` | `—` | `—` |
@@ -213,20 +214,54 @@ container before the pin moved. All of them still hold, and held identically on
 3.13.0:
 
 - SteVe's WebAPI exposes `ocppTags`, `operations` and `transactions` — and
-  nothing else. There is no chargeBox and no chargingProfile endpoint, per its
-  own `/steve/manager/v3/api-docs`. That is why provisioning uses three
-  channels and not one. This is the bullet most likely to change:
-  [steve-community/steve#2069][sc2069] proposes charging-profile CRUD, and
-  would let the UI channel fold into REST.
+  nothing else. Probed on this digest: `chargePoints`, `reservations` and
+  `chargingProfiles` all answer **403**, because no such controller exists.
+  That is why provisioning uses three channels and not one, and why the SQL
+  channel is exactly the list of endpoints SteVe does not have. This is the
+  bullet most likely to change: [steve-community/steve#2069][sc2069] proposes
+  charging-profile CRUD, and would let the UI channel fold into REST.
+- `GET /api/v1/transactions` serves the observations the scenarios assert on:
+  the `Transaction` DTO carries `id`, `ocppIdTag`, `startTimestamp`,
+  `stopTimestamp`, `stopReason` and `stopEventActor`, and
+  `TransactionQueryFormForApi` filters by `chargeBoxId`, `ocppIdTag`,
+  `transactionPk` and `type=ACTIVE` with **no** default date window (its
+  constructor sets `periodType = ALL`). All four filters were exercised against
+  a real transaction on this digest. `PATCH /transactions/{pk}/stop` closes a
+  transaction **without touching the wire** — `TransactionService#stop` writes
+  the stop row with `eventActor = manual` and returns early if it is already
+  stopped — which is what the stale-transaction hook needs, since the charge
+  point that opened it is gone. An earlier revision of `records.ts` claimed the
+  API exposed no `stop_reason` and read everything from MariaDB; that claim was
+  wrong on 3.13.0 and 3.14.0 alike.
 - `POST /api/v1/ocppTags` with a past `expiryDate` is rejected **400**:
   `OcppTagForm.expiryDate` carries `@Future`. The manager UI binds the same
   form object, so it refuses it too — hence the one SQL write in
-  `provision.ts`. Raised upstream as [steve-community/steve#2100][sc2100];
-  if it is relaxed, that SQL write goes away.
+  `provision.ts`. That write dates `CERT023-EXP` from MariaDB's own clock at
+  provisioning time, not from a fabricated historical date, which is what
+  [steve-community/steve#2100][sc2100] settled on: a `PATCH
+  /ocppTags/{pk}/expire` endpoint expiring with `now()`. If it lands, the SQL
+  write folds into REST and the fixture keeps the same meaning.
 - API access is off until `web_user.api_password` (bcrypt, distinct from the
   UI password) is set, and SteVe reads that column once at startup. There is
   still no environment variable for it, so `provision` writes it and restarts
   the container — once; it probes first and skips when already on.
+  [steve-community/steve#2075][sc2075] (manager and API account CRUD) and
+  [#2059][sc2059] (a Web UI for those accounts) are what would end it.
+
+Every remaining database access in `drivers/steve/` is one of these four gaps,
+and nothing else — which is the property to preserve when editing that driver:
+
+| what needs the database | upstream ticket |
+|---|---|
+| write a past `expiry_date` | [#2100][sc2100] |
+| turn the WebAPI on (`web_user.api_password`) | [#2075][sc2075], [#2059][sc2059] |
+| read reservation status; teardown's reservation guard | [#2074][sc2074] |
+| create, verify and remove charging profiles | [#2069][sc2069] |
+
+All four sit under the [#1000 "Meta - API Endpoint"][sc1000] umbrella. The
+CitrineOS driver has no such table because it has no such tickets: issues are
+disabled on `citrineos/citrineos-core`, and its missing Authorization CRUD is
+unreported rather than pending.
 - The `chargingProfiles/add` form binds the same field names, including the
   indexed `schedulePeriods[N].powerLimit`.
 - Unknown idTags are **not** auto-inserted on Authorize, which is what makes
@@ -248,7 +283,11 @@ a scenario rather than by a version number: TC_052 is the reason it exists, and
 TC_052 passes on this digest. If TC_052 ever regresses, read that header first.
 
 [sc2069]: https://github.com/steve-community/steve/issues/2069
+[sc2074]: https://github.com/steve-community/steve/issues/2074
+[sc2075]: https://github.com/steve-community/steve/issues/2075
 [sc2100]: https://github.com/steve-community/steve/issues/2100
+[sc1000]: https://github.com/steve-community/steve/issues/1000
+[sc2059]: https://github.com/steve-community/steve/issues/2059
 
 ### CitrineOS
 
