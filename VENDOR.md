@@ -79,6 +79,7 @@ strongest available demonstration that the core names no CSMS.
 | `drivers/citrineos/index.ts` | `local-upstreamable` | `—` | `—` | `—` | `—` |
 | `drivers/citrineos/config.ts` | `local-upstreamable` | `—` | `—` | `—` | `—` |
 | `drivers/citrineos/api-client.ts` | `local-upstreamable` | `—` | `—` | `—` | `—` |
+| `drivers/citrineos/graphql-client.ts` | `local-upstreamable` | `—` | `—` | `—` | `—` |
 | `drivers/citrineos/requests.ts` | `local-upstreamable` | `—` | `—` | `—` | `—` |
 | `drivers/citrineos/profiles.ts` | `local-upstreamable` | `—` | `—` | `—` | `—` |
 | `drivers/citrineos/records.ts` | `local-upstreamable` | `—` | `—` | `—` | `—` |
@@ -306,6 +307,9 @@ anywhere in this file is read as a vendored-file row.
 | image | `rabbitmq` |
 | tag resolved | `3-management` |
 | digest | `sha256:e582c0bc7766f3342496d8485efb5a1df782b5ce3886ad017e2eaae442311f69` |
+| image | `hasura/graphql-engine` |
+| tag resolved | `v2.40.3` |
+| digest | `sha256:679fb764590e848e59ab6b82b3e906cc46f87d776f869f49132ca728660df244` |
 | resolved on | 2026-08-11, from the registry manifest `Docker-Content-Digest` |
 | declared in | `drivers/citrineos/compose.yaml` |
 
@@ -333,6 +337,18 @@ moving the pin — several are the difference between a driver and a fiction:
 - More than one `Authorizations` row for an idToken makes that handler answer
   `Invalid` outright — the invariant `provision` upserts for and `verify`
   counts.
+- **The data API this driver reads and seeds through is Hasura, not REST.**
+  Probed on this digest: `/data/*` carries 22 routes, none of them touching
+  `Authorizations`, and the one transaction route requires the `transactionId`
+  it should help find (400 without it) while returning `authorizationId`
+  rather than the idTag. `sendLocalList` answers `"Authorization not found for
+  idTag '…' (create the Authorization before adding it to a local auth list)"`
+  — an instruction with no REST route behind it. GraphQL is what CitrineOS's
+  own shipped `packages/ocpi-base`, operator UI and e2e fixtures use, and its
+  compose starts `graphql-engine` ungated while gating the UI and OCPI server
+  behind `profiles:`. The `v2.40.3` pin above is the plain image, NOT upstream's
+  `.cli-migrations-v3` one: nothing of their metadata is vendored here, and
+  `driver provision` tracks the tables through the metadata API instead.
 - **Four foreign keys reference `Authorizations`** and none cascades:
   `Transactions.authorizationId`, `LocalListAuthorizations.authorizationId`,
   `LocalListAuthorizations.groupAuthorizationId`, and the self-reference

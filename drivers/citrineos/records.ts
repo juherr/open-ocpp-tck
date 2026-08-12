@@ -1,53 +1,40 @@
 // Copyright 2026 Julien Herr
 // SPDX-License-Identifier: Apache-2.0
 /**
- * records.ts -- what CitrineOS believes happened, read straight from Postgres.
+ * records.ts -- what CitrineOS believes happened, read through its data API.
  *
- * The message API is write-only in practice. CitrineOS's REST data endpoints
- * cover boot config, tariffs, certificates, the router's websocket plumbing and
- * exactly one transaction lookup -- by explicit `transactionId`, which a
- * scenario does not know. There is no "latest transaction for this station",
- * no idTag on a transaction, no stop reason, no count, and no Authorization
- * CRUD at all. Every `@AsDataEndpoint` in the repository was read to establish
- * that, not sampled.
+ * THE REST SURFACE CANNOT ANSWER THIS. CitrineOS's `@AsDataEndpoint` routes
+ * cover boot config, tariffs, certificates, the router's websocket plumbing
+ * and exactly one transaction lookup -- `GET /data/transactions/transaction`,
+ * which requires the `transactionId` a scenario is trying to discover (it
+ * answers 400 without it) and returns `authorizationId` rather than the idTag,
+ * with no route resolving it. There is no "latest transaction for this
+ * station", no stop reason, no count, and no Authorization CRUD. Every route
+ * was probed on the pinned image, not sampled.
  *
- * THE BUNDLED HASURA / GraphQL, AND A CLAIM THIS FILE USED TO MAKE
- * ---------------------------------------------------------------
- * CitrineOS's docker stack ships a Hasura sidecar that does expose all of it.
- * This header used to give three reasons for not using it. The second one --
- * "Hasura is part of their dev compose, not their product" -- IS FALSE, and it
- * was the load-bearing one. Measured against citrineos-core:
+ * SO THE DATA API HERE IS HASURA, and that is the vendor's own answer rather
+ * than a workaround. Measured against citrineos-core:
  *
- *  - `packages/ocpi-base` is a shipped server-side package, and it creates
- *    Authorizations with `insert_Authorizations_one`, a Hasura mutation
- *    (`src/graphql/queries/token.queries.ts`). Not a REST data endpoint.
- *  - `apps/operator-ui` does the same for the UI's own CRUD.
- *  - Their e2e suite seeds fixtures through it too, with a `GraphQLClient`
- *    posting to `hasuraUrl` (`tests/e2e/fixtures/api-client.ts`).
- *  - Their compose starts `graphql-engine` UNGATED, while putting the operator
+ *  - `packages/ocpi-base`, a shipped server-side package, creates
+ *    Authorizations with `insert_Authorizations_one`
+ *    (`src/graphql/queries/token.queries.ts`).
+ *  - `apps/operator-ui` uses the same mutations for its own CRUD.
+ *  - Their e2e suite seeds fixtures through a `GraphQLClient` posting to
+ *    `hasuraUrl` (`tests/e2e/fixtures/api-client.ts`), and mints transactions
+ *    with `insert_Transactions_one`.
+ *  - Their compose starts `graphql-engine` ungated while gating the operator
  *    UI and the OCPI server behind `profiles:`.
  *
- * So GraphQL is the sanctioned data path for first-party code, not a developer
- * convenience. The remaining two reasons stand and are worth keeping:
+ * WHAT IT COSTS, stated because the earlier `docker exec psql` transport was
+ * chosen partly to avoid it: another pinned image and another published port
+ * (compose.yaml), and no insulation from the schema -- Hasura derives its
+ * field names from column names, so the v1.9.1 -> v2 rename of the OCPP
+ * connection column (variant.ts) breaks these queries exactly as it broke the
+ * SQL. It is a different syntax for the same coupling.
  *
- *  1. IT WOULD NOT DECOUPLE US FROM THE SCHEMA. Hasura derives its field names
- *     from column names, so the v1.9.1 -> v2 rename of the OCPP connection
- *     column (see variant.ts) would have broken exactly these queries in
- *     exactly the same way. It is a different syntax for the same coupling,
- *     not an abstraction over it.
- *  2. It costs another pinned image, another published port, and another
- *     authentication story.
- *
- * What it buys is remote testability -- GraphQL is plain HTTP, whereas the
- * transport below needs `docker exec` and therefore a driver running on the
- * host that owns the containers, the same cost drivers/steve/records.ts pays
- * and documents. With the false objection removed, that trade is now worth
- * making, and `raw()` below is the seam it goes through.
- *
- * MEASURED COST OF THIS TRANSPORT: ~350 ms per query, dominated by the
- * `docker exec` process spawn. Worth knowing before optimising the wrong
- * thing -- the cheap fix is a persistent psql session fed on stdin, not a
- * different database API.
+ * WHAT IT BUYS: this driver no longer shells into a container, so it can be
+ * pointed at a CitrineOS nobody on this host owns -- and a query costs an HTTP
+ * round trip rather than the ~350 ms process spawn a `docker exec` paid.
  */
 import {
   type CsmsChargingProfileRecords,
@@ -55,21 +42,36 @@ import {
 } from "../../tck/driver";
 import { waitForCondition } from "../../tck/wait";
 import type { CitrineConfig } from "./config";
+import { CitrineGraphQL } from "./graphql-client";
 import { stationColumn } from "./variant";
 import { refByDescription } from "./profiles";
 
-/**
- * Single-quoted SQL literal, for PostgreSQL.
- *
- * Only the quote is doubled, and unlike the MariaDB sibling in
- * drivers/steve/records.ts the backslash is deliberately left alone:
- * PostgreSQL has had `standard_conforming_strings = on` by default since 9.1,
- * so a backslash inside `'...'` is an ordinary character. Escaping it would
- * corrupt any value containing one. `psql -X` below is what keeps that true --
- * it skips ~/.psqlrc, so no local file can turn the setting off underneath us.
- */
-export function sqlLiteral(value: string): string {
-  return `'${value.replace(/'/g, "''")}'`;
+/** The transaction fields every reader below needs, fetched together because
+ *  one round trip costs the same as three. */
+const TRANSACTION_FIELDS = `
+  id
+  transactionId
+  endTime
+  stoppedReason
+  Authorization { idToken }
+  StopTransactions(order_by: { timestamp: desc }, limit: 1) {
+    timestamp
+    reason
+    idTokenValue
+  }
+`;
+
+interface TransactionRow {
+  id: number;
+  transactionId: string | null;
+  endTime: string | null;
+  stoppedReason: string | null;
+  Authorization: { idToken: string | null } | null;
+  StopTransactions: {
+    timestamp: string | null;
+    reason: string | null;
+    idTokenValue: string | null;
+  }[];
 }
 
 /**
@@ -81,120 +83,53 @@ export function sqlLiteral(value: string): string {
  * altogether would stop catching a renamed method.
  */
 export class CitrineRecords implements Omit<CsmsRecords, "reservations"> {
-  /** `AND "tenantId" = n`, spelled once. Every table below carries the column,
-   *  and omitting it would read another tenant's rows as this tenant's. */
-  private readonly tenant: string;
+  private readonly gql: CitrineGraphQL;
+
+  /** Every table below carries `tenantId`, and omitting it would read another
+   *  tenant's rows as this tenant's. */
+  private readonly tenant: number;
 
   /**
-   * The quoted column holding the OCPP connection name, for the declared
-   * variant -- `"ocppConnectionName"` on v2, `"stationId"` on v1.9.1. See
-   * variant.ts for why this is declared rather than detected, and for the trap
-   * that makes `stationId`'s mere presence useless as a discriminator.
+   * The column holding the OCPP connection name for the declared variant --
+   * `ocppConnectionName` on v2, `stationId` on v1.9.1. See variant.ts for why
+   * this is declared rather than detected, and for the trap that makes
+   * `stationId`'s mere presence useless as a discriminator.
    *
-   * Unqualified. Every call site below is either single-table or joins only
-   * `Authorizations`, which carries neither name, so it cannot be ambiguous --
-   * and if a future schema made it so, Postgres would raise "column reference
-   * is ambiguous" rather than pick one silently.
+   * It is interpolated into the GraphQL document rather than passed as a
+   * variable because GraphQL has no way to parameterise a field name -- the
+   * same reason the SQL interpolated it into a WHERE clause. The value comes
+   * from variant.ts's closed union, never from input.
    */
   private readonly station: string;
 
-  constructor(private readonly cfg: CitrineConfig) {
-    this.tenant = String(cfg.tenantId);
-    this.station = `"${stationColumn(cfg.variant)}"`;
+  constructor(cfg: CitrineConfig) {
+    this.gql = new CitrineGraphQL(cfg);
+    this.tenant = cfg.tenantId;
+    this.station = stationColumn(cfg.variant);
   }
 
-  /** Runs SQL, returns stdout verbatim. The single path to the database. */
-  private async raw(sql: string): Promise<string> {
-    const proc = Bun.spawn(
-      [
-        "docker",
-        "exec",
-        "-i",
-        // `-e NAME` without a value forwards the variable from OUR environment.
-        // `-e NAME=VALUE` would put the password in docker's own argv, where
-        // `ps` shows it to every user on the host.
-        "-e",
-        "PGPASSWORD",
-        this.cfg.dbContainer,
-        "psql",
-        // -q quiet, -t tuples only, -A unaligned, -X skip ~/.psqlrc.
-        // -X is load-bearing twice over: it pins standard_conforming_strings
-        // for sqlLiteral above, and it pins the NULL rendering to the default
-        // empty string, which nullSafe's absence below depends on.
-        "-qtAX",
-        // Tab, so a multi-column row can be split without smuggling a
-        // delimiter through a concatenation. Postgres's unaligned default is
-        // '|', which appears in ordinary text far more often than a tab does.
-        "-F",
-        "\t",
-        "-v",
-        "ON_ERROR_STOP=1",
-        "-U",
-        this.cfg.dbUser,
-        "-d",
-        this.cfg.dbName,
-        "-c",
-        sql,
-      ],
-      {
-        stdout: "pipe",
-        stderr: "pipe",
-        env: { ...process.env, PGPASSWORD: this.cfg.dbPass },
-      },
+  /** `where` on a station's transactions, spelled once. */
+  private stationFilter(cpId: string): Record<string, unknown> {
+    return { [this.station]: { _eq: cpId }, tenantId: { _eq: this.tenant } };
+  }
+
+  private async newestTransaction(
+    where: Record<string, unknown>,
+  ): Promise<TransactionRow | undefined> {
+    const data = await this.gql.query<{ Transactions: TransactionRow[] }>(
+      `query Newest($where: Transactions_bool_exp!) {
+         Transactions(where: $where, order_by: { id: desc }, limit: 1) {
+           ${TRANSACTION_FIELDS}
+         }
+       }`,
+      { where },
     );
-    const [stdout, stderr, exitCode] = await Promise.all([
-      new Response(proc.stdout).text(),
-      new Response(proc.stderr).text(),
-      proc.exited,
-    ]);
-    if (exitCode !== 0) {
-      throw new Error(
-        `citrineos db query failed (exit ${exitCode}): ${stderr.trim() || "<no stderr>"}`,
-      );
-    }
-    return stdout;
+    return data.Transactions[0];
   }
-
-  /**
-   * Runs SQL, returns the first column of the first row ("" if no rows).
-   *
-   * There is no `nullSafe` counterpart to SteVe's here, and that is a fact
-   * about psql rather than an omission: `-t -A` renders a SQL NULL as the
-   * empty string, so an unset stop timestamp already arrives as the "" that
-   * assertNonEmpty must fail on. MariaDB prints the four characters "NULL",
-   * which is why the other driver needs the extra step.
-   */
-  async scalar(sql: string): Promise<string> {
-    return (await this.raw(sql)).split("\n")[0]?.trim() ?? "";
-  }
-
-  /** Runs SQL, returns every row as its list of columns ([] if no rows). */
-  async rows(sql: string): Promise<string[][]> {
-    return (await this.raw(sql))
-      .split("\n")
-      .filter((line) => line !== "")
-      .map((line) => line.split("\t"));
-  }
-
-  /**
-   * The transaction joined to the Authorization it was started with.
-   *
-   * The join is sound for an OPEN transaction, not only a closed one:
-   * createTransactionByStartTransaction looks the Authorization up by
-   * `idToken = request.idTag` and stores its id on the row at creation time
-   * (packages/core/src/dal/layers/sequelize/repository/TransactionEvent.ts).
-   * It stores NULL for an unknown tag, which is why every use below is a LEFT
-   * JOIN or an explicit inner join on a tag the fixtures provide.
-   */
-  private static readonly TX_AUTH_JOIN =
-    'FROM "Transactions" t JOIN "Authorizations" a ON a.id = t."authorizationId"';
 
   async latestTransaction(cpId: string): Promise<string> {
-    return this.scalar(
-      `SELECT t.id FROM "Transactions" t
-       WHERE ${this.station} = ${sqlLiteral(cpId)} AND t."tenantId" = ${this.tenant}
-       ORDER BY t.id DESC LIMIT 1;`,
-    );
+    const row = await this.newestTransaction(this.stationFilter(cpId));
+    return row === undefined ? "" : String(row.id);
   }
 
   /**
@@ -202,6 +137,12 @@ export class CitrineRecords implements Omit<CsmsRecords, "reservations"> {
    * created. latestTransaction() takes the newest row regardless of tag or
    * state, which on a reused charge point can pick up a stale closed
    * transaction from an earlier run instead of the racing in-progress one.
+   *
+   * The idToken filter goes through the `Authorization` relationship, which is
+   * the join the SQL spelled out. It is sound for an OPEN transaction, not
+   * only a closed one: createTransactionByStartTransaction looks the
+   * Authorization up by `idToken = request.idTag` and stores its id on the row
+   * at creation time (TransactionEvent.ts), storing NULL for an unknown tag.
    */
   async waitForActiveTransaction(
     cpId: string,
@@ -209,13 +150,14 @@ export class CitrineRecords implements Omit<CsmsRecords, "reservations"> {
     timeoutSecs = 15,
   ): Promise<string> {
     return waitForCondition(
-      () =>
-        this.scalar(
-          `SELECT t.id ${CitrineRecords.TX_AUTH_JOIN}
-           WHERE ${this.station} = ${sqlLiteral(cpId)} AND t."tenantId" = ${this.tenant}
-             AND a."idToken" = ${sqlLiteral(idTag)} AND t."isActive" IS TRUE
-           ORDER BY t.id DESC LIMIT 1;`,
-        ),
+      async () => {
+        const row = await this.newestTransaction({
+          ...this.stationFilter(cpId),
+          isActive: { _eq: true },
+          Authorization: { idToken: { _eq: idTag } },
+        });
+        return row === undefined ? "" : String(row.id);
+      },
       {
         timeoutMs: timeoutSecs * 1000,
         intervalMs: 1_000,
@@ -240,10 +182,8 @@ export class CitrineRecords implements Omit<CsmsRecords, "reservations"> {
         "citrineos: no transaction to reference -- the scenario's own lookup came back empty",
       );
     }
-    const raw = await this.scalar(
-      `SELECT t."transactionId" FROM "Transactions" t
-       WHERE t.id = ${sqlLiteral(ref)}::int AND t."tenantId" = ${this.tenant};`,
-    );
+    const row = await this.byRef(ref);
+    const raw = row?.transactionId ?? "";
     if (!/^\d+$/.test(raw)) {
       throw new Error(
         `citrineos: transaction ${ref} has no numeric OCPP transactionId (got ${JSON.stringify(raw)})`,
@@ -255,20 +195,22 @@ export class CitrineRecords implements Omit<CsmsRecords, "reservations"> {
   /**
    * Returns one charge point to the state a scenario may assume, before its
    * container starts. Idempotent, and a WRITE -- hence a lifecycle hook rather
-   * than part of CsmsRecords. One `docker exec`, because psql runs a
-   * semicolon-separated script in a single implicit transaction.
+   * than part of CsmsRecords.
    *
    * Two pieces of per-station residue, both of which a previous scenario in
    * the same sweep can leave behind on a charge point id the pool then hands
    * to the next one:
    *
-   * 1. AN OPEN TRANSACTION. Same job as SteVe's closeStaleTransaction. It
-   *    writes the summary columns on `Transactions` and deliberately does NOT
-   *    fabricate a `StopTransactions` row: that table holds what the charge
-   *    point actually sent, and inventing an entry would put a StopTransaction
-   *    that never happened in front of anyone reading the database afterwards.
-   *    `endTime` is CitrineOS's own bookkeeping, and setting it is true --
-   *    this driver did end the transaction.
+   * 1. AN OPEN TRANSACTION. It writes the summary columns on `Transactions`
+   *    and deliberately does NOT fabricate a `StopTransactions` row: that
+   *    table holds what the charge point actually sent, and inventing an entry
+   *    would put a StopTransaction that never happened in front of anyone
+   *    reading the database afterwards. `endTime` is CitrineOS's own
+   *    bookkeeping, and setting it is true -- this driver did end it.
+   *
+   *    The SQL used COALESCE to leave an already-set endTime alone; GraphQL has
+   *    no such expression, so the rows are read first and each is updated with
+   *    the value it should keep. There is normally at most one.
    *
    * 2. THE LOCAL AUTHORISATION LIST VERSION, which is the non-obvious one.
    *    LocalAuthListService rejects a SendLocalList whose listVersion is not
@@ -280,53 +222,81 @@ export class CitrineRecords implements Omit<CsmsRecords, "reservations"> {
    *    which is what every one of those scenarios assumes.
    */
   async prepareStation(cpId: string): Promise<void> {
-    const cp = sqlLiteral(cpId);
-    const t = this.tenant;
-    await this.scalar(
-      [
-        `UPDATE "Transactions" SET "isActive" = false,
-                "endTime" = COALESCE("endTime", NOW()),
-                "stoppedReason" = COALESCE("stoppedReason", 'Local'),
-                "updatedAt" = NOW()
-         WHERE ${this.station} = ${cp} AND "tenantId" = ${t} AND "isActive" IS TRUE;`,
-        // Join rows before their parents: both carry a foreign key.
-        `DELETE FROM "LocalListVersionAuthorizations" WHERE "localListVersionId" IN
-           (SELECT id FROM "LocalListVersions" WHERE ${this.station} = ${cp} AND "tenantId" = ${t});`,
-        `DELETE FROM "SendLocalListAuthorizations" WHERE "sendLocalListId" IN
-           (SELECT id FROM "SendLocalLists" WHERE ${this.station} = ${cp} AND "tenantId" = ${t});`,
-        `DELETE FROM "SendLocalLists" WHERE ${this.station} = ${cp} AND "tenantId" = ${t};`,
-        `DELETE FROM "LocalListVersions" WHERE ${this.station} = ${cp} AND "tenantId" = ${t};`,
-      ].join("\n"),
+    const where = this.stationFilter(cpId);
+    const now = new Date().toISOString();
+
+    const open = await this.gql.query<{
+      Transactions: { id: number; endTime: string | null; stoppedReason: string | null }[];
+      LocalListVersions: { id: number }[];
+      SendLocalLists: { id: number }[];
+    }>(
+      `query Residue($where: Transactions_bool_exp!, $station: String!, $tenant: Int!) {
+         Transactions(where: $where) { id endTime stoppedReason }
+         LocalListVersions(where: { ${this.station}: { _eq: $station }, tenantId: { _eq: $tenant } }) { id }
+         SendLocalLists(where: { ${this.station}: { _eq: $station }, tenantId: { _eq: $tenant } }) { id }
+       }`,
+      {
+        where: { ...where, isActive: { _eq: true } },
+        station: cpId,
+        tenant: this.tenant,
+      },
+    );
+
+    for (const row of open.Transactions) {
+      await this.gql.query(
+        `mutation Close($id: Int!, $set: Transactions_set_input!) {
+           update_Transactions(where: { id: { _eq: $id } }, _set: $set) { affected_rows }
+         }`,
+        {
+          id: row.id,
+          set: {
+            isActive: false,
+            endTime: row.endTime ?? now,
+            stoppedReason: row.stoppedReason ?? "Local",
+            updatedAt: now,
+          },
+        },
+      );
+    }
+
+    // Join rows before their parents: both carry a foreign key, and neither
+    // side cascades.
+    const versionIds = open.LocalListVersions.map((r) => r.id);
+    const sendIds = open.SendLocalLists.map((r) => r.id);
+    await this.gql.query(
+      `mutation ClearLocalList($versionIds: [Int!]!, $sendIds: [Int!]!) {
+         delete_LocalListVersionAuthorizations(where: { localListVersionId: { _in: $versionIds } }) { affected_rows }
+         delete_SendLocalListAuthorizations(where: { sendLocalListId: { _in: $sendIds } }) { affected_rows }
+         delete_SendLocalLists(where: { id: { _in: $sendIds } }) { affected_rows }
+         delete_LocalListVersions(where: { id: { _in: $versionIds } }) { affected_rows }
+       }`,
+      { versionIds, sendIds },
     );
   }
 
   /**
-   * One column off the transaction row, joined to what the charge point sent.
+   * One transaction by ref, with everything the three readers below need.
    *
-   * The three public readers below differ only in that expression, so the
-   * guard, the joins and the tenant-scoped WHERE live here once -- a fix to any
-   * of them would otherwise have to land in three places.
-   *
-   * ORDER BY + LIMIT because nothing constrains "StopTransactions" to one row
-   * per transaction: a charge point that retries StopTransaction gets a second
-   * one, and scalar() would then read whichever row the planner happened to
-   * emit first. Latest wins, which is the report the station stands by.
+   * `StopTransactions` is ordered and limited rather than assumed unique:
+   * nothing constrains it to one row per transaction, and a charge point that
+   * retries StopTransaction gets a second one. Latest wins, which is the
+   * report the station stands by.
    */
-  private txScalar(tx: string, expr: string): Promise<string> {
-    if (tx === "") return Promise.resolve("");
-    return this.scalar(
-      `SELECT ${expr}
-       FROM "Transactions" t
-       LEFT JOIN "Authorizations" a ON a.id = t."authorizationId"
-       LEFT JOIN "StopTransactions" st ON st."transactionDatabaseId" = t.id
-       WHERE t.id = ${sqlLiteral(tx)}::int AND t."tenantId" = ${this.tenant}
-       ORDER BY st."timestamp" DESC NULLS LAST
-       LIMIT 1;`,
-    );
+  private async byRef(tx: string): Promise<TransactionRow | undefined> {
+    if (tx === "" || !/^\d+$/.test(tx)) return undefined;
+    return this.newestTransaction({
+      id: { _eq: Number(tx) },
+      tenantId: { _eq: this.tenant },
+    });
   }
 
   async transactionIdTag(tx: string): Promise<string> {
-    return this.txScalar(tx, 'COALESCE(a."idToken", st."idTokenValue")');
+    const row = await this.byRef(tx);
+    return (
+      row?.Authorization?.idToken ??
+      row?.StopTransactions[0]?.idTokenValue ??
+      ""
+    );
   }
 
   /**
@@ -339,19 +309,30 @@ export class CitrineRecords implements Omit<CsmsRecords, "reservations"> {
    * charge point wherever the charge point answered.
    */
   async transactionStopTimestamp(tx: string): Promise<string> {
-    return this.txScalar(tx, 'COALESCE(st."timestamp", t."endTime")');
+    const row = await this.byRef(tx);
+    return row?.StopTransactions[0]?.timestamp ?? row?.endTime ?? "";
   }
 
   async transactionStopReason(tx: string): Promise<string> {
-    return this.txScalar(tx, 'COALESCE(st."reason", t."stoppedReason")');
+    const row = await this.byRef(tx);
+    return row?.StopTransactions[0]?.reason ?? row?.stoppedReason ?? "";
   }
 
   async transactionCountForIdTag(cpId: string, idTag: string): Promise<string> {
-    return this.scalar(
-      `SELECT COUNT(*) ${CitrineRecords.TX_AUTH_JOIN}
-       WHERE ${this.station} = ${sqlLiteral(cpId)} AND t."tenantId" = ${this.tenant}
-         AND a."idToken" = ${sqlLiteral(idTag)};`,
+    const data = await this.gql.query<{
+      Transactions_aggregate: { aggregate: { count: number } };
+    }>(
+      `query CountForTag($where: Transactions_bool_exp!) {
+         Transactions_aggregate(where: $where) { aggregate { count } }
+       }`,
+      {
+        where: {
+          ...this.stationFilter(cpId),
+          Authorization: { idToken: { _eq: idTag } },
+        },
+      },
     );
+    return String(data.Transactions_aggregate.aggregate.count);
   }
 
   /**
@@ -366,7 +347,7 @@ export class CitrineRecords implements Omit<CsmsRecords, "reservations"> {
    */
 
   readonly chargingProfiles: CsmsChargingProfileRecords = {
-    // Resolved from this driver's own fixture catalogue, not from the database.
+    // Resolved from this driver's own fixture catalogue, not from the CSMS.
     // profiles.ts explains why CitrineOS has nothing to look this up in.
     refByDescription: async (description: string) => refByDescription(description),
   };

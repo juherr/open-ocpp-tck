@@ -119,6 +119,41 @@ services:
       retries: 10
       start_period: 30s
 
+  # The data API. CitrineOS's own compose runs this sidecar UNGATED, while
+  # putting the operator UI and the OCPI server behind `profiles:` -- and its
+  # shipped `packages/ocpi-base` writes Authorizations through it. So this is
+  # the vendor's data path, not a developer convenience, which is why the
+  # driver reads and seeds through it instead of reaching into Postgres.
+  #
+  # Upstream mounts `apps/ocpp-server/hasura-metadata` and uses the
+  # `.cli-migrations-v3` image to apply it at boot. This one does not: nothing
+  # is tracked at startup, and `ocpp-tck driver provision` tracks the tables
+  # and relationships it needs through the metadata API. Vendoring their
+  # metadata would pin a second schema-shaped artifact that nothing here reads.
+  #
+  # No admin secret, matching the message API's posture and upstream's own
+  # compose. CITRINE_HASURA_SECRET exists for a deployment that sets one.
+  graphql-engine:
+    image: hasura/graphql-engine:v2.40.3@sha256:679fb764590e848e59ab6b82b3e906cc46f87d776f869f49132ca728660df244
+    container_name: citrine-graphql
+    restart: unless-stopped
+    depends_on:
+      ocpp-db:
+        condition: service_healthy
+    ports:
+      - "8090:8080"
+    environment:
+      HASURA_GRAPHQL_DATABASE_URL: postgres://citrine:citrine@ocpp-db:5432/citrine
+      HASURA_GRAPHQL_ENABLE_TELEMETRY: "false"
+    networks:
+      - citrineos-internal
+    healthcheck:
+      test: ["CMD-SHELL", "curl -fsS http://127.0.0.1:8080/healthz || exit 1"]
+      interval: 5s
+      timeout: 10s
+      retries: 20
+      start_period: 20s
+
   amqp-broker:
     image: rabbitmq:3-management@sha256:e582c0bc7766f3342496d8485efb5a1df782b5ce3886ad017e2eaae442311f69
     container_name: citrine-amqp

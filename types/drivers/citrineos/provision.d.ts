@@ -37,20 +37,49 @@ import { type CitrineConfig } from "./config";
 export declare class CitrineProvisioner {
     private readonly cfg;
     private readonly log;
-    private readonly db;
+    private readonly gql;
     constructor(cfg: CitrineConfig, log?: (msg: string) => void);
     private get tenant();
     /**
-     * Writes every fixture in ONE psql invocation.
+     * Makes the data API able to answer at all.
      *
-     * Upsert by hand rather than `ON CONFLICT`, because the unique index is on
-     * (idToken, idTokenType, tenantId) and Postgres treats NULLs as distinct --
-     * so a row written with a different idTokenType would not conflict, and the
-     * table would quietly grow the second row that makes the handler answer
-     * Invalid. Matching on (idToken, tenantId) enforces the invariant the
-     * handler actually needs, whatever else is in the table.
+     * Hasura exposes no table until one is tracked, and this compose starts it
+     * with empty metadata on purpose (see compose.yaml). This is the exact
+     * counterpart of the SteVe driver writing an API password and restarting the
+     * container: a bootstrap that provisioning pays once so that every later
+     * read is a plain HTTP query. It is idempotent, so a second run is a no-op.
+     */
+    ensureApiAccess(): Promise<void>;
+    /**
+     * Writes every fixture, upserting by hand.
+     *
+     * NOT `on_conflict`, and the reason is the same one CitrineOS's own e2e
+     * fixtures record: the unique index on (idToken, idTokenType, tenantId) is
+     * an INDEX with no matching CONSTRAINT, so Hasura cannot resolve a conflict
+     * target for it even though its enum lists the name. Read, then update or
+     * insert.
+     *
+     * Matching on (idToken, tenantId) rather than on the full index is
+     * deliberate: a row written with a different idTokenType would not collide,
+     * and the table would quietly grow the second row that makes the 1.6
+     * Authorize handler answer Invalid.
+     *
+     * One request per fixture, where the SQL sent one script for twenty. The
+     * batching existed to amortise a ~350 ms `docker exec` spawn; over HTTP the
+     * round trip is milliseconds, and a mutation per fixture keeps the failure
+     * message pointing at the fixture that failed.
      */
     provisionTags(): Promise<void>;
+    /** Every fixture row this driver owns, by idToken. */
+    private existingTags;
+    /**
+     * The unknown tag must be ABSENT, and TC_023.1 asserts no transaction was
+     * ever created for it -- so nothing should reference it. The guard is there
+     * for the case where something did: deleting a referenced Authorization
+     * fails on a foreign key that does not cascade, and the message would name
+     * a constraint rather than the situation.
+     */
+    private removeInvalidTag;
     /**
      * Does the running server's schema match the variant we were told to expect?
      *
@@ -58,42 +87,49 @@ export declare class CitrineProvisioner {
      * readable offline -- which leaves exactly one way for the declaration to be
      * wrong: pointing a `v2` driver at a `v1.9.1` server, or the reverse. The
      * symptom without this check is silent and expensive: every record read
-     * targets a column that does not exist, `psql` fails, and a dozen scenarios
-     * report the CSMS as empty. One query converts that into a sentence.
+     * filters on a field the schema does not have, so the data API rejects the
+     * query and a dozen scenarios report the CSMS as empty. One query converts
+     * that into a sentence.
      *
      * The discriminator is `ocppConnectionName`, never `stationId`: `stationId`
      * exists on `Transactions` in BOTH lines -- `character varying` holding the
      * OCPP name on v1.9.1, an `integer` foreign key on v2 -- so its presence
      * proves nothing. Both facts were read off running containers.
+     *
+     * Asked of the GraphQL schema rather than of `information_schema`, which
+     * Hasura does not expose: the generated type mirrors the table's columns, so
+     * introspection answers the same question the catalog query did -- and
+     * answers it about the fields the queries below will actually use.
      */
     private verifySchema;
     /**
-     * Read-only. Two queries rather than one per fixture: each db call is a
-     * `docker exec` process spawn, so asking about twenty tags one at a time
-     * costs seconds of pure process startup -- and verify() runs twice in CI.
+     * Read-only, and answered by the data API rather than by the database that
+     * backs it -- the same rule the SteVe driver follows: what a fixture looks
+     * like through the interface the CSMS publishes is what the Authorize path
+     * will see.
      */
     verify(): Promise<string[]>;
     /**
-     * Every `NOT EXISTS` guard needed to delete an Authorization safely, read
-     * from the live catalog rather than written out here.
+     * Which tables reference an Authorization, asked of the schema rather than
+     * written out here.
      *
      * There are four foreign keys onto `Authorizations` on the pinned image --
      * `Transactions.authorizationId`, `LocalListAuthorizations.authorizationId`,
      * `LocalListAuthorizations.groupAuthorizationId`, and the self-reference
      * `Authorizations.groupAuthorizationId` -- and none of them cascades. An
-     * earlier version of this method guarded only the first, which is the one a
+     * earlier version guarded only the first, which is the one a
      * transaction-only run exercises; any scenario that had sent a SendLocalList
-     * then aborted the DELETE on a constraint violation, and because psql runs a
-     * semicolon-separated script in ONE implicit transaction with ON_ERROR_STOP,
-     * that abort rolled the whole teardown back. It removed nothing and said
-     * nothing.
+     * then aborted the DELETE on a constraint violation, removing nothing and
+     * saying nothing.
      *
-     * Asking the catalog instead of listing four names is what keeps that fixed:
-     * a fifth referencing table on a future CitrineOS is picked up rather than
-     * silently reintroducing the same failure. Table and column names come from
-     * pg_constraint, so they are the database's own identifiers.
+     * Asking is what keeps that fixed: a fifth referencing table on a future
+     * CitrineOS is picked up rather than silently reintroducing the same
+     * failure. The foreign keys come from Hasura's own relationship derivation,
+     * which reads them from the same catalog the SQL used to query directly --
+     * and `ensureApiAccess` tracks every table in the source precisely so that
+     * none of them is invisible here.
      */
-    private guards;
+    private references;
     /**
      * Removes the fixtures, and nothing else. Charge points, their connectors
      * and their transactions are runtime residue rather than fixtures, and

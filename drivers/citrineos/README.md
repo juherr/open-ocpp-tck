@@ -158,10 +158,8 @@ them.
 | `CITRINE_API_URL` | `http://localhost:8080` | Message-API base. |
 | `CITRINE_WS_URL` | `ws://citrine:8081/` | OCPP endpoint; the charge point id is appended as the last path segment. |
 | `CITRINE_TENANT_ID` | `1` | Carried by every API call and every query. |
-| `CITRINE_DB_CONTAINER` | `citrine-db` | Postgres container reached by `docker exec`. |
-| `CITRINE_DB_USER` | `citrine` | |
-| `CITRINE_DB_PASS` | `citrine` | Passed as `-e PGPASSWORD` with no value, so it never reaches docker's argv. |
-| `CITRINE_DB_NAME` | `citrine` | |
+| `CITRINE_GRAPHQL_URL` | `http://localhost:8090` | The `graphql-engine` sidecar: records and fixtures both go through it. |
+| `CITRINE_HASURA_SECRET` | *(unset)* | `x-hasura-admin-secret`, when the target sets one. Upstream's compose and ours do not, so the header is omitted rather than sent blank. |
 | `CITRINE_NETWORK` | `citrineos_citrineos-internal` | Docker network the simulator joins. |
 
 An explicit `SIM_*` value still beats all of these — an operator's override is
@@ -194,23 +192,33 @@ the action, which is the only reason a table is needed:
 | `ClearChargingProfile` | `smartcharging/clearChargingProfile` |
 | `ReserveNow`, `CancelReservation` | **none** — see the gaps below |
 
-Observations come from Postgres through `docker exec`, because CitrineOS's REST
-data endpoints expose none of what the scenarios assert on. Every
-`@AsDataEndpoint` in the repository was read to establish that.
+Observations and fixtures go through the **GraphQL data API** (Hasura), because
+CitrineOS's REST data endpoints expose none of what the scenarios assert on:
+there is no "latest transaction for this station" (the one transaction route
+requires the `transactionId` you are trying to find), no idTag on a
+transaction, no stop reason, no count, and no Authorization CRUD at all. Every
+`@AsDataEndpoint` in the repository was read to establish that, and every route
+was probed on the pinned image.
 
-The bundled Hasura sidecar was the alternative, and [`records.ts`](records.ts)
-carries the full argument. The short version: it would **not** decouple the
-driver from the schema — Hasura derives field names from column names, so the
-v1.9.1 → v2 column rename would have broken the same queries the same way — and
-it is part of CitrineOS's *dev compose* rather than its product. What it would
-genuinely buy is remote testability, and that is the trigger to revisit it.
-Measured cost of the current transport: **~350 ms per query**, almost all of it
-`docker exec` spawn; the cheap fix there is a persistent psql session, not a
-different API.
+Using GraphQL is CitrineOS's own answer rather than a workaround:
+`packages/ocpi-base` — a shipped server-side package — creates Authorizations
+with `insert_Authorizations_one`, the operator UI uses the same mutations, their
+e2e suite seeds fixtures through a `GraphQLClient`, and their compose starts
+`graphql-engine` ungated while gating the UI and the OCPI server behind
+`profiles:`. The server even *demands* it: `sendLocalList` answers `"Authorization
+not found for idTag '…' (create the Authorization before adding it to a local
+auth list)"`, and no REST route can create one.
 
-**Consequence: this driver must run on the host that owns the containers.** The
-operation half would work against a remote CitrineOS; the record half would
-not.
+What it does **not** buy is insulation from the schema: Hasura derives field
+names from column names, so the v1.9.1 → v2 column rename breaks these queries
+exactly as it broke the SQL. What it buys is that **this driver never shells
+into a container** — both halves are HTTP, so it can be pointed at a CitrineOS
+nobody on this host owns.
+
+`ocpp-tck driver provision` tracks the tables and the three relationships the
+queries need through Hasura's metadata API, so nothing of CitrineOS's own
+metadata is vendored here. That bootstrap is the counterpart of the SteVe
+driver writing an API password and restarting the container.
 
 One thing this driver does *better* than the SteVe one: `SendLocalList` is
 lossless here. SteVe's manager UI carries tag names only, so per-entry `status`,

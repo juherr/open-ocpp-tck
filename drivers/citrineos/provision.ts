@@ -38,8 +38,8 @@
 import { defaultCitrineConfig, type CitrineConfig } from "./config";
 // Second on purpose: tsc elides this import from the .d.ts, and the header
 // above travels with whichever import survives.
-import { EXPIRED_FIXTURE_BACKDATE_MINUTES } from "../../tck/time";
-import { CitrineRecords, sqlLiteral } from "./records";
+import { EXPIRED_FIXTURE_BACKDATE_MINUTES, inMinutes } from "../../tck/time";
+import { CitrineGraphQL } from "./graphql-client";
 import { stationColumn } from "./variant";
 
 /**
@@ -83,11 +83,14 @@ const EXPIRED_TAG = "CERT023-EXP";
 const BLOCKED_TAG = "CERT023-BLK";
 
 /**
- * The expiry written for EXPIRED_TAG: an EXPRESSION, not a literal, so Postgres
- * dates the row from its own clock at provisioning time -- the run's start,
- * never a fabricated historical instant. tck/time.ts owns the offset and the
- * policy; `verify` reads it back through the same server's `NOW()`, so no
- * instant this process computed ever reaches the fixture.
+ * The expiry written for EXPIRED_TAG: the run's own start, never a fabricated
+ * historical instant. tck/time.ts owns the offset and the policy.
+ *
+ * IT IS THIS PROCESS'S CLOCK, where the SQL transport let Postgres date the
+ * row with `NOW()`. A GraphQL mutation sends values, not expressions, so the
+ * instant is computed here and the CSMS compares it against its own clock --
+ * which is precisely the skew the backdate covers. On the compose environment
+ * the two clocks are the same kernel's.
  *
  * The status stays `Accepted` and only the instant makes it expired, which
  * reads backwards until you follow the handler: AuthorizeRequestOcpp16Handler
@@ -95,14 +98,16 @@ const BLOCKED_TAG = "CERT023-BLK";
  * branch, and every other stored status falls through to the default. A row
  * stored as `status = 'Expired'` therefore answers Invalid, not Expired.
  */
-const EXPIRED_AT_RUN_START = `NOW() - INTERVAL '${EXPIRED_FIXTURE_BACKDATE_MINUTES} minutes'`;
+function expiredAtRunStart(): string {
+  return inMinutes(-EXPIRED_FIXTURE_BACKDATE_MINUTES).toISOString();
+}
 
-/** How a fixture expires. A domain value, not a SQL fragment: the table below
- *  declares WHAT each tag is, and `expiryOf` decides how to say it. */
+/** How a fixture expires. A domain value, not a timestamp: the table below
+ *  declares WHAT each tag is, and `expiryOf` decides when that is. */
 type FixtureExpiry = "never" | "at-run-start";
 
-function expiryOf(expiry: FixtureExpiry): string {
-  return expiry === "never" ? "NULL" : EXPIRED_AT_RUN_START;
+function expiryOf(expiry: FixtureExpiry): string | null {
+  return expiry === "never" ? null : expiredAtRunStart();
 }
 
 /**
@@ -149,68 +154,163 @@ const FIXTURES: readonly TagFixture[] = [
  *  demands. */
 const ALL_TAGS = [...VALID_TAGS, BLOCKED_TAG, EXPIRED_TAG, INVALID_TAG];
 
+interface AuthorizationRow {
+  id: number;
+  idToken: string;
+  status: string | null;
+  cacheExpiryDateTime: string | null;
+}
+
 export class CitrineProvisioner {
-  private readonly db: CitrineRecords;
+  private readonly gql: CitrineGraphQL;
 
   constructor(
     private readonly cfg: CitrineConfig,
     private readonly log: (msg: string) => void = stdout,
   ) {
-    this.db = new CitrineRecords(cfg);
+    this.gql = new CitrineGraphQL(cfg);
   }
 
-  private get tenant(): string {
-    return String(this.cfg.tenantId);
+  private get tenant(): number {
+    return this.cfg.tenantId;
   }
 
   /**
-   * Writes every fixture in ONE psql invocation.
+   * Makes the data API able to answer at all.
    *
-   * Upsert by hand rather than `ON CONFLICT`, because the unique index is on
-   * (idToken, idTokenType, tenantId) and Postgres treats NULLs as distinct --
-   * so a row written with a different idTokenType would not conflict, and the
-   * table would quietly grow the second row that makes the handler answer
-   * Invalid. Matching on (idToken, tenantId) enforces the invariant the
-   * handler actually needs, whatever else is in the table.
+   * Hasura exposes no table until one is tracked, and this compose starts it
+   * with empty metadata on purpose (see compose.yaml). This is the exact
+   * counterpart of the SteVe driver writing an API password and restarting the
+   * container: a bootstrap that provisioning pays once so that every later
+   * read is a plain HTTP query. It is idempotent, so a second run is a no-op.
+   */
+  async ensureApiAccess(): Promise<void> {
+    await this.gql.ensureTracked();
+    this.log("api: data API tracked");
+  }
+
+  /**
+   * Writes every fixture, upserting by hand.
+   *
+   * NOT `on_conflict`, and the reason is the same one CitrineOS's own e2e
+   * fixtures record: the unique index on (idToken, idTokenType, tenantId) is
+   * an INDEX with no matching CONSTRAINT, so Hasura cannot resolve a conflict
+   * target for it even though its enum lists the name. Read, then update or
+   * insert.
+   *
+   * Matching on (idToken, tenantId) rather than on the full index is
+   * deliberate: a row written with a different idTokenType would not collide,
+   * and the table would quietly grow the second row that makes the 1.6
+   * Authorize handler answer Invalid.
+   *
+   * One request per fixture, where the SQL sent one script for twenty. The
+   * batching existed to amortise a ~350 ms `docker exec` spawn; over HTTP the
+   * round trip is milliseconds, and a mutation per fixture keeps the failure
+   * message pointing at the fixture that failed.
    */
   async provisionTags(): Promise<void> {
-    const statements: string[] = [];
+    const existing = await this.existingTags();
+    const now = new Date().toISOString();
 
     for (const fixture of FIXTURES) {
-      const idToken = sqlLiteral(fixture.idToken);
-      const where = `"idToken" = ${idToken} AND "tenantId" = ${this.tenant}`;
-      // Bound once, like `where`: how "never expires" renders is one decision,
-      // and the UPDATE and the INSERT below must never disagree about it.
       const expiry = expiryOf(fixture.expiry);
-      statements.push(
-        `UPDATE "Authorizations"
-            SET "status" = ${sqlLiteral(fixture.status)},
-                "cacheExpiryDateTime" = ${expiry},
-                "updatedAt" = NOW()
-          WHERE ${where};`,
-        `INSERT INTO "Authorizations"
-            ("idToken", "idTokenType", "status", "cacheExpiryDateTime", "tenantId", "createdAt", "updatedAt")
-          SELECT ${idToken}, ${sqlLiteral(ID_TOKEN_TYPE)}, ${sqlLiteral(fixture.status)},
-                 ${expiry}, ${this.tenant}, NOW(), NOW()
-          WHERE NOT EXISTS (SELECT 1 FROM "Authorizations" WHERE ${where});`,
+      const row = existing.get(fixture.idToken);
+      if (row === undefined) {
+        await this.gql.query(
+          `mutation Seed($object: Authorizations_insert_input!) {
+             insert_Authorizations_one(object: $object) { id }
+           }`,
+          {
+            object: {
+              idToken: fixture.idToken,
+              idTokenType: ID_TOKEN_TYPE,
+              status: fixture.status,
+              cacheExpiryDateTime: expiry,
+              tenantId: this.tenant,
+              // Hasura sends what it is given and nothing else: these columns
+              // are NOT NULL with no database default, so omitting them fails
+              // the insert. CitrineOS's own token mutations set them the same
+              // way.
+              createdAt: now,
+              updatedAt: now,
+            },
+          },
+        );
+        continue;
+      }
+      await this.gql.query(
+        `mutation Reseed($id: Int!, $set: Authorizations_set_input!) {
+           update_Authorizations(where: { id: { _eq: $id } }, _set: $set) { affected_rows }
+         }`,
+        {
+          id: row.id,
+          set: {
+            status: fixture.status,
+            cacheExpiryDateTime: expiry,
+            updatedAt: now,
+          },
+        },
       );
     }
 
-    // The unknown tag must be ABSENT, and TC_023.1 asserts no transaction was
-    // ever created for it -- so nothing should reference it. The guard is
-    // there for the case where something did: a foreign key violation would
-    // abort the whole script, taking the other fixtures with it.
-    statements.push(
-      `DELETE FROM "Authorizations" a
-        WHERE a."idToken" = ${sqlLiteral(INVALID_TAG)} AND a."tenantId" = ${this.tenant}
-          AND NOT EXISTS (SELECT 1 FROM "Transactions" t WHERE t."authorizationId" = a.id);`,
-    );
-
-    await this.db.scalar(statements.join("\n"));
+    await this.removeInvalidTag();
     this.log(
       `tags: ${VALID_TAGS.length} valid, ${EXPIRED_TAG} expired ` +
         `${EXPIRED_FIXTURE_BACKDATE_MINUTES} min before this run's provisioning, ` +
         `${BLOCKED_TAG} (${BLOCKED_TAG_CAVEAT}), ${INVALID_TAG} absent`,
+    );
+  }
+
+  /** Every fixture row this driver owns, by idToken. */
+  private async existingTags(): Promise<Map<string, AuthorizationRow>> {
+    const data = await this.gql.query<{ Authorizations: AuthorizationRow[] }>(
+      `query Fixtures($tags: [citext!]!, $tenant: Int!) {
+         Authorizations(where: { idToken: { _in: $tags }, tenantId: { _eq: $tenant } }) {
+           id
+           idToken
+           status
+           cacheExpiryDateTime
+         }
+       }`,
+      { tags: ALL_TAGS, tenant: this.tenant },
+    );
+    const byTag = new Map<string, AuthorizationRow>();
+    for (const row of data.Authorizations) {
+      // First wins, and duplicates are verify()'s to report rather than this
+      // method's to hide: seeding either of two rows leaves the other behind.
+      if (!byTag.has(row.idToken)) byTag.set(row.idToken, row);
+    }
+    return byTag;
+  }
+
+  /**
+   * The unknown tag must be ABSENT, and TC_023.1 asserts no transaction was
+   * ever created for it -- so nothing should reference it. The guard is there
+   * for the case where something did: deleting a referenced Authorization
+   * fails on a foreign key that does not cascade, and the message would name
+   * a constraint rather than the situation.
+   */
+  private async removeInvalidTag(): Promise<void> {
+    const data = await this.gql.query<{
+      Authorizations: { id: number; Transactions_aggregate: { aggregate: { count: number } } }[];
+    }>(
+      `query Unknown($tag: citext!, $tenant: Int!) {
+         Authorizations(where: { idToken: { _eq: $tag }, tenantId: { _eq: $tenant } }) {
+           id
+           Transactions_aggregate { aggregate { count } }
+         }
+       }`,
+      { tag: INVALID_TAG, tenant: this.tenant },
+    );
+    const removable = data.Authorizations.filter(
+      (row) => row.Transactions_aggregate.aggregate.count === 0,
+    ).map((row) => row.id);
+    if (removable.length === 0) return;
+    await this.gql.query(
+      `mutation DropUnknown($ids: [Int!]!) {
+         delete_Authorizations(where: { id: { _in: $ids } }) { affected_rows }
+       }`,
+      { ids: removable },
     );
   }
 
@@ -221,21 +321,34 @@ export class CitrineProvisioner {
    * readable offline -- which leaves exactly one way for the declaration to be
    * wrong: pointing a `v2` driver at a `v1.9.1` server, or the reverse. The
    * symptom without this check is silent and expensive: every record read
-   * targets a column that does not exist, `psql` fails, and a dozen scenarios
-   * report the CSMS as empty. One query converts that into a sentence.
+   * filters on a field the schema does not have, so the data API rejects the
+   * query and a dozen scenarios report the CSMS as empty. One query converts
+   * that into a sentence.
    *
    * The discriminator is `ocppConnectionName`, never `stationId`: `stationId`
    * exists on `Transactions` in BOTH lines -- `character varying` holding the
    * OCPP name on v1.9.1, an `integer` foreign key on v2 -- so its presence
    * proves nothing. Both facts were read off running containers.
+   *
+   * Asked of the GraphQL schema rather than of `information_schema`, which
+   * Hasura does not expose: the generated type mirrors the table's columns, so
+   * introspection answers the same question the catalog query did -- and
+   * answers it about the fields the queries below will actually use.
    */
   private async verifySchema(): Promise<string[]> {
-    const present =
-      (await this.db.scalar(
-        `SELECT count(*) FROM information_schema.columns
-          WHERE table_schema = 'public' AND table_name = 'Transactions'
-            AND column_name = 'ocppConnectionName';`,
-      )) !== "0";
+    const data = await this.gql.query<{
+      __type: { fields: { name: string }[] } | null;
+    }>(`{ __type(name: "Transactions") { fields { name } } }`);
+    if (data.__type === null) {
+      return [
+        "schema mismatch: the data API exposes no `Transactions` type. " +
+          "Run `ocpp-tck driver provision` to track the tables, and check that " +
+          "CITRINE_GRAPHQL_URL points at this server's graphql-engine.",
+      ];
+    }
+    const present = data.__type.fields.some(
+      (field) => field.name === "ocppConnectionName",
+    );
     const expected = this.cfg.variant === "v2";
     if (present === expected) return [];
     return [
@@ -247,9 +360,10 @@ export class CitrineProvisioner {
   }
 
   /**
-   * Read-only. Two queries rather than one per fixture: each db call is a
-   * `docker exec` process spawn, so asking about twenty tags one at a time
-   * costs seconds of pure process startup -- and verify() runs twice in CI.
+   * Read-only, and answered by the data API rather than by the database that
+   * backs it -- the same rule the SteVe driver follows: what a fixture looks
+   * like through the interface the CSMS publishes is what the Authorize path
+   * will see.
    */
   async verify(): Promise<string[]> {
     // First, and returning early -- not because the checks below depend on it
@@ -263,27 +377,40 @@ export class CitrineProvisioner {
 
     const problems: string[] = [];
 
-    // "Is the expiry in the past" is asked of Postgres rather than of
-    // Date.parse: the CSMS compares against its own clock, not this process's,
-    // and that is the comparison the scenario depends on.
-    const rows = await this.db.rows(
-      `SELECT "idToken", COUNT(*), MIN("status"),
-              COALESCE(MIN("cacheExpiryDateTime")::text, ''),
-              CASE WHEN MIN("cacheExpiryDateTime") < NOW() THEN 'past' ELSE 'future' END
-         FROM "Authorizations"
-        WHERE "tenantId" = ${this.tenant}
-          AND "idToken" IN (${ALL_TAGS.map(sqlLiteral).join(", ")})
-        GROUP BY "idToken";`,
+    // One request for every fixture, and the duplicate check counts rows in
+    // this process rather than in a GROUP BY -- GraphQL has no grouping, and
+    // twenty rows are twenty rows.
+    //
+    // "Is the expiry in the past" is decided HERE, against this process's
+    // clock, where the SQL asked Postgres. The instant the CSMS compares
+    // against is its own, so the two clocks must agree to within the fixture's
+    // backdate -- which is what EXPIRED_FIXTURE_BACKDATE_MINUTES exists for.
+    const data = await this.gql.query<{ Authorizations: AuthorizationRow[] }>(
+      `query Fixtures($tags: [citext!]!, $tenant: Int!) {
+         Authorizations(where: { idToken: { _in: $tags }, tenantId: { _eq: $tenant } }) {
+           id
+           idToken
+           status
+           cacheExpiryDateTime
+         }
+       }`,
+      { tags: ALL_TAGS, tenant: this.tenant },
     );
-    const tags = new Map(rows.map((row) => [row[0], row]));
+
+    const tags = new Map<string, AuthorizationRow>();
+    const counts = new Map<string, number>();
+    for (const row of data.Authorizations) {
+      counts.set(row.idToken, (counts.get(row.idToken) ?? 0) + 1);
+      if (!tags.has(row.idToken)) tags.set(row.idToken, row);
+    }
 
     // A duplicate is not cosmetic: the 1.6 Authorize handler answers Invalid
     // outright when an idToken resolves to more than one row, so this check is
     // the difference between a diagnosable environment fault and twelve
     // scenarios failing on an unexplained denial.
-    for (const [idToken, row] of tags) {
-      if (row[1] !== "1") {
-        problems.push(`${idToken}: ${row[1]} rows, expected 1 (the handler answers Invalid for more)`);
+    for (const [idToken, count] of counts) {
+      if (count !== 1) {
+        problems.push(`${idToken}: ${count} rows, expected 1 (the handler answers Invalid for more)`);
       }
     }
 
@@ -293,11 +420,11 @@ export class CitrineProvisioner {
         problems.push(`${idTag}: missing`);
         continue;
       }
-      if (row[2] !== "Accepted") {
-        problems.push(`${idTag}: status ${row[2] || "<null>"}, expected Accepted`);
+      if (row.status !== "Accepted") {
+        problems.push(`${idTag}: status ${row.status ?? "<null>"}, expected Accepted`);
       }
-      if (row[3] !== "") {
-        problems.push(`${idTag}: has cacheExpiryDateTime ${row[3]}, expected none`);
+      if (row.cacheExpiryDateTime !== null) {
+        problems.push(`${idTag}: has cacheExpiryDateTime ${row.cacheExpiryDateTime}, expected none`);
       }
     }
 
@@ -306,70 +433,62 @@ export class CitrineProvisioner {
     }
 
     const expired = tags.get(EXPIRED_TAG);
-    if (!expired || expired[3] === "") {
+    if (!expired?.cacheExpiryDateTime) {
       problems.push(`${EXPIRED_TAG}: missing or has no cacheExpiryDateTime`);
-    } else if (expired[2] !== "Accepted") {
-      // The trap EXPIRED_AT_RUN_START's comment describes, checked rather than
+    } else if (expired.status !== "Accepted") {
+      // The trap expiredAtRunStart's comment describes, checked rather than
       // merely documented: any other status makes the handler answer Invalid
       // and the expiry is never consulted.
       problems.push(
-        `${EXPIRED_TAG}: status ${expired[2]}, expected Accepted -- only the ` +
+        `${EXPIRED_TAG}: status ${expired.status}, expected Accepted -- only the ` +
           "Accepted branch consults cacheExpiryDateTime",
       );
-    } else if (expired[4] !== "past") {
-      problems.push(`${EXPIRED_TAG}: expiry ${expired[3]} is not in the past`);
+    } else if (!(Date.parse(expired.cacheExpiryDateTime) < Date.now())) {
+      problems.push(
+        `${EXPIRED_TAG}: expiry ${expired.cacheExpiryDateTime} is not in the past`,
+      );
     }
 
     const blocked = tags.get(BLOCKED_TAG);
     if (!blocked) {
       problems.push(`${BLOCKED_TAG}: missing`);
-    } else if (blocked[2] !== "Blocked") {
-      problems.push(`${BLOCKED_TAG}: status ${blocked[2] || "<null>"}, expected Blocked`);
+    } else if (blocked.status !== "Blocked") {
+      problems.push(`${BLOCKED_TAG}: status ${blocked.status ?? "<null>"}, expected Blocked`);
     }
 
     return problems;
   }
 
   /**
-   * Every `NOT EXISTS` guard needed to delete an Authorization safely, read
-   * from the live catalog rather than written out here.
+   * Which tables reference an Authorization, asked of the schema rather than
+   * written out here.
    *
    * There are four foreign keys onto `Authorizations` on the pinned image --
    * `Transactions.authorizationId`, `LocalListAuthorizations.authorizationId`,
    * `LocalListAuthorizations.groupAuthorizationId`, and the self-reference
    * `Authorizations.groupAuthorizationId` -- and none of them cascades. An
-   * earlier version of this method guarded only the first, which is the one a
+   * earlier version guarded only the first, which is the one a
    * transaction-only run exercises; any scenario that had sent a SendLocalList
-   * then aborted the DELETE on a constraint violation, and because psql runs a
-   * semicolon-separated script in ONE implicit transaction with ON_ERROR_STOP,
-   * that abort rolled the whole teardown back. It removed nothing and said
-   * nothing.
+   * then aborted the DELETE on a constraint violation, removing nothing and
+   * saying nothing.
    *
-   * Asking the catalog instead of listing four names is what keeps that fixed:
-   * a fifth referencing table on a future CitrineOS is picked up rather than
-   * silently reintroducing the same failure. Table and column names come from
-   * pg_constraint, so they are the database's own identifiers.
+   * Asking is what keeps that fixed: a fifth referencing table on a future
+   * CitrineOS is picked up rather than silently reintroducing the same
+   * failure. The foreign keys come from Hasura's own relationship derivation,
+   * which reads them from the same catalog the SQL used to query directly --
+   * and `ensureApiAccess` tracks every table in the source precisely so that
+   * none of them is invisible here.
    */
-  private async guards(): Promise<string> {
-    const rows = await this.db.rows(
-      `SELECT c.conrelid::regclass::text, a.attname
-         FROM pg_constraint c
-         JOIN unnest(c.conkey) WITH ORDINALITY k(attnum, ord) ON true
-         JOIN pg_attribute a ON a.attrelid = c.conrelid AND a.attnum = k.attnum
-        WHERE c.contype = 'f' AND c.confrelid = '"Authorizations"'::regclass
-        ORDER BY 1, 2;`,
-    );
-    if (rows.length === 0) {
+  private async references(): Promise<{ table: string; column: string }[]> {
+    const refs = await this.gql.referencesTo("Authorizations");
+    if (refs.length === 0) {
       throw new Error(
         "citrineos teardown: no foreign keys onto Authorizations found -- " +
-          "the schema is not what this driver was written against, refusing to delete.",
+          "either the schema is not what this driver was written against, or the " +
+          "tables are not tracked. Refusing to delete.",
       );
     }
-    return rows
-      .map(([table, column]) =>
-        `NOT EXISTS (SELECT 1 FROM ${table} r WHERE r."${column}" = a.id)`,
-      )
-      .join("\n          AND ");
+    return refs;
   }
 
   /**
@@ -379,19 +498,49 @@ export class CitrineProvisioner {
    * way to get a clean slate.
    */
   async teardown(): Promise<void> {
-    const tags = ALL_TAGS.map(sqlLiteral).join(", ");
-    const mine = `a."idToken" IN (${tags}) AND a."tenantId" = ${this.tenant}`;
-    const unreferenced = await this.guards();
+    const refs = await this.references();
 
-    const kept = await this.db.scalar(
-      `SELECT COUNT(*) FROM "Authorizations" a
-        WHERE ${mine} AND NOT (${unreferenced});`,
+    // One query asking, per fixture row, how many rows point at it from each
+    // referencing column. The aliases are what let a single request cover a
+    // set of tables discovered at runtime.
+    const counts = refs
+      .map(
+        (ref, i) =>
+          `r${i}: ${ref.table}_aggregate(where: { ${ref.column}: { _eq: $id } }) { aggregate { count } }`,
+      )
+      .join("\n           ");
+
+    const mine = await this.gql.query<{ Authorizations: { id: number }[] }>(
+      `query Mine($tags: [citext!]!, $tenant: Int!) {
+         Authorizations(where: { idToken: { _in: $tags }, tenantId: { _eq: $tenant } }) { id }
+       }`,
+      { tags: ALL_TAGS, tenant: this.tenant },
     );
-    await this.db.scalar(
-      `DELETE FROM "Authorizations" a WHERE ${mine} AND ${unreferenced};`,
-    );
+
+    const removable: number[] = [];
+    let kept = 0;
+    for (const row of mine.Authorizations) {
+      const referenced = await this.gql.query<
+        Record<string, { aggregate: { count: number } }>
+      >(`query Referenced($id: Int!) { ${counts} }`, { id: row.id });
+      const total = Object.values(referenced).reduce(
+        (sum, entry) => sum + entry.aggregate.count,
+        0,
+      );
+      if (total === 0) removable.push(row.id);
+      else kept += 1;
+    }
+
+    if (removable.length > 0) {
+      await this.gql.query(
+        `mutation Remove($ids: [Int!]!) {
+           delete_Authorizations(where: { id: { _in: $ids } }) { affected_rows }
+         }`,
+        { ids: removable },
+      );
+    }
     this.log(
-      kept === "0"
+      kept === 0
         ? "tags: removed"
         : `tags: removed, ${kept} kept because scenario records still reference them`,
     );
@@ -437,6 +586,7 @@ export async function provisionCommand(): Promise<number> {
   return runVerb(
     "provision",
     async () => {
+      await provisioner.ensureApiAccess();
       await provisioner.provisionTags();
       return provisioner.verify();
     },

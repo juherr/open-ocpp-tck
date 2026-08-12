@@ -18,15 +18,18 @@
  * the request body IS the OCPP payload. The interesting part is what the
  * surface omits -- see requests.ts.
  *
- * Where the observations come from, and where this has to run
- * -----------------------------------------------------------
- * Postgres, through `docker exec`, because CitrineOS's REST data endpoints
- * expose none of what the scenarios assert on: no latest transaction, no idTag
- * on a transaction, no stop reason, no count. records.ts documents the full
- * search and why the bundled Hasura sidecar was not used instead. The
- * consequence is the same as SteVe's: this driver runs on the host that owns
- * the containers, so a remote CitrineOS is out of reach for the record half
- * even though the operation half would work over HTTP.
+ * Where the observations come from
+ * ---------------------------------
+ * The GraphQL data API, because CitrineOS's REST data endpoints expose none of
+ * what the scenarios assert on: no latest transaction, no idTag on a
+ * transaction, no stop reason, no count. records.ts documents the full search,
+ * and why GraphQL is the vendor's own answer rather than a workaround -- their
+ * shipped OCPI package, their operator UI and their e2e fixtures all write
+ * Authorizations through it.
+ *
+ * The consequence is worth stating because it is the opposite of SteVe's: both
+ * halves of this driver are HTTP, so it can be pointed at a CitrineOS nobody
+ * on this host owns. Nothing here shells into a container.
  *
  * Versions
  * --------
@@ -167,10 +170,10 @@ export const csmsDriver: CsmsDriverModule = {
     "                    LocalBypassAuthProvider, which accepts every request.",
     "CITRINE_WS_URL      OCPP endpoint, id appended (default ws://citrine:8081/)",
     "CITRINE_TENANT_ID   tenant every call carries (default 1)",
-    "CITRINE_DB_CONTAINER Postgres container name (default citrine-db)",
-    "CITRINE_DB_USER     Postgres user (default citrine)",
-    "CITRINE_DB_PASS     Postgres password (default citrine)",
-    "CITRINE_DB_NAME     Postgres database (default citrine)",
+    "CITRINE_GRAPHQL_URL data API base (default http://localhost:8090). The",
+    "                    graphql-engine sidecar; records and fixtures go through it.",
+    "CITRINE_HASURA_SECRET x-hasura-admin-secret, when the target sets one.",
+    "                    Unset by default, matching upstream's own compose.",
     "CITRINE_NETWORK     docker network the simulator joins to reach CitrineOS",
     "                    (default citrineos_citrineos-internal)",
   ].join("\n"),

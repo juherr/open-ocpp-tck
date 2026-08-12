@@ -9,11 +9,16 @@
  * matching CITRINE_* variable by hand; index.ts's envHelp is the user-facing
  * copy of this table.
  *
- * Note the asymmetry between `apiUrl` and `wsBaseUrl`, which is not an
- * oversight: the driver runs on the HOST (it reaches Postgres through
- * `docker exec`) and so talks to `localhost`, while the simulator runs in a
- * container on the compose network and talks to `citrine`. One CSMS, two
- * addresses, because two different processes are doing the addressing.
+ * Note the asymmetry between the HTTP bases and `wsBaseUrl`, which is not an
+ * oversight: the driver runs on the HOST and so talks to `localhost`, while
+ * the simulator runs in a container on the compose network and talks to
+ * `citrine`. One CSMS, two addresses, because two different processes are
+ * doing the addressing.
+ *
+ * There is no database block here any more. Everything this driver reads or
+ * seeds goes over HTTP -- the message API for operations, the GraphQL data API
+ * for records and fixtures -- so it no longer needs a container to exec into,
+ * and can be pointed at a CitrineOS nobody on this host owns.
  */
 import type { CsmsEnv } from "../../tck/driver";
 import { resolveVariant, type CitrineVariant } from "./variant";
@@ -26,11 +31,14 @@ export interface CitrineConfig {
   apiUrl: string;
   /** Every message-API call carries it; CitrineOS's DEFAULT_TENANT_ID is 1. */
   tenantId: number;
-  /** docker container running CitrineOS's Postgres. */
-  dbContainer: string;
-  dbUser: string;
-  dbPass: string;
-  dbName: string;
+  /** GraphQL data API base, no trailing slash, e.g. http://localhost:8090.
+   *  Hasura, which CitrineOS's own compose runs ungated and whose mutations
+   *  its shipped OCPI package uses -- see records.ts. */
+  graphqlUrl: string;
+  /** `x-hasura-admin-secret`, when the target sets one. Upstream's compose and
+   *  ours do not, so it is empty by default and the header is then omitted
+   *  rather than sent blank. */
+  adminSecret: string;
   /** OCPP WebSocket endpoint, without the trailing charge-point id. */
   wsBaseUrl: string;
   /** Docker network the simulator must join to reach CitrineOS by name. */
@@ -60,10 +68,11 @@ export function defaultCitrineConfig(env: CsmsEnv): CitrineConfig {
     variant: resolveVariant(env),
     apiUrl: (env.CITRINE_API_URL ?? "http://localhost:8080").replace(/\/+$/, ""),
     tenantId: tenantId(env.CITRINE_TENANT_ID),
-    dbContainer: env.CITRINE_DB_CONTAINER ?? "citrine-db",
-    dbUser: env.CITRINE_DB_USER ?? "citrine",
-    dbPass: env.CITRINE_DB_PASS ?? "citrine",
-    dbName: env.CITRINE_DB_NAME ?? "citrine",
+    graphqlUrl: (env.CITRINE_GRAPHQL_URL ?? "http://localhost:8090").replace(
+      /\/+$/,
+      "",
+    ),
+    adminSecret: env.CITRINE_HASURA_SECRET ?? "",
     // Trailing slash on purpose: the simulator appends the charge point id as
     // the last path segment, and getClientIdFromUrl takes exactly that.
     wsBaseUrl: env.CITRINE_WS_URL ?? "ws://citrine:8081/",
