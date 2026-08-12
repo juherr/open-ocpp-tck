@@ -11,31 +11,38 @@
  * CRUD at all. Every `@AsDataEndpoint` in the repository was read to establish
  * that, not sampled.
  *
- * WHY NOT THE BUNDLED HASURA / GraphQL
- * ------------------------------------
+ * THE BUNDLED HASURA / GraphQL, AND A CLAIM THIS FILE USED TO MAKE
+ * ---------------------------------------------------------------
  * CitrineOS's docker stack ships a Hasura sidecar that does expose all of it.
- * Three things decided against it, and the first one is NOT the metadata: yes,
- * Hasura tracks no table until metadata is applied and that metadata lives in
- * the CitrineOS repository, but its metadata API (`pg_track_table`) would let
- * `provision` track the eight tables itself, vendoring nothing.
+ * This header used to give three reasons for not using it. The second one --
+ * "Hasura is part of their dev compose, not their product" -- IS FALSE, and it
+ * was the load-bearing one. Measured against citrineos-core:
+ *
+ *  - `packages/ocpi-base` is a shipped server-side package, and it creates
+ *    Authorizations with `insert_Authorizations_one`, a Hasura mutation
+ *    (`src/graphql/queries/token.queries.ts`). Not a REST data endpoint.
+ *  - `apps/operator-ui` does the same for the UI's own CRUD.
+ *  - Their e2e suite seeds fixtures through it too, with a `GraphQLClient`
+ *    posting to `hasuraUrl` (`tests/e2e/fixtures/api-client.ts`).
+ *  - Their compose starts `graphql-engine` UNGATED, while putting the operator
+ *    UI and the OCPI server behind `profiles:`.
+ *
+ * So GraphQL is the sanctioned data path for first-party code, not a developer
+ * convenience. The remaining two reasons stand and are worth keeping:
  *
  *  1. IT WOULD NOT DECOUPLE US FROM THE SCHEMA. Hasura derives its field names
  *     from column names, so the v1.9.1 -> v2 rename of the OCPP connection
  *     column (see variant.ts) would have broken exactly these queries in
  *     exactly the same way. It is a different syntax for the same coupling,
  *     not an abstraction over it.
- *  2. HASURA IS PART OF THEIR DEV COMPOSE, NOT THEIR PRODUCT. Depending on it
- *     would mean testing "CitrineOS plus a particular sidecar", and a target
- *     deployment may well not run one. Postgres is definitionally present.
- *  3. It costs another pinned image, another published port, and another
+ *  2. It costs another pinned image, another published port, and another
  *     authentication story.
  *
- * The one thing it would genuinely buy is remote testability -- GraphQL is
- * plain HTTP, whereas the transport below needs `docker exec` and therefore a
- * driver running on the host that owns the containers, the same cost
- * drivers/steve/records.ts pays and documents. That trade becomes worth making
- * the day someone needs to point this driver at a CitrineOS they do not own,
- * and when it does, `raw()` below is the only thing that has to change.
+ * What it buys is remote testability -- GraphQL is plain HTTP, whereas the
+ * transport below needs `docker exec` and therefore a driver running on the
+ * host that owns the containers, the same cost drivers/steve/records.ts pays
+ * and documents. With the false objection removed, that trade is now worth
+ * making, and `raw()` below is the seam it goes through.
  *
  * MEASURED COST OF THIS TRANSPORT: ~350 ms per query, dominated by the
  * `docker exec` process spawn. Worth knowing before optimising the wrong
