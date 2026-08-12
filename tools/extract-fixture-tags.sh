@@ -87,7 +87,11 @@ status=0
 for provisioner in "${provisioners[@]}"; do
   name="$(basename "$(dirname "$provisioner")")"
 
-  driver_tags="$(grep -oE '"CERT[A-Za-z0-9-]+"' "$provisioner" | tr -d '"' | sort -u)"
+  # `|| true`: grep exits 1 on no match, which under `set -euo pipefail` would
+  # abort the whole run at the first driver that provisions no tag at all --
+  # silently, and before the FAIL line below could name it. An empty set is the
+  # honest answer there, and it falls straight into the missing branch.
+  driver_tags="$(grep -oE '"CERT[A-Za-z0-9-]+"' "$provisioner" | tr -d '"' | sort -u || true)"
 
   missing="$(comm -23 <(printf '%s\n' "$image_tags") \
     <(printf '%s\n' "$driver_tags"))"
