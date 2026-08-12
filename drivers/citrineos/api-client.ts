@@ -37,7 +37,12 @@ interface MessageConfirmation {
 }
 
 function describe(value: unknown): string {
-  return typeof value === "string" ? value : JSON.stringify(value);
+  if (typeof value === "string") return value;
+  // JSON.stringify returns undefined -- not the string "undefined" -- for
+  // undefined, a function or a symbol. A confirmation carrying no payload is
+  // exactly that case, and letting it through emptied the failure message of
+  // its only detail. String() keeps a name for the thing that was there.
+  return JSON.stringify(value) ?? String(value);
 }
 
 export class CitrineMessageApi {
@@ -62,6 +67,7 @@ export class CitrineMessageApi {
   async send(cpId: string, req: CitrineRequest): Promise<string> {
     const url = this.url(req, cpId);
     let res: Response;
+    let text: string;
     try {
       res = await fetch(url, {
         method: "POST",
@@ -71,13 +77,16 @@ export class CitrineMessageApi {
         body: JSON.stringify(req.body),
         signal: AbortSignal.timeout(DEFAULT_TIMEOUT_MS),
       });
+      // Inside the try, because the timeout above covers the body stream too:
+      // a CSMS that answers its headers and then stalls aborts here, not at
+      // fetch, and that failure deserves the same URL-bearing message.
+      text = await res.text();
     } catch (err) {
       throw new Error(
         `citrineos: POST ${url} failed: ${err instanceof Error ? err.message : String(err)}`,
       );
     }
 
-    const text = await res.text();
     if (!res.ok) {
       // A 404 here is worth calling out by name, because it is what an
       // unrouted action looks like: CitrineOS skips route registration
