@@ -299,6 +299,11 @@ export class CitrineRecords implements Omit<CsmsRecords, "reservations"> {
    * The three public readers below differ only in that expression, so the
    * guard, the joins and the tenant-scoped WHERE live here once -- a fix to any
    * of them would otherwise have to land in three places.
+   *
+   * ORDER BY + LIMIT because nothing constrains "StopTransactions" to one row
+   * per transaction: a charge point that retries StopTransaction gets a second
+   * one, and scalar() would then read whichever row the planner happened to
+   * emit first. Latest wins, which is the report the station stands by.
    */
   private txScalar(tx: string, expr: string): Promise<string> {
     if (tx === "") return Promise.resolve("");
@@ -307,7 +312,9 @@ export class CitrineRecords implements Omit<CsmsRecords, "reservations"> {
        FROM "Transactions" t
        LEFT JOIN "Authorizations" a ON a.id = t."authorizationId"
        LEFT JOIN "StopTransactions" st ON st."transactionDatabaseId" = t.id
-       WHERE t.id = ${sqlLiteral(tx)}::int AND t."tenantId" = ${this.tenant};`,
+       WHERE t.id = ${sqlLiteral(tx)}::int AND t."tenantId" = ${this.tenant}
+       ORDER BY st."timestamp" DESC NULLS LAST
+       LIMIT 1;`,
     );
   }
 

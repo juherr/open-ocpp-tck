@@ -157,6 +157,11 @@ export declare class CitrineRecords implements Omit<CsmsRecords, "reservations">
      * The three public readers below differ only in that expression, so the
      * guard, the joins and the tenant-scoped WHERE live here once -- a fix to any
      * of them would otherwise have to land in three places.
+     *
+     * ORDER BY + LIMIT because nothing constrains "StopTransactions" to one row
+     * per transaction: a charge point that retries StopTransaction gets a second
+     * one, and scalar() would then read whichever row the planner happened to
+     * emit first. Latest wins, which is the report the station stands by.
      */
     private txScalar;
     transactionIdTag(tx: string): Promise<string>;
