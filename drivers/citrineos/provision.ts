@@ -19,6 +19,14 @@
  * Hasura sidecar would offer insert mutations, at the cost of vendoring its
  * metadata -- see records.ts for why that trade was refused.
  *
+ * Unlike the SteVe driver, whose every database write names the upstream
+ * ticket that would replace it, THIS FILE HAS NO TICKET TO NAME: issues are
+ * disabled on citrineos/citrineos-core, and the two filed against
+ * citrineos/citrineos from this repository (#215, #216) are protocol defects
+ * rather than the missing data API. Nothing here is waiting on a number --
+ * the gap is unreported, which is a state worth writing down rather than
+ * leaving as an apparent omission.
+ *
  * Charging profiles are not provisioned here either, and that is not an
  * omission: OCPP 1.6 SetChargingProfile carries the profile inline, so there
  * is no CSMS-side record to create. profiles.ts holds the catalogue.
@@ -28,8 +36,8 @@
  * chasing a failure will run it twice before believing it.
  */
 import { defaultCitrineConfig, type CitrineConfig } from "./config";
-// After ./config, not before: tsc elides this import from the generated .d.ts,
-// and the header above travels with whichever import survives.
+// Second on purpose: tsc elides this import from the .d.ts, and the header
+// above travels with whichever import survives.
 import { EXPIRED_FIXTURE_BACKDATE_MINUTES } from "../../tck/time";
 import { CitrineRecords, sqlLiteral } from "./records";
 import { stationColumn } from "./variant";
@@ -171,16 +179,19 @@ export class CitrineProvisioner {
     for (const fixture of FIXTURES) {
       const idToken = sqlLiteral(fixture.idToken);
       const where = `"idToken" = ${idToken} AND "tenantId" = ${this.tenant}`;
+      // Bound once, like `where`: how "never expires" renders is one decision,
+      // and the UPDATE and the INSERT below must never disagree about it.
+      const expiry = expiryOf(fixture.expiry);
       statements.push(
         `UPDATE "Authorizations"
             SET "status" = ${sqlLiteral(fixture.status)},
-                "cacheExpiryDateTime" = ${expiryOf(fixture.expiry)},
+                "cacheExpiryDateTime" = ${expiry},
                 "updatedAt" = NOW()
           WHERE ${where};`,
         `INSERT INTO "Authorizations"
             ("idToken", "idTokenType", "status", "cacheExpiryDateTime", "tenantId", "createdAt", "updatedAt")
           SELECT ${idToken}, ${sqlLiteral(ID_TOKEN_TYPE)}, ${sqlLiteral(fixture.status)},
-                 ${expiryOf(fixture.expiry)}, ${this.tenant}, NOW(), NOW()
+                 ${expiry}, ${this.tenant}, NOW(), NOW()
           WHERE NOT EXISTS (SELECT 1 FROM "Authorizations" WHERE ${where});`,
       );
     }
@@ -203,11 +214,6 @@ export class CitrineProvisioner {
     );
   }
 
-  /**
-   * Read-only. Two queries rather than one per fixture: each db call is a
-   * `docker exec` process spawn, so asking about twenty tags one at a time
-   * costs seconds of pure process startup -- and verify() runs twice in CI.
-   */
   /**
    * Does the running server's schema match the variant we were told to expect?
    *
@@ -240,6 +246,11 @@ export class CitrineProvisioner {
     ];
   }
 
+  /**
+   * Read-only. Two queries rather than one per fixture: each db call is a
+   * `docker exec` process spawn, so asking about twenty tags one at a time
+   * costs seconds of pure process startup -- and verify() runs twice in CI.
+   */
   async verify(): Promise<string[]> {
     // First, and returning early -- not because the checks below depend on it
     // (they read `Authorizations`, which has no station column) but because of

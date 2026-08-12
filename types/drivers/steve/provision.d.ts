@@ -1,24 +1,13 @@
+import { type SteveApiConfig } from "./api-client";
 import { type SteveConfig } from "./ui-client";
-export interface SteveApiConfig {
-    /** e.g. http://localhost:8180/steve/api/v1 */
-    baseUrl: string;
-    username: string;
-    password: string;
-    /** Container running the SteVe application, restarted to pick up API access. */
-    appContainer: string;
-}
-export declare function defaultApiConfig(cfg: SteveConfig, env?: NodeJS.ProcessEnv): SteveApiConfig;
 export declare class SteveProvisioner {
     private readonly cfg;
-    private readonly api;
+    private readonly apiCfg;
     private readonly log;
     private readonly ui;
     private readonly db;
-    constructor(cfg: SteveConfig, api: SteveApiConfig, log?: (msg: string) => void);
-    private apiFetch;
-    /** One place that decides what an unacceptable WebAPI status looks like, so
-     *  the body-truncation and the message shape cannot drift per call site. */
-    private expectStatus;
+    private readonly api;
+    constructor(cfg: SteveConfig, apiCfg: SteveApiConfig, log?: (msg: string) => void);
     /**
      * Makes the WebAPI answer, restarting SteVe only if it does not already.
      *
@@ -44,7 +33,6 @@ export declare class SteveProvisioner {
      * overwritten -- the operator knows their password and this does not.
      */
     ensureApiAccess(): Promise<void>;
-    private apiReachable;
     private restartApp;
     private listTags;
     private createTag;
@@ -52,9 +40,23 @@ export declare class SteveProvisioner {
     provisionTags(): Promise<void>;
     provisionProfiles(): Promise<void>;
     /**
-     * Read-only. Deliberately answers from the database rather than the WebAPI:
-     * verify must work on an environment where API access was never enabled,
-     * and must not be the thing that enables it.
+     * Read-only, and answered from the WebAPI wherever the WebAPI can answer.
+     *
+     * The tag half asks `GET /ocppTags`, which is what the Authorize path will
+     * itself consult -- a fixture that looks right in the table but wrong through
+     * the API is a fixture that will behave wrong. The profile half stays on SQL
+     * because there is no charging-profile endpoint to ask
+     * ([steve-community/steve#2069]); when that lands, this method becomes
+     * single-channel.
+     *
+     * TWO PROPERTIES WERE TRADED AWAY, deliberately, and they are worth naming:
+     * verify no longer works on an environment where API access was never
+     * enabled -- it reports that as the first problem to fix, which is honest but
+     * is not what it did before -- and "is the expiry in the past" is now decided
+     * by THIS process's clock via Date.parse rather than by the database's.
+     * EXPIRED_FIXTURE_BACKDATE_MINUTES is what makes the second safe: a minute of
+     * backdate absorbs any skew between the two clocks, which on a local compose
+     * environment is zero anyway.
      */
     verify(): Promise<string[]>;
     /**

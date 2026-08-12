@@ -17,6 +17,14 @@
  * Hasura sidecar would offer insert mutations, at the cost of vendoring its
  * metadata -- see records.ts for why that trade was refused.
  *
+ * Unlike the SteVe driver, whose every database write names the upstream
+ * ticket that would replace it, THIS FILE HAS NO TICKET TO NAME: issues are
+ * disabled on citrineos/citrineos-core, and the two filed against
+ * citrineos/citrineos from this repository (#215, #216) are protocol defects
+ * rather than the missing data API. Nothing here is waiting on a number --
+ * the gap is unreported, which is a state worth writing down rather than
+ * leaving as an apparent omission.
+ *
  * Charging profiles are not provisioned here either, and that is not an
  * omission: OCPP 1.6 SetChargingProfile carries the profile inline, so there
  * is no CSMS-side record to create. profiles.ts holds the catalogue.
@@ -44,11 +52,6 @@ export declare class CitrineProvisioner {
      */
     provisionTags(): Promise<void>;
     /**
-     * Read-only. Two queries rather than one per fixture: each db call is a
-     * `docker exec` process spawn, so asking about twenty tags one at a time
-     * costs seconds of pure process startup -- and verify() runs twice in CI.
-     */
-    /**
      * Does the running server's schema match the variant we were told to expect?
      *
      * variant.ts declares rather than detects, so that the scope table stays
@@ -64,6 +67,11 @@ export declare class CitrineProvisioner {
      * proves nothing. Both facts were read off running containers.
      */
     private verifySchema;
+    /**
+     * Read-only. Two queries rather than one per fixture: each db call is a
+     * `docker exec` process spawn, so asking about twenty tags one at a time
+     * costs seconds of pure process startup -- and verify() runs twice in CI.
+     */
     verify(): Promise<string[]>;
     /**
      * Every `NOT EXISTS` guard needed to delete an Authorization safely, read

@@ -72,6 +72,7 @@ strongest available demonstration that the core names no CSMS.
 | `drivers/steve/index.ts` | `local-upstreamable` | `—` | `—` | `—` | `—` |
 | `drivers/steve/forms.ts` | `local-upstreamable` | `—` | `—` | `—` | `—` |
 | `drivers/steve/records.ts` | `local-upstreamable` | `—` | `—` | `—` | `—` |
+| `drivers/steve/api-client.ts` | `local-upstreamable` | `—` | `—` | `—` | `—` |
 | `drivers/steve/ui-client.ts` | `local-upstreamable` | `—` | `—` | `—` | `—` |
 | `drivers/steve/scope.ts` | `local-upstreamable` | `—` | `—` | `—` | `—` |
 | `drivers/steve/provision.ts` | `local-upstreamable` | `—` | `—` | `—` | `—` |
@@ -213,11 +214,25 @@ container before the pin moved. All of them still hold, and held identically on
 3.13.0:
 
 - SteVe's WebAPI exposes `ocppTags`, `operations` and `transactions` — and
-  nothing else. There is no chargeBox and no chargingProfile endpoint, per its
-  own `/steve/manager/v3/api-docs`. That is why provisioning uses three
-  channels and not one. This is the bullet most likely to change:
-  [steve-community/steve#2069][sc2069] proposes charging-profile CRUD, and
-  would let the UI channel fold into REST.
+  nothing else. Probed on this digest: `chargePoints`, `reservations` and
+  `chargingProfiles` all answer **403**, because no such controller exists.
+  That is why provisioning uses three channels and not one, and why the SQL
+  channel is exactly the list of endpoints SteVe does not have. This is the
+  bullet most likely to change: [steve-community/steve#2069][sc2069] proposes
+  charging-profile CRUD, and would let the UI channel fold into REST.
+- `GET /api/v1/transactions` serves the observations the scenarios assert on:
+  the `Transaction` DTO carries `id`, `ocppIdTag`, `startTimestamp`,
+  `stopTimestamp`, `stopReason` and `stopEventActor`, and
+  `TransactionQueryFormForApi` filters by `chargeBoxId`, `ocppIdTag`,
+  `transactionPk` and `type=ACTIVE` with **no** default date window (its
+  constructor sets `periodType = ALL`). All four filters were exercised against
+  a real transaction on this digest. `PATCH /transactions/{pk}/stop` closes a
+  transaction **without touching the wire** — `TransactionService#stop` writes
+  the stop row with `eventActor = manual` and returns early if it is already
+  stopped — which is what the stale-transaction hook needs, since the charge
+  point that opened it is gone. An earlier revision of `records.ts` claimed the
+  API exposed no `stop_reason` and read everything from MariaDB; that claim was
+  wrong on 3.13.0 and 3.14.0 alike.
 - `POST /api/v1/ocppTags` with a past `expiryDate` is rejected **400**:
   `OcppTagForm.expiryDate` carries `@Future`. The manager UI binds the same
   form object, so it refuses it too — hence the one SQL write in
@@ -230,6 +245,23 @@ container before the pin moved. All of them still hold, and held identically on
   UI password) is set, and SteVe reads that column once at startup. There is
   still no environment variable for it, so `provision` writes it and restarts
   the container — once; it probes first and skips when already on.
+  [steve-community/steve#2075][sc2075] (manager and API account CRUD) and
+  [#2059][sc2059] (a Web UI for those accounts) are what would end it.
+
+Every remaining database access in `drivers/steve/` is one of these four gaps,
+and nothing else — which is the property to preserve when editing that driver:
+
+| what needs the database | upstream ticket |
+|---|---|
+| write a past `expiry_date` | [#2100][sc2100] |
+| turn the WebAPI on (`web_user.api_password`) | [#2075][sc2075], [#2059][sc2059] |
+| read reservation status; teardown's reservation guard | [#2074][sc2074] |
+| create, verify and remove charging profiles | [#2069][sc2069] |
+
+All four sit under the [#1000 "Meta - API Endpoint"][sc1000] umbrella. The
+CitrineOS driver has no such table because it has no such tickets: issues are
+disabled on `citrineos/citrineos-core`, and its missing Authorization CRUD is
+unreported rather than pending.
 - The `chargingProfiles/add` form binds the same field names, including the
   indexed `schedulePeriods[N].powerLimit`.
 - Unknown idTags are **not** auto-inserted on Authorize, which is what makes
@@ -251,7 +283,11 @@ a scenario rather than by a version number: TC_052 is the reason it exists, and
 TC_052 passes on this digest. If TC_052 ever regresses, read that header first.
 
 [sc2069]: https://github.com/steve-community/steve/issues/2069
+[sc2074]: https://github.com/steve-community/steve/issues/2074
+[sc2075]: https://github.com/steve-community/steve/issues/2075
 [sc2100]: https://github.com/steve-community/steve/issues/2100
+[sc1000]: https://github.com/steve-community/steve/issues/1000
+[sc2059]: https://github.com/steve-community/steve/issues/2059
 
 ### CitrineOS
 

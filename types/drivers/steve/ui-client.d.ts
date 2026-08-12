@@ -9,6 +9,12 @@ export interface SteveConfig {
     dbUser: string;
     dbPass: string;
     dbName: string;
+    /** docker container running the SteVe application. Deployment, not
+     *  transport: only `provision` uses it, to restart the process once so it
+     *  picks up the WebAPI credential it just wrote. It sits beside dbContainer
+     *  because that is what it is -- a container name -- and not on the API
+     *  config, which would make every scenario resolve a variable it never uses. */
+    appContainer: string;
     /** OCPP WebSocket endpoint, without the trailing charge-point id. */
     wsBaseUrl: string;
     /** Docker network the simulator must join to reach SteVe by container name. */

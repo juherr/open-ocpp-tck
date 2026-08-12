@@ -11,10 +11,15 @@
  * unrunnable. This is its replacement, reachable as `ocpp-tck driver provision`.
  *
  * Three channels, because no single one can do the job -- each claim below was
- * verified against the pinned image (see VENDOR.md), not inferred:
+ * verified against the pinned image (see VENDOR.md), not inferred. The REST
+ * channel is used wherever REST can answer, on purpose: a fixture asserted
+ * through the API is a fixture an integrator could reproduce, while one
+ * asserted through the tables is a claim about SteVe's private state. So the
+ * two other channels are not a style choice -- each is a missing endpoint with
+ * a ticket number, and the day it lands the channel goes with it.
  *
- *   REST  `POST /api/v1/ocppTags` for tags. The cleanest channel, and the only
- *         one with real create/update semantics.
+ *   REST  tags, end to end: `POST /ocppTags` to create, `GET /ocppTags` for
+ *         everything `verify` checks, `DELETE /ocppTags/{pk}` for teardown.
  *   SQL   for `CERT023-EXP` alone. OcppTagForm.expiryDate carries @Future, so
  *         REST answers 400 to a past date -- and the manager UI binds the very
  *         same form, so it refuses it too. A row that must look stale can only
@@ -38,15 +43,30 @@
  *         `PATCH /ocppTags/{pk}/expire` lands, this channel goes away and tags
  *         become REST-only without any fixture changing meaning.
  *   UI    for the two charging profiles. SteVe's WebAPI exposes exactly
- *         ocppTags, operations and transactions (confirmed against its own
- *         /v3/api-docs); there is no chargingProfile endpoint at all.
- *         steve-community/steve#2069 proposes adding that CRUD, noting that
- *         "a fully automated client must therefore use the manager UI or
- *         direct database access". If it lands, this channel folds into REST.
+ *         ocppTags, operations and transactions; there is no chargingProfile
+ *         endpoint at all. steve-community/steve#2069 proposes adding that
+ *         CRUD, noting that "a fully automated client must therefore use the
+ *         manager UI or direct database access". If it lands, this channel
+ *         folds into REST, and so does verify's second half and teardown's.
+ *
+ * Two more places reach past the API for the same reason, each with its own
+ * ticket:
+ *
+ *   web_user.api_password  written in SQL to turn the WebAPI on at all -- no
+ *         endpoint, no environment variable, and the /webusers page is not
+ *         reachable. steve-community/steve#2075 (manager and API account CRUD)
+ *         and #2059 (a Web UI for web-user accounts) are the two that would
+ *         end it. Until then, enabling the API costs a database write.
+ *   reservation.id_tag     read in SQL by teardown, to avoid deleting a tag a
+ *         reservation still references. steve-community/steve#2074.
+ *
+ * All of these sit under the #1000 "Meta - API Endpoint" umbrella, which is
+ * the one link to follow when wondering why a TCK needs database access.
  *
  * Charge points are not provisioned here on purpose: there is no REST endpoint
- * for them either, and compose.yaml sets AUTO_REGISTER_UNKNOWN_STATIONS=true so
- * the roster registers itself on first BootNotification.
+ * for them either (steve-community/steve#2068), and compose.yaml sets
+ * AUTO_REGISTER_UNKNOWN_STATIONS=true so the roster registers itself on first
+ * BootNotification.
  *
  * Everything is idempotent. Re-running provision on a provisioned environment
  * must be a no-op that still exits 0, because CI reruns it and an operator
@@ -54,11 +74,18 @@
  */
 import { EXPIRED_FIXTURE_BACKDATE_MINUTES } from "../../tck/time";
 import { waitForCondition } from "../../tck/wait";
+import {
+  defaultApiConfig,
+  SteveWebApi,
+  type SteveApiConfig,
+} from "./api-client";
 import { chargingProfileForm, type ChargingProfileFields } from "./forms";
 import { SteveRecords, sqlLiteral } from "./records";
 import { defaultSteveConfig, SteveUiOps, type SteveConfig } from "./ui-client";
 
-const HTTP_TIMEOUT_MS = 15_000;
+/** Per-request budget for the signin probe below; the WebAPI client owns its
+ *  own, and the manager UI client owns a third. */
+const SIGNIN_PROBE_TIMEOUT_MS = 15_000;
 const RESTART_TIMEOUT_MS = 300_000;
 const RESTART_POLL_MS = 3_000;
 
@@ -112,17 +139,17 @@ const BLOCKED_TAG = "CERT023-BLK";
 
 /**
  * The expiry written for EXPIRED_TAG: an EXPRESSION, not a literal, so MariaDB
- * dates the row from its own clock at provisioning time. `verify` asks the same
- * server the same way (`expiry_date < NOW()`), so neither this process's clock
- * nor its timezone enters the fixture at any point.
+ * dates the row from its own clock at provisioning time rather than from this
+ * process's -- the write is the one place where using the CSMS's own clock
+ * costs nothing.
  *
- * The backdate is what makes both readers agree, and each is strict in its own
- * way: SteVe's `isExpired` is `now.isAfter(expiry)`, and `verify`'s `NOW()` is
- * second-granular while `ocpp_tag.expiry_date` is `timestamp(6)` -- so an
- * expiry written at exactly "now" reads as not-yet-expired for the rest of that
- * second, which `provision` would hit on the spot since it verifies itself.
- * `NOW(6)` rather than `NOW()` for the same reason: truncating the written
- * value would narrow the margin for nothing.
+ * The backdate is what makes every reader agree, and each is strict in its own
+ * way: SteVe's `isExpired` is `now.isAfter(expiry)`, and `verify` compares the
+ * instant the API reports against THIS process's clock. A minute covers the
+ * gap between the two clocks and the second-granularity of `NOW()`, which
+ * `provision` would otherwise trip over immediately since it verifies itself.
+ * `NOW(6)` rather than `NOW()` so the written value does not lose precision
+ * the margin is there to protect.
  */
 const EXPIRED_AT_RUN_START = `NOW(6) - INTERVAL ${EXPIRED_FIXTURE_BACKDATE_MINUTES} MINUTE`;
 
@@ -133,76 +160,51 @@ const PROFILES: readonly ChargingProfileFields[] = [
   { description: "TC057 TxProfile", purpose: "TX_PROFILE", limitW: 11000 },
 ];
 
-export interface SteveApiConfig {
-  /** e.g. http://localhost:8180/steve/api/v1 */
-  baseUrl: string;
-  username: string;
-  password: string;
-  /** Container running the SteVe application, restarted to pick up API access. */
-  appContainer: string;
-}
-
-export function defaultApiConfig(
-  cfg: SteveConfig,
-  env: NodeJS.ProcessEnv = process.env,
-): SteveApiConfig {
-  return {
-    baseUrl:
-      env.STEVE_API_URL ?? cfg.baseUrl.replace(/\/manager\/?$/, "/api/v1"),
-    username: env.STEVE_API_USER ?? cfg.username,
-    password: env.STEVE_API_PASS ?? "ocpp-tck",
-    appContainer: env.STEVE_APP_CONTAINER ?? "steve",
-  };
-}
-
+/**
+ * SteVe's `OcppTagOverview`, narrowed to what provisioning and verification
+ * read. `blocked` is SteVe's own reading of the fixture rather than ours: it is
+ * derived from maxActiveTransactionCount server-side, so asserting on it checks
+ * the state the Authorize path will actually see.
+ */
 interface OcppTagOverview {
   ocppTagPk: number;
   idTag: string;
   expiryDate: string | null;
+  blocked: boolean;
   maxActiveTransactionCount: number;
+}
+
+/**
+ * What "this fixture is still what we seeded" means, spelled once.
+ *
+ * provision and verify have to agree on it or the environment oscillates:
+ * provision rebuilding a tag every run because its rule says "drifted" while
+ * verify's says "clean", or verify blessing a tag provision would rebuild.
+ * They used to answer the same two questions off different fields --
+ * maxActiveTransactionCount here, SteVe's derived `blocked` there.
+ */
+function isUsable(row: OcppTagOverview): boolean {
+  return !row.blocked && row.expiryDate === null;
+}
+
+function isBlocked(row: OcppTagOverview): boolean {
+  return row.blocked;
 }
 
 export class SteveProvisioner {
   private readonly ui: SteveUiOps;
   private readonly db: SteveRecords;
 
+  private readonly api: SteveWebApi;
+
   constructor(
     private readonly cfg: SteveConfig,
-    private readonly api: SteveApiConfig,
+    private readonly apiCfg: SteveApiConfig,
     private readonly log: (msg: string) => void = stdout,
   ) {
+    this.api = new SteveWebApi(apiCfg);
     this.ui = new SteveUiOps(cfg);
-    this.db = new SteveRecords(cfg);
-  }
-
-  private async apiFetch(
-    path: string,
-    init: RequestInit = {},
-  ): Promise<Response> {
-    return fetch(`${this.api.baseUrl}${path}`, {
-      ...init,
-      headers: {
-        authorization: `Basic ${btoa(`${this.api.username}:${this.api.password}`)}`,
-        "content-type": "application/json",
-        ...(init.headers ?? {}),
-      },
-      signal: AbortSignal.timeout(HTTP_TIMEOUT_MS),
-    });
-  }
-
-  /** One place that decides what an unacceptable WebAPI status looks like, so
-   *  the body-truncation and the message shape cannot drift per call site. */
-  private async expectStatus(
-    res: Response,
-    allowed: readonly number[],
-    what: string,
-  ): Promise<Response> {
-    if (!allowed.includes(res.status)) {
-      throw new Error(
-        `steve provision: ${what} returned ${res.status}: ${(await res.text()).slice(0, 300)}`,
-      );
-    }
-    return res;
+    this.db = new SteveRecords(cfg, apiCfg);
   }
 
   /**
@@ -230,7 +232,7 @@ export class SteveProvisioner {
    * overwritten -- the operator knows their password and this does not.
    */
   async ensureApiAccess(): Promise<void> {
-    if (await this.apiReachable()) {
+    if (await this.api.reachable()) {
       this.log("api: already enabled");
       return;
     }
@@ -240,34 +242,34 @@ export class SteveProvisioner {
     // "no such user" and for "already had this value" -- two situations that
     // need opposite responses.
     const existing = await this.db.scalar(
-      `SELECT CONCAT('row|', IFNULL(api_password, '')) FROM web_user WHERE username = ${sqlLiteral(this.api.username)};`,
+      `SELECT CONCAT('row|', IFNULL(api_password, '')) FROM web_user WHERE username = ${sqlLiteral(this.apiCfg.username)};`,
     );
     if (existing === "") {
       throw new Error(
-        `steve provision: no web_user row for '${this.api.username}'. ` +
+        `steve provision: no web_user row for '${this.apiCfg.username}'. ` +
           `SteVe seeds it on first boot from AUTH_USER -- is the container up, and is STEVE_API_USER the same as AUTH_USER?`,
       );
     }
     if (existing !== "row|") {
       throw new Error(
-        `steve provision: '${this.api.username}' already has a WebAPI password set, and it is not the one configured. ` +
+        `steve provision: '${this.apiCfg.username}' already has a WebAPI password set, and it is not the one configured. ` +
           `Refusing to overwrite a credential in use. Set STEVE_API_PASS to the existing password, or clear ` +
           `web_user.api_password for that user if this environment is disposable.`,
       );
     }
 
     this.log("api: enabling WebAPI access (requires one SteVe restart)");
-    const hash = await Bun.password.hash(this.api.password, {
+    const hash = await Bun.password.hash(this.apiCfg.password, {
       algorithm: "bcrypt",
       cost: 10,
     });
     await this.db.scalar(
-      `UPDATE web_user SET api_password = ${sqlLiteral(hash)} WHERE username = ${sqlLiteral(this.api.username)};`,
+      `UPDATE web_user SET api_password = ${sqlLiteral(hash)} WHERE username = ${sqlLiteral(this.apiCfg.username)};`,
     );
 
     await this.restartApp();
 
-    if (!(await this.apiReachable())) {
+    if (!(await this.api.reachable())) {
       throw new Error(
         "steve provision: WebAPI still refuses the credentials after a restart. " +
           "Check STEVE_API_USER/STEVE_API_PASS and STEVE_APP_CONTAINER.",
@@ -276,17 +278,8 @@ export class SteveProvisioner {
     this.log("api: enabled");
   }
 
-  private async apiReachable(): Promise<boolean> {
-    try {
-      const res = await this.apiFetch("/ocppTags");
-      return res.status === 200;
-    } catch {
-      return false;
-    }
-  }
-
   private async restartApp(): Promise<void> {
-    const proc = Bun.spawn(["docker", "restart", this.api.appContainer], {
+    const proc = Bun.spawn(["docker", "restart", this.cfg.appContainer], {
       stdout: "pipe",
       stderr: "pipe",
     });
@@ -296,56 +289,40 @@ export class SteveProvisioner {
     ]);
     if (exitCode !== 0) {
       throw new Error(
-        `steve provision: docker restart ${this.api.appContainer} failed: ${stderr.trim() || "<no stderr>"}`,
+        `steve provision: docker restart ${this.cfg.appContainer} failed: ${stderr.trim() || "<no stderr>"}`,
       );
     }
 
-    this.log(`api: waiting for ${this.api.appContainer} to come back`);
+    this.log(`api: waiting for ${this.cfg.appContainer} to come back`);
     await waitForCondition(
       () =>
         // A rejection here is "not listening yet" -- SteVe replays its
         // migrations before it binds -- so it folds into the falsy retry.
         fetch(`${this.cfg.baseUrl}/signin`, {
           redirect: "manual",
-          signal: AbortSignal.timeout(HTTP_TIMEOUT_MS),
+          signal: AbortSignal.timeout(SIGNIN_PROBE_TIMEOUT_MS),
         })
           .then((res) => res.status === 200)
           .catch(() => false),
       {
         timeoutMs: RESTART_TIMEOUT_MS,
         intervalMs: RESTART_POLL_MS,
-        description: `${this.api.appContainer} to answer ${this.cfg.baseUrl}/signin`,
+        description: `${this.cfg.appContainer} to answer ${this.cfg.baseUrl}/signin`,
       },
     );
   }
 
   private async listTags(): Promise<Map<string, OcppTagOverview>> {
-    const res = await this.expectStatus(
-      await this.apiFetch("/ocppTags"),
-      [200],
-      "GET /ocppTags",
-    );
-    const rows = (await res.json()) as OcppTagOverview[];
+    const rows = await this.api.getJson<OcppTagOverview[]>("/ocppTags");
     return new Map(rows.map((r) => [r.idTag, r]));
   }
 
   private async createTag(body: Record<string, unknown>): Promise<void> {
-    await this.expectStatus(
-      await this.apiFetch("/ocppTags", {
-        method: "POST",
-        body: JSON.stringify(body),
-      }),
-      [200, 201],
-      `POST /ocppTags ${JSON.stringify(body)}`,
-    );
+    await this.api.send("POST", "/ocppTags", { body });
   }
 
   private async deleteTag(pk: number): Promise<void> {
-    await this.expectStatus(
-      await this.apiFetch(`/ocppTags/${pk}`, { method: "DELETE" }),
-      [200, 204],
-      `DELETE /ocppTags/${pk}`,
-    );
+    await this.api.send("DELETE", `/ocppTags/${pk}`);
   }
 
   async provisionTags(): Promise<void> {
@@ -353,9 +330,7 @@ export class SteveProvisioner {
 
     for (const idTag of VALID_TAGS) {
       const row = existing.get(idTag);
-      if (row && row.maxActiveTransactionCount > 0 && row.expiryDate === null) {
-        continue;
-      }
+      if (row && isUsable(row)) continue;
       // A tag that exists but drifted (blocked, or carrying an expiry from an
       // earlier run) is deleted rather than patched: PUT would hit the same
       // @Future validation that forbids writing the expiry in the first place.
@@ -365,7 +340,7 @@ export class SteveProvisioner {
     }
 
     const blocked = existing.get(BLOCKED_TAG);
-    if (!blocked || blocked.maxActiveTransactionCount !== 0) {
+    if (!blocked || !isBlocked(blocked)) {
       if (blocked) await this.deleteTag(blocked.ocppTagPk);
       await this.createTag({
         idTag: BLOCKED_TAG,
@@ -377,18 +352,16 @@ export class SteveProvisioner {
 
     // Created through the API for the row, then aged through SQL: @Future makes
     // the API refuse to write a past date, but says nothing about reading one.
-    //
-    // The UPDATE is unconditional, and that is the idempotency wanted here
-    // rather than a departure from it: every provision re-expires the tag as of
-    // that run, which is exactly what an `expire` endpoint called with now()
-    // would do. Skipping it when the row is already expired would keep an older
-    // run's instant alive for no gain.
     if (!existing.has(EXPIRED_TAG)) {
       await this.createTag({
         idTag: EXPIRED_TAG,
         note: "open-ocpp-tck fixture: expired",
       });
     }
+    // Unconditional, and that is the idempotency wanted here rather than a
+    // departure from it: every provision re-expires the tag as of that run.
+    // Skipping the write when the row is already expired would keep an older
+    // run's instant alive for no gain.
     await this.db.scalar(
       `UPDATE ocpp_tag SET expiry_date = ${EXPIRED_AT_RUN_START} WHERE id_tag = ${sqlLiteral(EXPIRED_TAG)};`,
     );
@@ -429,27 +402,27 @@ export class SteveProvisioner {
   }
 
   /**
-   * Read-only. Deliberately answers from the database rather than the WebAPI:
-   * verify must work on an environment where API access was never enabled,
-   * and must not be the thing that enables it.
+   * Read-only, and answered from the WebAPI wherever the WebAPI can answer.
+   *
+   * The tag half asks `GET /ocppTags`, which is what the Authorize path will
+   * itself consult -- a fixture that looks right in the table but wrong through
+   * the API is a fixture that will behave wrong. The profile half stays on SQL
+   * because there is no charging-profile endpoint to ask
+   * ([steve-community/steve#2069]); when that lands, this method becomes
+   * single-channel.
+   *
+   * TWO PROPERTIES WERE TRADED AWAY, deliberately, and they are worth naming:
+   * verify no longer works on an environment where API access was never
+   * enabled -- it reports that as the first problem to fix, which is honest but
+   * is not what it did before -- and "is the expiry in the past" is now decided
+   * by THIS process's clock via Date.parse rather than by the database's.
+   * EXPIRED_FIXTURE_BACKDATE_MINUTES is what makes the second safe: a minute of
+   * backdate absorbs any skew between the two clocks, which on a local compose
+   * environment is zero anyway.
    */
   async verify(): Promise<string[]> {
     const problems: string[] = [];
-    const wanted = [...VALID_TAGS, BLOCKED_TAG, EXPIRED_TAG, INVALID_TAG];
-
-    // Two queries, not one per fixture. Each db call is a `docker exec` process
-    // spawn, so asking about twenty tags one at a time costs seconds of pure
-    // process startup -- and verify() runs twice in the CI job. "Is the expiry
-    // in the past" is asked of the database rather than of Date.parse: MariaDB
-    // renders that column with six fractional digits, more precision than the
-    // ECMAScript date grammar promises to accept, and the CSMS compares against
-    // its own clock anyway, not this process's.
-    const tagRows = await this.db.rows(
-      `SELECT id_tag, IFNULL(max_active_transaction_count, 1), IFNULL(expiry_date, ''),
-              IF(expiry_date < NOW(), 'past', 'future')
-       FROM ocpp_tag WHERE id_tag IN (${wanted.map(sqlLiteral).join(", ")});`,
-    );
-    const tags = new Map(tagRows.map((row) => [row[0], row]));
+    const tags = await this.listTags();
 
     for (const idTag of VALID_TAGS) {
       const row = tags.get(idTag);
@@ -457,8 +430,11 @@ export class SteveProvisioner {
         problems.push(`${idTag}: missing`);
         continue;
       }
-      if (row[1] === "0") problems.push(`${idTag}: blocked, expected usable`);
-      if (row[2] !== "") problems.push(`${idTag}: has expiry ${row[2]}`);
+      if (isUsable(row)) continue;
+      if (row.blocked) problems.push(`${idTag}: blocked, expected usable`);
+      if (row.expiryDate !== null) {
+        problems.push(`${idTag}: has expiry ${row.expiryDate}`);
+      }
     }
 
     if (tags.has(INVALID_TAG)) {
@@ -466,22 +442,25 @@ export class SteveProvisioner {
     }
 
     const expired = tags.get(EXPIRED_TAG);
-    if (!expired || expired[2] === "") {
+    if (!expired?.expiryDate) {
       problems.push(`${EXPIRED_TAG}: missing or has no expiry`);
-    } else if (expired[3] !== "past") {
-      problems.push(`${EXPIRED_TAG}: expiry ${expired[2]} is not in the past`);
+    } else if (!(Date.parse(expired.expiryDate) < Date.now())) {
+      problems.push(
+        `${EXPIRED_TAG}: expiry ${expired.expiryDate} is not in the past`,
+      );
     }
 
     const blocked = tags.get(BLOCKED_TAG);
     if (!blocked) {
       problems.push(`${BLOCKED_TAG}: missing`);
-    } else if (blocked[1] !== "0") {
+    } else if (!isBlocked(blocked)) {
       problems.push(
-        `${BLOCKED_TAG}: maxActiveTransactionCount ${blocked[1]}, expected 0`,
+        `${BLOCKED_TAG}: maxActiveTransactionCount ${blocked.maxActiveTransactionCount}, expected 0`,
       );
     }
 
-    // The limit is checked, not just the name. A profile carrying the wrong
+    // From here down, SQL -- there is no charging-profile endpoint to ask
+    // (steve-community/steve#2069). The limit is checked, not just the name. A profile carrying the wrong
     // limit is exactly the case verify() exists to catch: TC_066 asserts
     // "limit":11000 on the composite schedule, so a profile that is present but
     // wrong turns into a scenario FAIL that reads like a CSMS defect, while
@@ -527,30 +506,31 @@ export class SteveProvisioner {
    * the volume, which is the only case where it matters.
    */
   async teardown(): Promise<void> {
-    const tags = [...VALID_TAGS, BLOCKED_TAG, EXPIRED_TAG, INVALID_TAG]
-      .map(sqlLiteral)
-      .join(", ");
+    const wanted = [...VALID_TAGS, BLOCKED_TAG, EXPIRED_TAG, INVALID_TAG];
 
     // Only tags nothing refers to. `transaction_start.id_tag` and
-    // `reservation.id_tag` are ON DELETE CASCADE onto ocpp_tag, so a plain
-    // DELETE here does not fail on a used tag -- it silently takes the run's
-    // transaction history with it. Measured: one scenario, then teardown, and
-    // transaction_start went from 1 row to 0.
-    //
-    // The NOT NULL guards are not decoration: `x NOT IN (SELECT ...)` is NULL,
-    // hence false, the moment the subquery yields a single NULL, which would
-    // turn this into a no-op that deletes nothing at all.
-    const deletable = `id_tag IN (${tags})
-        AND id_tag NOT IN (SELECT id_tag FROM transaction_start WHERE id_tag IS NOT NULL)
-        AND id_tag NOT IN (SELECT id_tag FROM reservation WHERE id_tag IS NOT NULL)`;
-
-    const kept = await this.db.scalar(
-      `SELECT COUNT(*) FROM ocpp_tag WHERE id_tag IN (${tags})
-         AND NOT (${deletable});`,
-    );
-    await this.db.scalar(`DELETE FROM ocpp_tag WHERE ${deletable};`);
+    // `reservation.id_tag` are ON DELETE CASCADE onto ocpp_tag, so deleting a
+    // used tag -- through SQL or through the API, they hit the same
+    // constraint -- does not fail. It silently takes the run's transaction
+    // history with it. Measured: one scenario, then teardown, and
+    // transaction_start went from 1 row to 0. So the guard runs BEFORE the
+    // delete, and records.ts owns which channel answers it.
+    const [used, tags] = await Promise.all([
+      this.db.idTagsReferenced(wanted),
+      this.listTags(),
+    ]);
+    let kept = 0;
+    for (const idTag of wanted) {
+      const row = tags.get(idTag);
+      if (!row) continue;
+      if (used.has(idTag)) {
+        kept += 1;
+        continue;
+      }
+      await this.deleteTag(row.ocppTagPk);
+    }
     this.log(
-      kept === "0"
+      kept === 0
         ? "tags: removed"
         : `tags: removed, ${kept} kept because transactions or reservations still reference them`,
     );
