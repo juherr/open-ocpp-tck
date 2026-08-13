@@ -110,7 +110,25 @@ Copying those shims verbatim would import nothing. The **implementations** in
 `runner/` filenames the specs import — which is why those two rows cite a
 `src/…` upstream path while every other row cites `scripts/steve-verify/…`.
 
+## Editing a vendored file
+
+Changing an `upstream-patched` file means its patch and its local digest must
+change with it, in that order — and the one way to get it wrong is to record
+the digest and then touch the file again. One command does both:
+
+```sh
+tools/repin-vendored.sh tck/main.ts
+```
+
+It reconstructs the upstream bytes by reverse-applying HEAD's patch to HEAD's
+copy of the file, refuses unless that reconstruction matches the `upstream
+sha256` frozen below, then writes the new patch and rewrites that row's local
+digest. It ends by running the guard, so a re-pin that did not hold says so.
+
 ## Refresh procedure
+
+Moving the PIN, which is the other direction: upstream changed, and every row
+has to follow.
 
 ```sh
 git clone --filter=blob:none https://github.com/shiv3/ocpp-cp-simulator /tmp/ocpp-upstream
