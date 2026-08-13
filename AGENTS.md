@@ -1,0 +1,99 @@
+# AGENTS.md
+
+Working notes for anyone changing this repository. Everything here is a fact
+about the repo that otherwise costs a round trip to rediscover — the reasoning
+behind each rule lives in the file it protects.
+
+`README.md` is the user-facing tour, `CONTRIBUTING.md` is how to write a
+driver, `VENDOR.md` is the vendoring manifest. This file is the working loop.
+
+## First
+
+```sh
+bun install --frozen-lockfile
+```
+
+`typecheck` and `tests/types-current.sh` shell out to `node_modules/.bin/tsc`;
+without it they fail with `tsc: command not found` rather than with a type
+error.
+
+## The gate
+
+`bun run verify` is exactly what CI runs before it starts a container —
+typecheck, committed declarations, three driver scope checks, the env guard,
+and the three shell guards — with one exit code, and every step runs even
+after one fails.
+
+It is usually the wrong command *during* iteration: `tests/spec-invariants.sh`
+pulls a pinned bun image, and it can only break if something under `tck/specs/`
+changed. The fast loop:
+
+```sh
+bun run typecheck
+bun run check:driver:steve
+bun run check:driver:citrineos
+bun run check:driver:citrineos-v1     # the same driver's other release line
+bun tests/driver-env-scope.ts
+```
+
+then `bun run verify` once before committing.
+
+Everything above is offline: no CSMS, no container, no credentials. The live
+counterparts are `ocpp-tck driver selftest` (seconds, needs a running CSMS) and
+`bun run e2e` (a full sweep, needs docker).
+
+## Vendored files: re-pin before verifying
+
+Part of `tck/` is copied or patched from `shiv3/ocpp-cp-simulator`, and
+`VENDOR.md`'s inventory pins a digest per file. **Check the row's origin before
+editing anything under `tck/`:**
+
+| origin | editing it means |
+|---|---|
+| `local-upstreamable`, `local-private` | nothing to do |
+| `upstream-patched` | re-pin: `tools/repin-vendored.sh <path>` |
+| `upstream-verbatim` | the edit is also a change of origin — the row moves too |
+
+`tck/main.ts` is `upstream-patched`, so any change to the runner needs the
+re-pin. Doing it *before* `bun run verify` saves a full gate run; the script
+regenerates the patch and the digest in one step, in the only order that
+cannot record a digest for bytes that no longer exist.
+
+## Generated artifacts, committed on purpose
+
+Committed because this package is consumed as a pinned git dependency, and
+because a diff is reviewable where a digest is not.
+
+| artifact | regenerate with | guarded by |
+|---|---|---|
+| `types/**/*.d.ts` | `bun run build:types` | `tests/types-current.sh` |
+| `tck/specs/ASSERT-INVENTORY.txt`, `DRIVE-TRACE.txt` | `bash tests/spec-invariants.sh --regenerate` | `tests/spec-invariants.sh` |
+| `patches/**`, `VENDOR.md` digests | `tools/repin-vendored.sh <path>` | `tests/vendor-integrity.sh` |
+
+Never hand-edit them. The diff of `types/` **is** the change to this package's
+public API — read it before committing.
+
+## Tests
+
+There is no unit-test framework and no `*.test.ts`. `tests/` holds offline
+guards, each with a header stating the property it protects. `bun run test`
+chains them — note `bun test` is Bun's own runner and finds nothing here.
+
+Shell is the default; `tests/driver-env-scope.ts` is TypeScript because the
+property it asserts (a driver's declarations follow the env they are *resolved*
+with) is unreachable through the CLI, which can only ever pass `process.env`.
+
+## Two boundaries the guards enforce
+
+- **Nothing under `tck/` may name a CSMS, and the core may not import a
+  driver.** Doc comments may discuss a CSMS-shaped design they replaced;
+  identifiers, string literals and imports may not. (`tests/generic-core.sh`)
+- **A scenario's assertions and its CSMS call sequence may not change.**
+  Changing what a scenario measures is legitimate and moves the two committed
+  artifacts above — say why in the pull request. (`tests/spec-invariants.sh`)
+
+## Conventions
+
+Conventional Commits, `!` plus a `BREAKING CHANGE:` footer when the driver
+contract changes shape. Branches are `juherr/<topic>`. Code, comments and
+commit messages in English.
