@@ -157,7 +157,10 @@ them during a scenario.
 `check-driver` reads the driver **module** and never calls `create()`, so it
 works with no credentials — which is the same property that lets a scenario
 your CSMS cannot drive be reported `NOT APPLICABLE` before any container
-starts.
+starts. `scope` and `capabilities` may be functions of the environment, for a
+CSMS whose supported release lines do not have the same table; they are
+resolved with the same environment `create()` is given, so the table and the
+requests always describe the same server.
 
 ## Verdicts
 
@@ -215,9 +218,10 @@ even where the code is new.
 ```sh
 bun install
 bun run typecheck                 # tsc --noEmit
-bun run check:steve-driver       # offline
-bun run check:citrineos-driver    # offline
-bun test                          # vendor integrity, genericity, spec invariants
+bun run check:driver:steve        # offline
+bun run check:driver:citrineos    # offline
+bun run check:driver:citrineos-v1 # offline, the other line the same driver declares
+bun run test                      # vendor integrity, genericity, spec invariants, driver env
 bash tests/types-current.sh       # committed declarations match the sources
 bash tools/vendor-diff.sh         # network: how far upstream has moved
 ```

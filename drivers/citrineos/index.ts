@@ -46,7 +46,6 @@ import {
   type CsmsDriverParts,
   type CsmsEnv,
   type CsmsOperation,
-  type CsmsOperationAction,
   type CsmsOperations,
 } from "../../tck/driver";
 import { CitrineMessageApi } from "./api-client";
@@ -77,24 +76,27 @@ import {
  * `assertNever` turns into a compile error -- instead of being silently
  * dropped from the declaration and never noticed.
  *
- * Read at MODULE load, not in create(): `scope` and `capabilities` are read by
- * check-driver and by the pre-flight without ever calling create(), which is
- * what lets both run with no credentials and no server. CITRINE_VARIANT is a
- * declaration, not a credential, so reading it here keeps that promise.
+ * A function of the environment, not a module-scope constant: which line this
+ * driver is pointed at decides the answer, and `scope` and `capabilities` are
+ * read by check-driver and by the pre-flight without ever calling create() --
+ * which is what lets both run with no credentials and no server.
+ * CITRINE_VARIANT is a declaration, not a credential, so reading it here keeps
+ * that promise. The runner hands the same env to create(), so the table and
+ * the requests cannot describe different servers.
  */
-const VARIANT = resolveVariant(process.env);
-const UNROUTED: ReadonlyMap<CsmsOperationAction, string> = unroutedActions(VARIANT);
-
-const CAPABILITIES: CsmsCapabilities = {
-  operations: new Set(
-    CSMS_OPERATION_ACTIONS.filter((action) => !UNROUTED.has(action)),
-  ),
-  // No reservation capability at all, which is structural rather than a gap in
-  // this driver: with nothing able to SEND a 1.6 ReserveNow, the Reservations
-  // table never gets a row for 1.6 to have an opinion about.
-  reservations: false,
-  chargingProfiles: true,
-};
+function capabilitiesFor(variant: CitrineVariant): CsmsCapabilities {
+  const unrouted = unroutedActions(variant);
+  return {
+    operations: new Set(
+      CSMS_OPERATION_ACTIONS.filter((action) => !unrouted.has(action)),
+    ),
+    // No reservation capability at all, which is structural rather than a gap
+    // in this driver: with nothing able to SEND a 1.6 ReserveNow, the
+    // Reservations table never gets a row for 1.6 to have an opinion about.
+    reservations: false,
+    chargingProfiles: true,
+  };
+}
 
 function createOperations(
   variant: CitrineVariant,
@@ -120,24 +122,10 @@ function createOperations(
 export const csmsDriver: CsmsDriverModule = {
   id: "citrineos",
   displayName: "CitrineOS",
-  scope: citrineosScope(VARIANT),
-  capabilities: CAPABILITIES,
+  scope: (env) => citrineosScope(resolveVariant(env)),
+  capabilities: (env) => capabilitiesFor(resolveVariant(env)),
   create(env: CsmsEnv): CsmsDriverParts {
     const cfg = defaultCitrineConfig(env);
-    // VARIANT above came from process.env at module load, because `scope` and
-    // `capabilities` are read without ever calling create(). This resolves it
-    // again from the env the runner passes, and the two are only guaranteed to
-    // agree because tck/main.ts passes process.env. A caller passing a
-    // synthetic CsmsEnv would otherwise get a scope table describing one
-    // server while every request targeted the other -- silently. One
-    // comparison converts that into a sentence.
-    if (cfg.variant !== VARIANT) {
-      throw new Error(
-        `citrineos: CITRINE_VARIANT is ${cfg.variant} in the environment passed to ` +
-          `create(), but ${VARIANT} when the module was loaded, so the scope table ` +
-          "and the requests would describe different servers.",
-      );
-    }
     const records = new CitrineRecords(cfg);
     return {
       operations: createOperations(cfg.variant, new CitrineMessageApi(cfg), records),

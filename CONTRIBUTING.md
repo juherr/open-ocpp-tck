@@ -151,6 +151,28 @@ Put it on the **module**, not inside `create()`. `check-driver` and the
 preflight read it without calling `create()`, which is what lets them run with
 no credentials — including in your CI, which has none.
 
+### When the table depends on which server you point at
+
+A CSMS with two incompatible release lines does not have one table, and neither
+`scope` nor `capabilities` has to be a constant: both accept a function of the
+environment, resolved with the same `CsmsEnv` that later reaches `create()`.
+
+```ts
+scope: (env) => (env.ACME_LINE === "legacy" ? LEGACY_SCOPE : SCOPE),
+```
+
+Do not resolve the setting twice — once from `process.env` at module load for
+the table, once from the argument inside `create()`. They agree only as long as
+the caller happens to pass `process.env`, and when they stop agreeing the
+result is a scope table describing one server while every request targets the
+other. `drivers/citrineos/` does this for `CITRINE_VARIANT`.
+
+The function is still read with no credentials and no server: it may read a
+*declaration* — which release, which profile — and must not contact the CSMS to
+answer. If you read those fields yourself rather than through the runner, use
+`driverScope(module, env)` / `driverCapabilities(module, env)` from
+`open-ocpp-tck/driver` instead of narrowing the union by hand.
+
 ### Two worked examples
 
 Two drivers ship here, and they are worth reading together because they solve

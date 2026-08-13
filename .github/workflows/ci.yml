@@ -44,13 +44,26 @@ jobs:
       # Offline: reads the driver module and the scenario registry, nothing
       # else. No CSMS, no container, no credentials.
       - name: SteVe driver agrees with the core
-        run: bun run check:steve-driver
+        run: bun run check:driver:steve
 
       # The same check for the second driver, and it earns its place: this is
       # the one whose scope table has NOT_APPLICABLE rows, so it is the only
       # place where adding or renaming a scenario silently stops being covered.
       - name: CitrineOS driver agrees with the core
-        run: bun run check:citrineos-driver
+        run: bun run check:driver:citrineos
+
+      # And its OTHER table. `scope` is a function of the environment, so this
+      # driver declares two of them; the v1 one is derived from the v2 one and
+      # was previously never checked anywhere -- a v2 row renamed in tandem
+      # with its v1 counterpart type-checks and covers nothing.
+      - name: CitrineOS driver agrees with the core on the v1 line
+        run: bun run check:driver:citrineos-v1
+
+      # In-process, because the CLI can only ever pass process.env: that a
+      # driver's declarations follow the env they are RESOLVED with, not the
+      # one that happened to exist at import, is unreachable from a shell.
+      - name: Driver scope follows the environment
+        run: bun tests/driver-env-scope.ts
 
       - name: Core names no CSMS
         run: bash tests/generic-core.sh
@@ -152,7 +165,7 @@ jobs:
         if: always()
         uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
         with:
-          name: ocpp-tck-results-${{ github.run_id }}
+          name: ocpp-tck-steve-results-${{ github.run_id }}
           path: results/
           if-no-files-found: warn
 

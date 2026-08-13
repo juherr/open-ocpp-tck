@@ -1,6 +1,6 @@
 --- /tmp/ocpp-upstream/scripts/steve-verify/runner/main.ts	2026-07-31 20:05:48
 +++ tck/main.ts	2026-07-31 20:12:10
-@@ -1,39 +1,58 @@
+@@ -1,39 +1,65 @@
  #!/usr/bin/env bun
 +// Derived from shiv3/ocpp-cp-simulator scripts/steve-verify/runner/main.ts @ 604054adb0d7d7129a26a5f1ad2d5fdc290d1ca1 (Apache-2.0). Modified: the STEVE_DRIVER=api|ui selection is replaced by a CSMS driver loaded through ./driver-registry; a per-driver scope table (./scope) is consulted BEFORE any container starts and yields the NOT APPLICABLE verdict; UnsupportedOperationError (./driver) thrown out of drive() degrades to NOT APPLICABLE with a stderr WARNING; the PARTIAL verdict and the `skipped` summary column were added; the exit code is non-zero only for FAIL/ERROR; parallel lanes derive from the resolved station list instead of the fixed CERTCP1..3 trio; the SteVe capability probe is dropped.
 +
@@ -49,12 +49,18 @@
 +import { resolve } from "node:path";
  import { AssertRecorder } from "./assert";
 -import { printCapabilityProbe } from "./capability-probe";
-+import { CSMS_OPERATION_ACTIONS, UnsupportedOperationError } from "./driver";
++import {
++  CSMS_OPERATION_ACTIONS,
++  driverCapabilities,
++  driverScope,
++  UnsupportedOperationError,
++} from "./driver";
 +import { loadDriverModule } from "./driver-registry";
 +import {
 +  scopeCoverage,
 +  templateIdsWithStatus,
 +  type ScopeStatus,
++  type ScopeTable,
 +} from "./scope";
 +import {
 +  unsupportedChargingProfiles,
@@ -76,6 +82,7 @@
 +  type SimConfig,
 +} from "./sim";
 +import type {
++  CsmsCapabilities,
 +  CsmsDriverModule,
 +  CsmsDriverParts,
 +  CsmsEnv,
@@ -85,7 +92,7 @@
  import {
    AUTHLIST_RESERVATION_SPECS,
    AUTHORIZE_SPECS,
-@@ -43,13 +62,25 @@
+@@ -43,13 +69,25 @@
  } from "./specs/index";
  import type { ScenarioSpec } from "./spec-types";
  import { sleep } from "./util";
@@ -116,7 +123,7 @@
  // ---------------------------------------------------------------------------
  // Runner core
  // ---------------------------------------------------------------------------
-@@ -60,95 +91,193 @@
+@@ -60,95 +98,212 @@
    timeoutSecs?: number;
  }
  
@@ -165,9 +172,9 @@
 +  // entitled to build its HTTP client in create() and throw when its token is
 +  // unset -- so going through create() here made `run` demand a credential in
 +  // order to tell you it was not going to use one, contradicting the promise
-+  // three lines below. Importing a module does not contact the CSMS.
-+  const module = await driverModule();
-+  return module.scope?.[templateId];
++  // three lines below. Importing a module does not contact the CSMS, and
++  // neither may the table's own resolution.
++  return (await scopeTable())?.[templateId];
  }
  
 +/** Result of one scenario execution -- either it produced checks, or the
@@ -206,6 +213,16 @@
 -  return new SteveApiDb(defaultSteveApiDbConfig(env), dbCfg);
 +let driverModulePromise: Promise<CsmsDriverModule> | undefined;
 +let driverPartsPromise: Promise<CsmsDriverParts> | undefined;
++let scopeTablePromise: Promise<ScopeTable | undefined> | undefined;
++
++/**
++ * The one environment this process shows a driver, named once so that the
++ * scope table and the requests cannot describe different servers.
++ *
++ * A live alias of `process.env`, not a copy: `check-driver --driver` writes
++ * CSMS_DRIVER into it after this line has run.
++ */
++const ENV: CsmsEnv = process.env;
 +
 +async function driverModule(): Promise<CsmsDriverModule> {
 +  driverModulePromise ??= loadDriverModule();
@@ -215,9 +232,18 @@
 +async function driver(): Promise<CsmsDriverParts> {
 +  driverPartsPromise ??= (async () => {
 +    const module = await driverModule();
-+    return module.create(process.env);
++    return module.create(ENV);
 +  })();
 +  return driverPartsPromise;
++}
++
++/** Resolved once: a driver is free to compute the table, and `run-all` asks it
++ *  one question per scenario. */
++async function scopeTable(): Promise<ScopeTable | undefined> {
++  scopeTablePromise ??= driverModule().then((module) =>
++    driverScope(module, ENV),
++  );
++  return scopeTablePromise;
 +}
 +
 +/**
@@ -371,7 +397,7 @@
          30_000,
        );
      } catch (err) {
-@@ -176,13 +305,25 @@
+@@ -176,13 +331,25 @@
  
      if (spec.drive) {
        process.stderr.write(`[runner] running drive() for ${spec.templateId}\n`);
@@ -404,7 +430,7 @@
      } else {
        process.stderr.write(
          `[runner] no drive() defined (CP-only scenario) -- nothing to do while it runs\n`,
-@@ -190,15 +331,18 @@
+@@ -190,15 +357,18 @@
        driveState = undefined as D;
      }
  
@@ -426,7 +452,7 @@
    // it a FAIL in a swept scenario is un-post-mortem-able: the sim container
    // is already stopped+removed by the time assert() reports, so this
    // capture is the only surviving record of what was (or wasn't) on the
-@@ -218,6 +362,10 @@
+@@ -218,6 +388,10 @@
      );
    }
  
@@ -437,7 +463,7 @@
    const frames = parseLog(lines.join("\n"));
    const rec = new AssertRecorder();
  
-@@ -228,34 +376,53 @@
+@@ -228,34 +402,53 @@
      frames,
      lines,
      rec,
@@ -500,7 +526,7 @@
  // ---------------------------------------------------------------------------
  
  // eslint-disable-next-line @typescript-eslint/no-explicit-any
-@@ -265,8 +432,6 @@
+@@ -265,8 +458,6 @@
    "remotetrigger-smartcharging": REMOTETRIGGER_SMARTCHARGING_SPECS,
    firmware: FIRMWARE_SPECS,
    authorize: AUTHORIZE_SPECS,
@@ -509,7 +535,7 @@
    all: [
      ...CORE_SPECS,
      ...AUTHLIST_RESERVATION_SPECS,
-@@ -286,66 +451,109 @@
+@@ -286,66 +477,109 @@
      .map((spec) => [spec.templateId, spec]),
  );
  
@@ -657,7 +683,7 @@
      };
    } catch (err) {
      const message =
-@@ -359,58 +567,40 @@
+@@ -359,58 +593,40 @@
        verdict: "ERROR",
        checks: null,
        failed: null,
@@ -731,7 +757,7 @@
    );
  
    for (const outcome of toRetry) {
-@@ -432,13 +622,14 @@
+@@ -432,13 +648,14 @@
        verdict: retryOutcome.verdict,
        checks: retryOutcome.checks,
        failed: retryOutcome.failed,
@@ -748,7 +774,7 @@
            : " -- CONFIRMED (fails isolated too, not a parallel-lane artifact)\n"),
      );
    }
-@@ -451,11 +642,43 @@
+@@ -451,11 +668,43 @@
    return new Date().toISOString().replace(/\.\d{3}Z$/, "Z");
  }
  
@@ -797,7 +823,7 @@
  async function writeSummary(
    groupName: string,
    outcomes: ScenarioOutcome[],
-@@ -465,45 +688,55 @@
+@@ -465,45 +714,55 @@
    const rows = outcomes.map((o) => {
      const checks = o.checks === null ? "-" : String(o.checks);
      const failed = o.failed === null ? "-" : String(o.failed);
@@ -868,7 +894,7 @@
        "",
        header,
        separator,
-@@ -518,54 +751,53 @@
+@@ -518,54 +777,53 @@
  }
  
  /** Sequential or parallel group sweep. Writes results/summary.md and exits
@@ -888,8 +914,8 @@
      );
 -    process.exit(1);
 +    return 1;
-+  }
-+
+   }
+ 
 +  const stations = resolveStations();
 +  // Lane count IS the station count: one lane per station, never more. A
 +  // single resolved station therefore forces sequential execution however
@@ -900,8 +926,8 @@
 +    process.stderr.write(
 +      `[runner] --parallel requested but only ${lanes} station resolved (${stations.join(", ")}) -- running sequentially.\n`,
 +    );
-   }
- 
++  }
++
    process.stderr.write(
 -    `[runner] group '${groupName}': ${specs.length} scenario(s), parallel=${parallel ? 1 : 0}\n`,
 +    `[runner] group '${groupName}': ${specs.length} scenario(s), stations=[${stations.join(", ")}], lanes=${effectiveParallel ? lanes : 1}\n`,
@@ -948,7 +974,7 @@
      );
    } else {
      for (let i = 0; i < specs.length; i++) {
-@@ -574,11 +806,11 @@
+@@ -574,11 +832,11 @@
    }
  
    if (retryFailedIsolated) {
@@ -962,7 +988,7 @@
            "(a sequential sweep is already isolated).\n",
        );
      }
-@@ -588,45 +820,51 @@
+@@ -588,45 +846,51 @@
    for (const o of outcomes) {
      const retrySuffix = o.isolatedRetry
        ? ` [isolated retry: ${o.isolatedRetry.verdict}${
@@ -1029,7 +1055,7 @@
  }
  
  // ---------------------------------------------------------------------------
-@@ -642,6 +880,8 @@
+@@ -642,6 +906,8 @@
    cpId: string;
    connector?: number;
    timeoutSecs?: number;
@@ -1038,7 +1064,7 @@
  }
  
  function requireValue(argv: string[], index: number, flag: string): string {
-@@ -663,37 +903,80 @@
+@@ -663,37 +929,80 @@
    return n;
  }
  
@@ -1136,14 +1162,13 @@
  
    if (argv[0] === "run-all") {
      group = "all";
-@@ -707,19 +990,28 @@
-           break;
+@@ -708,18 +1017,27 @@
          case "--retry-failed-isolated":
            retryFailedIsolated = true;
-+          break;
+           break;
 +        case "--results-dir":
 +          resultsDirArg = requireValue(argv, ++i, "--results-dir");
-           break;
++          break;
          default:
            process.stderr.write(`Unknown argument: ${argv[i]}\n`);
 -          printUsage();
@@ -1168,7 +1193,7 @@
      process.exit(1);
    }
  
-@@ -749,9 +1041,11 @@
+@@ -749,9 +1067,11 @@
        case "--retry-failed-isolated":
          retryFailedIsolated = true;
          break;
@@ -1181,7 +1206,7 @@
          process.exit(1);
      }
    }
-@@ -764,35 +1058,424 @@
+@@ -764,35 +1084,431 @@
      cpId,
      connector,
      timeoutSecs,
@@ -1210,7 +1235,7 @@
 +  }
 +  return [...seen].map(([templateId, group]) => ({ templateId, group }));
 +}
- 
++
 +function listScenarios(argv: string[]): number {
 +  let group: string | undefined;
 +  let asJson = false;
@@ -1265,9 +1290,18 @@
 +  const problems: string[] = [];
 +  const warnings: string[] = [];
 +
++  // Resolution shares the module's try/catch, and that is not tidiness: a
++  // driver that reads a declaration from the environment -- which release line
++  // it is pointed at -- rejects a bad value by throwing, and it used to throw
++  // at import. Outside the catch, `CITRINE_VARIANT=typo` would print a stack
++  // where it used to print one sentence.
 +  let module: CsmsDriverModule;
++  let scope: ScopeTable | undefined;
++  let capabilities: CsmsCapabilities | undefined;
 +  try {
 +    module = await driverModule();
++    scope = await scopeTable();
++    capabilities = driverCapabilities(module, ENV);
 +  } catch (err) {
 +    process.stderr.write(
 +      `${err instanceof Error ? err.message : String(err)}\n`,
@@ -1284,14 +1318,14 @@
 +  const registered = scenarios.map((s) => s.templateId);
 +  const groupOf = new Map(scenarios.map((s) => [s.templateId, s.group]));
 +
-+  if (!module.scope) {
++  if (!scope) {
 +    warnings.push(
 +      "no scope table: every scenario will be run and undrivable ones " +
 +        "discovered at runtime, after a container has started and touched " +
 +        "the CSMS. Legal, but the table is what makes that cheap.",
 +    );
 +  } else {
-+    const { missing, stale } = scopeCoverage(module.scope, registered);
++    const { missing, stale } = scopeCoverage(scope, registered);
 +    if (missing.length > 0) {
 +      problems.push(
 +        `${missing.length} registered scenario(s) have NO row:\n` +
@@ -1317,9 +1351,9 @@
 +      "NOT_APPLICABLE",
 +    ];
 +    const classified = new Set(
-+      buckets.flatMap((status) => templateIdsWithStatus(module.scope!, status)),
++      buckets.flatMap((status) => templateIdsWithStatus(scope, status)),
 +    );
-+    const unclassified = Object.keys(module.scope).filter(
++    const unclassified = Object.keys(scope).filter(
 +      (id) => !classified.has(id),
 +    );
 +    if (unclassified.length > 0) {
@@ -1330,8 +1364,8 @@
 +          "invisible to every consumer.",
 +      );
 +    }
-+
-+    const reasonless = Object.entries(module.scope)
+ 
++    const reasonless = Object.entries(scope)
 +      .filter(([, entry]) => !entry.reason?.trim())
 +      .map(([id]) => id);
 +    if (reasonless.length > 0) {
@@ -1343,9 +1377,9 @@
 +    }
 +  }
 +
-+  if (module.capabilities) {
++  if (capabilities) {
 +    const known = new Set<string>(CSMS_OPERATION_ACTIONS);
-+    const unknown = [...module.capabilities.operations].filter(
++    const unknown = [...capabilities.operations].filter(
 +      (op) => !known.has(op),
 +    );
 +    if (unknown.length > 0) {
@@ -1355,7 +1389,7 @@
 +      );
 +    }
 +    const undeclared = CSMS_OPERATION_ACTIONS.filter(
-+      (op) => !module.capabilities!.operations.has(op),
++      (op) => !capabilities.operations.has(op),
 +    );
 +    if (undeclared.length > 0) {
 +      warnings.push(
@@ -1370,13 +1404,11 @@
 +    driver: module.id ?? "",
 +    displayName: module.displayName ?? "",
 +    registeredScenarios: registered.length,
-+    scope: module.scope
++    scope: scope
 +      ? {
-+          DRIVABLE: templateIdsWithStatus(module.scope, "DRIVABLE").length,
-+          CONDITIONAL: templateIdsWithStatus(module.scope, "CONDITIONAL")
-+            .length,
-+          NOT_APPLICABLE: templateIdsWithStatus(module.scope, "NOT_APPLICABLE")
-+            .length,
++          DRIVABLE: templateIdsWithStatus(scope, "DRIVABLE").length,
++          CONDITIONAL: templateIdsWithStatus(scope, "CONDITIONAL").length,
++          NOT_APPLICABLE: templateIdsWithStatus(scope, "NOT_APPLICABLE").length,
 +        }
 +      : null,
 +    problems,
@@ -1622,7 +1654,7 @@
    }
  
    const spec = SPECS_BY_TEMPLATE_ID.get(args.templateId);
-@@ -800,18 +1483,29 @@
+@@ -800,18 +1516,29 @@
      process.stderr.write(
        `Unknown template id: ${args.templateId} (known: ${[...SPECS_BY_TEMPLATE_ID.keys()].join(", ")})\n`,
      );

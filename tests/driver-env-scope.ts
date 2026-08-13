@@ -1,0 +1,175 @@
+// Copyright 2026 Julien Herr
+// SPDX-License-Identifier: Apache-2.0
+/**
+ * driver-env-scope.ts -- `scope` and `capabilities` describe the server the
+ * driver was RESOLVED for, not the one that happened to be in `process.env`
+ * when the module was imported.
+ *
+ * WHY THIS IS TYPESCRIPT AND NOT A SHELL GUARD. Every other check in this
+ * directory drives the CLI, and the CLI always passes `process.env` -- which
+ * is exactly the coincidence this guard exists to remove. A driver targeting a
+ * CSMS with two incompatible release lines has a scope table that depends on
+ * which server you point at; before `EnvDependent`, that could only come from
+ * a module-scope global read at import time, while `create(env)` read the
+ * environment it was handed. The two agreed only because the runner passes
+ * `process.env`, so a caller with a synthetic `CsmsEnv` got a scope table
+ * describing one server while every request targeted the other. Reaching that
+ * requires calling the contract in-process with an env that differs from the
+ * ambient one, which no `bash` can do.
+ *
+ * TWO HALVES, and the split is deliberate. The first asserts the MECHANISM
+ * against a synthetic module owned by this file: it cannot be broken by a
+ * bundled driver changing, and it outlives CitrineOS's v1 line. The second
+ * asserts that the bundled drivers actually use that mechanism -- one with two
+ * release lines, one with none -- which is a fact about them, not about the
+ * contract. Renaming a CitrineOS scenario should fail `check-driver`, which
+ * says so precisely; it reaches this file only through the second half.
+ *
+ * Offline: importing a driver module contacts nothing, and `create()` builds
+ * clients without connecting.
+ */
+import { csmsDriver as citrineos } from "../drivers/citrineos/index";
+import { V1_LOCAL_LIST_SCENARIOS } from "../drivers/citrineos/variant";
+import { csmsDriver as steve } from "../drivers/steve/index";
+import { STEVE_SCOPE } from "../drivers/steve/scope";
+import {
+  driverCapabilities,
+  driverScope,
+  type CsmsDriverModule,
+  type CsmsEnv,
+} from "../tck/driver";
+
+const failures: string[] = [];
+
+function check(condition: boolean, failure: string): void {
+  if (!condition) failures.push(failure);
+}
+
+// --- the mechanism, against a module this file owns -------------------------
+// `create` throws on purpose: resolving a declaration must never reach it, or
+// the credential-free promise that puts these fields on the module rather than
+// on CsmsDriverParts is gone.
+const SYNTHETIC: CsmsDriverModule = {
+  id: "synthetic",
+  displayName: "Synthetic two-line CSMS",
+  scope: (env) => ({
+    "one-scenario": {
+      status: env.LINE === "old" ? "NOT_APPLICABLE" : "DRIVABLE",
+      reason: `the ${env.LINE ?? "current"} line`,
+    },
+  }),
+  capabilities: (env) => ({
+    operations: new Set(env.LINE === "old" ? [] : ["Reset"]),
+    reservations: false,
+    chargingProfiles: false,
+  }),
+  create() {
+    throw new Error("resolving a declaration must not call create()");
+  },
+};
+
+const PLAIN_SCOPE = {
+  "one-scenario": { status: "DRIVABLE", reason: "stated once" },
+} as const;
+const PLAIN: CsmsDriverModule = { ...SYNTHETIC, scope: PLAIN_SCOPE };
+
+check(
+  driverScope(SYNTHETIC, { LINE: "old" })?.["one-scenario"]?.status ===
+    "NOT_APPLICABLE" &&
+    driverScope(SYNTHETIC, {})?.["one-scenario"]?.status === "DRIVABLE",
+  "driverScope() does not answer from the env it was handed.",
+);
+check(
+  driverCapabilities(SYNTHETIC, { LINE: "old" })?.operations.size === 0 &&
+    driverCapabilities(SYNTHETIC, {})?.operations.has("Reset") === true,
+  "driverCapabilities() does not answer from the env it was handed.",
+);
+check(
+  driverScope(PLAIN, { LINE: "old" }) === PLAIN_SCOPE,
+  "a plain ScopeTable no longer resolves to itself -- the union broke the " +
+    "single-release driver, which is the common case.",
+);
+
+// --- the bundled drivers use it ---------------------------------------------
+const V1_ENV: CsmsEnv = { CITRINE_VARIANT: "v1" };
+const V2_ENV: CsmsEnv = { CITRINE_VARIANT: "v2" };
+
+// BOTH lines are asserted, and that pair is what makes the guard independent
+// of whatever CITRINE_VARIANT the operator happens to have exported. A driver
+// that regressed to reading `process.env` once, at import, answers the same
+// table for both envs -- so whichever of the two the ambient value matches,
+// the OTHER assertion fails. Checking only the v1 side would instead need the
+// ambient env to be v2, and would read green in a v1 shell.
+const v1Scope = driverScope(citrineos, V1_ENV);
+const v2Scope = driverScope(citrineos, V2_ENV);
+
+for (const id of V1_LOCAL_LIST_SCENARIOS) {
+  check(
+    v1Scope?.[id]?.status === "NOT_APPLICABLE",
+    `${id} is ${v1Scope?.[id]?.status ?? "absent"} in the table resolved for ` +
+      "CITRINE_VARIANT=v1, but the v1.9.1 line routes no 1.6 local auth list.",
+  );
+  check(
+    v2Scope?.[id]?.status === "DRIVABLE",
+    `${id} is ${v2Scope?.[id]?.status ?? "absent"} in the table resolved for ` +
+      "CITRINE_VARIANT=v2, so the two resolutions do not differ and the " +
+      "driver's table is not a function of the environment.",
+  );
+}
+
+const LOCAL_LIST_ACTIONS = ["SendLocalList", "GetLocalListVersion"] as const;
+const v1Caps = driverCapabilities(citrineos, V1_ENV);
+const v2Caps = driverCapabilities(citrineos, V2_ENV);
+
+for (const action of LOCAL_LIST_ACTIONS) {
+  check(
+    v1Caps?.operations.has(action) === false,
+    `capabilities resolved for v1 declare ${action}, which v1.9.1 does not route.`,
+  );
+  check(
+    v2Caps?.operations.has(action) === true,
+    `capabilities resolved for v2 omit ${action}, so the two resolutions do ` +
+      "not differ.",
+  );
+}
+
+// This threw before the contract change: the driver resolved the variant twice
+// -- once from process.env at module load for `scope`, once from the env given
+// to create() -- and a guard compared them. One resolution means there is
+// nothing left to disagree.
+try {
+  citrineos.create(V1_ENV);
+} catch (err) {
+  failures.push(
+    "create() rejected an env the scope table resolved happily: " +
+      `${err instanceof Error ? err.message : String(err)}`,
+  );
+}
+
+// The env-dependent form is an option, not an obligation: a single-release
+// CSMS states its table and never writes a function.
+check(
+  driverScope(steve, {}) === STEVE_SCOPE,
+  "the single-release bundled driver's plain table no longer resolves to itself.",
+);
+check(
+  driverCapabilities(steve, {})?.reservations === true,
+  "the single-release bundled driver's plain capabilities no longer resolve " +
+    "to themselves.",
+);
+
+if (failures.length > 0) {
+  process.stderr.write(
+    "FAIL: a driver's scope or capabilities do not follow the environment " +
+      "they are resolved with.\n",
+  );
+  for (const failure of failures) process.stderr.write(`  - ${failure}\n`);
+  process.exit(1);
+}
+
+process.stdout.write(
+  "Driver scope and capabilities follow the resolved environment " +
+    `(${V1_LOCAL_LIST_SCENARIOS.length} rows and ` +
+    `${LOCAL_LIST_ACTIONS.length} operations differ between the two ` +
+    "CitrineOS lines, and a plain table still resolves to itself).\n",
+);

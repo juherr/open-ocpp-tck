@@ -224,8 +224,9 @@ const V1_KNOWN =
  * The ids variant.ts demotes, restated as keys of V2_SCOPE.
  *
  * The annotation is the whole point: it makes a typo in that list a build
- * error. `check-driver` would also catch it, but only when run with
- * CITRINE_VARIANT=v1, and CI runs the v2 table.
+ * error, at the same moment it is written. `check-driver` also catches it --
+ * CI runs it for both lines, `check:driver:citrineos-v1` being the v1 one --
+ * but only after a commit, and only for the table that names the typo.
  */
 const V1_LOCAL_LIST: readonly (keyof typeof V2_SCOPE)[] =
   V1_LOCAL_LIST_SCENARIOS;
