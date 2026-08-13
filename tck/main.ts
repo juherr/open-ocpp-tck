@@ -13,7 +13,7 @@
  * (ocpp.ts) and runs the named spec's drive()/assert() against a live CSMS
  * through the loaded CSMS driver.
  *
- * Three verdicts beyond the upstream PASS/FAIL/ERROR pair:
+ * Two verdicts beyond the upstream PASS/FAIL/ERROR trio:
  *   - NOT APPLICABLE -- the scope table (scope.ts) marks the scenario
  *     NOT_APPLICABLE for this CSMS, or the driver threw
  *     UnsupportedOperationError out of drive(). No container is started in
@@ -62,6 +62,7 @@ import {
 } from "./specs/index";
 import type { ScenarioSpec } from "./spec-types";
 import { sleep } from "./util";
+import { WaitTimeoutError } from "./wait";
 
 /**
  * Where per-scenario logs and summary.md are written.
@@ -657,7 +658,15 @@ function timestampUtc(): string {
  */
 function hostLoad(): string {
   const cores = cpus().length;
-  const [one] = loadavg();
+  const averages = loadavg();
+  // Windows -- and any platform without a load average -- answers [0, 0, 0].
+  // Printing "0.00" there would read as a perfectly idle machine, which is a
+  // stronger claim than "we do not know", and the whole point of this line is
+  // to be trustworthy when a sweep goes red.
+  if (averages.every((value) => value === 0)) {
+    return `Host load unavailable on this platform, ${cores} core(s).`;
+  }
+  const [one] = averages as [number, number, number];
   const ratio = one / Math.max(cores, 1);
   const note =
     ratio >= 0.9
@@ -1291,7 +1300,8 @@ async function checkDriver(argv: string[]): Promise<number> {
  * CSMS that has none must throw UnsupportedOperationError, and that is the
  * contract working, not breaking.
  */
-async function driverSelftest(): Promise<number> {
+async function driverSelftest(argv: string[] = []): Promise<number> {
+  const withWrites = argv.includes("--with-writes");
   const module = await driverModule();
   const parts = await driver();
   const records = withCapabilityStubs(parts);
@@ -1327,23 +1337,29 @@ async function driverSelftest(): Promise<number> {
         try {
           return await records.waitForActiveTransaction(cpId, idTag, 1);
         } catch (err) {
-          if (err instanceof Error && /timed out after/.test(err.message)) {
-            return "(timed out, as expected)";
-          }
+          if (err instanceof WaitTimeoutError) return "(timed out, as expected)";
           throw err;
         }
       },
     },
     { name: "reservations.latest", run: () => records.reservations.latest(cpId) },
-    { name: "reservations.status", run: () => records.reservations.status("") },
+    // Twice, because the two arguments take different paths. An empty ref is
+    // the contract's "none" and a driver may answer it without asking the CSMS
+    // at all -- SteVe's does, deliberately -- so only a well-formed ref
+    // exercises the lookup itself. `0` is well-formed and matches nothing.
+    { name: "reservations.status (empty ref)", run: () => records.reservations.status("") },
+    { name: "reservations.status (absent ref)", run: () => records.reservations.status("0") },
     {
       name: "chargingProfiles.refByDescription",
       run: () => records.chargingProfiles.refByDescription("SELFTEST"),
     },
   ];
-  if (parts.prepareStation) {
-    // A write, and the only one here: it is idempotent by contract, and it is
-    // the hook every scenario pays before it starts.
+  // prepareStation is the one WRITE the contract defines, and it is off by
+  // default: it closes a station's open transaction and clears its local list,
+  // which is right before a scenario and surprising from something called a
+  // selftest -- especially against a CSMS the operator did not bring up for
+  // this. `--with-writes` asks for it; every scenario exercises it anyway.
+  if (withWrites && parts.prepareStation) {
     probes.push({
       name: "prepareStation",
       run: () => parts.prepareStation!(cpId),
@@ -1355,11 +1371,13 @@ async function driverSelftest(): Promise<number> {
   );
   let failed = 0;
   for (const probe of probes) {
+    // The try covers the CALL and nothing else. Rendering the answer is this
+    // verb's own business, and a value JSON.stringify refuses -- a BigInt, a
+    // cycle -- would otherwise be reported as the driver failing a query it
+    // actually answered.
+    let value: unknown;
     try {
-      const value = await probe.run();
-      const rendered =
-        value === undefined ? "(void)" : JSON.stringify(value) || "(empty)";
-      process.stdout.write(`  OK      ${probe.name} -> ${rendered}\n`);
+      value = await probe.run();
     } catch (err) {
       if (err instanceof UnsupportedOperationError) {
         process.stdout.write(`  SKIP    ${probe.name} -- ${err.reason}\n`);
@@ -1369,7 +1387,9 @@ async function driverSelftest(): Promise<number> {
       process.stdout.write(
         `  FAIL    ${probe.name}: ${err instanceof Error ? err.message : String(err)}\n`,
       );
+      continue;
     }
+    process.stdout.write(`  OK      ${probe.name} -> ${render(value)}\n`);
   }
 
   if (failed > 0) {
@@ -1382,13 +1402,24 @@ async function driverSelftest(): Promise<number> {
   return 0;
 }
 
+/** One probe's answer, for the log. Never throws: a value that cannot be
+ *  serialised is still a value the driver returned. */
+function render(value: unknown): string {
+  if (value === undefined) return "(void)";
+  try {
+    return JSON.stringify(value) || "(empty)";
+  } catch {
+    return `(unserialisable ${typeof value})`;
+  }
+}
+
 async function runDriverCommand(argv: string[]): Promise<number> {
   const name = argv[0];
   const module = await driverModule();
   const commands = module.commands ?? {};
   // Core-provided, so every driver has it without contributing anything --
   // including a driver written outside this repository.
-  if (name === "selftest") return driverSelftest();
+  if (name === "selftest") return driverSelftest(argv.slice(1));
   if (!name || !(name in commands)) {
     const known = ["selftest", ...Object.keys(commands)];
     process.stderr.write(

@@ -139,6 +139,7 @@ re-sync, and your driver can live in a completely different repository.
 | `ocpp-tck check-driver [--driver SPEC]` | nothing | Offline conformance of a driver against this core |
 | `ocpp-tck list-scenarios [--json]` | nothing | The 47 registered scenarios |
 | `ocpp-tck print-sim-image` | nothing | The pinned simulator image digest |
+| `ocpp-tck driver selftest [--with-writes]` | CSMS | Every `CsmsRecords` method once, in seconds: does this driver answer the contract? `--with-writes` adds the `prepareStation` hook |
 | `ocpp-tck driver <verb>` | driver-defined | A bootstrap verb your driver contributes |
 
 Both bundled drivers contribute the same three: `provision` (seed the fixtures,
