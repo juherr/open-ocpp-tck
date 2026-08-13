@@ -142,6 +142,13 @@ re-sync, and your driver can live in a completely different repository.
 | `ocpp-tck driver selftest [--with-writes]` | CSMS | Every `CsmsRecords` method once, in seconds: does this driver answer the contract? `--with-writes` adds the `prepareStation` hook |
 | `ocpp-tck driver <verb>` | driver-defined | A bootstrap verb your driver contributes |
 
+Working in a clone, `bun run verify` runs everything CI checks before it starts
+a container — typecheck, declarations, both driver scopes and the three guards
+— in one command with one exit code. It runs every step even after one fails,
+because a rename usually breaks several at once. Shellcheck joins that list
+only where it is installed, and is skipped with a notice where it is not; CI
+always has it and always enforces it.
+
 Both bundled drivers contribute the same three: `provision` (seed the fixtures,
 idempotent), `verify` (read-only — are they there?), `teardown` (remove them).
 A driver that needs no bootstrap contributes none, and the runner never calls

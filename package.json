@@ -109,6 +109,7 @@
   },
   "scripts": {
     "typecheck": "tsc --noEmit",
+    "verify": "bash tools/verify.sh",
     "build:types": "tsc -p tsconfig.build.json",
     "check:steve-driver": "CSMS_DRIVER=./drivers/steve/index.ts bun bin/ocpp-tck.ts check-driver",
     "check:citrineos-driver": "CSMS_DRIVER=./drivers/citrineos/index.ts bun bin/ocpp-tck.ts check-driver",
