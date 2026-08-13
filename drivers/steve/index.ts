@@ -3,12 +3,17 @@
 /**
  * The SteVe driver.
  *
- * SteVe is the CSMS this harness was originally written against, which makes
- * it the reference implementation of the driver contract: if an operation
- * cannot be expressed here, the contract has drifted away from OCPP rather
- * than towards it. Its scope table claims every scenario, and a guard asserts
- * that -- the day it needs a NOT_APPLICABLE row, the generalization lost a
+ * SteVe is the CSMS this harness was originally written against, which gives
+ * this driver one job the other bundled one cannot do: if an operation cannot
+ * be expressed here, the contract has drifted away from OCPP rather than
+ * towards it. Its scope table claims every scenario, and a guard asserts that
+ * -- the day it needs a NOT_APPLICABLE row, the generalization lost a
  * capability it used to have.
+ *
+ * That is a different question from the one drivers/citrineos/ answers, not a
+ * lesser or greater one: this driver catches the harness losing something, the
+ * other catches the core assuming something about SteVe. Neither is "the
+ * reference".
  *
  * Why the manager UI and not the REST API
  * ---------------------------------------
@@ -30,12 +35,20 @@
  *
  * Where it has to run
  * -------------------
- * Observations come from MariaDB through `docker exec`, because SteVe's REST
- * API exposes neither stop_reason, nor reservation status, nor the
- * charging-profile registry. So this driver runs on the host that owns the
- * SteVe containers, and reaches the manager UI on the container network --
- * a deployment behind a forward-auth proxy is unreachable from outside it,
- * and its OCPP port may not be published to the internet at all.
+ * Transactions are observed over the WebAPI, which serves `stopReason`,
+ * `stopTimestamp` and `ocppIdTag` and filters by charge point, idTag and
+ * active-ness -- measured on the pinned image, and worth stating because an
+ * earlier version of this file claimed the opposite and read all of it from
+ * MariaDB. What REST genuinely cannot serve is reservation status and the
+ * charging-profile registry: no such controller exists. Those two still come
+ * from MariaDB through `docker exec` -- steve-community/steve#2074 and #2069
+ * respectively, both under the #1000 "Meta - API Endpoint" umbrella.
+ *
+ * So this driver runs on the host that owns the SteVe containers, and reaches
+ * the manager UI on the container network -- a deployment behind a
+ * forward-auth proxy is unreachable from outside it, and its OCPP port may not
+ * be published to the internet at all. The day those two tickets land, that
+ * constraint goes with them.
  */
 import {
   CSMS_OPERATION_ACTIONS,
@@ -46,6 +59,7 @@ import {
   type CsmsOperation,
   type CsmsOperations,
 } from "../../tck/driver";
+import { defaultApiConfig } from "./api-client";
 import { cpSelect, toSteveForm } from "./forms";
 import {
   provisionCommand,
@@ -81,7 +95,9 @@ export const csmsDriver: CsmsDriverModule = {
   capabilities: CAPABILITIES,
   create(env: CsmsEnv): CsmsDriverParts {
     const cfg = defaultSteveConfig(env);
-    const records = new SteveRecords(cfg);
+    // `env`, not process.env: the runner owns what a driver may read, and the
+    // WebAPI credentials are now on the scenario path, not just provisioning's.
+    const records = new SteveRecords(cfg, defaultApiConfig(cfg, env));
     return {
       operations: createOperations(cfg),
       records,
@@ -112,14 +128,15 @@ export const csmsDriver: CsmsDriverModule = {
     "STEVE_DB_USER      MariaDB user (default steve)",
     "STEVE_DB_PASS      MariaDB password",
     "STEVE_DB_NAME      MariaDB schema (default stevedb)",
+    "STEVE_APP_CONTAINER SteVe container (default steve). Restarted once by",
+    "                   provision, to enable the WebAPI.",
     "STEVE_NETWORK      docker network the simulator joins to reach SteVe",
     "",
-    "provisioning only (ocpp-tck driver provision):",
+    "WebAPI -- fixtures AND transaction observations, so scenarios need it too:",
     "STEVE_API_URL      WebAPI base (default: STEVE_URL with /manager -> /api/v1)",
     "STEVE_API_USER     WebAPI user (default: STEVE_USER)",
     "STEVE_API_PASS     WebAPI password (default ocpp-tck). Stored bcrypt-hashed in",
     "                   web_user.api_password, which is NOT the manager UI password.",
-    "STEVE_APP_CONTAINER SteVe container, restarted once to enable the WebAPI",
-    "                   (default steve)",
+    "                   Set the same value here as when you provisioned.",
   ].join("\n"),
 };

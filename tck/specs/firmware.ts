@@ -27,6 +27,19 @@ function warnOpFailed(op: string, err: unknown): void {
 // before starting the FirmwareStatusNotification train (confirmed live in
 // the bash suite: this is correct OCPP 1.6 semantics, not a bug), then
 // progresses Downloading -> Downloaded -> Installing -> Installed.
+//
+// THE OFFSET IS SMALL ON PURPOSE, and the three TC_044 scenarios below share
+// the reason. A driver may only round a retrieveDate UP -- the contract says
+// so, because a CSMS whose form has no seconds field must still receive a
+// strictly future instant -- so the CP can wait up to a whole resolution step
+// LONGER than asked. SteVe's UpdateFirmware form is minute-resolution, which
+// makes the real wait `offset + up to 60s`. At the +90s this used to ask for,
+// that is up to 150s against a 115s window: the scenario passed or failed on
+// where the wall clock happened to sit within the minute, and the three ran
+// back to back at a ~120s period, so they drew the same unlucky phase together.
+//
+// Budget, which any edit here has to keep: offset + 60s of driver rounding +
+// ~10s of status train + tail buffer <= holdSecs.
 // ---------------------------------------------------------------------------
 
 export const tc0441FirmwareUpdateSpec: ScenarioSpec<void> = {
@@ -35,7 +48,7 @@ export const tc0441FirmwareUpdateSpec: ScenarioSpec<void> = {
     "TC_044.1 Firmware Update: full Downloading -> Downloaded -> Installing -> Installed train.",
   connector: 1,
   bootWaitSecs: 4,
-  // retrieveDateTime wait (~90s) + ~10s status train + tail buffer.
+  // 15s + up to 60s of rounding + ~10s train, inside a 115s window.
   holdSecs: 115,
   async drive({ cpId, csms }) {
     await sleep(2000);
@@ -43,7 +56,7 @@ export const tc0441FirmwareUpdateSpec: ScenarioSpec<void> = {
       await csms.execute(cpId, {
         action: "UpdateFirmware",
         location: "http://example.com/fw.bin",
-        retrieveDate: inSeconds(90),
+        retrieveDate: inSeconds(15),
       });
     } catch (err) {
       warnOpFailed("UpdateFirmware", err);
@@ -125,7 +138,7 @@ export const tc0442FirmwareDownloadFailedSpec: ScenarioSpec<void> = {
       await csms.execute(cpId, {
         action: "UpdateFirmware",
         location: "http://example.com/fw.bin",
-        retrieveDate: inSeconds(90),
+        retrieveDate: inSeconds(15),
       });
     } catch (err) {
       warnOpFailed("UpdateFirmware", err);
@@ -190,7 +203,7 @@ export const tc0443FirmwareInstallFailedSpec: ScenarioSpec<void> = {
       await csms.execute(cpId, {
         action: "UpdateFirmware",
         location: "http://example.com/fw.bin",
-        retrieveDate: inSeconds(90),
+        retrieveDate: inSeconds(15),
       });
     } catch (err) {
       warnOpFailed("UpdateFirmware", err);

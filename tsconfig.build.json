@@ -25,6 +25,6 @@
     "emitDeclarationOnly": true,
     "outDir": "types"
   },
-  "include": ["tck/**/*.ts", "drivers/steve/**/*.ts"],
+  "include": ["tck/**/*.ts", "drivers/**/*.ts"],
   "exclude": ["types"]
 }

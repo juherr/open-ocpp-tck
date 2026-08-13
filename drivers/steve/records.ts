@@ -5,12 +5,35 @@
 // implements the CSMS-neutral CsmsRecords contract, with reservations and charging
 // profiles moved onto the optional capability sub-interfaces.
 /**
- * records.ts -- what SteVe believes happened, read straight from its MariaDB.
+ * records.ts -- what SteVe believes happened.
  *
- * SteVe's REST API does not expose stop_reason, reservation status or the
- * charging-profile registry, so the scenarios that assert on those can only be
- * answered from the database. The queries shell out through `docker exec`,
- * which means this driver has to run where that container is.
+ * TWO CHANNELS, AND THE SPLIT IS NOT ARBITRARY: transactions come from the
+ * WebAPI, reservations and the charging-profile registry from MariaDB through
+ * `docker exec`, because SteVe has no controller for either (probed on the
+ * pinned image: `/api/v1/reservations` and `/api/v1/chargingProfiles` answer
+ * 403 -- no such route). So the SQL half of this file is exactly the list of
+ * endpoints SteVe does not have, and each one that lands upstream deletes code
+ * here rather than changing it. Both are open upstream, and each fallback
+ * below names its own:
+ *
+ *   reservations       steve-community/steve#2074
+ *   charging profiles  steve-community/steve#2069
+ *
+ * Both sit under the #1000 "Meta - API Endpoint" umbrella.
+ *
+ * An earlier version read everything from the database on the grounds that the
+ * WebAPI "does not expose stop_reason". Measured against the pinned image, that
+ * was wrong: `GET /api/v1/transactions` returns `stopReason`, `stopTimestamp`,
+ * `ocppIdTag` and `id` on the `Transaction` DTO, filterable by `chargeBoxId`,
+ * `ocppIdTag` and `type=ACTIVE`. Forty-four of the fifty-one record calls the
+ * scenarios make were paying a process spawn each for state the CSMS was
+ * willing to hand over on a socket.
+ *
+ * WHY THIS IS THE BETTER SOURCE, not merely the cheaper one: the database is
+ * SteVe's private state, while the WebAPI is what an integrator can see. A
+ * conformance claim that only holds when you can read the CSMS's own tables is
+ * a weaker claim than one an integrator could reproduce. The database is kept
+ * only where nothing else can answer.
  */
 import {
   type CsmsChargingProfileRecords,
@@ -18,7 +41,24 @@ import {
   type CsmsReservationRecords,
 } from "../../tck/driver";
 import { waitForCondition } from "../../tck/wait";
+import { SteveWebApi, type SteveApiConfig } from "./api-client";
 import type { SteveConfig } from "./ui-client";
+
+/**
+ * SteVe's `Transaction` DTO, narrowed to the fields the contract needs.
+ *
+ * Every one is optional-by-absence rather than trusted: a still-open
+ * transaction carries `stopTimestamp: null`, and a StopTransaction that named
+ * no reason carries `stopReason: null`. Both must reach the assertions as `""`
+ * -- the contract's "not set" -- and never as the string "null", which is
+ * exactly the trap `nullSafe` guards on the SQL side.
+ */
+interface SteveTransaction {
+  id: number;
+  ocppIdTag: string | null;
+  stopTimestamp: string | null;
+  stopReason: string | null;
+}
 
 /**
  * Single-quoted SQL literal.
@@ -37,7 +77,14 @@ export function sqlLiteral(value: string): string {
 }
 
 export class SteveRecords implements CsmsRecords {
-  constructor(private readonly cfg: SteveConfig) {}
+  private readonly api: SteveWebApi;
+
+  constructor(
+    private readonly cfg: SteveConfig,
+    apiCfg: SteveApiConfig,
+  ) {
+    this.api = new SteveWebApi(apiCfg);
+  }
 
   /** Runs SQL, returns stdout verbatim. The single path to the database. */
   private async raw(sql: string): Promise<string> {
@@ -115,17 +162,38 @@ export class SteveRecords implements CsmsRecords {
     return raw === "NULL" ? "" : raw;
   }
 
+  /**
+   * The transactions matching a filter. The single path to the WebAPI's
+   * transaction registry, so no call site has to know the route or the
+   * repeated-key convention its list filters use.
+   */
+  private async transactions(
+    ...filters: readonly (readonly [string, string])[]
+  ): Promise<SteveTransaction[]> {
+    return this.api.getJson<SteveTransaction[]>("/transactions", filters);
+  }
+
+  /**
+   * The newest of a filtered set, as the contract's `""`-when-absent string.
+   *
+   * The maximum is taken here rather than trusted from the response order:
+   * SteVe's query form takes no sort parameter, so the order is the
+   * repository's business and not a promise. The SQL this replaced said
+   * `ORDER BY transaction_pk DESC LIMIT 1` out loud.
+   */
+  private static newest(rows: readonly SteveTransaction[]): string {
+    return rows.length === 0 ? "" : String(Math.max(...rows.map((r) => r.id)));
+  }
+
   async latestTransaction(cpId: string): Promise<string> {
-    return this.scalar(
-      `SELECT t.transaction_pk FROM transaction t JOIN evse e ON e.evse_pk = t.evse_pk WHERE e.charge_box_id = ${sqlLiteral(cpId)} ORDER BY t.transaction_pk DESC LIMIT 1;`,
-    );
+    return SteveRecords.newest(await this.transactions(["chargeBoxId", cpId]));
   }
 
   /** Most recent still-open transaction. Not part of the contract: it exists
    *  for the stale-transaction cleanup below. */
   async latestOpenTransaction(cpId: string): Promise<string> {
-    return this.scalar(
-      `SELECT t.transaction_pk FROM transaction t JOIN evse e ON e.evse_pk = t.evse_pk WHERE e.charge_box_id = ${sqlLiteral(cpId)} AND t.stop_timestamp IS NULL ORDER BY t.transaction_pk DESC LIMIT 1;`,
+    return SteveRecords.newest(
+      await this.transactions(["chargeBoxId", cpId], ["type", "ACTIVE"]),
     );
   }
 
@@ -141,9 +209,13 @@ export class SteveRecords implements CsmsRecords {
     timeoutSecs = 15,
   ): Promise<string> {
     return waitForCondition(
-      () =>
-        this.scalar(
-          `SELECT t.transaction_pk FROM transaction t JOIN evse e ON e.evse_pk = t.evse_pk WHERE e.charge_box_id = ${sqlLiteral(cpId)} AND t.id_tag = ${sqlLiteral(idTag)} AND t.stop_timestamp IS NULL ORDER BY t.transaction_pk DESC LIMIT 1;`,
+      async () =>
+        SteveRecords.newest(
+          await this.transactions(
+            ["chargeBoxId", cpId],
+            ["ocppIdTag", idTag],
+            ["type", "ACTIVE"],
+          ),
         ),
       {
         timeoutMs: timeoutSecs * 1000,
@@ -153,41 +225,83 @@ export class SteveRecords implements CsmsRecords {
     );
   }
 
-  /** Closes any transaction left open by an interrupted run, so that
-   *  max_active_transaction_count does not block the next scenario.
-   *  Idempotent. A WRITE, hence a lifecycle hook and not part of CsmsRecords. */
+  /**
+   * Closes any transaction left open by an interrupted run, so that
+   * max_active_transaction_count does not block the next scenario. Idempotent.
+   * A WRITE, hence a lifecycle hook and not part of CsmsRecords.
+   *
+   * `PATCH /transactions/{pk}/stop` is the endpoint for exactly this, and it
+   * puts nothing on the wire: TransactionService#stop writes the stop row
+   * itself with `eventActor = manual`, and returns early when the transaction
+   * already carries a stop value (source-verified). Both matter here -- the
+   * charge point that opened the stale transaction is, by definition, gone,
+   * and this hook runs before every scenario.
+   */
   async closeStaleTransaction(cpId: string): Promise<void> {
     const pk = await this.latestOpenTransaction(cpId);
     if (!pk) return;
-    await this.scalar(
-      `INSERT INTO transaction_stop (transaction_pk, event_timestamp, event_actor, stop_timestamp, stop_value, stop_reason) VALUES (${pk}, NOW(), 'manual', NOW(), '0', 'Local');`,
-    );
+    await this.api.send("PATCH", `/transactions/${pk}/stop`);
+  }
+
+  /** One transaction by primary key, or undefined. The three accessors below
+   *  each read one field off it. */
+  private async transaction(tx: string): Promise<SteveTransaction | undefined> {
+    return (await this.transactions(["transactionPk", tx]))[0];
   }
 
   async transactionIdTag(tx: string): Promise<string> {
-    return this.nullSafe(
-      `SELECT id_tag FROM transaction WHERE transaction_pk=${tx};`,
-    );
+    return (await this.transaction(tx))?.ocppIdTag ?? "";
   }
 
   async transactionStopTimestamp(tx: string): Promise<string> {
-    return this.nullSafe(
-      `SELECT stop_timestamp FROM transaction WHERE transaction_pk=${tx};`,
-    );
+    return (await this.transaction(tx))?.stopTimestamp ?? "";
   }
 
   async transactionStopReason(tx: string): Promise<string> {
-    return this.nullSafe(
-      `SELECT stop_reason FROM transaction WHERE transaction_pk=${tx};`,
-    );
+    return (await this.transaction(tx))?.stopReason ?? "";
   }
 
   async transactionCountForIdTag(cpId: string, idTag: string): Promise<string> {
-    return this.scalar(
-      `SELECT COUNT(*) FROM transaction t JOIN evse e ON e.evse_pk = t.evse_pk WHERE e.charge_box_id = ${sqlLiteral(cpId)} AND t.id_tag = ${sqlLiteral(idTag)};`,
+    const rows = await this.transactions(
+      ["chargeBoxId", cpId],
+      ["ocppIdTag", idTag],
     );
+    return String(rows.length);
   }
 
+  /**
+   * Which of these idTags anything still refers to. Not part of the contract:
+   * teardown needs it to avoid deleting a tag out from under a transaction or
+   * a reservation, either of which cascades and takes the row's history with
+   * it.
+   *
+   * ONE question, answered here rather than half here and half in the caller,
+   * because the two halves travel by different channels for a reason that is
+   * this module's to know and not teardown's: transactions come from the API,
+   * reservations from SQL, since there is no reservation endpoint
+   * ([steve-community/steve#2074]). When it lands, this method stops touching
+   * the database and nothing above it changes.
+   *
+   * Both halves ask once for the whole set -- `ocppIdTag` is a list filter, so
+   * the repeated key does the work a loop would have done -- and they ask
+   * concurrently, since the SQL half pays a `docker exec` process spawn.
+   */
+  async idTagsReferenced(idTags: readonly string[]): Promise<Set<string>> {
+    if (idTags.length === 0) return new Set();
+    const [transactions, reservations] = await Promise.all([
+      this.transactions(...idTags.map((t) => ["ocppIdTag", t] as const)),
+      this.rows(
+        `SELECT DISTINCT id_tag FROM reservation
+          WHERE id_tag IN (${idTags.map(sqlLiteral).join(", ")});`,
+      ),
+    ]);
+    return new Set([
+      ...transactions.map((row) => row.ocppIdTag),
+      ...reservations.map(([idTag]) => idTag),
+    ].filter((tag): tag is string => !!tag));
+  }
+
+  /** SQL until [steve-community/steve#2074] exposes reservation resources. */
   readonly reservations: CsmsReservationRecords = {
     latest: (cpId: string) =>
       this.scalar(
@@ -199,6 +313,7 @@ export class SteveRecords implements CsmsRecords {
       ),
   };
 
+  /** SQL until [steve-community/steve#2069] exposes charging-profile CRUD. */
   readonly chargingProfiles: CsmsChargingProfileRecords = {
     refByDescription: (description: string) =>
       this.scalar(

@@ -1,12 +1,17 @@
 /**
  * The SteVe driver.
  *
- * SteVe is the CSMS this harness was originally written against, which makes
- * it the reference implementation of the driver contract: if an operation
- * cannot be expressed here, the contract has drifted away from OCPP rather
- * than towards it. Its scope table claims every scenario, and a guard asserts
- * that -- the day it needs a NOT_APPLICABLE row, the generalization lost a
+ * SteVe is the CSMS this harness was originally written against, which gives
+ * this driver one job the other bundled one cannot do: if an operation cannot
+ * be expressed here, the contract has drifted away from OCPP rather than
+ * towards it. Its scope table claims every scenario, and a guard asserts that
+ * -- the day it needs a NOT_APPLICABLE row, the generalization lost a
  * capability it used to have.
+ *
+ * That is a different question from the one drivers/citrineos/ answers, not a
+ * lesser or greater one: this driver catches the harness losing something, the
+ * other catches the core assuming something about SteVe. Neither is "the
+ * reference".
  *
  * Why the manager UI and not the REST API
  * ---------------------------------------
@@ -28,12 +33,20 @@
  *
  * Where it has to run
  * -------------------
- * Observations come from MariaDB through `docker exec`, because SteVe's REST
- * API exposes neither stop_reason, nor reservation status, nor the
- * charging-profile registry. So this driver runs on the host that owns the
- * SteVe containers, and reaches the manager UI on the container network --
- * a deployment behind a forward-auth proxy is unreachable from outside it,
- * and its OCPP port may not be published to the internet at all.
+ * Transactions are observed over the WebAPI, which serves `stopReason`,
+ * `stopTimestamp` and `ocppIdTag` and filters by charge point, idTag and
+ * active-ness -- measured on the pinned image, and worth stating because an
+ * earlier version of this file claimed the opposite and read all of it from
+ * MariaDB. What REST genuinely cannot serve is reservation status and the
+ * charging-profile registry: no such controller exists. Those two still come
+ * from MariaDB through `docker exec` -- steve-community/steve#2074 and #2069
+ * respectively, both under the #1000 "Meta - API Endpoint" umbrella.
+ *
+ * So this driver runs on the host that owns the SteVe containers, and reaches
+ * the manager UI on the container network -- a deployment behind a
+ * forward-auth proxy is unreachable from outside it, and its OCPP port may not
+ * be published to the internet at all. The day those two tickets land, that
+ * constraint goes with them.
  */
 import { type CsmsDriverModule } from "../../tck/driver";
 export declare const csmsDriver: CsmsDriverModule;

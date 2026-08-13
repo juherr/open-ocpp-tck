@@ -1,0 +1,29 @@
+# Copyright 2026 Julien Herr
+# SPDX-License-Identifier: Apache-2.0
+#
+# The v1.9.1 variant, as a compose OVERRIDE rather than a second full file:
+#
+#   docker compose -f drivers/citrineos/compose.yaml \
+#                  -f drivers/citrineos/compose.v1.yaml up -d --wait
+#   CITRINE_VARIANT=v1 bun bin/ocpp-tck.ts driver provision
+#
+# An override, so the infrastructure services, the network name, the container
+# names and the published port are defined once. Only the bytes under test
+# change -- which is the whole point of pinning them.
+#
+# CITRINE_VARIANT=v1 is NOT optional with this file. The driver declares the
+# variant rather than detecting it (drivers/citrineos/variant.ts explains why),
+# and v1.9.1 names the OCPP connection column `stationId` where v2 names it
+# `ocppConnectionName`. Forgetting it is caught immediately and by name:
+# `ocpp-tck driver verify` compares the declaration against the running
+# schema before it looks at a single fixture.
+#
+# What v1.9.1 costs, measured on this image rather than inferred: it advertises
+# 16 `/ocpp/1.6/` paths where v2.0.0-beta1 advertises 18. The two missing are
+# `evdriver/sendLocalList` and `evdriver/getLocalListVersion`, so six
+# local-auth-list scenarios report NOT APPLICABLE. VENDOR.md carries the run.
+#
+# Re-pin exactly as compose.yaml documents, substituting the v1.9.1 tag.
+services:
+  citrine:
+    image: ghcr.io/citrineos/citrineos-server:v1.9.1@sha256:4f8791510686af47d5a5cbb55bf69eea7435734836e858d8cc983c0a4edaa884
