@@ -1,6 +1,6 @@
 --- /tmp/ocpp-upstream/scripts/steve-verify/runner/main.ts	2026-07-31 20:05:48
 +++ tck/main.ts	2026-07-31 20:12:10
-@@ -1,39 +1,57 @@
+@@ -1,39 +1,58 @@
  #!/usr/bin/env bun
 +// Derived from shiv3/ocpp-cp-simulator scripts/steve-verify/runner/main.ts @ 604054adb0d7d7129a26a5f1ad2d5fdc290d1ca1 (Apache-2.0). Modified: the STEVE_DRIVER=api|ui selection is replaced by a CSMS driver loaded through ./driver-registry; a per-driver scope table (./scope) is consulted BEFORE any container starts and yields the NOT APPLICABLE verdict; UnsupportedOperationError (./driver) thrown out of drive() degrades to NOT APPLICABLE with a stderr WARNING; the PARTIAL verdict and the `skipped` summary column were added; the exit code is non-zero only for FAIL/ERROR; parallel lanes derive from the resolved station list instead of the fixed CERTCP1..3 trio; the SteVe capability probe is dropped.
 +
@@ -45,6 +45,7 @@
  
  import { mkdirSync } from "node:fs";
 -import { fileURLToPath } from "node:url";
++import { cpus, loadavg } from "node:os";
 +import { resolve } from "node:path";
  import { AssertRecorder } from "./assert";
 -import { printCapabilityProbe } from "./capability-probe";
@@ -84,7 +85,7 @@
  import {
    AUTHLIST_RESERVATION_SPECS,
    AUTHORIZE_SPECS,
-@@ -44,12 +62,23 @@
+@@ -44,12 +63,23 @@
  import type { ScenarioSpec } from "./spec-types";
  import { sleep } from "./util";
  
@@ -113,7 +114,7 @@
  // ---------------------------------------------------------------------------
  // Runner core
  // ---------------------------------------------------------------------------
-@@ -60,95 +89,193 @@
+@@ -60,95 +90,193 @@
    timeoutSecs?: number;
  }
  
@@ -368,7 +369,7 @@
          30_000,
        );
      } catch (err) {
-@@ -176,13 +303,25 @@
+@@ -176,13 +304,25 @@
  
      if (spec.drive) {
        process.stderr.write(`[runner] running drive() for ${spec.templateId}\n`);
@@ -401,7 +402,7 @@
      } else {
        process.stderr.write(
          `[runner] no drive() defined (CP-only scenario) -- nothing to do while it runs\n`,
-@@ -190,15 +329,18 @@
+@@ -190,15 +330,18 @@
        driveState = undefined as D;
      }
  
@@ -423,7 +424,7 @@
    // it a FAIL in a swept scenario is un-post-mortem-able: the sim container
    // is already stopped+removed by the time assert() reports, so this
    // capture is the only surviving record of what was (or wasn't) on the
-@@ -218,6 +360,10 @@
+@@ -218,6 +361,10 @@
      );
    }
  
@@ -434,7 +435,7 @@
    const frames = parseLog(lines.join("\n"));
    const rec = new AssertRecorder();
  
-@@ -228,34 +374,53 @@
+@@ -228,34 +375,53 @@
      frames,
      lines,
      rec,
@@ -497,7 +498,7 @@
  // ---------------------------------------------------------------------------
  
  // eslint-disable-next-line @typescript-eslint/no-explicit-any
-@@ -265,8 +430,6 @@
+@@ -265,8 +431,6 @@
    "remotetrigger-smartcharging": REMOTETRIGGER_SMARTCHARGING_SPECS,
    firmware: FIRMWARE_SPECS,
    authorize: AUTHORIZE_SPECS,
@@ -506,7 +507,7 @@
    all: [
      ...CORE_SPECS,
      ...AUTHLIST_RESERVATION_SPECS,
-@@ -286,66 +449,109 @@
+@@ -286,66 +450,109 @@
      .map((spec) => [spec.templateId, spec]),
  );
  
@@ -654,7 +655,7 @@
      };
    } catch (err) {
      const message =
-@@ -359,58 +565,40 @@
+@@ -359,58 +566,40 @@
        verdict: "ERROR",
        checks: null,
        failed: null,
@@ -728,7 +729,7 @@
    );
  
    for (const outcome of toRetry) {
-@@ -432,13 +620,14 @@
+@@ -432,13 +621,14 @@
        verdict: retryOutcome.verdict,
        checks: retryOutcome.checks,
        failed: retryOutcome.failed,
@@ -745,7 +746,7 @@
            : " -- CONFIRMED (fails isolated too, not a parallel-lane artifact)\n"),
      );
    }
-@@ -451,11 +640,10 @@
+@@ -451,11 +641,35 @@
    return new Date().toISOString().replace(/\.\d{3}Z$/, "Z");
  }
  
@@ -754,6 +755,31 @@
 - *  When any outcome carries an `isolatedRetry` (--retry-failed-isolated ran),
 - *  an extra "isolated retry" column and a flake-count note are added; a
 - *  sweep with no retries produces the original table unchanged. */
++/**
++ * What the HOST was doing, recorded beside the verdict.
++ *
++ * A parallel sweep measures the machine as much as the CSMS: these scenarios
++ * hold fixed observation windows open while three lanes and their simulator
++ * containers compete for the same cores, so a saturated box turns green
++ * scenarios red. That happened here, twice, and cost two investigations of the
++ * code before anyone thought to look at `uptime` -- the second one reported a
++ * failure that passed on every isolated re-run.
++ *
++ * One line in the summary makes the next red sweep self-diagnosing. It answers
++ * a question, not a policy: nothing here refuses to run on a busy machine,
++ * because the operator's laptop is a legitimate place to run this.
++ */
++function hostLoad(): string {
++  const cores = cpus().length;
++  const [one] = loadavg();
++  const ratio = one / Math.max(cores, 1);
++  const note =
++    ratio >= 0.9
++      ? " -- SATURATED: parallel-lane failures here are unreliable, trust the isolated retry"
++      : "";
++  return `Host load ${one.toFixed(2)} over ${cores} core(s)${note}.`;
++}
++
 +/** Renders + writes results/summary.md. Same columns as upstream plus
 + *  `skipped`; when any outcome carries an `isolatedRetry`
 + *  (--retry-failed-isolated ran), an extra "isolated retry" column and a
@@ -761,7 +787,7 @@
  async function writeSummary(
    groupName: string,
    outcomes: ScenarioOutcome[],
-@@ -465,43 +653,53 @@
+@@ -465,45 +679,55 @@
    const rows = outcomes.map((o) => {
      const checks = o.checks === null ? "-" : String(o.checks);
      const failed = o.failed === null ? "-" : String(o.failed);
@@ -827,9 +853,12 @@
 -      `# SteVe verification results — group: ${groupName}`,
 +      `# OCPP verification results — group: ${groupName}`,
        "",
-       `Run at ${timestampUtc()}.`,
+-      `Run at ${timestampUtc()}.`,
++      `Run at ${timestampUtc()}. ${hostLoad()}`,
        "",
-@@ -518,54 +716,53 @@
+       header,
+       separator,
+@@ -518,54 +742,53 @@
  }
  
  /** Sequential or parallel group sweep. Writes results/summary.md and exits
@@ -909,7 +938,7 @@
      );
    } else {
      for (let i = 0; i < specs.length; i++) {
-@@ -574,11 +771,11 @@
+@@ -574,11 +797,11 @@
    }
  
    if (retryFailedIsolated) {
@@ -923,7 +952,7 @@
            "(a sequential sweep is already isolated).\n",
        );
      }
-@@ -588,45 +785,51 @@
+@@ -588,45 +811,51 @@
    for (const o of outcomes) {
      const retrySuffix = o.isolatedRetry
        ? ` [isolated retry: ${o.isolatedRetry.verdict}${
@@ -990,7 +1019,7 @@
  }
  
  // ---------------------------------------------------------------------------
-@@ -642,6 +845,8 @@
+@@ -642,6 +871,8 @@
    cpId: string;
    connector?: number;
    timeoutSecs?: number;
@@ -999,20 +1028,11 @@
  }
  
  function requireValue(argv: string[], index: number, flag: string): string {
-@@ -663,37 +868,77 @@
+@@ -663,37 +894,80 @@
    return n;
  }
  
 -function printUsage(): void {
--  process.stderr.write(
--    "Usage (paths shown from the repo root; from scripts/steve-verify " +
--      "use the shorter `bun runner/main.ts …`):\n" +
--      "       bun scripts/steve-verify/runner/main.ts run <template-id> " +
--      "[--cp CERTCP1] [--timeout N] [--connector N]\n" +
--      "       bun scripts/steve-verify/runner/main.ts run --group " +
--      `${Object.keys(GROUPS).join("|")} [--parallel] [--retry-failed-isolated]\n` +
--      "       bun scripts/steve-verify/runner/main.ts run-all " +
--      "[--group <name>] [--parallel] [--retry-failed-isolated]\n" +
 +const VERBS = [
 +  "run",
 +  "run-all",
@@ -1023,11 +1043,18 @@
 +] as const;
 +
 +async function printUsage(): Promise<void> {
-+  process.stderr.write(
+   process.stderr.write(
+-    "Usage (paths shown from the repo root; from scripts/steve-verify " +
+-      "use the shorter `bun runner/main.ts …`):\n" +
+-      "       bun scripts/steve-verify/runner/main.ts run <template-id> " +
+-      "[--cp CERTCP1] [--timeout N] [--connector N]\n" +
+-      "       bun scripts/steve-verify/runner/main.ts run --group " +
 +    "Usage: ocpp-tck run <template-id> [--cp CP1] [--timeout N] " +
 +      "[--connector N] [--results-dir DIR]\n" +
 +      "       ocpp-tck run --group " +
-+      `${Object.keys(GROUPS).join("|")} [--parallel] [--retry-failed-isolated]\n` +
+       `${Object.keys(GROUPS).join("|")} [--parallel] [--retry-failed-isolated]\n` +
+-      "       bun scripts/steve-verify/runner/main.ts run-all " +
+-      "[--group <name>] [--parallel] [--retry-failed-isolated]\n" +
 +      "       ocpp-tck run-all [--group <name>] [--parallel] " +
 +      "[--retry-failed-isolated] [--results-dir DIR]\n" +
 +      "       ocpp-tck list-scenarios [--group <name>] [--json]\n" +
@@ -1072,12 +1099,15 @@
 +        `\nDriver environment (${module.displayName}):\n${module.envHelp}\n`,
 +      );
 +    }
-+    const verbs = Object.keys(module.commands ?? {});
-+    if (verbs.length > 0) {
-+      process.stderr.write(
-+        `\nDriver verbs (ocpp-tck driver <verb>): ${verbs.join(", ")}\n`,
-+      );
-+    }
++    // `selftest` first and always: it is core, so it is the one verb every
++    // driver answers, and it is the fastest way to find out whether this one
++    // can talk to its CSMS at all.
++    const verbs = ["selftest", ...Object.keys(module.commands ?? {})];
++    process.stderr.write(
++      `\nDriver verbs (ocpp-tck driver <verb>): ${verbs.join(", ")}\n` +
++        "  selftest calls every CsmsRecords method once against the running " +
++        "CSMS -- seconds, no simulator. Run it before a sweep.\n",
++    );
 +  } catch {
 +    /* no driver selected, or it failed to load -- usage is still useful */
    }
@@ -1096,7 +1126,7 @@
  
    if (argv[0] === "run-all") {
      group = "all";
-@@ -708,18 +953,27 @@
+@@ -708,18 +982,27 @@
          case "--retry-failed-isolated":
            retryFailedIsolated = true;
            break;
@@ -1127,7 +1157,7 @@
      process.exit(1);
    }
  
-@@ -749,9 +1003,11 @@
+@@ -749,9 +1032,11 @@
        case "--retry-failed-isolated":
          retryFailedIsolated = true;
          break;
@@ -1140,7 +1170,7 @@
          process.exit(1);
      }
    }
-@@ -764,35 +1020,286 @@
+@@ -764,35 +1049,402 @@
      cpId,
      connector,
      timeoutSecs,
@@ -1199,7 +1229,7 @@
 +  );
 +  return 0;
 +}
- 
++
 +/**
 + * Offline conformance check of a driver against THIS core.
 + *
@@ -1289,7 +1319,7 @@
 +          "invisible to every consumer.",
 +      );
 +    }
-+
+ 
 +    const reasonless = Object.entries(module.scope)
 +      .filter(([, entry]) => !entry.reason?.trim())
 +      .map(([id]) => id);
@@ -1371,17 +1401,133 @@
 +}
 +
 +/** Runs a driver-contributed bootstrap verb. */
++/**
++ * `ocpp-tck driver selftest` -- does this driver's data path work AT ALL?
++ *
++ * The gap this fills is a measured one. `check-driver` runs offline and never
++ * touches the CSMS; the next rung up was a 47-scenario sweep costing ten
++ * minutes and a docker image. So a driver whose record queries were broken in
++ * a two-line way -- a column typed wrong, a field the server does not expose,
++ * a relationship never created -- announced itself only after a full sweep,
++ * once per bug. This calls every method of the contract once, against the
++ * running CSMS, in seconds.
++ *
++ * WHAT IT ASSERTS IS THAT THE QUERY RAN, not what it returned. The values
++ * depend on whatever the CSMS has recorded, which is the scenarios' business;
++ * a selftest that expected data would need fixtures and would then be a sweep.
++ * So a read that answers "" is a PASS -- it reached the CSMS and came back
++ * shaped correctly -- and only a throw is a failure.
++ *
++ * A declared capability gap is a SKIP rather than a failure: reservations on a
++ * CSMS that has none must throw UnsupportedOperationError, and that is the
++ * contract working, not breaking.
++ */
++async function driverSelftest(): Promise<number> {
++  const module = await driverModule();
++  const parts = await driver();
++  const records = withCapabilityStubs(parts);
++  const cpId = resolveStations()[0]!;
++  // A tag no fixture defines. Every read below is a query exercise, and one
++  // that cannot match keeps this verb from depending on provisioning.
++  const idTag = "SELFTEST-NO-SUCH-TAG";
++
++  const probes: { name: string; run: () => Promise<unknown> }[] = [
++    { name: "latestTransaction", run: () => records.latestTransaction(cpId) },
++    {
++      name: "transactionIdTag",
++      run: () => records.transactionIdTag(""),
++    },
++    {
++      name: "transactionStopTimestamp",
++      run: () => records.transactionStopTimestamp(""),
++    },
++    {
++      name: "transactionStopReason",
++      run: () => records.transactionStopReason(""),
++    },
++    {
++      name: "transactionCountForIdTag",
++      run: () => records.transactionCountForIdTag(cpId, idTag),
++    },
++    {
++      // Contractually REJECTS when nothing shows up, so the timeout is the
++      // expected answer here and proves the query underneath it ran. Only a
++      // different error means the query itself is broken.
++      name: "waitForActiveTransaction",
++      run: async () => {
++        try {
++          return await records.waitForActiveTransaction(cpId, idTag, 1);
++        } catch (err) {
++          if (err instanceof Error && /timed out after/.test(err.message)) {
++            return "(timed out, as expected)";
++          }
++          throw err;
++        }
++      },
++    },
++    { name: "reservations.latest", run: () => records.reservations.latest(cpId) },
++    { name: "reservations.status", run: () => records.reservations.status("") },
++    {
++      name: "chargingProfiles.refByDescription",
++      run: () => records.chargingProfiles.refByDescription("SELFTEST"),
++    },
++  ];
++  if (parts.prepareStation) {
++    // A write, and the only one here: it is idempotent by contract, and it is
++    // the hook every scenario pays before it starts.
++    probes.push({
++      name: "prepareStation",
++      run: () => parts.prepareStation!(cpId),
++    });
++  }
++
++  process.stdout.write(
++    `selftest: ${module.displayName} against ${cpId}\n`,
++  );
++  let failed = 0;
++  for (const probe of probes) {
++    try {
++      const value = await probe.run();
++      const rendered =
++        value === undefined ? "(void)" : JSON.stringify(value) || "(empty)";
++      process.stdout.write(`  OK      ${probe.name} -> ${rendered}\n`);
++    } catch (err) {
++      if (err instanceof UnsupportedOperationError) {
++        process.stdout.write(`  SKIP    ${probe.name} -- ${err.reason}\n`);
++        continue;
++      }
++      failed += 1;
++      process.stdout.write(
++        `  FAIL    ${probe.name}: ${err instanceof Error ? err.message : String(err)}\n`,
++      );
++    }
++  }
++
++  if (failed > 0) {
++    process.stderr.write(
++      `selftest: ${failed} of ${probes.length} call(s) failed -- the driver cannot answer the contract.\n`,
++    );
++    return 1;
++  }
++  process.stdout.write(`selftest: ${probes.length} call(s), all answered\n`);
++  return 0;
++}
++
 +async function runDriverCommand(argv: string[]): Promise<number> {
 +  const name = argv[0];
 +  const module = await driverModule();
 +  const commands = module.commands ?? {};
++  // Core-provided, so every driver has it without contributing anything --
++  // including a driver written outside this repository.
++  if (name === "selftest") return driverSelftest();
 +  if (!name || !(name in commands)) {
-+    const known = Object.keys(commands);
++    const known = ["selftest", ...Object.keys(commands)];
 +    process.stderr.write(
 +      `Usage: ocpp-tck driver <verb> [args...]\n` +
-+        (known.length > 0
-+          ? `Verbs contributed by ${module.displayName}: ${known.join(", ")}\n`
-+          : `${module.displayName} contributes no verbs.\n`),
++        `Verbs: ${known.join(", ")}` +
++        (Object.keys(commands).length > 0
++          ? ` (all but selftest contributed by ${module.displayName})\n`
++          : ` (selftest is core; ${module.displayName} contributes none)\n`),
 +    );
 +    return 1;
 +  }
@@ -1443,7 +1589,7 @@
    }
  
    const spec = SPECS_BY_TEMPLATE_ID.get(args.templateId);
-@@ -800,18 +1307,29 @@
+@@ -800,18 +1452,29 @@
      process.stderr.write(
        `Unknown template id: ${args.templateId} (known: ${[...SPECS_BY_TEMPLATE_ID.keys()].join(", ")})\n`,
      );

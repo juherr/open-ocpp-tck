@@ -77,6 +77,7 @@ bunx ocpp-tck check-driver       # offline: no CSMS, no docker, no credentials
 # A SteVe to point at, and the fixtures the scenarios assume.
 docker compose -f node_modules/open-ocpp-tck/drivers/steve/compose.yaml up -d --wait
 bunx ocpp-tck driver provision
+bunx ocpp-tck driver selftest    # seconds: can the driver answer the contract?
 
 bunx ocpp-tck run-all --group core
 ```

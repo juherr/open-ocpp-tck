@@ -55,6 +55,7 @@ export OCPP_CP_IDS=CERTCP1,CERTCP2,CERTCP3
 bun bin/ocpp-tck.ts check-driver          # offline: no CSMS, no docker
 bun bin/ocpp-tck.ts driver provision      # seed the idTags TC_023 needs
 bun bin/ocpp-tck.ts driver verify         # read-only: are they there?
+bun bin/ocpp-tck.ts driver selftest       # seconds: every record query, once
 
 bun run e2e                               # both sweeps: 44 + the authorize 3
 
