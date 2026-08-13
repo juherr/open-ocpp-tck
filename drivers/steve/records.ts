@@ -307,10 +307,19 @@ export class SteveRecords implements CsmsRecords {
       this.scalar(
         `SELECT r.reservation_pk FROM reservation r JOIN evse e ON e.evse_pk = r.evse_pk WHERE e.charge_box_id = ${sqlLiteral(cpId)} ORDER BY r.reservation_pk DESC LIMIT 1;`,
       ),
+    // The ref goes into the statement unquoted, as the primary key it is, so a
+    // ref that is not a number has to stop here: `latest()` answers "" when the
+    // station has no reservation, and a spec that passes that straight through
+    // -- which is what a rejected ReserveNow produces -- would otherwise send
+    // `reservation_pk=` and get a SQL syntax error where the contract promises
+    // "". Found by `driver selftest`, which calls every method with an empty
+    // ref for exactly this reason.
     status: (reservation: string) =>
-      this.nullSafe(
-        `SELECT status FROM reservation WHERE reservation_pk=${reservation};`,
-      ),
+      /^\d+$/.test(reservation)
+        ? this.nullSafe(
+            `SELECT status FROM reservation WHERE reservation_pk=${reservation};`,
+          )
+        : Promise.resolve(""),
   };
 
   /** SQL until [steve-community/steve#2069] exposes charging-profile CRUD. */

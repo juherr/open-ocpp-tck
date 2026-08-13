@@ -22,6 +22,18 @@ export interface WaitForConditionOptions {
   description?: string;
 }
 
+/**
+ * What `waitForCondition` throws when the deadline passes.
+ *
+ * A type rather than a message, because a caller that wants to tell "the thing
+ * never appeared" from "the query itself is broken" would otherwise have to
+ * match on prose -- and the prose belongs to this file. `driver selftest` makes
+ * exactly that distinction.
+ */
+export class WaitTimeoutError extends Error {
+  readonly name = "WaitTimeoutError";
+}
+
 export async function waitForCondition<T>(
   check: () => Promise<T | undefined | null | false | "">,
   options: WaitForConditionOptions = {},
@@ -34,7 +46,7 @@ export async function waitForCondition<T>(
     const result = await check();
     if (result) return result;
     if (Date.now() >= deadline) {
-      throw new Error(
+      throw new WaitTimeoutError(
         `timed out after ${timeoutMs}ms waiting for: ${description}`,
       );
     }

@@ -13,7 +13,7 @@
  * (ocpp.ts) and runs the named spec's drive()/assert() against a live CSMS
  * through the loaded CSMS driver.
  *
- * Three verdicts beyond the upstream PASS/FAIL/ERROR pair:
+ * Two verdicts beyond the upstream PASS/FAIL/ERROR trio:
  *   - NOT APPLICABLE -- the scope table (scope.ts) marks the scenario
  *     NOT_APPLICABLE for this CSMS, or the driver threw
  *     UnsupportedOperationError out of drive(). No container is started in
@@ -25,6 +25,7 @@
  */
 
 import { mkdirSync } from "node:fs";
+import { cpus, loadavg } from "node:os";
 import { resolve } from "node:path";
 import { AssertRecorder } from "./assert";
 import { CSMS_OPERATION_ACTIONS, UnsupportedOperationError } from "./driver";
@@ -61,6 +62,7 @@ import {
 } from "./specs/index";
 import type { ScenarioSpec } from "./spec-types";
 import { sleep } from "./util";
+import { WaitTimeoutError } from "./wait";
 
 /**
  * Where per-scenario logs and summary.md are written.
@@ -640,6 +642,39 @@ function timestampUtc(): string {
   return new Date().toISOString().replace(/\.\d{3}Z$/, "Z");
 }
 
+/**
+ * What the HOST was doing, recorded beside the verdict.
+ *
+ * A parallel sweep measures the machine as much as the CSMS: these scenarios
+ * hold fixed observation windows open while three lanes and their simulator
+ * containers compete for the same cores, so a saturated box turns green
+ * scenarios red. That happened here, twice, and cost two investigations of the
+ * code before anyone thought to look at `uptime` -- the second one reported a
+ * failure that passed on every isolated re-run.
+ *
+ * One line in the summary makes the next red sweep self-diagnosing. It answers
+ * a question, not a policy: nothing here refuses to run on a busy machine,
+ * because the operator's laptop is a legitimate place to run this.
+ */
+function hostLoad(): string {
+  const cores = cpus().length;
+  const averages = loadavg();
+  // Windows -- and any platform without a load average -- answers [0, 0, 0].
+  // Printing "0.00" there would read as a perfectly idle machine, which is a
+  // stronger claim than "we do not know", and the whole point of this line is
+  // to be trustworthy when a sweep goes red.
+  if (averages.every((value) => value === 0)) {
+    return `Host load unavailable on this platform, ${cores} core(s).`;
+  }
+  const [one] = averages as [number, number, number];
+  const ratio = one / Math.max(cores, 1);
+  const note =
+    ratio >= 0.9
+      ? " -- SATURATED: parallel-lane failures here are unreliable, trust the isolated retry"
+      : "";
+  return `Host load ${one.toFixed(2)} over ${cores} core(s)${note}.`;
+}
+
 /** Renders + writes results/summary.md. Same columns as upstream plus
  *  `skipped`; when any outcome carries an `isolatedRetry`
  *  (--retry-failed-isolated ran), an extra "isolated retry" column and a
@@ -701,7 +736,7 @@ async function writeSummary(
     [
       `# OCPP verification results — group: ${groupName}`,
       "",
-      `Run at ${timestampUtc()}.`,
+      `Run at ${timestampUtc()}. ${hostLoad()}`,
       "",
       header,
       separator,
@@ -919,12 +954,15 @@ async function printUsage(): Promise<void> {
         `\nDriver environment (${module.displayName}):\n${module.envHelp}\n`,
       );
     }
-    const verbs = Object.keys(module.commands ?? {});
-    if (verbs.length > 0) {
-      process.stderr.write(
-        `\nDriver verbs (ocpp-tck driver <verb>): ${verbs.join(", ")}\n`,
-      );
-    }
+    // `selftest` first and always: it is core, so it is the one verb every
+    // driver answers, and it is the fastest way to find out whether this one
+    // can talk to its CSMS at all.
+    const verbs = ["selftest", ...Object.keys(module.commands ?? {})];
+    process.stderr.write(
+      `\nDriver verbs (ocpp-tck driver <verb>): ${verbs.join(", ")}\n` +
+        "  selftest calls every CsmsRecords method once against the running " +
+        "CSMS -- seconds, no simulator. Run it before a sweep.\n",
+    );
   } catch {
     /* no driver selected, or it failed to load -- usage is still useful */
   }
@@ -1241,17 +1279,155 @@ async function checkDriver(argv: string[]): Promise<number> {
 }
 
 /** Runs a driver-contributed bootstrap verb. */
+/**
+ * `ocpp-tck driver selftest` -- does this driver's data path work AT ALL?
+ *
+ * The gap this fills is a measured one. `check-driver` runs offline and never
+ * touches the CSMS; the next rung up was a 47-scenario sweep costing ten
+ * minutes and a docker image. So a driver whose record queries were broken in
+ * a two-line way -- a column typed wrong, a field the server does not expose,
+ * a relationship never created -- announced itself only after a full sweep,
+ * once per bug. This calls every method of the contract once, against the
+ * running CSMS, in seconds.
+ *
+ * WHAT IT ASSERTS IS THAT THE QUERY RAN, not what it returned. The values
+ * depend on whatever the CSMS has recorded, which is the scenarios' business;
+ * a selftest that expected data would need fixtures and would then be a sweep.
+ * So a read that answers "" is a PASS -- it reached the CSMS and came back
+ * shaped correctly -- and only a throw is a failure.
+ *
+ * A declared capability gap is a SKIP rather than a failure: reservations on a
+ * CSMS that has none must throw UnsupportedOperationError, and that is the
+ * contract working, not breaking.
+ */
+async function driverSelftest(argv: string[] = []): Promise<number> {
+  const withWrites = argv.includes("--with-writes");
+  const module = await driverModule();
+  const parts = await driver();
+  const records = withCapabilityStubs(parts);
+  const cpId = resolveStations()[0]!;
+  // A tag no fixture defines. Every read below is a query exercise, and one
+  // that cannot match keeps this verb from depending on provisioning.
+  const idTag = "SELFTEST-NO-SUCH-TAG";
+
+  const probes: { name: string; run: () => Promise<unknown> }[] = [
+    { name: "latestTransaction", run: () => records.latestTransaction(cpId) },
+    {
+      name: "transactionIdTag",
+      run: () => records.transactionIdTag(""),
+    },
+    {
+      name: "transactionStopTimestamp",
+      run: () => records.transactionStopTimestamp(""),
+    },
+    {
+      name: "transactionStopReason",
+      run: () => records.transactionStopReason(""),
+    },
+    {
+      name: "transactionCountForIdTag",
+      run: () => records.transactionCountForIdTag(cpId, idTag),
+    },
+    {
+      // Contractually REJECTS when nothing shows up, so the timeout is the
+      // expected answer here and proves the query underneath it ran. Only a
+      // different error means the query itself is broken.
+      name: "waitForActiveTransaction",
+      run: async () => {
+        try {
+          return await records.waitForActiveTransaction(cpId, idTag, 1);
+        } catch (err) {
+          if (err instanceof WaitTimeoutError) return "(timed out, as expected)";
+          throw err;
+        }
+      },
+    },
+    { name: "reservations.latest", run: () => records.reservations.latest(cpId) },
+    // Twice, because the two arguments take different paths. An empty ref is
+    // the contract's "none" and a driver may answer it without asking the CSMS
+    // at all -- SteVe's does, deliberately -- so only a well-formed ref
+    // exercises the lookup itself. `0` is well-formed and matches nothing.
+    { name: "reservations.status (empty ref)", run: () => records.reservations.status("") },
+    { name: "reservations.status (absent ref)", run: () => records.reservations.status("0") },
+    {
+      name: "chargingProfiles.refByDescription",
+      run: () => records.chargingProfiles.refByDescription("SELFTEST"),
+    },
+  ];
+  // prepareStation is the one WRITE the contract defines, and it is off by
+  // default: it closes a station's open transaction and clears its local list,
+  // which is right before a scenario and surprising from something called a
+  // selftest -- especially against a CSMS the operator did not bring up for
+  // this. `--with-writes` asks for it; every scenario exercises it anyway.
+  if (withWrites && parts.prepareStation) {
+    probes.push({
+      name: "prepareStation",
+      run: () => parts.prepareStation!(cpId),
+    });
+  }
+
+  process.stdout.write(
+    `selftest: ${module.displayName} against ${cpId}\n`,
+  );
+  let failed = 0;
+  for (const probe of probes) {
+    // The try covers the CALL and nothing else. Rendering the answer is this
+    // verb's own business, and a value JSON.stringify refuses -- a BigInt, a
+    // cycle -- would otherwise be reported as the driver failing a query it
+    // actually answered.
+    let value: unknown;
+    try {
+      value = await probe.run();
+    } catch (err) {
+      if (err instanceof UnsupportedOperationError) {
+        process.stdout.write(`  SKIP    ${probe.name} -- ${err.reason}\n`);
+        continue;
+      }
+      failed += 1;
+      process.stdout.write(
+        `  FAIL    ${probe.name}: ${err instanceof Error ? err.message : String(err)}\n`,
+      );
+      continue;
+    }
+    process.stdout.write(`  OK      ${probe.name} -> ${render(value)}\n`);
+  }
+
+  if (failed > 0) {
+    process.stderr.write(
+      `selftest: ${failed} of ${probes.length} call(s) failed -- the driver cannot answer the contract.\n`,
+    );
+    return 1;
+  }
+  process.stdout.write(`selftest: ${probes.length} call(s), all answered\n`);
+  return 0;
+}
+
+/** One probe's answer, for the log. Never throws: a value that cannot be
+ *  serialised is still a value the driver returned. */
+function render(value: unknown): string {
+  if (value === undefined) return "(void)";
+  try {
+    return JSON.stringify(value) || "(empty)";
+  } catch {
+    return `(unserialisable ${typeof value})`;
+  }
+}
+
 async function runDriverCommand(argv: string[]): Promise<number> {
   const name = argv[0];
   const module = await driverModule();
   const commands = module.commands ?? {};
+  // Core-provided, so every driver has it without contributing anything --
+  // including a driver written outside this repository.
+  if (name === "selftest") return driverSelftest(argv.slice(1));
   if (!name || !(name in commands)) {
-    const known = Object.keys(commands);
+    const known = ["selftest", ...Object.keys(commands)];
     process.stderr.write(
       `Usage: ocpp-tck driver <verb> [args...]\n` +
-        (known.length > 0
-          ? `Verbs contributed by ${module.displayName}: ${known.join(", ")}\n`
-          : `${module.displayName} contributes no verbs.\n`),
+        `Verbs: ${known.join(", ")}` +
+        (Object.keys(commands).length > 0
+          ? ` (all but selftest contributed by ${module.displayName})\n`
+          : ` (selftest is core; ${module.displayName} contributes none)\n`),
     );
     return 1;
   }
