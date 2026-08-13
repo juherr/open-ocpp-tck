@@ -90,8 +90,8 @@ export const NO_LOCAL_LIST =
  * list pair is absent from v1 only -- and absent means the path answers 404,
  * so these must throw UnsupportedOperationError rather than be POSTed.
  *
- * Built once per variant rather than per call: `index.ts` reads it at module
- * load for `capabilities` and `requests.ts` reads it per operation, and two
+ * Built once per variant rather than per call: `index.ts` reads it when it
+ * resolves `capabilities` and `requests.ts` reads it per operation, and two
  * independent constructions of the same fact is exactly what this module is
  * for.
  */

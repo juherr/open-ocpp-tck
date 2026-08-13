@@ -28,12 +28,18 @@ import { mkdirSync } from "node:fs";
 import { cpus, loadavg } from "node:os";
 import { resolve } from "node:path";
 import { AssertRecorder } from "./assert";
-import { CSMS_OPERATION_ACTIONS, UnsupportedOperationError } from "./driver";
+import {
+  CSMS_OPERATION_ACTIONS,
+  driverCapabilities,
+  driverScope,
+  UnsupportedOperationError,
+} from "./driver";
 import { loadDriverModule } from "./driver-registry";
 import {
   scopeCoverage,
   templateIdsWithStatus,
   type ScopeStatus,
+  type ScopeTable,
 } from "./scope";
 import {
   unsupportedChargingProfiles,
@@ -47,6 +53,7 @@ import {
   type SimConfig,
 } from "./sim";
 import type {
+  CsmsCapabilities,
   CsmsDriverModule,
   CsmsDriverParts,
   CsmsEnv,
@@ -117,9 +124,9 @@ async function scopeEntryFor(
   // entitled to build its HTTP client in create() and throw when its token is
   // unset -- so going through create() here made `run` demand a credential in
   // order to tell you it was not going to use one, contradicting the promise
-  // three lines below. Importing a module does not contact the CSMS.
-  const module = await driverModule();
-  return module.scope?.[templateId];
+  // three lines below. Importing a module does not contact the CSMS, and
+  // neither may the table's own resolution.
+  return (await scopeTable())?.[templateId];
 }
 
 /** Result of one scenario execution -- either it produced checks, or the
@@ -142,6 +149,16 @@ type ScenarioRun =
  */
 let driverModulePromise: Promise<CsmsDriverModule> | undefined;
 let driverPartsPromise: Promise<CsmsDriverParts> | undefined;
+let scopeTablePromise: Promise<ScopeTable | undefined> | undefined;
+
+/**
+ * The one environment this process shows a driver, named once so that the
+ * scope table and the requests cannot describe different servers.
+ *
+ * A live alias of `process.env`, not a copy: `check-driver --driver` writes
+ * CSMS_DRIVER into it after this line has run.
+ */
+const ENV: CsmsEnv = process.env;
 
 async function driverModule(): Promise<CsmsDriverModule> {
   driverModulePromise ??= loadDriverModule();
@@ -151,9 +168,18 @@ async function driverModule(): Promise<CsmsDriverModule> {
 async function driver(): Promise<CsmsDriverParts> {
   driverPartsPromise ??= (async () => {
     const module = await driverModule();
-    return module.create(process.env);
+    return module.create(ENV);
   })();
   return driverPartsPromise;
+}
+
+/** Resolved once: a driver is free to compute the table, and `run-all` asks it
+ *  one question per scenario. */
+async function scopeTable(): Promise<ScopeTable | undefined> {
+  scopeTablePromise ??= driverModule().then((module) =>
+    driverScope(module, ENV),
+  );
+  return scopeTablePromise;
 }
 
 /**
@@ -1132,9 +1158,18 @@ async function checkDriver(argv: string[]): Promise<number> {
   const problems: string[] = [];
   const warnings: string[] = [];
 
+  // Resolution shares the module's try/catch, and that is not tidiness: a
+  // driver that reads a declaration from the environment -- which release line
+  // it is pointed at -- rejects a bad value by throwing, and it used to throw
+  // at import. Outside the catch, `CITRINE_VARIANT=typo` would print a stack
+  // where it used to print one sentence.
   let module: CsmsDriverModule;
+  let scope: ScopeTable | undefined;
+  let capabilities: CsmsCapabilities | undefined;
   try {
     module = await driverModule();
+    scope = await scopeTable();
+    capabilities = driverCapabilities(module, ENV);
   } catch (err) {
     process.stderr.write(
       `${err instanceof Error ? err.message : String(err)}\n`,
@@ -1151,14 +1186,14 @@ async function checkDriver(argv: string[]): Promise<number> {
   const registered = scenarios.map((s) => s.templateId);
   const groupOf = new Map(scenarios.map((s) => [s.templateId, s.group]));
 
-  if (!module.scope) {
+  if (!scope) {
     warnings.push(
       "no scope table: every scenario will be run and undrivable ones " +
         "discovered at runtime, after a container has started and touched " +
         "the CSMS. Legal, but the table is what makes that cheap.",
     );
   } else {
-    const { missing, stale } = scopeCoverage(module.scope, registered);
+    const { missing, stale } = scopeCoverage(scope, registered);
     if (missing.length > 0) {
       problems.push(
         `${missing.length} registered scenario(s) have NO row:\n` +
@@ -1184,9 +1219,9 @@ async function checkDriver(argv: string[]): Promise<number> {
       "NOT_APPLICABLE",
     ];
     const classified = new Set(
-      buckets.flatMap((status) => templateIdsWithStatus(module.scope!, status)),
+      buckets.flatMap((status) => templateIdsWithStatus(scope, status)),
     );
-    const unclassified = Object.keys(module.scope).filter(
+    const unclassified = Object.keys(scope).filter(
       (id) => !classified.has(id),
     );
     if (unclassified.length > 0) {
@@ -1198,7 +1233,7 @@ async function checkDriver(argv: string[]): Promise<number> {
       );
     }
 
-    const reasonless = Object.entries(module.scope)
+    const reasonless = Object.entries(scope)
       .filter(([, entry]) => !entry.reason?.trim())
       .map(([id]) => id);
     if (reasonless.length > 0) {
@@ -1210,9 +1245,9 @@ async function checkDriver(argv: string[]): Promise<number> {
     }
   }
 
-  if (module.capabilities) {
+  if (capabilities) {
     const known = new Set<string>(CSMS_OPERATION_ACTIONS);
-    const unknown = [...module.capabilities.operations].filter(
+    const unknown = [...capabilities.operations].filter(
       (op) => !known.has(op),
     );
     if (unknown.length > 0) {
@@ -1222,7 +1257,7 @@ async function checkDriver(argv: string[]): Promise<number> {
       );
     }
     const undeclared = CSMS_OPERATION_ACTIONS.filter(
-      (op) => !module.capabilities!.operations.has(op),
+      (op) => !capabilities.operations.has(op),
     );
     if (undeclared.length > 0) {
       warnings.push(
@@ -1237,13 +1272,11 @@ async function checkDriver(argv: string[]): Promise<number> {
     driver: module.id ?? "",
     displayName: module.displayName ?? "",
     registeredScenarios: registered.length,
-    scope: module.scope
+    scope: scope
       ? {
-          DRIVABLE: templateIdsWithStatus(module.scope, "DRIVABLE").length,
-          CONDITIONAL: templateIdsWithStatus(module.scope, "CONDITIONAL")
-            .length,
-          NOT_APPLICABLE: templateIdsWithStatus(module.scope, "NOT_APPLICABLE")
-            .length,
+          DRIVABLE: templateIdsWithStatus(scope, "DRIVABLE").length,
+          CONDITIONAL: templateIdsWithStatus(scope, "CONDITIONAL").length,
+          NOT_APPLICABLE: templateIdsWithStatus(scope, "NOT_APPLICABLE").length,
         }
       : null,
     problems,

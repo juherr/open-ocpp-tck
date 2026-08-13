@@ -347,6 +347,30 @@ export type CsmsDriverCommand = (argv: string[]) => Promise<number>;
  */
 export type CsmsEnv = Readonly<Record<string, string | undefined>>;
 /**
+ * A module-level declaration a driver may make a function of the environment.
+ *
+ * Exists because a CSMS with more than one supported release line has a scope
+ * table that depends on WHICH SERVER YOU POINT AT, and the alternative was a
+ * module-scope global read at import time -- resolved from `process.env`, while
+ * `create(env)` resolved the same setting from the env it was handed. The two
+ * agreed only because the runner passes `process.env`; a caller with a
+ * synthetic env got a table describing one server while every request targeted
+ * the other.
+ *
+ * It does NOT weaken the credential-free promise below. These fields live on
+ * the module to avoid calling `create()`, not to avoid reading the
+ * environment: the function is handed the same `CsmsEnv` that reaches
+ * `create()` later, and must answer offline, without credentials and without
+ * contacting the CSMS. Reading a declaration -- which release line, which
+ * profile -- is exactly what it is for.
+ *
+ * `T` must not itself be callable: resolution discriminates on `typeof`, so a
+ * function-valued declaration would be indistinguishable from its own
+ * resolver. Both fields using it are objects, which is also what lets the two
+ * resolvers below narrow the union with no cast.
+ */
+export type EnvDependent<T> = T | ((env: CsmsEnv) => T);
+/**
  * What a driver hands the runner. Everything optional is a CAPABILITY that the
  * runner substitutes or skips when absent, so a minimal driver is
  * `{ operations, records }` and nothing else.
@@ -382,11 +406,15 @@ export interface CsmsDriverModule {
      * its token is unset -- so `ocpp-tck run` demanded credentials to tell you it
      * was not going to use them. Reading it off the module keeps the preflight,
      * and `ocpp-tck check-driver`, genuinely offline.
+     *
+     * May be a function of the environment -- see {@link EnvDependent}. Resolve
+     * it with {@link driverScope} rather than by hand.
      */
-    readonly scope?: ScopeTable;
-    /** Same reasoning as {@link CsmsDriverModule.scope}: read without credentials,
-     *  printed by `ocpp-tck check-driver` and the run report. */
-    readonly capabilities?: CsmsCapabilities;
+    readonly scope?: EnvDependent<ScopeTable>;
+    /** Same reasoning as {@link CsmsDriverModule.scope}: read without
+     *  credentials, printed by `ocpp-tck check-driver`, and equally free to be a
+     *  function of the environment. Resolve it with {@link driverCapabilities}. */
+    readonly capabilities?: EnvDependent<CsmsCapabilities>;
     /** One instance per parallel lane. Free to read the environment, and free to
      *  throw a clear configuration error. */
     create(env: CsmsEnv): Promise<CsmsDriverParts> | CsmsDriverParts;
@@ -396,3 +424,19 @@ export interface CsmsDriverModule {
     /** Printed by `ocpp-tck --help` under "driver environment". */
     readonly envHelp?: string;
 }
+/**
+ * The driver's scope table for one environment, or `undefined` when it
+ * declares none ("run everything and find out").
+ *
+ * Public, and not merely an internal detail of the runner, because
+ * `CSMS_DRIVER` is a module specifier: drivers are expected to live in other
+ * repositories, and so is whatever tooling reads their tables. Anything
+ * touching `module.scope` directly has to narrow an {@link EnvDependent}
+ * union, and a resolver that is written twice is written differently twice.
+ *
+ * Callers MUST pass the same env they later hand to `create()`. The runner
+ * holds exactly one, for that reason.
+ */
+export declare function driverScope(module: CsmsDriverModule, env: CsmsEnv): ScopeTable | undefined;
+/** {@link driverScope} for the capability declaration. */
+export declare function driverCapabilities(module: CsmsDriverModule, env: CsmsEnv): CsmsCapabilities | undefined;
