@@ -386,6 +386,7 @@ were lane artifacts.
 |---|---|---|---|---|
 | `v2.0.0-beta1` — **current pin**, `CITRINE_VARIANT=v2` | `sha256:58800f45…` | 2026-08-11 | 34 PASS, 7 N/A, 3 FAIL — two lane flakes PASS on isolated retry, `tc044-2` confirmed | 2 PASS, 1 FAIL (`tc023-3`) |
 | `v1.9.1` — `CITRINE_VARIANT=v1` | `sha256:4f879151…` | 2026-08-11 | 16 PASS, 13 N/A, 15 FAIL — **all 15 confirmed on isolated retry, no flakes** | 2 PASS, 1 FAIL (`tc023-3`) |
+| `v2.0.0-beta1` — same pin, GraphQL transport | `sha256:58800f45…` | 2026-08-12 | 37 PASS, 7 N/A, **0 FAIL, and no flakes** — the parallel pass needed no isolated retry at all | 2 PASS, 1 FAIL (`tc023-3`) |
 
 One row, two runs: the second was taken from `down -v` and **agreed exactly in
 shape** — 34/7/3 in the parallel pass, two of the three failures reclassified as
@@ -393,11 +394,18 @@ lane artifacts by the isolated retry, the same confirmed failure. Only the
 identity of the lane flakes differed (`tc056`+`tc044-1`, then `tc013`+`tc044-1`),
 which is the same pattern the SteVe table shows across its two versions and the
 reason `--retry-failed-isolated` is not optional in CI. Counting the isolated
-retry as the verdict, that is **38 PASS, 7 NOT APPLICABLE, 2 FAIL across all
+retry as the verdict, that was **38 PASS, 7 NOT APPLICABLE, 2 FAIL across all
 47**.
 
+The third row is the same pin read through the GraphQL data API, after
+`tck/specs/firmware.ts` stopped asking for a retrieveDate the driver's rounding
+could push past the observation window. Both of the 2026-08-11 failures other
+than `tc023-3` were that margin, so the verdict is now **39 PASS, 7 NOT
+APPLICABLE, 1 FAIL** — and, for the first time, a parallel pass with nothing
+for the isolated retry to reclassify.
+
 **The `v1.9.1` row is a report, not a recommendation.** 18 PASS, 13 NOT
-APPLICABLE and 16 FAIL across all 47 — against 38 / 7 / 2 on v2 — and the gap
+APPLICABLE and 16 FAIL across all 47 — against 39 / 7 / 1 on v2 — and the gap
 is one upstream defect, not a driver limitation.
 
 Fourteen of the fifteen `all`-group failures carry an identical wire signature:

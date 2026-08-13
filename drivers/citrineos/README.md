@@ -8,16 +8,28 @@ assertion gets tested.
 
 It reports the answer rather than flattering it.
 
-**Measured 2026-08-11 against the pinned image: 38 `PASS`, 7 `NOT APPLICABLE`,
-2 `FAIL` out of 47.**
+**Measured 2026-08-12 against the pinned image: 39 `PASS`, 7 `NOT APPLICABLE`,
+1 `FAIL` out of 47 — and no flakes at all.**
 
 The seven `NOT APPLICABLE` are one missing capability — CitrineOS routes no
-OCPP 1.6 reservation endpoints. Of the two failures, one is a deterministic
-finding against CitrineOS (TC_023.3, `Blocked` answered as `Invalid`, 3 runs of
-3) and one is a flake with a 20-second timing margin (TC_044.2, 1 pass in 3).
-Neither is demoted in the scope table: `tck/scope.ts` forbids demoting a row to
-`NOT_APPLICABLE` to make a red scenario go away, and a TCK whose second driver
-reports 100% green is a TCK that has stopped measuring. Both are below.
+OCPP 1.6 reservation endpoints. The single failure is a deterministic finding
+against CitrineOS: TC_023.3, `Blocked` answered as `Invalid`. It is not demoted
+in the scope table: `tck/scope.ts` forbids demoting a row to `NOT_APPLICABLE`
+to make a red scenario go away, and a TCK whose second driver reports 100%
+green is a TCK that has stopped measuring. It is below.
+
+The count was 38 / 7 / 2 on 2026-08-11. The second failure was TC_044.2, and it
+was **ours**: the scenario asked for a retrieveDate +90s against a 110s hold,
+leaving ~20s for the status train. That is fixed in `tck/specs/firmware.ts`, so
+what remains is the CitrineOS finding alone.
+
+A second CitrineOS defect is reported and NOT counted here, because these
+scenarios cannot see it: OCPP 1.6 `FirmwareStatusNotification` is answered with
+a `NotSupported` CALLERROR where OCA TC_044 puts a `.conf` on the Central
+System ([citrineos/citrineos#216][i216]). Our assertions read only what the
+CHARGE POINT sent, never the CSMS's answer to it, so three rows stay green over
+nine CALLERRORs. That is a gap in the scenarios, not evidence about CitrineOS —
+`scope.ts` says so on each of those rows.
 
 The interesting result is the other 38. The core, remote-trigger, smart-charging,
 local-auth-list and firmware groups all pass unmodified against a CSMS that had
@@ -114,8 +126,10 @@ Two differences, both read off the running images rather than inferred:
    was already version-agnostic; only the record reads needed it.
 
 **Measured, 2026-08-11: 18 `PASS`, 13 `NOT APPLICABLE`, 16 `FAIL` out of 47**,
-against 38 / 7 / 2 on v2 — and the gap is one upstream defect rather than a
-driver limitation. Fourteen of the fifteen `all`-group failures answer every
+against 39 / 7 / 1 on v2 — and the gap is one upstream defect rather than a
+driver limitation. That v1 row has **not** been re-measured since the
+retrieveDate fix or the move to the GraphQL transport, so read it as the
+2026-08-11 snapshot it is; the v2 figure beside it is current. Fourteen of the fifteen `all`-group failures answer every
 `StartTransaction` with `{"idTagInfo":{"status":"Invalid"},"transactionId":0}`,
 and the database holds `Connectors: 0` after the whole sweep: that is
 [citrineos/citrineos#160][i160], closed 2026-05-19 — *after* v1.9.1 shipped on
@@ -326,3 +340,5 @@ Neither is listed as a gap, because they cost nothing once known:
 - **A tag stored as `status = 'Expired'` answers `Invalid`, not `Expired`.**
   The expiry is consulted only inside the `Accepted` branch, so `CERT023-EXP`
   is provisioned as `Accepted` with a past `cacheExpiryDateTime`.
+
+[i216]: https://github.com/citrineos/citrineos/issues/216

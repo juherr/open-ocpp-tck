@@ -171,21 +171,25 @@ const V2_SCOPE = {
   // never on the CSMS's answer to them. That is a gap in the SCENARIOS, not
   // evidence about CitrineOS -- see drivers/citrineos/README.md.
   "cert16-tc044-1-firmware-update": d(
-    "Driven green on isolated retry, but it flaked in the parallel pass of " +
-      "both recorded runs: retrieveDate is +90s against a 115s hold, leaving " +
-      "~25s for the status train, which is the second thinnest margin in the " +
-      "suite. A timing property of the scenario, not a CitrineOS limitation.",
+    "Driven green. It used to flake in the parallel pass of every recorded " +
+      "run, on a timing property of the SCENARIO rather than a CitrineOS " +
+      "limitation: retrieveDate was +90s against a 115s hold, leaving ~25s for " +
+      "the status train. The spec now asks for +15s, so the train has the " +
+      "whole window; see tck/specs/firmware.ts.",
   ),
   "cert16-tc044-2-firmware-download-failed": d(
-    "Driven green, but the FLAKIEST scenario here: 1 pass in 3 runs, and it " +
-      "failed its isolated retry in both recorded sweeps. Thinnest margin of " +
-      "all -- retrieveDate is +90s against a 110s hold, so only ~20s remain -- " +
-      "and on the failures the socket dropped (1006) just after CitrineOS's " +
-      "NotSupported CALLERROR, costing a reconnect and a reboot that lose the " +
-      "firmware state. Which side closes the socket is NOT established: the " +
-      "obvious suspect is that CALLERROR, and it is wrong, because TC_044.1 " +
-      "and TC_044.3 take four of them each without disconnecting. Do not cite " +
-      "this as a CitrineOS defect until it is established.",
+    "Driven green. It was the FLAKIEST scenario here -- 1 pass in 3 runs, " +
+      "failing even its isolated retry -- on the thinnest margin of all: " +
+      "retrieveDate was +90s against a 110s hold, leaving ~20s. The spec now " +
+      "asks for +15s and the scenario has been green since, flakes included. " +
+      "ONE OBSERVATION FROM THOSE FAILURES IS UNEXPLAINED AND WORTH KEEPING: " +
+      "the socket dropped (1006) just after CitrineOS's NotSupported " +
+      "CALLERROR, costing a reconnect and a reboot that lose the firmware " +
+      "state. Which side closed it was never established -- the obvious " +
+      "suspect is that CALLERROR, and it is wrong, because TC_044.1 and " +
+      "TC_044.3 take four of them each without disconnecting. If this ever " +
+      "recurs, start there; do not cite it as a CitrineOS defect until it is " +
+      "established.",
   ),
   "cert16-tc044-3-firmware-install-failed": d(OBSERVED),
   "cert16-tc045-1-get-diagnostics": d(
