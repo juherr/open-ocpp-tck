@@ -40,8 +40,13 @@ run "typecheck" bun run typecheck
 # nothing in particular -- but before the guards, since a stale declaration is
 # the cheapest failure to read.
 run "declarations are current" bash tests/types-current.sh
-run "driver scope: steve" bun run check:steve-driver
-run "driver scope: citrineos" bun run check:citrineos-driver
+run "driver scope: steve" bun run check:driver:steve
+run "driver scope: citrineos" bun run check:driver:citrineos
+# The second table the same driver declares. `scope` is a function of the
+# environment, so checking only the default line would leave half of what this
+# driver claims unverified -- and the v1 table is the derived one.
+run "driver scope: citrineos (v1)" bun run check:driver:citrineos-v1
+run "driver scope follows the env" bun tests/driver-env-scope.ts
 run "core is CSMS-neutral" bash tests/generic-core.sh
 run "vendored files match VENDOR.md" bash tests/vendor-integrity.sh
 run "scenario invariants" bash tests/spec-invariants.sh
