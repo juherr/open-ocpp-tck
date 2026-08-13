@@ -505,7 +505,8 @@ export interface CsmsDriverParts {
    *  is here and not on {@link CsmsRecords}. */
   prepareStation?(cpId: string): Promise<void>;
   simTransport?(cpId: string): Promise<SimTransportDefaults>;
-  /** Released at the end of a lane: connection pools, caches. */
+  /** Connection pools, caches. NOT called by the runner today -- the lane
+   *  lifecycle it was written for does not exist; see #28. */
   close?(): Promise<void>;
 }
 
@@ -538,8 +539,11 @@ export interface CsmsDriverModule {
    *  function of the environment. Resolve it with {@link driverCapabilities}. */
   readonly capabilities?: EnvDependent<CsmsCapabilities>;
 
-  /** One instance per parallel lane. Free to read the environment, and free to
-   *  throw a clear configuration error. */
+  /** Called once per process, and the result is shared by every parallel lane,
+   *  so what it returns must be safe to use concurrently and must hold no
+   *  per-lane state. The contract used to promise one instance per lane, which
+   *  no runner has ever implemented -- see #28. Free to read the environment,
+   *  and free to throw a clear configuration error. */
   create(env: CsmsEnv): Promise<CsmsDriverParts> | CsmsDriverParts;
   /** Environment-bootstrap verbs, reachable as `ocpp-tck driver <name>`.
    *  Never invoked during a scenario run. */
