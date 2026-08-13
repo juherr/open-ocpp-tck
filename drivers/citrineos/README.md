@@ -9,7 +9,15 @@ assertion gets tested.
 It reports the answer rather than flattering it.
 
 **Measured 2026-08-12 against the pinned image: 39 `PASS`, 7 `NOT APPLICABLE`,
-1 `FAIL` out of 47 — and no flakes at all.**
+1 `FAIL` out of 47.**
+
+That run needed no isolated retry at all, which had never happened before —
+but read it as one run rather than as a property. The parallel pass is
+sensitive to what else the host is doing: on a workstation carrying an
+unrelated build, later runs of the same commit produced nine lane artifacts,
+every one of them green on the isolated retry. `--retry-failed-isolated` is
+what makes the verdict independent of that, and it is why CI does not treat a
+parallel FAIL as final.
 
 The seven `NOT APPLICABLE` are one missing capability — CitrineOS routes no
 OCPP 1.6 reservation endpoints. The single failure is a deterministic finding
