@@ -158,8 +158,18 @@ while IFS=$'\t' read -r path origin up_src up_sha loc_sha patch_rel; do
     echo "  actual   $actual_sha" >&2
     echo "  This file is the reference the campaign is judged against — hand-editing it makes the" >&2
     echo "  verdict lie in the reassuring direction." >&2
-    echo "  → revert (git diff -- $local_path), or, if the edit is deliberate, regenerate the patch" >&2
-    echo "    AND both digests as described in $manifest's refresh procedure." >&2
+    # Naming the command, not the manual. This guard is where a deliberate edit
+    # announces itself, so it is the one place that knows the reader is holding
+    # a modified file right now -- and "as described in the refresh procedure"
+    # sent them to the section for moving the PIN upstream, which is a
+    # different job with a different order of steps.
+    if [ "$origin" = "upstream-patched" ]; then
+      echo "  → revert (git diff -- $local_path), or, if the edit is deliberate, re-pin the" >&2
+      echo "    patch and the digest in one step:  tools/repin-vendored.sh $path" >&2
+    else
+      echo "  → revert (git diff -- $local_path). $origin means these bytes are upstream's;" >&2
+      echo "    an edit here is also a change of origin, so the row in $manifest moves with it." >&2
+    fi
     status=1
     continue
   fi
