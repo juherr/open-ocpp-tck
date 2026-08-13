@@ -31,16 +31,18 @@ interface GraphQLResponse<T> {
   errors?: { message?: string }[];
 }
 
-/** One metadata action, as `/v1/metadata` takes it. */
-interface MetadataAction {
-  type: string;
-  args: Record<string, unknown>;
-}
-
 /** A table in the tracked source. Hasura always names both parts. */
 interface SourceTable {
   schema: string;
   name: string;
+}
+
+/** A tracked table as `export_metadata` reports it, narrowed to what is used
+ *  here. Absent keys mean "none defined". */
+interface TrackedTable {
+  table: SourceTable;
+  object_relationships?: { name: string }[];
+  array_relationships?: { name: string }[];
 }
 
 /** What `pg_suggest_relationships` proposes, narrowed to what is used here. */
@@ -75,16 +77,6 @@ export class CitrineGraphQL {
     return this.expectData<T>(body, document);
   }
 
-  /** One or more metadata actions, sent as a single `bulk` so a partial
-   *  application cannot leave the source half-tracked. */
-  async metadata(actions: readonly MetadataAction[]): Promise<unknown> {
-    if (actions.length === 0) return undefined;
-    return this.post("/v1/metadata", {
-      type: "bulk",
-      args: actions,
-    });
-  }
-
   /**
    * Makes the data API able to answer: every table in the source is tracked,
    * then the three relationships the queries name are created.
@@ -98,21 +90,48 @@ export class CitrineGraphQL {
    * source is what keeps a fifth referencing table on a future CitrineOS from
    * being silently missed.
    *
-   * Idempotent by construction: re-tracking is an error Hasura reports per
-   * action, and `already-tracked` / `already-exists` are the expected answer on
-   * the second run, not a failure.
+   * WHAT IS ALREADY THERE IS LEFT ALONE, which is the same rule the SteVe
+   * driver's `ensureApiAccess` follows: read the current metadata, act on the
+   * difference, and do nothing at all when there is none. A re-provision costs
+   * two reads and no writes. It also means this is safe against a CitrineOS
+   * that applied its own `hasura-metadata`: a relationship someone else
+   * defined keeps its definition rather than being overwritten or throwing.
    */
   async ensureTracked(): Promise<void> {
-    const tables = await this.sourceTables();
-    await this.tolerant(
-      tables.map((table) => ({
-        type: "pg_track_table",
-        args: { source: "default", table },
-      })),
-    );
+    const [tables, tracked] = await Promise.all([
+      this.sourceTables(),
+      this.trackedTables(),
+    ]);
 
-    await this.tolerant(
-      RELATIONSHIPS.map((rel) => ({
+    const known = new Set(
+      tracked.map((entry) => `${entry.table.schema}.${entry.table.name}`),
+    );
+    const untracked = tables.filter((t) => !known.has(`${t.schema}.${t.name}`));
+    if (untracked.length > 0) {
+      // One request for the lot. `pg_track_tables` answers "all tables failed"
+      // if none can be tracked, which is why only the difference is sent --
+      // an already-tracked table is not in it.
+      await this.post("/v1/metadata", {
+        type: "pg_track_tables",
+        args: {
+          tables: untracked.map((table) => ({ source: "default", table })),
+          allow_warnings: true,
+        },
+      });
+    }
+
+    const defined = new Set<string>();
+    for (const entry of tracked) {
+      for (const rel of [
+        ...(entry.object_relationships ?? []),
+        ...(entry.array_relationships ?? []),
+      ]) {
+        defined.add(`${entry.table.name}.${rel.name}`);
+      }
+    }
+    for (const rel of RELATIONSHIPS) {
+      if (defined.has(`${rel.on}.${rel.name}`)) continue;
+      await this.post("/v1/metadata", {
         type:
           rel.kind === "object"
             ? "pg_create_object_relationship"
@@ -123,8 +142,8 @@ export class CitrineGraphQL {
           name: rel.name,
           using: rel.using,
         },
-      })),
-    );
+      });
+    }
   }
 
   /**
@@ -140,15 +159,21 @@ export class CitrineGraphQL {
   async referencesTo(
     target: string,
   ): Promise<{ table: string; column: string }[]> {
-    const tables = await this.sourceTables();
-    return (await this.suggestRelationships(tables))
+    // Asked about the one table, not the whole source: the answer is the same
+    // -- suggestions are rooted at the table given -- and it comes back as a
+    // handful rather than the hundred-odd the source carries.
+    const suggestions = (await this.post("/v1/metadata", {
+      type: "pg_suggest_relationships",
+      args: { source: "default", tables: [{ schema: "public", name: target }] },
+    })) as { relationships?: SuggestedRelationship[] };
+    return (suggestions.relationships ?? [])
       .filter((rel) => rel.type === "array" && rel.from.table.name === target)
       .map((rel) => ({ table: rel.to.table.name, column: rel.to.columns[0]! }));
   }
 
   /** Every table in the source, tracked or not -- the catalog, asked through
    *  the API rather than through a connection to Postgres. */
-  async sourceTables(): Promise<SourceTable[]> {
+  private async sourceTables(): Promise<SourceTable[]> {
     const body = (await this.post("/v1/metadata", {
       type: "pg_get_source_tables",
       args: { source: "default" },
@@ -156,17 +181,15 @@ export class CitrineGraphQL {
     return body.filter((t) => t.schema === "public");
   }
 
-  /** The foreign keys Hasura derives, which is where teardown's guards come
-   *  from. Only tracked tables are considered, which is why ensureTracked
-   *  tracks the whole source first. */
-  async suggestRelationships(
-    tables: readonly SourceTable[],
-  ): Promise<SuggestedRelationship[]> {
+  /** What the source already exposes: the tracked tables and, per table, the
+   *  relationships someone has defined on them. */
+  private async trackedTables(): Promise<TrackedTable[]> {
     const body = (await this.post("/v1/metadata", {
-      type: "pg_suggest_relationships",
-      args: { source: "default", tables },
-    })) as { relationships?: SuggestedRelationship[] };
-    return body.relationships ?? [];
+      type: "export_metadata",
+      args: {},
+    })) as { sources?: { name: string; tables?: TrackedTable[] }[] };
+    const source = (body.sources ?? []).find((s) => s.name === "default");
+    return source?.tables ?? [];
   }
 
   private async post(path: string, payload: unknown): Promise<unknown> {
@@ -192,25 +215,6 @@ export class CitrineGraphQL {
       );
     }
     return JSON.parse(text) as unknown;
-  }
-
-  /**
-   * Applies actions one at a time, keeping the ones that fail because the work
-   * was already done. A `bulk` cannot express that: Hasura aborts the whole
-   * batch on the first error, so a second `provision` would fail on the first
-   * already-tracked table and leave every later action unapplied.
-   */
-  private async tolerant(actions: readonly MetadataAction[]): Promise<void> {
-    for (const action of actions) {
-      try {
-        await this.post("/v1/metadata", action);
-      } catch (err) {
-        const message = err instanceof Error ? err.message : String(err);
-        if (!/already[- ](tracked|exists)|already defined/i.test(message)) {
-          throw err;
-        }
-      }
-    }
   }
 
   private expectData<T>(body: unknown, document: string): T {

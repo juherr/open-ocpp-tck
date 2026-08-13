@@ -10,12 +10,14 @@
  * claiming a coupling that does not exist.
  *
  * ONE CHANNEL, NOT THREE. SteVe's provisioner uses REST, SQL and the manager
- * UI because each covers what the others cannot. Here everything is SQL,
- * because CitrineOS exposes no Authorization CRUD at all: every
- * `@AsDataEndpoint` in the repository was read, and `EVDriverDataApi` offers
- * exactly one route, a read-only GET of the local list version. The bundled
- * Hasura sidecar would offer insert mutations, at the cost of vendoring its
- * metadata -- see records.ts for why that trade was refused.
+ * UI because each covers what the others cannot. Here everything is the
+ * GraphQL data API, because CitrineOS exposes no Authorization CRUD over REST
+ * at all: every `@AsDataEndpoint` in the repository was read, and
+ * `EVDriverDataApi` offers exactly one route, a read-only GET of the local
+ * list version. The server itself asks for what it gives no way to do --
+ * `sendLocalList` answers "create the Authorization before adding it to a
+ * local auth list". records.ts carries the evidence that GraphQL is CitrineOS's
+ * own answer to that rather than a workaround.
  *
  * Unlike the SteVe driver, whose every database write names the upstream
  * ticket that would replace it, THIS FILE HAS NO TICKET TO NAME: issues are
@@ -70,7 +72,15 @@ export declare class CitrineProvisioner {
      * message pointing at the fixture that failed.
      */
     provisionTags(): Promise<void>;
-    /** Every fixture row this driver owns, by idToken. */
+    /**
+     * Every row this driver's fixtures occupy. One document, because provisioning
+     * and verification ask the same question of the same columns -- a second copy
+     * would let the seeder write a field the check never looks at.
+     */
+    private fixtureRows;
+    /** The fixture rows by idToken. First wins, and duplicates are verify()'s to
+     *  report rather than this method's to hide: seeding either of two rows
+     *  leaves the other behind. */
     private existingTags;
     /**
      * The unknown tag must be ABSENT, and TC_023.1 asserts no transaction was

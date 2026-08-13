@@ -46,8 +46,17 @@ import { CitrineGraphQL } from "./graphql-client";
 import { stationColumn } from "./variant";
 import { refByDescription } from "./profiles";
 
-/** The transaction fields every reader below needs, fetched together because
- *  one round trip costs the same as three. */
+/**
+ * The transaction fields the readers below need, selected together because one
+ * round trip costs the same as three.
+ *
+ * It buys less than it looks: a scenario typically calls latestTransaction to
+ * learn the ref and then two accessors on it, so the row is fetched three
+ * times over. Caching it would be wrong rather than merely complex -- specs
+ * capture a ref during drive() and read it back after the transaction has
+ * stopped (see tck/specs/remotetrigger-smartcharging.ts), so a cached row
+ * would answer the stop assertions with the pre-stop snapshot.
+ */
 const TRANSACTION_FIELDS = `
   id
   transactionId
@@ -222,23 +231,27 @@ export class CitrineRecords implements Omit<CsmsRecords, "reservations"> {
    *    which is what every one of those scenarios assumes.
    */
   async prepareStation(cpId: string): Promise<void> {
-    const where = this.stationFilter(cpId);
+    const station = this.stationFilter(cpId);
     const now = new Date().toISOString();
 
+    // The station predicate comes from stationFilter for all three tables, so
+    // the variant-dependent column name is interpolated in exactly one place
+    // in this file. Only the `where` TYPES differ, which GraphQL requires
+    // spelled per table.
     const open = await this.gql.query<{
       Transactions: { id: number; endTime: string | null; stoppedReason: string | null }[];
       LocalListVersions: { id: number }[];
       SendLocalLists: { id: number }[];
     }>(
-      `query Residue($where: Transactions_bool_exp!, $station: String!, $tenant: Int!) {
-         Transactions(where: $where) { id endTime stoppedReason }
-         LocalListVersions(where: { ${this.station}: { _eq: $station }, tenantId: { _eq: $tenant } }) { id }
-         SendLocalLists(where: { ${this.station}: { _eq: $station }, tenantId: { _eq: $tenant } }) { id }
+      `query Residue($open: Transactions_bool_exp!, $versions: LocalListVersions_bool_exp!, $sends: SendLocalLists_bool_exp!) {
+         Transactions(where: $open) { id endTime stoppedReason }
+         LocalListVersions(where: $versions) { id }
+         SendLocalLists(where: $sends) { id }
        }`,
       {
-        where: { ...where, isActive: { _eq: true } },
-        station: cpId,
-        tenant: this.tenant,
+        open: { ...station, isActive: { _eq: true } },
+        versions: station,
+        sends: station,
       },
     );
 
@@ -263,6 +276,9 @@ export class CitrineRecords implements Omit<CsmsRecords, "reservations"> {
     // side cascades.
     const versionIds = open.LocalListVersions.map((r) => r.id);
     const sendIds = open.SendLocalLists.map((r) => r.id);
+    // The common case is a station that never received a SendLocalList, and
+    // four deletes matching nothing is still a round trip.
+    if (versionIds.length === 0 && sendIds.length === 0) return;
     await this.gql.query(
       `mutation ClearLocalList($versionIds: [Int!]!, $sendIds: [Int!]!) {
          delete_LocalListVersionAuthorizations(where: { localListVersionId: { _in: $versionIds } }) { affected_rows }

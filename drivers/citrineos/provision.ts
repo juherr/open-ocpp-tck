@@ -12,12 +12,14 @@
  * claiming a coupling that does not exist.
  *
  * ONE CHANNEL, NOT THREE. SteVe's provisioner uses REST, SQL and the manager
- * UI because each covers what the others cannot. Here everything is SQL,
- * because CitrineOS exposes no Authorization CRUD at all: every
- * `@AsDataEndpoint` in the repository was read, and `EVDriverDataApi` offers
- * exactly one route, a read-only GET of the local list version. The bundled
- * Hasura sidecar would offer insert mutations, at the cost of vendoring its
- * metadata -- see records.ts for why that trade was refused.
+ * UI because each covers what the others cannot. Here everything is the
+ * GraphQL data API, because CitrineOS exposes no Authorization CRUD over REST
+ * at all: every `@AsDataEndpoint` in the repository was read, and
+ * `EVDriverDataApi` offers exactly one route, a read-only GET of the local
+ * list version. The server itself asks for what it gives no way to do --
+ * `sendLocalList` answers "create the Authorization before adding it to a
+ * local auth list". records.ts carries the evidence that GraphQL is CitrineOS's
+ * own answer to that rather than a workaround.
  *
  * Unlike the SteVe driver, whose every database write names the upstream
  * ticket that would replace it, THIS FILE HAS NO TICKET TO NAME: issues are
@@ -261,8 +263,12 @@ export class CitrineProvisioner {
     );
   }
 
-  /** Every fixture row this driver owns, by idToken. */
-  private async existingTags(): Promise<Map<string, AuthorizationRow>> {
+  /**
+   * Every row this driver's fixtures occupy. One document, because provisioning
+   * and verification ask the same question of the same columns -- a second copy
+   * would let the seeder write a field the check never looks at.
+   */
+  private async fixtureRows(): Promise<AuthorizationRow[]> {
     const data = await this.gql.query<{ Authorizations: AuthorizationRow[] }>(
       `query Fixtures($tags: [citext!]!, $tenant: Int!) {
          Authorizations(where: { idToken: { _in: $tags }, tenantId: { _eq: $tenant } }) {
@@ -274,10 +280,15 @@ export class CitrineProvisioner {
        }`,
       { tags: ALL_TAGS, tenant: this.tenant },
     );
+    return data.Authorizations;
+  }
+
+  /** The fixture rows by idToken. First wins, and duplicates are verify()'s to
+   *  report rather than this method's to hide: seeding either of two rows
+   *  leaves the other behind. */
+  private async existingTags(): Promise<Map<string, AuthorizationRow>> {
     const byTag = new Map<string, AuthorizationRow>();
-    for (const row of data.Authorizations) {
-      // First wins, and duplicates are verify()'s to report rather than this
-      // method's to hide: seeding either of two rows leaves the other behind.
+    for (const row of await this.fixtureRows()) {
       if (!byTag.has(row.idToken)) byTag.set(row.idToken, row);
     }
     return byTag;
@@ -385,21 +396,9 @@ export class CitrineProvisioner {
     // clock, where the SQL asked Postgres. The instant the CSMS compares
     // against is its own, so the two clocks must agree to within the fixture's
     // backdate -- which is what EXPIRED_FIXTURE_BACKDATE_MINUTES exists for.
-    const data = await this.gql.query<{ Authorizations: AuthorizationRow[] }>(
-      `query Fixtures($tags: [citext!]!, $tenant: Int!) {
-         Authorizations(where: { idToken: { _in: $tags }, tenantId: { _eq: $tenant } }) {
-           id
-           idToken
-           status
-           cacheExpiryDateTime
-         }
-       }`,
-      { tags: ALL_TAGS, tenant: this.tenant },
-    );
-
     const tags = new Map<string, AuthorizationRow>();
     const counts = new Map<string, number>();
-    for (const row of data.Authorizations) {
+    for (const row of await this.fixtureRows()) {
       counts.set(row.idToken, (counts.get(row.idToken) ?? 0) + 1);
       if (!tags.has(row.idToken)) tags.set(row.idToken, row);
     }
@@ -500,36 +499,43 @@ export class CitrineProvisioner {
   async teardown(): Promise<void> {
     const refs = await this.references();
 
-    // One query asking, per fixture row, how many rows point at it from each
-    // referencing column. The aliases are what let a single request cover a
-    // set of tables discovered at runtime.
-    const counts = refs
-      .map(
-        (ref, i) =>
-          `r${i}: ${ref.table}_aggregate(where: { ${ref.column}: { _eq: $id } }) { aggregate { count } }`,
-      )
-      .join("\n           ");
-
     const mine = await this.gql.query<{ Authorizations: { id: number }[] }>(
       `query Mine($tags: [citext!]!, $tenant: Int!) {
          Authorizations(where: { idToken: { _in: $tags }, tenantId: { _eq: $tenant } }) { id }
        }`,
       { tags: ALL_TAGS, tenant: this.tenant },
     );
+    const ids = mine.Authorizations.map((row) => row.id);
 
-    const removable: number[] = [];
-    let kept = 0;
-    for (const row of mine.Authorizations) {
-      const referenced = await this.gql.query<
-        Record<string, { aggregate: { count: number } }>
-      >(`query Referenced($id: Int!) { ${counts} }`, { id: row.id });
-      const total = Object.values(referenced).reduce(
-        (sum, entry) => sum + entry.aggregate.count,
-        0,
-      );
-      if (total === 0) removable.push(row.id);
-      else kept += 1;
+    // One request for the whole question: which of these ids does anything
+    // still point at? An alias per referencing table, each returning the
+    // pointing column, and the answer is the union of what comes back. The
+    // aliases are what let a single document cover a set of tables discovered
+    // at runtime.
+    const referenced = new Set<number>();
+    if (ids.length > 0) {
+      const selections = refs
+        .map(
+          (ref, i) =>
+            `r${i}: ${ref.table}(where: { ${ref.column}: { _in: $ids } }, ` +
+            `distinct_on: ${ref.column}) { ${ref.column} }`,
+        )
+        .join("\n           ");
+      const rows = await this.gql.query<
+        Record<string, Record<string, number | null>[]>
+      >(`query Referenced($ids: [Int!]!) { ${selections} }`, { ids });
+      for (const [alias, hits] of Object.entries(rows)) {
+        const column = refs[Number(alias.slice(1))]?.column;
+        if (column === undefined) continue;
+        for (const hit of hits) {
+          const id = hit[column];
+          if (typeof id === "number") referenced.add(id);
+        }
+      }
     }
+
+    const removable = ids.filter((id) => !referenced.has(id));
+    const kept = ids.length - removable.length;
 
     if (removable.length > 0) {
       await this.gql.query(

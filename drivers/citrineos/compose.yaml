@@ -11,8 +11,8 @@
 # (drivers/citrineos/config.ts defaultCitrineConfig) resolve to them:
 #
 #   name: citrineos + network citrineos-internal -> CITRINE_NETWORK=citrineos_citrineos-internal
-#   container_name                               -> CITRINE_DB_CONTAINER=citrine-db
 #   service name citrine                         -> the DNS name in CITRINE_WS_URL=ws://citrine:8081/
+#   graphql-engine's published port 8090         -> CITRINE_GRAPHQL_URL=http://localhost:8090
 #
 # Two service names are load-bearing for CITRINEOS rather than for the driver,
 # and cannot be renamed at all: the shipped config hardcodes the database host
@@ -26,11 +26,12 @@
 name: citrineos
 
 # Derived from citrineos-core's own docker-compose.yml @ v2.0.0-beta1
-# (Apache-2.0). Modified: the operator UI, the OCPI server and the Hasura
-# sidecar are dropped (this harness reads Postgres directly); minio is dropped
-# because BOOTSTRAP_CITRINEOS_FILE_ACCESS_TYPE=local means nothing reaches S3;
-# every volume is dropped; images are pinned by digest; only the HTTP API port
-# is published, on loopback.
+# (Apache-2.0). Modified: the operator UI and the OCPI server are dropped;
+# minio is dropped because BOOTSTRAP_CITRINEOS_FILE_ACCESS_TYPE=local means
+# nothing reaches S3; every volume is dropped; images are pinned by digest;
+# only the HTTP API and GraphQL ports are published, on loopback. The Hasura
+# sidecar is KEPT -- upstream starts it ungated, and it is how this driver
+# reads and seeds (see records.ts).
 services:
   # Images are pinned by digest, not tag: `latest` is republished on every
   # build, and a conformance run that cannot say which bytes it tested is not a

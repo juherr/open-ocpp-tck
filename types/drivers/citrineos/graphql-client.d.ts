@@ -21,28 +21,6 @@
  * response therefore goes through `expectData`.
  */
 import type { CitrineConfig } from "./config";
-/** One metadata action, as `/v1/metadata` takes it. */
-interface MetadataAction {
-    type: string;
-    args: Record<string, unknown>;
-}
-/** A table in the tracked source. Hasura always names both parts. */
-interface SourceTable {
-    schema: string;
-    name: string;
-}
-/** What `pg_suggest_relationships` proposes, narrowed to what is used here. */
-interface SuggestedRelationship {
-    type: "object" | "array";
-    from: {
-        table: SourceTable;
-        columns: string[];
-    };
-    to: {
-        table: SourceTable;
-        columns: string[];
-    };
-}
 export declare class CitrineGraphQL {
     private readonly cfg;
     private readonly headers;
@@ -50,9 +28,6 @@ export declare class CitrineGraphQL {
     /** A query or mutation. `T` is the caller's to declare: this module owns the
      *  transport, records.ts and provision.ts own the shapes. */
     query<T>(document: string, variables?: Record<string, unknown>): Promise<T>;
-    /** One or more metadata actions, sent as a single `bulk` so a partial
-     *  application cannot leave the source half-tracked. */
-    metadata(actions: readonly MetadataAction[]): Promise<unknown>;
     /**
      * Makes the data API able to answer: every table in the source is tracked,
      * then the three relationships the queries name are created.
@@ -66,9 +41,12 @@ export declare class CitrineGraphQL {
      * source is what keeps a fifth referencing table on a future CitrineOS from
      * being silently missed.
      *
-     * Idempotent by construction: re-tracking is an error Hasura reports per
-     * action, and `already-tracked` / `already-exists` are the expected answer on
-     * the second run, not a failure.
+     * WHAT IS ALREADY THERE IS LEFT ALONE, which is the same rule the SteVe
+     * driver's `ensureApiAccess` follows: read the current metadata, act on the
+     * difference, and do nothing at all when there is none. A re-provision costs
+     * two reads and no writes. It also means this is safe against a CitrineOS
+     * that applied its own `hasura-metadata`: a relationship someone else
+     * defined keeps its definition rather than being overwritten or throwing.
      */
     ensureTracked(): Promise<void>;
     /**
@@ -87,19 +65,10 @@ export declare class CitrineGraphQL {
     }[]>;
     /** Every table in the source, tracked or not -- the catalog, asked through
      *  the API rather than through a connection to Postgres. */
-    sourceTables(): Promise<SourceTable[]>;
-    /** The foreign keys Hasura derives, which is where teardown's guards come
-     *  from. Only tracked tables are considered, which is why ensureTracked
-     *  tracks the whole source first. */
-    suggestRelationships(tables: readonly SourceTable[]): Promise<SuggestedRelationship[]>;
+    private sourceTables;
+    /** What the source already exposes: the tracked tables and, per table, the
+     *  relationships someone has defined on them. */
+    private trackedTables;
     private post;
-    /**
-     * Applies actions one at a time, keeping the ones that fail because the work
-     * was already done. A `bulk` cannot express that: Hasura aborts the whole
-     * batch on the first error, so a second `provision` would fail on the first
-     * already-tracked table and leave every later action unapplied.
-     */
-    private tolerant;
     private expectData;
 }
-export {};
