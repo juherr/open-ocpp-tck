@@ -28,9 +28,12 @@ import type { ExpectedFailureEntry } from "../tck/expected";
 import {
   declaredButErroredDetail,
   effectivelyFailed,
+  endsTheBuild,
   standingOf,
   unexpectedPassDetail,
+  unexpectedPassKind,
   type SweepStanding,
+  type UnexpectedPassKind,
   type Verdict,
 } from "../tck/standing";
 
@@ -65,9 +68,9 @@ const TABLE: Row[] = [
 
   // --- declared, and it ERRORED: a declaration excuses an answer, not a
   //     crash. These four rows are the finding this guard was written for.
-  { verdict: "ERROR", declared: true, expect: "unexpected-fail", because: "an ERROR never produced the answer the entry describes" },
-  { verdict: "ERROR", retry: "ERROR", declared: true, expect: "unexpected-fail", because: "errored isolated too -- still not the declared failure" },
-  { verdict: "FAIL", retry: "ERROR", declared: true, expect: "unexpected-fail", because: "the isolated retry is the arbiter, and it crashed" },
+  { verdict: "ERROR", declared: true, expect: "declared-but-errored", because: "an ERROR never produced the answer the entry describes" },
+  { verdict: "ERROR", retry: "ERROR", declared: true, expect: "declared-but-errored", because: "errored isolated too -- still not the declared failure" },
+  { verdict: "FAIL", retry: "ERROR", declared: true, expect: "declared-but-errored", because: "the isolated retry is the arbiter, and it crashed" },
   { verdict: "ERROR", retry: "FAIL", declared: true, expect: "expected-fail", because: "the isolated retry is the arbiter: the parallel ERROR was the lane, and isolated it reproduced the declared failure" },
 
   // --- declared, and it did NOT fail: the half that lets the list shrink --
@@ -105,39 +108,68 @@ check(
   "a non-failure verdict is now treated as a failure.",
 );
 
-// The message an UNEXPECTED PASS carries decides whether a maintainer deletes
-// a still-valid finding, so the two cases that are NOT evidence of a fix must
-// not claim to be.
-check(
-  !unexpectedPassDetail("PARTIAL").includes("looks fixed"),
-  "a PARTIAL now reads as evidence the finding is fixed; it is evidence of " +
-    "nothing, because the check that caught it may be the one that SKIPPED.",
-);
-check(
-  !unexpectedPassDetail("NOT APPLICABLE").includes("looks fixed"),
-  "a NOT APPLICABLE now reads as evidence the finding is fixed; it means the " +
-    "scenario never ran.",
-);
-check(
-  unexpectedPassDetail("PASS").includes("looks fixed"),
-  "an outright PASS no longer reads as evidence the finding is fixed, which " +
-    "is the one case where it is.",
-);
+// Which STANDINGS end the build, asserted against the union rather than
+// against a disjunction retyped at the call site. A sixth standing that
+// nobody classifies shows up here.
+const ALL_STANDINGS: SweepStanding[] = [
+  "ok",
+  "expected-fail",
+  "unexpected-fail",
+  "declared-but-errored",
+  "unexpected-pass",
+];
+const SHOULD_END_BUILD = new Set<SweepStanding>([
+  "unexpected-fail",
+  "declared-but-errored",
+  "unexpected-pass",
+]);
+for (const standing of ALL_STANDINGS) {
+  check(
+    endsTheBuild(standing) === SHOULD_END_BUILD.has(standing),
+    `endsTheBuild("${standing}") is now ${endsTheBuild(standing)} -- only an ` +
+      "unexcused failure, a declared crash and a declared pass end the build.",
+  );
+}
 
-// The mirror of the three above. This message points the reader AWAY from the
-// entry -- the declaration is probably intact and the crash is new -- so
-// inverting it would send them to delete a finding that still holds, which is
-// the same damage from the opposite direction.
+// WHICH KIND of unexpected pass, as a value table.
+//
+// This replaces three assertions that grepped the MESSAGES for "looks fixed".
+// They were both brittle and blind, and the blindness was demonstrated rather
+// than suspected: rewording the PARTIAL branch to "the finding looks resolved"
+// -- the maintainer-misleading defect the assertions existed to catch --
+// left them green, because the token they matched had moved. The kind is what
+// the rule actually computes, so it is what can be pinned.
+const KINDS: { verdict: Verdict; retry?: Verdict; kind: UnexpectedPassKind; because: string }[] = [
+  { verdict: "PASS", kind: "fixed", because: "the one case that IS evidence the CSMS was fixed" },
+  { verdict: "PARTIAL", kind: "degraded", because: "a check was SKIPPED, so nothing was measured either way" },
+  { verdict: "NOT APPLICABLE", kind: "never-ran", because: "the scope table and the list contradict each other" },
+  { verdict: "FAIL", retry: "PASS", kind: "flaky", because: "failed in a lane, passed isolated" },
+  { verdict: "ERROR", retry: "PASS", kind: "flaky", because: "same, from the ERROR side" },
+];
+for (const row of KINDS) {
+  const got = unexpectedPassKind(row.verdict, row.retry);
+  check(
+    got === row.kind,
+    `unexpectedPassKind(${row.verdict}${row.retry ? ` -> ${row.retry}` : ""}) ` +
+      `is "${got}", expected "${row.kind}" -- ${row.because}.`,
+  );
+}
+
+// The four messages must stay tellable apart. This is the one PROSE property
+// worth pinning: it does not name a phrase, so any reword survives it, while a
+// copy-paste that makes two kinds read alike does not. Beyond this, whether a
+// sentence MEANS what it should is a review concern -- no string match decides
+// it, and pretending otherwise is what the deleted assertions did.
+const MESSAGES = KINDS.map((row) => unexpectedPassDetail(row.verdict, row.retry));
 check(
-  declaredButErroredDetail("ERROR").includes("still good"),
-  "a declared scenario that errored no longer reads as 'the entry is " +
-    "probably still good', so the message now points at the declaration " +
-    "rather than at the crash.",
+  new Set(MESSAGES).size === new Set(KINDS.map((r) => r.kind)).size,
+  "two unexpected-pass kinds now render the same sentence, so a reader cannot " +
+    "tell which evidence they are looking at.",
 );
 check(
-  declaredButErroredDetail("FAIL", "ERROR").includes("isolated retry"),
-  "the FAIL-then-ERROR case no longer says where the ERROR came from, so a " +
-    "reader cannot tell a crashing retry from a crashing lane.",
+  unexpectedPassDetail("PASS") !== declaredButErroredDetail("ERROR"),
+  "an unexpected pass and a declared crash now read alike, and they call for " +
+    "opposite actions -- delete the entry versus keep it and chase the crash.",
 );
 
 function check(condition: boolean, failure: string): void {

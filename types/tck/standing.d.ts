@@ -50,10 +50,22 @@ export declare function effectivelyFailed(verdict: Verdict, retryVerdict?: Verdi
  * retry -- there is no "expected flaky", so an entry that passes any way at
  * all is an entry to look at.
  *
- * `unexpected-fail` covers BOTH an undeclared failure and a declared scenario
- * that ERRORed. See {@link standingOf} for why the second belongs here.
+ * `declared-but-errored` is the fifth, and it earns a member of its own rather
+ * than hiding inside `unexpected-fail`: README.md and CONTRIBUTING.md both name
+ * it, the sweep reports it on its own line, and the reaction it calls for is
+ * the opposite one -- keep the entry, chase the crash. Expressed as
+ * "`unexpected-fail` AND a declaration is present" it was a conjunct living in
+ * a filter, so two call sites asking the same-looking question ten lines apart
+ * quietly got different sets.
  */
-export type SweepStanding = "ok" | "expected-fail" | "unexpected-fail" | "unexpected-pass";
+export type SweepStanding = "ok" | "unexpected-fail" | DeclaredStanding;
+/**
+ * The standings that imply the driver declared this scenario. Split out so the
+ * implication is a type rather than a sentence: a helper that filters outcomes
+ * by one of these can promise the declaration is there, and the compiler
+ * checks the promise instead of a reader checking a comment.
+ */
+export type DeclaredStanding = "expected-fail" | "declared-but-errored" | "unexpected-pass";
 /**
  * A DECLARATION EXCUSES AN ANSWER, NEVER A CRASH.
  *
@@ -77,19 +89,37 @@ export type SweepStanding = "ok" | "expected-fail" | "unexpected-fail" | "unexpe
  * | no       | no                 | any    | ok              |
  * | no       | yes                | any    | unexpected-fail |
  * | yes      | yes                | FAIL   | expected-fail   |
- * | yes      | yes                | ERROR  | unexpected-fail |
+ * | yes      | yes                | ERROR  | declared-but-errored |
  * | yes      | no                 | any    | unexpected-pass |
  */
 export declare function standingOf(verdict: Verdict, expected: ExpectedFailureEntry | undefined, retryVerdict?: Verdict): SweepStanding;
+/** The standings that make the process exit non-zero. Exported so no caller
+ *  has to rebuild the disjunction and forget a member -- which is exactly what
+ *  happened while `declared-but-errored` was hiding inside `unexpected-fail`. */
+export declare function endsTheBuild(standing: SweepStanding): boolean;
+/**
+ * WHICH KIND of unexpected pass, as a value rather than as prose.
+ *
+ * `standingOf` collapses four genuinely different situations onto one
+ * `unexpected-pass`, and only ONE of them is evidence that the CSMS was fixed.
+ * Since the action the report implies is DELETING A RECORDED FINDING, that
+ * distinction is the load-bearing part -- so it is computed here, from the
+ * same two inputs, and {@link unexpectedPassDetail} is a rendering of it.
+ *
+ * Splitting it out is what lets a guard assert the distinction as a table.
+ * Asserting the SENTENCES instead was tried and does not work: a guard that
+ * greps for "looks fixed" passes happily when the degraded case is reworded to
+ * say "looks resolved", which is the very defect it was meant to catch.
+ */
+export type UnexpectedPassKind = "fixed" | "degraded" | "never-ran" | "flaky";
+export declare function unexpectedPassKind(verdict: Verdict, retryVerdict?: Verdict): UnexpectedPassKind;
 /**
  * Why an unexpected pass is one, in the words a reader needs to tell a fix
  * from a flake from a contradiction from an unmeasured run -- without reading
  * this file.
  *
- * The wording carries real weight, because the action it implies is DELETING A
- * RECORDED FINDING. Only one of the cases below is actually evidence that the
- * CSMS was fixed; saying so for the others would talk a maintainer into
- * throwing away a finding that still holds.
+ * A rendering of {@link unexpectedPassKind}, and nothing more: the decision is
+ * there, where it can be checked; the prose is here, where it cannot.
  */
 export declare function unexpectedPassDetail(verdict: Verdict, retryVerdict?: Verdict): string;
 /**
