@@ -26,7 +26,9 @@
 # Exit 0 means the guard did its job: the mutation applied AND the command went
 # red. Exit 1 means either the mutation did not apply, or it applied and the
 # guard stayed green -- both are the guard failing to protect its property, and
-# the message says which.
+# the message says which. Exit 2 is a usage or setup error, 3 a failed restore
+# (read that one: the mutation is still in the tree), and 130/131/143 an
+# interrupted run, which concludes nothing either way.
 #
 # READ THE OUTPUT, do not just trust the exit code. "Goes red" is necessary but
 # not sufficient: the rule is red *for that reason and no other*, and no script
@@ -46,12 +48,59 @@ if [ -z "$file" ] || [ -z "$expr" ] || [ "$#" -eq 0 ]; then
 fi
 [ -f "$file" ] || { echo "mutate: $file does not exist." >&2; exit 2; }
 
-backup="$(mktemp)"
-cp "$file" "$backup"
-# EXIT covers the normal path and every `exit` below; INT/TERM cover a Ctrl-C
-# mid-run. Restoring a source file is not something to leave to the caller.
-restore() { cp "$backup" "$file"; rm -f "$backup"; }
-trap restore EXIT INT TERM
+# FAIL CLOSED FROM HERE ON. This script edits a source file in place, so every
+# step between the backup and the restore is one where giving up quietly would
+# leave a mutation in somebody's working tree. Each is checked, and the backup
+# is deleted only once the original is demonstrably back.
+backup="$(mktemp)" || {
+  echo "mutate: could not create a temp file; refusing to edit $file." >&2
+  exit 2
+}
+cp "$file" "$backup" || {
+  echo "mutate: could not back up $file; refusing to edit it." >&2
+  rm -f "$backup"
+  exit 2
+}
+
+restored=0
+restore() {
+  [ "$restored" -eq 1 ] && return 0
+  restored=1
+  if ! cp "$backup" "$file"; then
+    echo >&2
+    echo "FAIL: could not restore $file from its backup." >&2
+    echo "  → the mutation is STILL IN YOUR WORKING TREE." >&2
+    echo "  → the backup is kept at $backup; put it back by hand before" >&2
+    echo "    doing anything else, and do not trust the verdict above." >&2
+    return 1
+  fi
+  rm -f "$backup"
+}
+
+# EXIT covers the normal path and every `exit` below. A failed restore beats
+# whatever the mutation test concluded: a verdict is worthless next to a source
+# file left edited.
+on_exit() {
+  local rc=$?
+  restore || rc=3
+  exit "$rc"
+}
+trap on_exit EXIT
+
+# INT/TERM get handlers of their own rather than sharing the EXIT one, so that
+# a signal cannot end in a success classification. They disarm the traps first
+# -- `restored` already makes a second restore a no-op, but re-entering during
+# a restore is not worth reasoning about -- and exit with the conventional
+# 128+signal, which the caller can tell from any verdict this script issues.
+on_signal() {
+  trap - EXIT INT TERM
+  echo >&2
+  echo "INTERRUPTED by SIG$1 -- restoring $file, concluding nothing." >&2
+  restore || exit 3
+  exit "$2"
+}
+trap 'on_signal INT 130' INT
+trap 'on_signal TERM 143' TERM
 
 if ! perl -0pi -e "$expr" "$file"; then
   echo "mutate: the perl expression failed to run." >&2
@@ -68,10 +117,26 @@ if cmp -s "$backup" "$file"; then
 fi
 
 printf '=== mutated %s, running: %s\n' "$file" "$*" >&2
-set +e
+# No `set +e` dance: `-e` is not on (see `set -uo pipefail` above), and turning
+# it on afterwards -- which the previous shape did -- armed a trap nobody asked
+# for over the reporting below.
 "$@"
 status=$?
-set -e
+
+# A command KILLED BY A SIGNAL exits 128+n, and 130/131/143 in particular are a
+# Ctrl-C or a `kill` reaching the guard rather than the guard disagreeing with
+# the mutated code. Classified before the generic non-zero branch, because
+# "non-zero" there means "the guard went red", and reporting an interrupted run
+# as a verified one is the exact failure this script exists to prevent -- one
+# level up from the mutation that silently does not apply.
+case "$status" in
+  130 | 131 | 143)
+    echo >&2
+    echo "INTERRUPTED: the command was killed (exit $status), not run to a" >&2
+    echo "  verdict. Nothing is verified; $file is being restored." >&2
+    exit "$status"
+    ;;
+esac
 
 if [ "$status" -eq 0 ]; then
   echo >&2
