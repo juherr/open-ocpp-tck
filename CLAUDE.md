@@ -28,7 +28,8 @@ Ask before running anything that reaches a server or leaves state behind:
 - **Re-pin before verifying, not after.** Editing `tck/main.ts` and running
   the gate costs a full run to be told to run `tools/repin-vendored.sh`. See
   the origin table in @AGENTS.md.
-- **Mutation-test a new guard as you write it.** Break the thing it protects,
-  confirm it goes red for that reason and no other, revert. Every guard in
-  `tests/` earns its place by failing correctly, and the cheapest moment to
-  find out that it fails for the *wrong* reason is before it is committed.
+- **Mutation-test a new guard as you write it.** `tools/mutate.sh` does the
+  edit, the run and the restore, and refuses to conclude anything when the
+  expression matched nothing — see the Tests section of @AGENTS.md. The
+  cheapest moment to find out a guard fails for the *wrong* reason, or for no
+  reason at all, is before it is committed.

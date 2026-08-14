@@ -171,6 +171,21 @@ check(
   "an unexpected pass and a declared crash now read alike, and they call for " +
     "opposite actions -- delete the entry versus keep it and chase the crash.",
 );
+// The retry half of the same message, pinned the same way: vary ONLY the
+// isolated retry's verdict and the sentence must vary with it. Stated as a
+// difference rather than as a substring, so any reword survives while a branch
+// that stops reporting the retry at all does not.
+//
+// This gap was found by tools/mutate.sh on its first real use: replacing that
+// branch outright left the guard green, because the distinctness check above
+// compares the NO-retry form and never reaches it.
+check(
+  declaredButErroredDetail("ERROR", "FAIL") !==
+    declaredButErroredDetail("ERROR", "ERROR"),
+  "the declared-but-errored message no longer varies with the isolated " +
+    "retry's verdict, so it cannot say whether the crash was the lane or the " +
+    "scenario.",
+);
 
 function check(condition: boolean, failure: string): void {
   if (!condition) failures.push(failure);

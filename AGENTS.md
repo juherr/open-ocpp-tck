@@ -89,6 +89,15 @@ per row — and, for the rows that matter, a CSMS engineered to fail a chosen
 scenario a chosen way. `tck/standing.ts` is a module of its own so that guard
 can be a table.
 
+A new guard earns its place by failing correctly, so break what it protects and
+watch it go red before committing it. `tools/mutate.sh <file> <perl-expr> --
+<command>` does the edit, the run and the restore — and, the part worth having,
+refuses to draw any conclusion when the expression matched nothing. A
+substitution that silently applies to zero bytes leaves the guard green and
+looks exactly like a guard that works; it happened here. The script cannot
+check the other half of the rule — red *for that reason and no other* — so read
+the output it prints.
+
 ## Two boundaries the guards enforce
 
 - **Nothing under `tck/` may name a CSMS, and the core may not import a
@@ -103,3 +112,12 @@ can be a table.
 Conventional Commits, `!` plus a `BREAKING CHANGE:` footer when the driver
 contract changes shape. Branches are `juherr/<topic>`. Code, comments and
 commit messages in English.
+
+**A refactor that was tried and rejected gets a note where it would be
+re-proposed.** Reviews converge on the same simplifications, and the second
+reviewer has no way to know the first one measured it and said no — so the
+argument gets re-run instead of read. `EnvDependent` in `tck/driver.ts` is the
+worked example: folding its three resolvers into one generic helper is the
+obvious de-duplication, and the type stops narrowing when you do. The note
+costs four lines and is the difference between a decision and an opinion
+someone will overturn by default.
