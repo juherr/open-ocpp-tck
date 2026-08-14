@@ -121,7 +121,7 @@
     "e2e": "bun bin/ocpp-tck.ts run-all --parallel --retry-failed-isolated",
     "e2e:smoke": "bun bin/ocpp-tck.ts run cert16-tc023-1-authorize-invalid && bun bin/ocpp-tck.ts run cert16-tc023-2-authorize-expired && bun bin/ocpp-tck.ts run cert16-tc023-3-authorize-blocked && bun bin/ocpp-tck.ts run cert16-tc066-get-composite-schedule && bun bin/ocpp-tck.ts run cert16-tc003-charging-plugin-first",
     "check:fixture-tags": "bash tools/extract-fixture-tags.sh --diff",
-    "test": "bash tests/vendor-integrity.sh && bash tests/generic-core.sh && bash tests/spec-invariants.sh && bun tests/driver-env-scope.ts && bun tests/expected-failure-standing.ts && bun tests/assert-answered.ts && bash tests/oca-obligations.sh && bash tests/harness-layer.sh && bash tests/gate-parity.sh && bash tests/doc-counts.sh"
+    "test": "bash tests/vendor-integrity.sh && bash tests/generic-core.sh && bash tests/spec-invariants.sh && bun tests/driver-env-scope.ts && bun tests/expected-failure-standing.ts && bun tests/assert-answered.ts && bash tests/oca-obligations.sh && bash tests/harness-layer.sh && bash tests/gate-parity.sh && bash tests/doc-counts.sh && bash tests/repin-refusals.sh"
   },
   "devDependencies": {
     "@types/bun": "1.3.14",

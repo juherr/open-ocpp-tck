@@ -23,7 +23,7 @@ error.
 
 `bun run verify` is every check CI runs before it starts a container —
 typecheck, committed declarations, three driver scope checks, three in-process
-guards and seven shell guards — with one exit code, and every step runs even
+guards and eight shell guards — with one exit code, and every step runs even
 after one fails, where CI enumerates them and stops at the first.
 
 There is a third copy of that list — `bun run test`, the guards without the
@@ -102,6 +102,15 @@ guard can be a table. `assert-answered.ts`: reaching `assertAllAnswered`'s
 rules needs a CSMS that emits a CALLERROR and a run truncated between a CALL
 and its response — both real, neither reproducible offline except by handing
 the helper the frames.
+
+One guard builds a fixture instead of reading the tree.
+`tests/repin-refusals.sh` exercises `tools/repin-vendored.sh` in a throwaway
+git repository, because that script is the only one here that *writes* — to
+`VENDOR.md` and to `patches/` — so what is worth testing about it is which
+states it refuses to write, and that is a question about a repository, not
+about a file. It works because the script does `cd "$(dirname "$0")/.."`: a
+copy at `<fixture>/tools/` can only ever operate on the fixture, which is what
+makes running it in the gate safe.
 
 A new guard earns its place by failing correctly, so break what it protects and
 watch it go red before committing it. `tools/mutate.sh <file> <perl-expr> --
