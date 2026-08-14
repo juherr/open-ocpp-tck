@@ -214,6 +214,80 @@ function containerName(cpId: string, templateId: string): string {
   return `simts-${cpId.toLowerCase()}-${templateId}`.slice(0, 63);
 }
 
+/** `simts-<cp-id>-<template-id>`; the cp-id half is what a second sweep
+ *  collides on. */
+const SIM_NAME = /^simts-(.+?)-cert16-/;
+
+/**
+ * Simulator containers this process did not start, by the charge point they
+ * are driving. Empty on an idle daemon.
+ */
+async function foreignSimStations(): Promise<Set<string>> {
+  const proc = Bun.spawn(
+    ["docker", "ps", "--filter", "name=simts-", "--format", "{{.Names}}"],
+    { stdout: "pipe", stderr: "ignore" },
+  );
+  const out = await new Response(proc.stdout).text();
+  await proc.exited;
+  const stations = new Set<string>();
+  for (const name of out.split("\n")) {
+    const match = SIM_NAME.exec(name.trim());
+    if (match) stations.add(match[1]);
+  }
+  return stations;
+}
+
+/**
+ * Refuses to start when another sweep is already driving one of OUR charge
+ * points, and says so when one is driving different ones.
+ *
+ * WHY. Several checkouts of this repository get worked on at once against one
+ * docker daemon, and nothing warns you. Two sweeps sharing a charge point id
+ * interleave their scenarios in one CSMS database, and the result is not a
+ * clean failure: a scenario reads a transaction row the OTHER run created and
+ * reports a conformance finding about the CSMS. That happened here -- a TC_005
+ * assertion failed on `id_tag CERT018`, a tag belonging to a different
+ * scenario entirely -- and it cost a full sweep to attribute.
+ *
+ * THE CHECK IS ON THE CHARGE POINT ID, NOT ON "IS ANYTHING RUNNING", because
+ * running two sweeps at once is legitimate and is the documented way out: a
+ * second CSMS on its own ports with its own OCPP_CP_IDS (see
+ * drivers/citrineos/README.md). Refusing that would forbid the fix along with
+ * the problem. Sharing a cp-id is the part that cannot be made safe -- the
+ * container name is daemon-global, so `docker run --name` collides even when
+ * the two CSMS are genuinely separate.
+ *
+ * CALLED ONCE PER PROCESS, FROM THE ENTRY POINTS, and that placement is the
+ * point rather than tidiness: `prepareStation()` writes to the CSMS before the
+ * first container starts, so a check inside startSim() would refuse only after
+ * this process had already written into a database another sweep was using.
+ * It also runs before any container of ours exists, so our own parallel lanes
+ * never look foreign to each other.
+ */
+export async function assertNoForeignSweep(
+  cpIds: readonly string[],
+): Promise<void> {
+  const foreign = await foreignSimStations();
+  if (foreign.size === 0) return;
+  const mine = new Set(cpIds.map((id) => id.toLowerCase()));
+  const shared = [...foreign].filter((id) => mine.has(id)).sort();
+  if (shared.length > 0) {
+    throw new Error(
+      `another sweep is already driving ${shared.join(", ")}: simulator ` +
+        "container(s) with that charge point id are running that this process " +
+        "did not start. Two sweeps sharing a charge point id write into one " +
+        "CSMS and report each other's state as findings. Wait for it, or run " +
+        "isolated -- a separate CSMS and a different OCPP_CP_IDS.",
+    );
+  }
+  process.stderr.write(
+    `[runner] NOTE: ${foreign.size} simulator container(s) from another sweep ` +
+      `are running (${[...foreign].sort().join(", ")}), none on this roster. ` +
+      "Fine if they drive their own CSMS; a shared one still interleaves in " +
+      "the database.\n",
+  );
+}
+
 async function runDocker(args: string[]): Promise<void> {
   const proc = Bun.spawn(["docker", ...args], {
     stdout: "ignore",

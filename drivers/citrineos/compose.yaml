@@ -23,7 +23,17 @@
 # The project name is pinned here rather than inherited from the directory, so
 # that `docker compose -f drivers/citrineos/compose.yaml up` produces the same
 # network name as `docker compose -p citrineos ...` and as CI.
-name: citrineos
+#
+# TCK_SUFFIX makes this stack repeatable on one docker daemon. Everything below
+# that the daemon holds in a GLOBAL namespace takes it: the project name (hence
+# the network and the volumes), the four container names, and the two published
+# ports. Empty by default, so a single stack is byte-for-byte what it was.
+#
+# Set it, and CITRINE_NETWORK with it -- see README.md. Two workspaces of this
+# repository share one daemon, and nothing warns you: the second `up` adopts the
+# first one's containers, and a `down -v` destroys a database somebody else is
+# mid-sweep against.
+name: citrineos${TCK_SUFFIX:-}
 
 # Derived from citrineos-core's own docker-compose.yml @ v2.0.0-beta1
 # (Apache-2.0). Modified: the operator UI and the OCPI server are dropped;
@@ -53,7 +63,7 @@ services:
   #     | grep -i docker-content-digest
   citrine:
     image: ghcr.io/citrineos/citrineos-server:v2.0.0-beta1@sha256:58800f45acd82c976e2f55dd9aab85baee61507938bb2cb0d0f81fc70853c6ef
-    container_name: citrine
+    container_name: citrine${TCK_SUFFIX:-}
     restart: unless-stopped
     depends_on:
       ocpp-db:
@@ -83,7 +93,7 @@ services:
       # basic-auth, 8443/8444 TLS) are reached by the simulator over the
       # internal network, and 8080 carries an API that accepts every request
       # unauthenticated.
-      - "127.0.0.1:8080:8080"
+      - "127.0.0.1:${CITRINE_API_PORT:-8080}:8080"
     networks:
       - citrineos-internal
     healthcheck:
@@ -102,7 +112,7 @@ services:
 
   ocpp-db:
     image: postgis/postgis:16-3.5@sha256:4e07b425403ba55c20b541884db2e80c686dd6476bf9265046ac9c163895605d
-    container_name: citrine-db
+    container_name: citrine-db${TCK_SUFFIX:-}
     restart: unless-stopped
     # Upstream pins this because postgis publishes no arm64 tag; without it,
     # `up` fails outright on an Apple Silicon host rather than falling back.
@@ -136,13 +146,13 @@ services:
   # compose. CITRINE_HASURA_SECRET exists for a deployment that sets one.
   graphql-engine:
     image: hasura/graphql-engine:v2.40.3@sha256:679fb764590e848e59ab6b82b3e906cc46f87d776f869f49132ca728660df244
-    container_name: citrine-graphql
+    container_name: citrine-graphql${TCK_SUFFIX:-}
     restart: unless-stopped
     depends_on:
       ocpp-db:
         condition: service_healthy
     ports:
-      - "8090:8080"
+      - "127.0.0.1:${CITRINE_GRAPHQL_PORT:-8090}:8080"
     environment:
       HASURA_GRAPHQL_DATABASE_URL: postgres://citrine:citrine@ocpp-db:5432/citrine
       HASURA_GRAPHQL_ENABLE_TELEMETRY: "false"
@@ -157,7 +167,7 @@ services:
 
   amqp-broker:
     image: rabbitmq:3-management@sha256:e582c0bc7766f3342496d8485efb5a1df782b5ce3886ad017e2eaae442311f69
-    container_name: citrine-amqp
+    container_name: citrine-amqp${TCK_SUFFIX:-}
     restart: unless-stopped
     environment:
       RABBITMQ_DEFAULT_USER: "guest"
