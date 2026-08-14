@@ -25,7 +25,7 @@
  * stopped measuring.
  */
 import type { ScopeEntry, ScopeTable } from "../../tck/scope";
-import { BLOCKED_UNREACHABLE } from "./expected";
+import { BLOCKED_UNREACHABLE, FIRMWARE_STATUS_NOT_HANDLED } from "./expected";
 import {
   NO_LOCAL_LIST,
   NO_RESERVATIONS,
@@ -163,25 +163,21 @@ const V2_SCOPE = {
   ),
 
   // --- FirmwareManagement --------------------------------------------------
-  // CitrineOS registers no 1.6 request handler for FirmwareStatusNotification
-  // and answers every one with a NotSupported CALLERROR -- 10 across the three
-  // TC_044 logs of a sequential sweep, and the only CALLERROR the CSMS sends
-  // anywhere in the suite.
+  // ALL THREE ROWS ARE RED, AND THAT IS THE POINT. The mechanism sentence is
+  // FIRMWARE_STATUS_NOT_HANDLED in expected.ts, where all three
+  // expected-failure rows also live -- these scenarios are DRIVABLE and fail,
+  // which is a finding about CitrineOS, not a reason to demote a scope row.
   //
-  // ALL THREE ROWS ARE NOW RED, AND THAT IS THE POINT. OCA TC_044_{1,2,3}_CSMS
-  // put steps 4 and 6 on the Central System: "The Central responds with a
-  // FirmwareStatusNotification.conf". A CALLERROR is not that conf. These rows
-  // used to be green -- the scenarios asserted only the statuses the CHARGE
-  // POINT sent, never the CSMS's answer -- which was a gap in the SCENARIOS,
-  // not evidence about CitrineOS. Closing it (issue #11, assertAllAnswered)
-  // turned a documented blind spot into a measured finding: every other check
-  // in all three scenarios still passes, and the single failure in each is the
-  // CALLERROR.
+  // They used to be green: the scenarios asserted only the statuses the CHARGE
+  // POINT sent, never the CSMS's answer, so ten CALLERRORs passed unnoticed.
+  // That was a gap in the SCENARIOS, not evidence about CitrineOS. Closing it
+  // (issue #11, assertAllAnswered) turned a documented blind spot into a
+  // measured finding: every other check in all three still passes, and the
+  // single failure in each is the CALLERROR.
   "cert16-tc044-1-firmware-update": d(
-    "Drivable, and now RED on the FirmwareStatusNotification.conf obligation " +
+    `${FIRMWARE_STATUS_NOT_HANDLED} Drivable, and RED on that obligation ` +
       "alone: the full Downloading -> Downloaded -> Installing -> Installed " +
-      "train is asserted and passes, and the only failing check is that all " +
-      "four notifications drew a NotSupported CALLERROR. It also used to flake " +
+      "train is asserted and passes. It also used to flake " +
       "in the parallel pass of every recorded run, on a timing property of the " +
       "SCENARIO rather than a CitrineOS limitation: retrieveDate was +90s " +
       "against a 115s hold, leaving ~25s for the status train. The spec now " +
@@ -189,7 +185,7 @@ const V2_SCOPE = {
       "tck/specs/firmware.ts.",
   ),
   "cert16-tc044-2-firmware-download-failed": d(
-    "Drivable, and now RED on the FirmwareStatusNotification.conf obligation " +
+    `${FIRMWARE_STATUS_NOT_HANDLED} Drivable, and RED on that obligation ` +
       "alone -- the Downloading -> DownloadFailed train and both never-reached " +
       "negatives still pass. It was also the FLAKIEST scenario here on the " +
       "thinnest timing margin of all: retrieveDate was +90s against a 110s " +
@@ -210,7 +206,8 @@ const V2_SCOPE = {
       "unhandled rejection, which is a crash whatever triggers it.",
   ),
   "cert16-tc044-3-firmware-install-failed": d(
-    "Drivable, and the cleanest demonstration of what issue #11 was about: " +
+    `${FIRMWARE_STATUS_NOT_HANDLED} The cleanest demonstration of what issue ` +
+      "#11 was about: " +
       "10 of its 11 checks pass -- every status in the Downloading -> " +
       "Downloaded -> Installing -> InstallationFailed train, both ordering " +
       "checks, the Installed-never-reached negative, and the Boot/Status " +

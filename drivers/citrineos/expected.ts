@@ -37,7 +37,60 @@ export const BLOCKED_UNREACHABLE =
   "Blocked is an IAuthorizer, and container.ts registers " +
   "`authorizers: asValue([])` with no setting that changes it.";
 
+
+/**
+ * Why every FirmwareStatusNotification the charge point sends comes back as a
+ * CALLERROR, worded once.
+ *
+ * Read in the sources and confirmed on the running image: CitrineOS registers
+ * no 1.6 REQUEST handler for FirmwareStatusNotification --
+ * `packages/core/src/handlers/requests/1.6/` has one for
+ * DiagnosticsStatusNotification and none for this -- so the router answers
+ * `[4,…,"NotSupported","No handler found for action: FirmwareStatusNotification
+ * at module configuration"]`. Ten of them across the three TC_044 logs of a
+ * sequential sweep, and the only CALLERROR the CSMS emits anywhere in the
+ * suite.
+ */
+export const FIRMWARE_STATUS_NOT_HANDLED =
+  "CitrineOS registers no 1.6 request handler for FirmwareStatusNotification, " +
+  "so its router answers every one with " +
+  '`[4,…,"NotSupported","No handler found for action: ' +
+  'FirmwareStatusNotification at module configuration"]`. OCA ' +
+  "TC_044_{1,2,3}_CSMS put the answer on the Central System -- \"The Central " +
+  'responds with a FirmwareStatusNotification.conf" -- and a CALLERROR is not ' +
+  "that conf.";
+
+/** Where the TC_044 finding is written down, worded once for all three rows. */
+const FIRMWARE_FINDING =
+  'drivers/citrineos/README.md, gap table row "No 1.6 request handler for ' +
+  'FirmwareStatusNotification". Upstream citrineos/citrineos#216.';
+
+/**
+ * Why all three TC_044 rows arrived here at once, and why none of them is a
+ * flake: until issue #11 these scenarios asserted only the statuses the CHARGE
+ * POINT sent, never the CSMS's answer, so they were green over ten CALLERRORs.
+ * assertAllAnswered closed that. Every other check in all three still passes --
+ * the whole status train, the ordering checks, the never-reached negatives --
+ * and the single failure in each is the CALLERROR. Deterministic: the handler
+ * is absent, not intermittent.
+ */
+
 const V2_EXPECTED_FAILURES: ExpectedFailureTable = {
+  "cert16-tc044-1-firmware-update": {
+    reason:
+      `${FIRMWARE_STATUS_NOT_HANDLED} The scenario drives the full Downloading -> Downloaded -> Installing -> Installed train and asserts all four answers; all four are CALLERRORs.`,
+    finding: FIRMWARE_FINDING,
+  },
+  "cert16-tc044-2-firmware-download-failed": {
+    reason:
+      `${FIRMWARE_STATUS_NOT_HANDLED} The scenario stops at DownloadFailed, so it asserts two answers; both are CALLERRORs.`,
+    finding: FIRMWARE_FINDING,
+  },
+  "cert16-tc044-3-firmware-install-failed": {
+    reason:
+      `${FIRMWARE_STATUS_NOT_HANDLED} The scenario runs to InstallationFailed and asserts four answers; all four are CALLERRORs. 10 of its 11 checks pass, which makes this the clearest reading of the finding in the suite.`,
+    finding: FIRMWARE_FINDING,
+  },
   "cert16-tc023-3-authorize-blocked": {
     reason:
       `${BLOCKED_UNREACHABLE} The scenario requires Blocked and gets ` +

@@ -28,5 +28,19 @@ import type { CitrineVariant } from "./variant";
  * changes it.
  */
 export declare const BLOCKED_UNREACHABLE: string;
+/**
+ * Why every FirmwareStatusNotification the charge point sends comes back as a
+ * CALLERROR, worded once.
+ *
+ * Read in the sources and confirmed on the running image: CitrineOS registers
+ * no 1.6 REQUEST handler for FirmwareStatusNotification --
+ * `packages/core/src/handlers/requests/1.6/` has one for
+ * DiagnosticsStatusNotification and none for this -- so the router answers
+ * `[4,…,"NotSupported","No handler found for action: FirmwareStatusNotification
+ * at module configuration"]`. Ten of them across the three TC_044 logs of a
+ * sequential sweep, and the only CALLERROR the CSMS emits anywhere in the
+ * suite.
+ */
+export declare const FIRMWARE_STATUS_NOT_HANDLED: string;
 /** The expected-failure list for a declared variant. See variant.ts. */
 export declare function citrineosExpectedFailures(variant: CitrineVariant): ExpectedFailureTable;
