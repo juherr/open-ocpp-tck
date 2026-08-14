@@ -5,7 +5,9 @@ about the repo that otherwise costs a round trip to rediscover — the reasoning
 behind each rule lives in the file it protects.
 
 `README.md` is the user-facing tour, `CONTRIBUTING.md` is how to write a
-driver, `VENDOR.md` is the vendoring manifest. This file is the working loop.
+driver, `VENDOR.md` is the vendoring manifest, `OCA-COVERAGE.md` maps every
+scenario to its OCA test case and to what that case obliges the CSMS to
+answer. This file is the working loop.
 
 ## First
 
