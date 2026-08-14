@@ -30,8 +30,8 @@ There is a third copy of that list — `bun run test`, the guards without the
 typecheck, the declarations and the linter. The three were kept in step by
 hand and drifted three times, always the same way: a guard added to `verify`
 and to `bun run test`, and not to the workflow, is linted by CI and never run
-by it. `tests/gate-parity.sh` now compares them, order included, so adding a
-step means adding it in all three.
+by it. `tests/gate-parity.sh` now holds `verify` and the workflow to the same
+sequence, and every link of `bun run test` to being one of its steps.
 
 It is usually the wrong command *during* iteration: `tests/spec-invariants.sh`
 pulls a pinned bun image, and it can only break if something under `tck/specs/`
@@ -121,13 +121,16 @@ weaker than its comment, and only the mutation nobody had to run said so.
 Stopping at the obvious ones is not rigour, it is luck: the guard ships, and
 its header is now a false claim about what the build checks.
 
-## Four boundaries the guards enforce
+## Five boundaries the guards enforce
 
-- **The gate is one list, declared three times.** `tools/verify.sh`, the
-  `check` job of the workflow and `bun run test` must run the same commands in
-  the same order, minus the CI-only setup the guard lists explicitly. Adding a
-  step to two of the three is the drift this catches.
-  (`tests/gate-parity.sh`)
+- **The gate is one list.** `tools/verify.sh` and the workflow's `check` job
+  must run the same commands in the same order, minus the CI-only setup the
+  guard lists explicitly — a step added to one and not the other is either a
+  gate you cannot reproduce locally or one CI lints and never runs.
+  `bun run test` is a declared subset, the guards without the typecheck, the
+  declarations and the linter: every link in it must be one of those commands,
+  which is what stops a guard from being reachable only through it. Being a
+  subset, it is neither complete nor ordered. (`tests/gate-parity.sh`)
 - **Nothing here depends on the harness overlay.** A coding harness may add a
   repo-root file of its own on top of this one; that file declares the split
   itself, and this document is the half that has to stand without it. A rule

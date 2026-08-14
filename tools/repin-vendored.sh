@@ -174,15 +174,34 @@ repin_one() {
     return 1
   fi
 
+  # THE TWO BYTE-IDENTICAL CASES ARE NOT THE SAME EVENT, and they return
+  # differently because `set -e` makes the return value decide whether the rest
+  # of the batch runs.
+  #
+  # A verbatim file that is still verbatim is a NO-OP: the manifest already
+  # describes it correctly and there is nothing to fix. Ending the batch on it
+  # -- and skipping the repository-wide check at the end -- would reproduce the
+  # failure this script's several-paths shape exists to remove, on the one row
+  # where nothing is wrong. It says so and gets out of the way.
+  #
+  # A patched file that has drifted BACK to upstream is a defect: the row still
+  # claims upstream-patched, the patch is now empty of meaning, and no
+  # subsequent re-pin can repair either. Aborting is right, and re-running the
+  # same command line after the row is fixed reproduces everything already done
+  # -- see the note above repin_one on idempotence.
+  #
+  # AGGREGATING FAILURES AND CHECKING AT THE END was proposed and rejected for
+  # that asymmetry: it turns a manifest this script cannot repair into one more
+  # line of a summary, after N further writes have been made against it.
   new_sha=$(sha256_of "$path")
   if [ "$new_sha" = "$up_sha" ]; then
     if [ "$bootstrap" = 1 ]; then
       echo "repin: $path is byte-identical to upstream — it is already correctly" >&2
       echo "  marked 'upstream-verbatim'. Nothing to do." >&2
-    else
-      echo "repin: $path is now byte-identical to upstream." >&2
-      echo "  → mark the row 'upstream-verbatim' and delete $patch_rel." >&2
+      return 0
     fi
+    echo "repin: $path is now byte-identical to upstream." >&2
+    echo "  → mark the row 'upstream-verbatim' and delete $patch_rel." >&2
     return 1
   fi
 
