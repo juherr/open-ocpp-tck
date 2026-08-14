@@ -1,6 +1,13 @@
 --- a/scripts/steve-verify/runner/specs/firmware.ts (upstream @ 604054adb0d7d7129a26a5f1ad2d5fdc290d1ca1)
 +++ b/scripts/ocpp-verify/tck/specs/firmware.ts
-@@ -12,12 +12,12 @@
+@@ -6,27 +6,58 @@
+  */
+ 
+ import {
++  assertAllAnswered,
+   assertLineMatches,
+   assertLineOrder,
+   assertNoLineMatches,
    assertReceived,
  } from "../assert";
  import type { ScenarioSpec } from "../spec-types";
@@ -15,7 +22,26 @@
    );
  }
  
-@@ -27,6 +27,19 @@
+ // ---------------------------------------------------------------------------
++// The assertAllAnswered calls below are the whole of issue #11, and this file
++// is where it was found. OCA TC_044_{1,2,3}_CSMS put "The Central responds
++// with a FirmwareStatusNotification.conf" on the Central System at steps 4, 6,
++// 10 and 16; the assertions above them check only the statuses the CHARGE
++// POINT sent, so a CSMS answering every one with a CALLERROR passed. It is not
++// a hypothetical: that is what these scenarios did.
++//
++// The checks are per ACTION, not per numbered step, which is why the reboot
++// steps (TC_044.1 and .3, steps 11-14) need no special handling: the
++// obligation is "the Central System answers BootNotification.req", and
++// asserting it over every BootNotification the run produced is both simpler
++// and stricter than tying it to one step that may or may not be reached.
++//
++// OCA-COVERAGE.md is the table these come from.
++// ---------------------------------------------------------------------------
++
++// ---------------------------------------------------------------------------
+ // TC_044.1 Firmware Update -- Download and Install -- CSMS sends
+ // UpdateFirmware.req; the CP genuinely waits until wall-clock retrieveDate
  // before starting the FirmwareStatusNotification train (confirmed live in
  // the bash suite: this is correct OCPP 1.6 semantics, not a bug), then
  // progresses Downloading -> Downloaded -> Installing -> Installed.
@@ -35,7 +61,7 @@
  // ---------------------------------------------------------------------------
  
  export const tc0441FirmwareUpdateSpec: ScenarioSpec<void> = {
-@@ -35,15 +48,15 @@
+@@ -35,21 +66,21 @@
      "TC_044.1 Firmware Update: full Downloading -> Downloaded -> Installing -> Installed train.",
    connector: 1,
    bootWaitSecs: 4,
@@ -56,7 +82,25 @@
        });
      } catch (err) {
        warnOpFailed("UpdateFirmware", err);
-@@ -119,13 +132,13 @@
+     }
+   },
+-  assert({ lines, rec }) {
++  assert({ frames, lines, rec }) {
+     assertLineMatches(
+       rec,
+       lines,
+@@ -101,6 +132,10 @@
+       /"status":"Installed"/,
+       "Installing precedes Installed",
+     );
++    // TC_044.1 steps 4, 6, 8, 10, 12, 14, 16.
++    assertAllAnswered(rec, frames, "FirmwareStatusNotification");
++    assertAllAnswered(rec, frames, "BootNotification");
++    assertAllAnswered(rec, frames, "StatusNotification");
+   },
+ };
+ 
+@@ -119,19 +154,19 @@
    connector: 1,
    bootWaitSecs: 4,
    holdSecs: 110,
@@ -74,7 +118,24 @@
        });
      } catch (err) {
        warnOpFailed("UpdateFirmware", err);
-@@ -184,13 +197,13 @@
+     }
+   },
+-  assert({ lines, rec }) {
++  assert({ frames, lines, rec }) {
+     assertLineMatches(
+       rec,
+       lines,
+@@ -166,6 +201,9 @@
+       /"status":"Installed"/,
+       "Installed never reached",
+     );
++    // TC_044.2 steps 4 and 6. This case mandates nothing else: it has no
++    // reboot, so no BootNotification/StatusNotification obligation.
++    assertAllAnswered(rec, frames, "FirmwareStatusNotification");
+   },
+ };
+ 
+@@ -184,19 +222,19 @@
    connector: 1,
    bootWaitSecs: 4,
    holdSecs: 115,
@@ -92,7 +153,25 @@
        });
      } catch (err) {
        warnOpFailed("UpdateFirmware", err);
-@@ -277,13 +290,10 @@
+     }
+   },
+-  assert({ lines, rec }) {
++  assert({ frames, lines, rec }) {
+     assertLineMatches(
+       rec,
+       lines,
+@@ -251,6 +289,10 @@
+       /"status":"Installed"/,
+       "Installed (success terminal state) never reached",
+     );
++    // TC_044.3 steps 4, 6, 8, 10, 12, 14, 16.
++    assertAllAnswered(rec, frames, "FirmwareStatusNotification");
++    assertAllAnswered(rec, frames, "BootNotification");
++    assertAllAnswered(rec, frames, "StatusNotification");
+   },
+ };
+ 
+@@ -277,13 +319,10 @@
    connector: 1,
    bootWaitSecs: 4,
    holdSecs: 25,
@@ -108,3 +187,12 @@
      } catch (err) {
        warnOpFailed("GetDiagnostics", err);
      }
+@@ -320,6 +359,8 @@
+       /"status":"UploadFailed"/,
+       "Uploading precedes UploadFailed",
+     );
++    // TC_045.1 steps 4 and 6.
++    assertAllAnswered(rec, frames, "DiagnosticsStatusNotification");
+   },
+ };
+ 

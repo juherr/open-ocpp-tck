@@ -6,6 +6,7 @@
  */
 
 import {
+  assertAllAnswered,
   assertLineMatches,
   assertLineOrder,
   assertNoLineMatches,
@@ -20,6 +21,23 @@ function warnOpFailed(op: string, err: unknown): void {
     `[runner] WARN: CSMS operation ${op} failed (continuing): ${err instanceof Error ? err.message : String(err)}\n`,
   );
 }
+
+// ---------------------------------------------------------------------------
+// The assertAllAnswered calls below are the whole of issue #11, and this file
+// is where it was found. OCA TC_044_{1,2,3}_CSMS put "The Central responds
+// with a FirmwareStatusNotification.conf" on the Central System at steps 4, 6,
+// 10 and 16; the assertions above them check only the statuses the CHARGE
+// POINT sent, so a CSMS answering every one with a CALLERROR passed. It is not
+// a hypothetical: that is what these scenarios did.
+//
+// The checks are per ACTION, not per numbered step, which is why the reboot
+// steps (TC_044.1 and .3, steps 11-14) need no special handling: the
+// obligation is "the Central System answers BootNotification.req", and
+// asserting it over every BootNotification the run produced is both simpler
+// and stricter than tying it to one step that may or may not be reached.
+//
+// OCA-COVERAGE.md is the table these come from.
+// ---------------------------------------------------------------------------
 
 // ---------------------------------------------------------------------------
 // TC_044.1 Firmware Update -- Download and Install -- CSMS sends
@@ -62,7 +80,7 @@ export const tc0441FirmwareUpdateSpec: ScenarioSpec<void> = {
       warnOpFailed("UpdateFirmware", err);
     }
   },
-  assert({ lines, rec }) {
+  assert({ frames, lines, rec }) {
     assertLineMatches(
       rec,
       lines,
@@ -114,6 +132,10 @@ export const tc0441FirmwareUpdateSpec: ScenarioSpec<void> = {
       /"status":"Installed"/,
       "Installing precedes Installed",
     );
+    // TC_044.1 steps 4, 6, 8, 10, 12, 14, 16.
+    assertAllAnswered(rec, frames, "FirmwareStatusNotification");
+    assertAllAnswered(rec, frames, "BootNotification");
+    assertAllAnswered(rec, frames, "StatusNotification");
   },
 };
 
@@ -144,7 +166,7 @@ export const tc0442FirmwareDownloadFailedSpec: ScenarioSpec<void> = {
       warnOpFailed("UpdateFirmware", err);
     }
   },
-  assert({ lines, rec }) {
+  assert({ frames, lines, rec }) {
     assertLineMatches(
       rec,
       lines,
@@ -179,6 +201,9 @@ export const tc0442FirmwareDownloadFailedSpec: ScenarioSpec<void> = {
       /"status":"Installed"/,
       "Installed never reached",
     );
+    // TC_044.2 steps 4 and 6. This case mandates nothing else: it has no
+    // reboot, so no BootNotification/StatusNotification obligation.
+    assertAllAnswered(rec, frames, "FirmwareStatusNotification");
   },
 };
 
@@ -209,7 +234,7 @@ export const tc0443FirmwareInstallFailedSpec: ScenarioSpec<void> = {
       warnOpFailed("UpdateFirmware", err);
     }
   },
-  assert({ lines, rec }) {
+  assert({ frames, lines, rec }) {
     assertLineMatches(
       rec,
       lines,
@@ -264,6 +289,10 @@ export const tc0443FirmwareInstallFailedSpec: ScenarioSpec<void> = {
       /"status":"Installed"/,
       "Installed (success terminal state) never reached",
     );
+    // TC_044.3 steps 4, 6, 8, 10, 12, 14, 16.
+    assertAllAnswered(rec, frames, "FirmwareStatusNotification");
+    assertAllAnswered(rec, frames, "BootNotification");
+    assertAllAnswered(rec, frames, "StatusNotification");
   },
 };
 
@@ -330,6 +359,8 @@ export const tc0451GetDiagnosticsSpec: ScenarioSpec<void> = {
       /"status":"UploadFailed"/,
       "Uploading precedes UploadFailed",
     );
+    // TC_045.1 steps 4 and 6.
+    assertAllAnswered(rec, frames, "DiagnosticsStatusNotification");
   },
 };
 

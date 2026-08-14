@@ -9,6 +9,7 @@
  */
 
 import {
+  assertAllAnswered,
   assertEq,
   assertLineAfter,
   assertLineMatches,
@@ -355,6 +356,14 @@ export const reservationBasicSpec: ScenarioSpec<void> = {
       "StartTransaction sent with the scenario's hardcoded idTag CERT-RES01 (not the ReserveNow idTag)",
     );
     assertSent(rec, frames, "StopTransaction", "StopTransaction sent");
+    // TC_046 step 4, plus the reusable state "Charging" it executes at step 5
+    // (reference section 3.22): Authorized + StatusNotification.conf x2 +
+    // StartTransaction.conf. StartTransaction is covered as part of the
+    // StatusNotification/Authorize pair below only if the CSMS answered it,
+    // so it gets its own check.
+    assertAllAnswered(rec, frames, "StatusNotification");
+    assertAllAnswered(rec, frames, "Authorize");
+    assertAllAnswered(rec, frames, "StartTransaction");
 
     const txPk = await records.latestTransaction(cpId);
     if (!txPk) {
@@ -481,6 +490,8 @@ export const tc0482ReserveNowOccupiedSpec: ScenarioSpec<void> = {
       /Sent: \[2,.*"StatusNotification".*"status":"Available"/,
       "plug-out and reset to Available follow the ReserveNow exchange",
     );
+    // TC_048.2 steps 2 and 6.
+    assertAllAnswered(rec, frames, "StatusNotification");
   },
 };
 
@@ -530,6 +541,8 @@ export const tc0483ReserveNowUnavailableSpec: ScenarioSpec<void> = {
       /Sent: \[2,.*"StatusNotification".*"status":"Available"/,
       "reset to Available follows the ReserveNow exchange",
     );
+    // TC_048.3 steps 2 and 6.
+    assertAllAnswered(rec, frames, "StatusNotification");
   },
 };
 
@@ -654,6 +667,9 @@ export const tc051CancelReservationSpec: ScenarioSpec<CancelReservationDriveStat
         /Sent: \[2,.*"StatusNotification".*"status":"Available"/,
         "StatusNotification(Available) sent after CancelReservation (#186)",
       );
+      // TC_051 steps 4 and 8. Before the DB block: the early return below
+      // would otherwise skip this whenever the reservation id was not captured.
+      assertAllAnswered(rec, frames, "StatusNotification");
 
       if (!driveState.reservationPk) {
         rec.fail(
@@ -711,6 +727,8 @@ export const tc052CancelReservationRejectedSpec: ScenarioSpec<void> = {
       "Rejected",
       "CancelReservation rejected (nonexistent reservationId)",
     );
+    // TC_052 step 4.
+    assertAllAnswered(rec, frames, "StatusNotification");
   },
 };
 

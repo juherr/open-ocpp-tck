@@ -1,6 +1,14 @@
 --- a/scripts/steve-verify/runner/specs/authlist-reservation.ts (upstream @ 604054adb0d7d7129a26a5f1ad2d5fdc290d1ca1)
 +++ b/scripts/ocpp-verify/tck/specs/authlist-reservation.ts
-@@ -19,17 +19,13 @@
+@@ -9,6 +9,7 @@
+  */
+ 
+ import {
++  assertAllAnswered,
+   assertEq,
+   assertLineAfter,
+   assertLineMatches,
+@@ -19,17 +20,13 @@
    assertSent,
  } from "../assert";
  import type { ScenarioSpec } from "../spec-types";
@@ -21,7 +29,7 @@
    );
  }
  
-@@ -45,12 +41,10 @@
+@@ -45,12 +42,10 @@
    connector: 1,
    bootWaitSecs: 4,
    holdSecs: 12,
@@ -36,7 +44,7 @@
      } catch (err) {
        warnOpFailed("GetLocalListVersion", err);
      }
-@@ -96,12 +90,10 @@
+@@ -96,12 +91,10 @@
    // SendLocalList run against the same cpId (even earlier in the same
    // group sweep) leaves nothing behind here. Do not "fix" this by
    // resetting/isolating state -- there's no cross-run state to reset.
@@ -51,7 +59,7 @@
      } catch (err) {
        warnOpFailed("GetLocalListVersion", err);
      }
-@@ -132,14 +124,14 @@
+@@ -132,14 +125,14 @@
    connector: 1,
    bootWaitSecs: 4,
    holdSecs: 12,
@@ -72,7 +80,7 @@
        });
      } catch (err) {
        warnOpFailed("SendLocalList", err);
-@@ -167,14 +159,14 @@
+@@ -167,14 +160,14 @@
    connector: 1,
    bootWaitSecs: 4,
    holdSecs: 12,
@@ -93,7 +101,7 @@
        });
      } catch (err) {
        warnOpFailed("SendLocalList", err);
-@@ -202,14 +194,14 @@
+@@ -202,14 +195,14 @@
    connector: 1,
    bootWaitSecs: 4,
    holdSecs: 12,
@@ -114,7 +122,7 @@
        });
      } catch (err) {
        warnOpFailed("SendLocalList", err);
-@@ -247,25 +239,25 @@
+@@ -247,25 +240,25 @@
    connector: 1,
    bootWaitSecs: 4,
    holdSecs: 18,
@@ -151,7 +159,7 @@
        });
      } catch (err) {
        warnOpFailed("SendLocalList (Differential)", err);
-@@ -321,20 +313,20 @@
+@@ -321,20 +314,20 @@
    bootWaitSecs: 4,
    // settle(2) + delay-arrival(2) + bounded meter block(30) + tail.
    holdSecs: 45,
@@ -178,16 +186,25 @@
      assertReceived(rec, frames, "ReserveNow", "ReserveNow.req received");
      assertResponseStatus(
        rec,
-@@ -364,7 +356,7 @@
+@@ -363,8 +356,16 @@
+       "StartTransaction sent with the scenario's hardcoded idTag CERT-RES01 (not the ReserveNow idTag)",
      );
      assertSent(rec, frames, "StopTransaction", "StopTransaction sent");
++    // TC_046 step 4, plus the reusable state "Charging" it executes at step 5
++    // (reference section 3.22): Authorized + StatusNotification.conf x2 +
++    // StartTransaction.conf. StartTransaction is covered as part of the
++    // StatusNotification/Authorize pair below only if the CSMS answered it,
++    // so it gets its own check.
++    assertAllAnswered(rec, frames, "StatusNotification");
++    assertAllAnswered(rec, frames, "Authorize");
++    assertAllAnswered(rec, frames, "StartTransaction");
  
 -    const txPk = await db.latestTxPk(cpId);
 +    const txPk = await records.latestTransaction(cpId);
      if (!txPk) {
        rec.fail(
          `DB: transaction row exists for ${cpId}`,
-@@ -375,13 +367,13 @@
+@@ -375,13 +376,13 @@
      rec.pass(`DB: transaction row exists for ${cpId} (pk=${txPk})`);
      assertEq(
        rec,
@@ -203,7 +220,7 @@
        "DB: transaction is closed (stop_timestamp set)",
      );
    },
-@@ -398,14 +390,14 @@
+@@ -398,14 +399,14 @@
    connector: 1,
    bootWaitSecs: 4,
    holdSecs: 12,
@@ -223,7 +240,7 @@
        });
      } catch (err) {
        warnOpFailed("ReserveNow", err);
-@@ -454,14 +446,14 @@
+@@ -454,14 +455,14 @@
    connector: 1,
    bootWaitSecs: 4,
    holdSecs: 12,
@@ -243,7 +260,16 @@
        });
      } catch (err) {
        warnOpFailed("ReserveNow", err);
-@@ -503,14 +495,14 @@
+@@ -489,6 +490,8 @@
+       /Sent: \[2,.*"StatusNotification".*"status":"Available"/,
+       "plug-out and reset to Available follow the ReserveNow exchange",
+     );
++    // TC_048.2 steps 2 and 6.
++    assertAllAnswered(rec, frames, "StatusNotification");
+   },
+ };
+ 
+@@ -503,14 +506,14 @@
    connector: 1,
    bootWaitSecs: 4,
    holdSecs: 12,
@@ -263,7 +289,16 @@
        });
      } catch (err) {
        warnOpFailed("ReserveNow", err);
-@@ -552,14 +544,14 @@
+@@ -538,6 +541,8 @@
+       /Sent: \[2,.*"StatusNotification".*"status":"Available"/,
+       "reset to Available follows the ReserveNow exchange",
+     );
++    // TC_048.3 steps 2 and 6.
++    assertAllAnswered(rec, frames, "StatusNotification");
+   },
+ };
+ 
+@@ -552,14 +557,14 @@
    connector: 1,
    bootWaitSecs: 4,
    holdSecs: 12,
@@ -283,7 +318,7 @@
        });
      } catch (err) {
        warnOpFailed("ReserveNow", err);
-@@ -593,27 +585,27 @@
+@@ -593,27 +598,27 @@
      connector: 1,
      bootWaitSecs: 4,
      holdSecs: 20,
@@ -320,7 +355,7 @@
          {
            timeoutMs: 15_000,
            intervalMs: 1_000,
-@@ -622,17 +614,14 @@
+@@ -622,17 +627,14 @@
        );
  
        try {
@@ -340,7 +375,17 @@
        assertResponseStatus(
          rec,
          frames,
-@@ -675,7 +664,7 @@
+@@ -665,6 +667,9 @@
+         /Sent: \[2,.*"StatusNotification".*"status":"Available"/,
+         "StatusNotification(Available) sent after CancelReservation (#186)",
+       );
++      // TC_051 steps 4 and 8. Before the DB block: the early return below
++      // would otherwise skip this whenever the reservation id was not captured.
++      assertAllAnswered(rec, frames, "StatusNotification");
+ 
+       if (!driveState.reservationPk) {
+         rec.fail(
+@@ -675,7 +680,7 @@
        }
        assertEq(
          rec,
@@ -349,7 +394,7 @@
          "CANCELLED",
          `DB: reservation ${driveState.reservationPk} is CANCELLED`,
        );
-@@ -693,30 +682,16 @@
+@@ -693,30 +698,16 @@
    connector: 1,
    bootWaitSecs: 4,
    holdSecs: 12,
@@ -388,3 +433,12 @@
        });
      } catch (err) {
        warnOpFailed("CancelReservation", err);
+@@ -736,6 +727,8 @@
+       "Rejected",
+       "CancelReservation rejected (nonexistent reservationId)",
+     );
++    // TC_052 step 4.
++    assertAllAnswered(rec, frames, "StatusNotification");
+   },
+ };
+ 

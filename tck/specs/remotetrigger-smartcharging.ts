@@ -12,6 +12,7 @@
  */
 
 import {
+  assertAllAnswered,
   assertEq,
   assertLineAfter,
   assertLineMatches,
@@ -100,6 +101,17 @@ export const tc010RemoteStartSpec: ScenarioSpec<void> = {
       "StartTransaction sent with CSMS-supplied idTag (overrides scenario's hardcoded CERT010 fallback)",
     );
     assertSent(rec, frames, "MeterValues", "MeterValues sent while charging");
+    // TC_010 steps 8, 10, 12. Before the DB block: the early return below
+    // would otherwise skip these whenever no transaction row is findable.
+    //
+    // Step 6 (Authorize.conf) is NOT checked, for a reason that holds for
+    // every remote-start scenario here: the CSMS supplies the idTag in
+    // RemoteStartTransaction, so the CP goes straight to StartTransaction and
+    // never sends an Authorize.req. Measured, not assumed -- a sweep reports
+    // no Authorize on the wire for this scenario at all. TC_003/TC_004 are
+    // locally driven and do carry that obligation.
+    assertAllAnswered(rec, frames, "StatusNotification");
+    assertAllAnswered(rec, frames, "StartTransaction");
 
     const txPk = await records.latestTransaction(cpId);
     if (!txPk) {
@@ -186,6 +198,11 @@ export const tc011RemoteStartStopSpec: ScenarioSpec<void> = {
       /Sent: \[2,.*"StopTransaction".*"reason":"Remote"/,
       "StopTransaction sent with reason Remote",
     );
+    // TC_011.1 steps 8, 10, 14. Step 6 (Authorize.conf) is absent for the same
+    // measured reason as TC_010 above: remote start carries the idTag, so no
+    // Authorize.req is ever sent.
+    assertAllAnswered(rec, frames, "StatusNotification");
+    assertAllAnswered(rec, frames, "StartTransaction");
 
     const txPk = await records.latestTransaction(cpId);
     if (!txPk) {
@@ -246,6 +263,9 @@ export const tc012RemoteStopSpec: ScenarioSpec<void> = {
       /Sent: \[2,.*"StopTransaction".*"reason":"Remote"/,
       "StopTransaction sent with reason Remote",
     );
+    // TC_012 steps 6 and 8.
+    assertAllAnswered(rec, frames, "StatusNotification");
+    assertAllAnswered(rec, frames, "StopTransaction");
 
     const txPk = await records.latestTransaction(cpId);
     if (!txPk) {
@@ -467,6 +487,15 @@ export const tc054TriggerMessageSpec: ScenarioSpec<void> = {
       /Sent: \[2,.*"Heartbeat"/,
       "requested Heartbeat sent after TriggerMessage",
     );
+    // TC_054 puts a .conf on the Central System for all six triggerable
+    // messages (Diagnostics-/FirmwareStatusNotification, Heartbeat,
+    // MeterValues, StatusNotification). This scenario triggers ONE of them --
+    // see the drive() above -- so only the two the run actually produces are
+    // checked. The other three are a scenario-coverage gap, listed as such in
+    // OCA-COVERAGE.md rather than asserted here: a check for a request the
+    // scenario never makes reports the wrong thing about the CSMS.
+    assertAllAnswered(rec, frames, "Heartbeat");
+    assertAllAnswered(rec, frames, "StatusNotification");
   },
 };
 
@@ -767,6 +796,11 @@ export const tc059RemoteStartWithProfileSpec: ScenarioSpec<RemoteStartWithProfil
         /Sent: \[2,.*"StopTransaction"/,
         "StopTransaction eventually sent",
       );
+      // TC_059 steps 8 and 10. Step 6 (Authorize.conf) is absent for the same
+      // measured reason as TC_010 and TC_011: this is a remote start, so the
+      // idTag arrives in the request and no Authorize.req is ever sent.
+      assertAllAnswered(rec, frames, "StatusNotification");
+      assertAllAnswered(rec, frames, "StartTransaction");
 
       const txPk = await records.latestTransaction(cpId);
       if (!txPk) {

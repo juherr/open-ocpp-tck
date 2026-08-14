@@ -9,6 +9,7 @@
  */
 
 import {
+  assertAllAnswered,
   assertEq,
   assertIdTagInfoStatus,
   assertLineAfter,
@@ -45,6 +46,17 @@ export const tc001ColdBootSpec: ScenarioSpec<void> = {
       "BootNotification accepted",
       { direction: "sent" },
     );
+    // TC_001 step 4: the Central System answers the connector status reports
+    // too, not only the boot. See OCA-COVERAGE.md.
+    //
+    // Step 6 (Heartbeat.conf) is NOT checked here, and the omission is
+    // measured rather than assumed: this scenario holds for 20s and the CP
+    // sends no Heartbeat in that window (confirmed by a sweep --
+    // tools/answered-report.ts reports BootNotification and
+    // StatusNotification only). Asserting it would report "the CSMS did not
+    // answer" for a request that was never made. TC_054 triggers a Heartbeat
+    // explicitly and carries the obligation instead.
+    assertAllAnswered(rec, frames, "StatusNotification");
 
     const sentAvailableOnConnector1 = frames.some(
       (f) =>
@@ -132,6 +144,11 @@ export const tc003ChargingPluginFirstSpec: ScenarioSpec<void> = {
       /Sent: \[2,.*"StatusNotification".*"status":"Available"/,
       "final StatusNotification(Available) sent",
     );
+    // TC_003 steps 2, 4, 6, 8. Before the DB block on purpose: whether the
+    // CSMS answered the wire is not contingent on a transaction row being
+    // findable, and the early return below would skip these if they came after.
+    assertAllAnswered(rec, frames, "Authorize");
+    assertAllAnswered(rec, frames, "StatusNotification");
 
     const txPk = await records.latestTransaction(cpId);
     if (!txPk) {
@@ -191,6 +208,11 @@ export const tc004ChargingIdFirstSpec: ScenarioSpec<void> = {
       /Sent: \[2,.*"StatusNotification".*"status":"Available"/,
       "final StatusNotification(Available) sent",
     );
+    // TC_004.1 -- the case gives its whole scenario as the reusable state
+    // "Charging", which is Authorized + StatusNotification.conf x2 +
+    // StartTransaction.conf (reference section 3.22).
+    assertAllAnswered(rec, frames, "Authorize");
+    assertAllAnswered(rec, frames, "StatusNotification");
 
     const txPk = await records.latestTransaction(cpId);
     if (!txPk) {
@@ -236,6 +258,9 @@ export const tc005EvSideDisconnectSpec: ScenarioSpec<void> = {
       /Sent: \[2,.*"StopTransaction".*"reason":"EVDisconnected"/,
       "StopTransaction sent with reason EVDisconnected",
     );
+    // TC_005.1 steps 2, 4, 6.
+    assertAllAnswered(rec, frames, "StatusNotification");
+    assertAllAnswered(rec, frames, "StopTransaction");
 
     const txPk = await records.latestTransaction(cpId);
     if (!txPk) {
@@ -316,6 +341,13 @@ export const tc013HardResetSpec: ScenarioSpec<void> = {
         `expected >=2 BootNotification.req sends (initial + post-reboot), got ${bootCount}`,
       );
     }
+    // TC_013 steps 6 and 8. Both boots, not just the first: the check above
+    // establishes that the CP re-registered, this one that the CSMS answered
+    // when it did. StopTransaction is deliberately absent -- TC_013_CSMS does
+    // not put a StopTransaction.conf on the Central System, and the CP tears
+    // the socket down straight after sending it.
+    assertAllAnswered(rec, frames, "BootNotification", undefined, { minimum: 2 });
+    assertAllAnswered(rec, frames, "StatusNotification");
 
     const txPk = await records.latestTransaction(cpId);
     if (!txPk) {
@@ -386,6 +418,10 @@ export const tc014SoftResetSpec: ScenarioSpec<void> = {
       /Sent: \[2,.*"BootNotification"/,
       "CP sends a fresh BootNotification after Soft Reset (reboot on the same socket)",
     );
+    // TC_014 steps 6 and 8. Two boots here as well -- the initial one and the
+    // post-reset one the check above anchors, on the same socket.
+    assertAllAnswered(rec, frames, "BootNotification", undefined, { minimum: 2 });
+    assertAllAnswered(rec, frames, "StatusNotification");
 
     const txPk = await records.latestTransaction(cpId);
     if (!txPk) {
@@ -510,6 +546,9 @@ export const tc018UnlockFailureSpec: ScenarioSpec<void> = {
       "StopTransaction",
       "StopTransaction sent (session completes normally despite unlock failure)",
     );
+    // TC_018.1 steps 6 and 8.
+    assertAllAnswered(rec, frames, "StatusNotification");
+    assertAllAnswered(rec, frames, "StopTransaction");
 
     const txPk = await records.latestTransaction(cpId);
     if (!txPk) {
@@ -666,7 +705,7 @@ export const tc024LockFailureSpec: ScenarioSpec<void> = {
   connector: 1,
   bootWaitSecs: 4,
   holdSecs: 12,
-  assert({ lines, rec }) {
+  assert({ frames, lines, rec }) {
     // Field order on the wire is errorCode before status (confirmed live),
     // so match them independently rather than assuming an order.
     assertLineMatches(
@@ -687,6 +726,9 @@ export const tc024LockFailureSpec: ScenarioSpec<void> = {
       /Sent: \[2,.*"StatusNotification".*"status":"Available"/,
       "final StatusNotification(Available) sent after plug-out",
     );
+    // TC_024 steps 2, 4, 6 -- the whole case is status reports, so every one
+    // of them carries the obligation.
+    assertAllAnswered(rec, frames, "StatusNotification");
   },
 };
 
@@ -779,6 +821,11 @@ export const tc064DataTransferSpec: ScenarioSpec<void> = {
       "DataTransfer.req sent with expected vendorId/messageId/data",
     );
 
+    // TC_064 step 2, and the one obligation in the suite that assertAllAnswered
+    // would UNDER-check rather than cover: it would establish that a CALLRESULT
+    // came back, but not that its status is one the protocol defines. The
+    // hand-rolled block below does both, so it stays -- it is a superset, not a
+    // survivor of the refactor.
     const description =
       "DataTransfer.conf received (status is the CSMS's own policy, not asserted)";
     const call = findCall(frames, "sent", "DataTransfer");

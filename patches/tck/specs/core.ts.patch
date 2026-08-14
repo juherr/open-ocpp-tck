@@ -1,6 +1,32 @@
 --- a/scripts/steve-verify/runner/specs/core.ts (upstream @ 604054adb0d7d7129a26a5f1ad2d5fdc290d1ca1)
 +++ b/scripts/ocpp-verify/tck/specs/core.ts
-@@ -96,7 +96,7 @@
+@@ -9,6 +9,7 @@
+  */
+ 
+ import {
++  assertAllAnswered,
+   assertEq,
+   assertIdTagInfoStatus,
+   assertLineAfter,
+@@ -45,6 +46,17 @@
+       "BootNotification accepted",
+       { direction: "sent" },
+     );
++    // TC_001 step 4: the Central System answers the connector status reports
++    // too, not only the boot. See OCA-COVERAGE.md.
++    //
++    // Step 6 (Heartbeat.conf) is NOT checked here, and the omission is
++    // measured rather than assumed: this scenario holds for 20s and the CP
++    // sends no Heartbeat in that window (confirmed by a sweep --
++    // tools/answered-report.ts reports BootNotification and
++    // StatusNotification only). Asserting it would report "the CSMS did not
++    // answer" for a request that was never made. TC_054 triggers a Heartbeat
++    // explicitly and carries the obligation instead.
++    assertAllAnswered(rec, frames, "StatusNotification");
+ 
+     const sentAvailableOnConnector1 = frames.some(
+       (f) =>
+@@ -96,7 +108,7 @@
    bootWaitSecs: 4,
    // delay-connect(2s) + delay-idtag(2s) + bounded meter block(30s) + tail.
    holdSecs: 45,
@@ -9,7 +35,7 @@
      assertLineOrder(
        rec,
        lines,
-@@ -115,7 +115,7 @@
+@@ -115,7 +127,7 @@
        frames,
        "StartTransaction",
        "Accepted",
@@ -18,16 +44,22 @@
      );
      assertSent(rec, frames, "MeterValues", "MeterValues sent while charging");
      assertLineOrder(
-@@ -133,7 +133,7 @@
+@@ -132,8 +144,13 @@
+       /Sent: \[2,.*"StatusNotification".*"status":"Available"/,
        "final StatusNotification(Available) sent",
      );
++    // TC_003 steps 2, 4, 6, 8. Before the DB block on purpose: whether the
++    // CSMS answered the wire is not contingent on a transaction row being
++    // findable, and the early return below would skip these if they came after.
++    assertAllAnswered(rec, frames, "Authorize");
++    assertAllAnswered(rec, frames, "StatusNotification");
  
 -    const txPk = await db.latestTxPk(cpId);
 +    const txPk = await records.latestTransaction(cpId);
      if (!txPk) {
        rec.fail(
          `DB: transaction row exists for ${cpId}`,
-@@ -142,10 +142,10 @@
+@@ -142,10 +159,10 @@
        return;
      }
      rec.pass(`DB: transaction row exists for ${cpId} (pk=${txPk})`);
@@ -40,7 +72,7 @@
        "DB: transaction is closed (stop_timestamp set)",
      );
    },
-@@ -163,7 +163,7 @@
+@@ -163,7 +180,7 @@
    bootWaitSecs: 4,
    // delay-idtag(2s) + bounded meter block(30s) + tail.
    holdSecs: 40,
@@ -49,7 +81,7 @@
      assertLineMatches(
        rec,
        lines,
-@@ -175,7 +175,7 @@
+@@ -175,7 +192,7 @@
        frames,
        "StartTransaction",
        "Accepted",
@@ -58,16 +90,22 @@
      );
      assertSent(rec, frames, "MeterValues", "MeterValues sent while charging");
      assertLineOrder(
-@@ -192,7 +192,7 @@
+@@ -191,8 +208,13 @@
+       /Sent: \[2,.*"StatusNotification".*"status":"Available"/,
        "final StatusNotification(Available) sent",
      );
++    // TC_004.1 -- the case gives its whole scenario as the reusable state
++    // "Charging", which is Authorized + StatusNotification.conf x2 +
++    // StartTransaction.conf (reference section 3.22).
++    assertAllAnswered(rec, frames, "Authorize");
++    assertAllAnswered(rec, frames, "StatusNotification");
  
 -    const txPk = await db.latestTxPk(cpId);
 +    const txPk = await records.latestTransaction(cpId);
      if (!txPk) {
        rec.fail(
          `DB: transaction row exists for ${cpId}`,
-@@ -201,10 +201,10 @@
+@@ -201,10 +223,10 @@
        return;
      }
      rec.pass(`DB: transaction row exists for ${cpId} (pk=${txPk})`);
@@ -80,7 +118,7 @@
        "DB: transaction is closed (stop_timestamp set)",
      );
    },
-@@ -222,7 +222,7 @@
+@@ -222,7 +244,7 @@
    bootWaitSecs: 4,
    // bounded meter block(15s) + tail.
    holdSecs: 25,
@@ -89,16 +127,20 @@
      assertLineMatches(
        rec,
        lines,
-@@ -237,7 +237,7 @@
+@@ -236,8 +258,11 @@
+       /Sent: \[2,.*"StopTransaction".*"reason":"EVDisconnected"/,
        "StopTransaction sent with reason EVDisconnected",
      );
++    // TC_005.1 steps 2, 4, 6.
++    assertAllAnswered(rec, frames, "StatusNotification");
++    assertAllAnswered(rec, frames, "StopTransaction");
  
 -    const txPk = await db.latestTxPk(cpId);
 +    const txPk = await records.latestTransaction(cpId);
      if (!txPk) {
        rec.fail(
          `DB: transaction row exists for ${cpId}`,
-@@ -246,10 +246,10 @@
+@@ -246,10 +271,10 @@
        return;
      }
      rec.pass(`DB: transaction row exists for ${cpId} (pk=${txPk})`);
@@ -111,7 +153,7 @@
        "EVDisconnected",
        "DB: stop_reason is EVDisconnected",
      );
-@@ -267,20 +267,17 @@
+@@ -267,20 +292,17 @@
    connector: 1,
    bootWaitSecs: 4,
    holdSecs: 25,
@@ -136,16 +178,24 @@
      assertLineMatches(
        rec,
        lines,
-@@ -320,7 +317,7 @@
+@@ -319,8 +341,15 @@
+         `expected >=2 BootNotification.req sends (initial + post-reboot), got ${bootCount}`,
        );
      }
++    // TC_013 steps 6 and 8. Both boots, not just the first: the check above
++    // establishes that the CP re-registered, this one that the CSMS answered
++    // when it did. StopTransaction is deliberately absent -- TC_013_CSMS does
++    // not put a StopTransaction.conf on the Central System, and the CP tears
++    // the socket down straight after sending it.
++    assertAllAnswered(rec, frames, "BootNotification", undefined, { minimum: 2 });
++    assertAllAnswered(rec, frames, "StatusNotification");
  
 -    const txPk = await db.latestTxPk(cpId);
 +    const txPk = await records.latestTransaction(cpId);
      if (!txPk) {
        rec.fail(
          `DB: transaction row exists for ${cpId}`,
-@@ -330,7 +327,7 @@
+@@ -330,7 +359,7 @@
      }
      assertEq(
        rec,
@@ -154,7 +204,7 @@
        "HardReset",
        "DB: stop_reason is HardReset",
      );
-@@ -355,20 +352,17 @@
+@@ -355,20 +384,17 @@
    connector: 1,
    bootWaitSecs: 4,
    holdSecs: 25,
@@ -179,16 +229,21 @@
      assertLineMatches(
        rec,
        lines,
-@@ -393,7 +387,7 @@
+@@ -392,8 +418,12 @@
+       /Sent: \[2,.*"BootNotification"/,
        "CP sends a fresh BootNotification after Soft Reset (reboot on the same socket)",
      );
++    // TC_014 steps 6 and 8. Two boots here as well -- the initial one and the
++    // post-reset one the check above anchors, on the same socket.
++    assertAllAnswered(rec, frames, "BootNotification", undefined, { minimum: 2 });
++    assertAllAnswered(rec, frames, "StatusNotification");
  
 -    const txPk = await db.latestTxPk(cpId);
 +    const txPk = await records.latestTransaction(cpId);
      if (!txPk) {
        rec.fail(
          `DB: transaction row exists for ${cpId}`,
-@@ -403,7 +397,7 @@
+@@ -403,7 +433,7 @@
      }
      assertEq(
        rec,
@@ -197,7 +252,7 @@
        "SoftReset",
        "DB: stop_reason is SoftReset",
      );
-@@ -421,7 +415,7 @@
+@@ -421,7 +451,7 @@
    connector: 1,
    bootWaitSecs: 4,
    holdSecs: 35,
@@ -206,7 +261,7 @@
      // Timing: delay(2s) -> plug-in -> preparing -> tx-start -> charging ->
      // meter-auto(maxTime 15s, BLOCKS) -> unlock pre-arm (instant) ->
      // delay(10s window) -> tx-stop. The pre-arm window for
-@@ -430,17 +424,14 @@
+@@ -430,17 +460,14 @@
      // rationale, see .superpowers/sdd/steve-verify-results-g1.md).
      await sleep(20_000);
      try {
@@ -227,7 +282,7 @@
      assertReceived(
        rec,
        frames,
-@@ -461,7 +452,7 @@
+@@ -461,7 +488,7 @@
        "StopTransaction sent (session completes normally)",
      );
  
@@ -236,7 +291,7 @@
      if (!txPk) {
        rec.fail(
          `DB: transaction row exists for ${cpId}`,
-@@ -471,7 +462,7 @@
+@@ -471,7 +498,7 @@
      }
      assertNonEmpty(
        rec,
@@ -245,7 +300,7 @@
        "DB: transaction is closed (stop_timestamp set)",
      );
    },
-@@ -488,21 +479,18 @@
+@@ -488,21 +515,18 @@
    connector: 1,
    bootWaitSecs: 4,
    holdSecs: 35,
@@ -271,16 +326,20 @@
      assertReceived(
        rec,
        frames,
-@@ -523,7 +511,7 @@
+@@ -522,8 +546,11 @@
+       "StopTransaction",
        "StopTransaction sent (session completes normally despite unlock failure)",
      );
++    // TC_018.1 steps 6 and 8.
++    assertAllAnswered(rec, frames, "StatusNotification");
++    assertAllAnswered(rec, frames, "StopTransaction");
  
 -    const txPk = await db.latestTxPk(cpId);
 +    const txPk = await records.latestTransaction(cpId);
      if (!txPk) {
        rec.fail(
          `DB: transaction row exists for ${cpId}`,
-@@ -533,7 +521,7 @@
+@@ -533,7 +560,7 @@
      }
      assertNonEmpty(
        rec,
@@ -289,7 +348,7 @@
        "DB: transaction is closed (stop_timestamp set)",
      );
    },
-@@ -550,15 +538,13 @@
+@@ -550,15 +577,13 @@
    connector: 1,
    bootWaitSecs: 4,
    holdSecs: 12,
@@ -308,7 +367,7 @@
        );
      }
    },
-@@ -601,16 +587,13 @@
+@@ -601,16 +626,13 @@
    connector: 1,
    bootWaitSecs: 4,
    holdSecs: 12,
@@ -328,7 +387,7 @@
        );
      }
    },
-@@ -641,19 +624,17 @@
+@@ -641,19 +663,17 @@
    connector: 1,
    bootWaitSecs: 4,
    holdSecs: 12,
@@ -353,7 +412,26 @@
        );
      }
    },
-@@ -720,16 +701,13 @@
+@@ -685,7 +705,7 @@
+   connector: 1,
+   bootWaitSecs: 4,
+   holdSecs: 12,
+-  assert({ lines, rec }) {
++  assert({ frames, lines, rec }) {
+     // Field order on the wire is errorCode before status (confirmed live),
+     // so match them independently rather than assuming an order.
+     assertLineMatches(
+@@ -706,6 +726,9 @@
+       /Sent: \[2,.*"StatusNotification".*"status":"Available"/,
+       "final StatusNotification(Available) sent after plug-out",
+     );
++    // TC_024 steps 2, 4, 6 -- the whole case is status reports, so every one
++    // of them carries the obligation.
++    assertAllAnswered(rec, frames, "StatusNotification");
+   },
+ };
+ 
+@@ -720,16 +743,13 @@
    connector: 1,
    bootWaitSecs: 4,
    holdSecs: 10,
@@ -373,7 +451,7 @@
        );
      }
    },
-@@ -760,15 +738,13 @@
+@@ -760,15 +780,13 @@
    connector: 1,
    bootWaitSecs: 4,
    holdSecs: 15,
@@ -392,7 +470,7 @@
        );
      }
    },
-@@ -791,7 +767,7 @@
+@@ -791,7 +809,7 @@
  export const tc064DataTransferSpec: ScenarioSpec<void> = {
    templateId: "cert16-tc064-data-transfer",
    description:
@@ -401,9 +479,15 @@
    connector: 1,
    bootWaitSecs: 4,
    holdSecs: 10,
-@@ -804,7 +780,7 @@
+@@ -803,8 +821,13 @@
+       "DataTransfer.req sent with expected vendorId/messageId/data",
      );
  
++    // TC_064 step 2, and the one obligation in the suite that assertAllAnswered
++    // would UNDER-check rather than cover: it would establish that a CALLRESULT
++    // came back, but not that its status is one the protocol defines. The
++    // hand-rolled block below does both, so it stays -- it is a superset, not a
++    // survivor of the refactor.
      const description =
 -      "DataTransfer.conf received (status is SteVe's own policy, not asserted)";
 +      "DataTransfer.conf received (status is the CSMS's own policy, not asserted)";

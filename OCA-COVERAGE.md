@@ -53,13 +53,19 @@ state, which is the only reading under which the case tests anything.
 
 "asserted before" is what the scenario checked about the CSMS's answer before
 issue #11 was addressed; "added" is what `assertAllAnswered` now checks.
-46 checks added across 24 scenarios.
+
+**46 obligations, 39 checks.** The seven-way difference is not an oversight --
+it is the "unexercised obligations" section below. A check for a request the
+scenario never sends would report "the CSMS did not answer" about a question
+nobody asked, so those seven are recorded as coverage gaps instead. Which
+seven was measured, not guessed: a full sweep plus
+`tools/answered-report.ts`.
 
 ### `tck/specs/core.ts`
 
 | scenario | OCA case | mandated `.conf` | asserted before | added |
 |---|---|---|---|---|
-| `cert16-tc001-cold-boot` | TC_001 | BootNotification, Heartbeat, StatusNotification | BootNotification | **Heartbeat, StatusNotification** |
+| `cert16-tc001-cold-boot` | TC_001 | BootNotification, Heartbeat, StatusNotification | BootNotification | **StatusNotification** · _unexercised: Heartbeat_ |
 | `cert16-tc003-charging-plugin-first` | TC_003 | Authorize, StartTransaction, StatusNotification | StartTransaction | **Authorize, StatusNotification** |
 | `cert16-tc004-charging-id-first` | TC_004_1 | Authorize, StartTransaction, StatusNotification | StartTransaction | **Authorize, StatusNotification** |
 | `cert16-tc005-ev-side-disconnect` | TC_005_1 | StatusNotification, StopTransaction | — | **StatusNotification, StopTransaction** |
@@ -97,16 +103,16 @@ issue #11 was addressed; "added" is what `assertAllAnswered` now checks.
 
 | scenario | OCA case | mandated `.conf` | asserted before | added |
 |---|---|---|---|---|
-| `cert16-tc010-remote-start` | TC_010 | Authorize, StartTransaction, StatusNotification | — | **Authorize, StartTransaction, StatusNotification** |
-| `cert16-tc011-remote-start-stop` | TC_011_1 | Authorize, StartTransaction, StatusNotification | — | **Authorize, StartTransaction, StatusNotification** |
+| `cert16-tc010-remote-start` | TC_010 | Authorize, StartTransaction, StatusNotification | — | **StartTransaction, StatusNotification** · _unexercised: Authorize_ |
+| `cert16-tc011-remote-start-stop` | TC_011_1 | Authorize, StartTransaction, StatusNotification | — | **StartTransaction, StatusNotification** · _unexercised: Authorize_ |
 | `cert16-tc012-remote-stop` | TC_012 | StatusNotification, StopTransaction | — | **StatusNotification, StopTransaction** |
 | `cert16-tc026-remote-start-rejected` | TC_026 | — | — | — |
 | `cert16-tc028-remote-stop-rejected` | TC_028 | — | — | — |
-| `cert16-tc054-trigger-message` | TC_054 | DiagnosticsStatusNotification, FirmwareStatusNotification, Heartbeat, MeterValues, StatusNotification | — | **DiagnosticsStatusNotification, FirmwareStatusNotification, Heartbeat, MeterValues, StatusNotification** |
+| `cert16-tc054-trigger-message` | TC_054 | DiagnosticsStatusNotification, FirmwareStatusNotification, Heartbeat, MeterValues, StatusNotification | — | **Heartbeat, StatusNotification** · _unexercised: DiagnosticsStatusNotification, FirmwareStatusNotification, MeterValues_ |
 | `cert16-tc055-trigger-message-rejected` | TC_055 | — | — | — |
 | `cert16-tc056-central-smart-charging-txdefault` | TC_056 | — | — | — |
 | `cert16-tc057-central-smart-charging-txprofile` | TC_057 | — | — | — |
-| `cert16-tc059-remote-start-with-profile` | TC_059 | Authorize, StartTransaction, StatusNotification | — | **Authorize, StartTransaction, StatusNotification** |
+| `cert16-tc059-remote-start-with-profile` | TC_059 | Authorize, StartTransaction, StatusNotification | — | **StartTransaction, StatusNotification** · _unexercised: Authorize_ |
 | `cert16-tc066-get-composite-schedule` | TC_066 | — | — | — |
 | `cert16-tc067-clear-charging-profile` | TC_067 | — | — | — |
 
@@ -126,6 +132,48 @@ issue #11 was addressed; "added" is what `assertAllAnswered` now checks.
 | `cert16-tc023-1-authorize-invalid` | TC_023_1 | Authorize | Authorize | — |
 | `cert16-tc023-2-authorize-expired` | TC_023_2 | Authorize | Authorize | — |
 | `cert16-tc023-3-authorize-blocked` | TC_023_3 | Authorize | Authorize | — |
+
+## Unexercised obligations
+
+Seven `.conf` obligations in the table above have no check, because the
+scenario does not put the corresponding request on the wire. Each was
+confirmed against a real sweep's logs, not inferred from reading the specs.
+
+| scenario | OCA step | obligation | why the request is never sent |
+|---|---|---|---|
+| `cert16-tc001-cold-boot` | TC_001 step 6 | `Heartbeat.conf` | the scenario holds 20s and the CP sends no Heartbeat in that window. TC_054 triggers one explicitly and carries the obligation instead. |
+| `cert16-tc010-remote-start` | TC_010 step 6 | `Authorize.conf` | remote start: the CSMS supplies the idTag in `RemoteStartTransaction`, so the CP goes straight to `StartTransaction`. |
+| `cert16-tc011-remote-start-stop` | TC_011_1 step 6 | `Authorize.conf` | same |
+| `cert16-tc059-remote-start-with-profile` | TC_059 step 6 | `Authorize.conf` | same |
+| `cert16-tc054-trigger-message` | TC_054 | `DiagnosticsStatusNotification.conf`, `FirmwareStatusNotification.conf`, `MeterValues.conf` | the case triggers six message types; this scenario triggers one (Heartbeat). |
+
+The `Authorize` rows are the same fact three times, and it is worth stating
+plainly: **no remote-start scenario can carry the `Authorize.conf`
+obligation**, because remote start is precisely the flow that skips
+authorization. `TC_003` and `TC_004` are locally driven, do send `Authorize`,
+and do carry it.
+
+Closing any of these is a change to the scenario -- a longer hold, an extra
+trigger -- not a change to what the checks assert. They are listed here so
+that choice stays visible.
+
+## One unanswered request that is nobody's fault
+
+The sweep turns up exactly one charge-point request that went unanswered
+across all 44 scenarios:
+
+```
+cert16-tc013-hard-reset  StopTransaction  answered=0 callerror=0 unanswered=1
+```
+
+`TC_013_CSMS` does not put a `StopTransaction.conf` on the Central System, so
+no check fires on it. The cause is on the charge point's side: a hard reset
+sends `StopTransaction.req` and then tears the socket down without waiting.
+The CSMS very likely did answer, into a closed socket.
+
+It is recorded because it is the kind of thing this report exists to surface,
+and because anyone who later adds a `StopTransaction` check to this scenario
+should know it will go red for this reason.
 
 ## Findings recorded, not acted on
 
