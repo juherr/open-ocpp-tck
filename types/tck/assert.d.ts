@@ -28,6 +28,25 @@ import { type CallFrame, type Direction, type Frame } from "./ocpp";
  * unverifiable.ts re-exports it, which is the import a driver should use.
  */
 export declare const UNVERIFIABLE_PREFIX = " CSMS_UNVERIFIABLE:";
+/**
+ * Marker opening the SKIPPED reason when a check could not be evaluated
+ * because THE SCENARIO never made the request, as opposed to
+ * {@link UNVERIFIABLE_PREFIX}'s "this CSMS could not tell us".
+ *
+ * Both degrade a check to SKIPPED and both make the scenario PARTIAL, so
+ * without a marker the summary's `skipped` column would merge two facts that
+ * point at different work:
+ *
+ *   UNVERIFIABLE  -- varies per driver. A limitation of the CSMS under test.
+ *   UNEXERCISED   -- identical for every driver. A gap in OUR scenarios,
+ *                    and a TODO for this suite rather than for the CSMS.
+ *
+ * A prefix rather than a fourth CheckStatus on purpose: the distinction is
+ * worth recording, not worth widening the public verdict vocabulary and the
+ * summary schema for. If the unexercised set ever grows past what
+ * OCA-COVERAGE.md can carry, promote it then.
+ */
+export declare const UNEXERCISED_PREFIX = "scenario does not exercise this:";
 export type CheckStatus = "PASS" | "FAIL" | "SKIPPED";
 export interface CheckResult {
     description: string;
@@ -107,11 +126,20 @@ export interface AnsweredOptions {
  *
  * THREE RULES, and the third is the one to read:
  *
- * 1. Fewer than `minimum` CALLs for `action` -- FAIL. An "every X was
- *    answered" check over zero Xs passes trivially, and a check that passes
- *    when the scenario did nothing is worse than no check: it reads as
- *    coverage. If a scenario legitimately may not send `action`, it does not
- *    want this helper.
+ * 1. Fewer than `minimum` CALLs for `action` -- SKIPPED, tagged
+ *    {@link UNEXERCISED_PREFIX}, which makes the scenario PARTIAL rather than
+ *    FAIL. An "every X was answered" check over zero Xs passes trivially, so
+ *    it must not pass; but it must not go red either, because red here would
+ *    say "the CSMS did not answer" about a question the scenario never asked.
+ *    Several OCA obligations land exactly there -- a locally-driven case
+ *    mandates Authorize.conf and the remote-start scenario carrying that case
+ *    never sends Authorize.req. Orange states the gap without blaming the
+ *    CSMS for it; OCA-COVERAGE.md lists what closing each would take.
+ *
+ *    This is deliberately independent of whether the CP *should* have sent
+ *    it. Scenarios that require the request assert that separately (TC_013
+ *    has its own "CP reconnects and sends a fresh BootNotification" check),
+ *    which keeps this helper about one thing: did the CSMS answer.
  *
  * 2. A response that is a CALLERROR -- FAIL, naming errorCode and
  *    errorDescription. A CALLERROR is a response, but it is not the `.conf`

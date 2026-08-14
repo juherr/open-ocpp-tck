@@ -1,6 +1,6 @@
 --- /tmp/ocpp-upstream/scripts/steve-verify/runner/main.ts	2026-07-31 20:05:48
 +++ tck/main.ts	2026-07-31 20:12:10
-@@ -1,39 +1,98 @@
+@@ -1,39 +1,102 @@
  #!/usr/bin/env bun
 +// Derived from shiv3/ocpp-cp-simulator scripts/steve-verify/runner/main.ts @ 604054adb0d7d7129a26a5f1ad2d5fdc290d1ca1 (Apache-2.0). Modified: the STEVE_DRIVER=api|ui selection is replaced by a CSMS driver loaded through ./driver-registry; a per-driver scope table (./scope) is consulted BEFORE any container starts and yields the NOT APPLICABLE verdict; UnsupportedOperationError (./driver) thrown out of drive() degrades to NOT APPLICABLE with a stderr WARNING; the PARTIAL verdict and the `skipped` summary column were added; the exit code is non-zero only for FAIL/ERROR; parallel lanes derive from the resolved station list instead of the fixed CERTCP1..3 trio; the SteVe capability probe is dropped.
 +
@@ -37,7 +37,11 @@
 + *     NOT_APPLICABLE for this CSMS, or the driver threw
 + *     UnsupportedOperationError out of drive(). No container is started in
 + *     the first case. Exit code 0.
-+ *   - PARTIAL -- zero FAILs but at least one check degraded to SKIPPED
++ *   - PARTIAL -- zero FAILs but at least one check degraded to SKIPPED,
++ *     either because this driver could not evaluate it (UNVERIFIABLE) or
++ *     because the scenario never makes the request the OCA case obliges the
++ *     CSMS to answer (UNEXERCISED). Both are orange: neither is a defect of
++ *     the CSMS under test, and neither fails the sweep.
 + *     because the driver answered with assert.ts's UNVERIFIABLE sentinel.
 + *     Exit code 0: a check that could not be evaluated is not a defect.
 + *
@@ -125,7 +129,7 @@
  import {
    AUTHLIST_RESERVATION_SPECS,
    AUTHORIZE_SPECS,
-@@ -43,13 +102,25 @@
+@@ -43,13 +106,25 @@
  } from "./specs/index";
  import type { ScenarioSpec } from "./spec-types";
  import { sleep } from "./util";
@@ -156,7 +160,7 @@
  // ---------------------------------------------------------------------------
  // Runner core
  // ---------------------------------------------------------------------------
-@@ -60,95 +131,234 @@
+@@ -60,95 +135,234 @@
    timeoutSecs?: number;
  }
  
@@ -452,7 +456,7 @@
          30_000,
        );
      } catch (err) {
-@@ -176,13 +386,25 @@
+@@ -176,13 +390,25 @@
  
      if (spec.drive) {
        process.stderr.write(`[runner] running drive() for ${spec.templateId}\n`);
@@ -485,7 +489,7 @@
      } else {
        process.stderr.write(
          `[runner] no drive() defined (CP-only scenario) -- nothing to do while it runs\n`,
-@@ -190,15 +412,18 @@
+@@ -190,15 +416,18 @@
        driveState = undefined as D;
      }
  
@@ -507,7 +511,7 @@
    // it a FAIL in a swept scenario is un-post-mortem-able: the sim container
    // is already stopped+removed by the time assert() reports, so this
    // capture is the only surviving record of what was (or wasn't) on the
-@@ -218,6 +443,10 @@
+@@ -218,6 +447,10 @@
      );
    }
  
@@ -518,7 +522,7 @@
    const frames = parseLog(lines.join("\n"));
    const rec = new AssertRecorder();
  
-@@ -228,34 +457,50 @@
+@@ -228,34 +461,50 @@
      frames,
      lines,
      rec,
@@ -580,7 +584,7 @@
  // ---------------------------------------------------------------------------
  
  // eslint-disable-next-line @typescript-eslint/no-explicit-any
-@@ -265,20 +510,21 @@
+@@ -265,20 +514,21 @@
    "remotetrigger-smartcharging": REMOTETRIGGER_SMARTCHARGING_SPECS,
    firmware: FIRMWARE_SPECS,
    authorize: AUTHORIZE_SPECS,
@@ -608,7 +612,7 @@
  // eslint-disable-next-line @typescript-eslint/no-explicit-any
  const SPECS_BY_TEMPLATE_ID = new Map<string, ScenarioSpec<any>>(
    Object.values(GROUPS)
-@@ -286,66 +532,227 @@
+@@ -286,66 +536,227 @@
      .map((spec) => [spec.templateId, spec]),
  );
  
@@ -791,7 +795,7 @@
 + * Narrowing `expected` here also removes the `?.` chains the call sites needed:
 + * they could not see that a standing of `expected-fail` implies an entry, so a
 + * broken invariant would have rendered the string "undefined" into a report.
-+ */
+  */
 +function declarationNote(outcome: ScenarioOutcome): string | undefined {
 +  const { expected, verdict } = outcome;
 +  const retryVerdict = outcome.isolatedRetry?.verdict;
@@ -828,7 +832,7 @@
 + *
 + * The scope table is consulted FIRST -- a NOT_APPLICABLE scenario never
 + * starts a container.
-  */
++ */
  async function runOneForSweep<D>(
    spec: ScenarioSpec<D>,
    cpId: string,
@@ -875,7 +879,7 @@
      };
    } catch (err) {
      const message =
-@@ -353,64 +760,44 @@
+@@ -353,64 +764,44 @@
      process.stderr.write(
        `[runner] ERROR: ${spec.templateId} on ${cpId} threw before completing: ${message}\n`,
      );
@@ -961,7 +965,7 @@
    );
  
    for (const outcome of toRetry) {
-@@ -432,13 +819,14 @@
+@@ -432,13 +823,14 @@
        verdict: retryOutcome.verdict,
        checks: retryOutcome.checks,
        failed: retryOutcome.failed,
@@ -978,7 +982,7 @@
            : " -- CONFIRMED (fails isolated too, not a parallel-lane artifact)\n"),
      );
    }
-@@ -451,59 +839,147 @@
+@@ -451,59 +843,149 @@
    return new Date().toISOString().replace(/\.\d{3}Z$/, "Z");
  }
  
@@ -1076,7 +1080,9 @@
 +  if (partialCount > 0 || naCount > 0) {
 +    notes.push(
 +      "",
-+      `${partialCount} PARTIAL (checks the driver could not evaluate were SKIPPED), ` +
++      `${partialCount} PARTIAL (SKIPPED checks: either this driver could not ` +
++        `evaluate them, or the scenario does not exercise the obligation -- the ` +
++        `check's detail says which), ` +
 +        `${naCount} NOT APPLICABLE (out of scope for this CSMS). Neither fails the sweep.`,
 +    );
 +  }
@@ -1149,7 +1155,7 @@
        "",
        header,
        separator,
-@@ -518,54 +994,55 @@
+@@ -518,54 +1000,55 @@
  }
  
  /** Sequential or parallel group sweep. Writes results/summary.md and exits
@@ -1231,7 +1237,7 @@
      );
    } else {
      for (let i = 0; i < specs.length; i++) {
-@@ -574,11 +1051,11 @@
+@@ -574,11 +1057,11 @@
    }
  
    if (retryFailedIsolated) {
@@ -1245,7 +1251,7 @@
            "(a sequential sweep is already isolated).\n",
        );
      }
-@@ -588,45 +1065,87 @@
+@@ -588,45 +1071,87 @@
    for (const o of outcomes) {
      const retrySuffix = o.isolatedRetry
        ? ` [isolated retry: ${o.isolatedRetry.verdict}${
@@ -1355,7 +1361,7 @@
  }
  
  // ---------------------------------------------------------------------------
-@@ -642,6 +1161,8 @@
+@@ -642,6 +1167,8 @@
    cpId: string;
    connector?: number;
    timeoutSecs?: number;
@@ -1364,7 +1370,7 @@
  }
  
  function requireValue(argv: string[], index: number, flag: string): string {
-@@ -663,37 +1184,80 @@
+@@ -663,37 +1190,80 @@
    return n;
  }
  
@@ -1462,7 +1468,7 @@
  
    if (argv[0] === "run-all") {
      group = "all";
-@@ -708,18 +1272,27 @@
+@@ -708,18 +1278,27 @@
          case "--retry-failed-isolated":
            retryFailedIsolated = true;
            break;
@@ -1493,7 +1499,7 @@
      process.exit(1);
    }
  
-@@ -749,9 +1322,11 @@
+@@ -749,9 +1328,11 @@
        case "--retry-failed-isolated":
          retryFailedIsolated = true;
          break;
@@ -1506,7 +1512,7 @@
          process.exit(1);
      }
    }
-@@ -764,35 +1339,495 @@
+@@ -764,35 +1345,495 @@
      cpId,
      connector,
      timeoutSecs,
@@ -1535,7 +1541,7 @@
 +  }
 +  return [...seen].map(([templateId, group]) => ({ templateId, group }));
 +}
-+
+ 
 +function listScenarios(argv: string[]): number {
 +  let group: string | undefined;
 +  let asJson = false;
@@ -1718,7 +1724,7 @@
 +      );
 +    }
 +  }
- 
++
 +  if (capabilities) {
 +    const known = new Set<string>(CSMS_OPERATION_ACTIONS);
 +    const unknown = [...capabilities.operations].filter(
@@ -2018,7 +2024,7 @@
    }
  
    const spec = SPECS_BY_TEMPLATE_ID.get(args.templateId);
-@@ -800,18 +1835,109 @@
+@@ -800,18 +1841,109 @@
      process.stderr.write(
        `Unknown template id: ${args.templateId} (known: ${[...SPECS_BY_TEMPLATE_ID.keys()].join(", ")})\n`,
      );

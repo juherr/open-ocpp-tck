@@ -2,8 +2,10 @@
  * tests/assert-answered.ts -- guard over assertAllAnswered's three rules.
  *
  * PROPERTY: a CSMS that answers a charge-point request with a CALLERROR, or
- * that never answers it at all, produces a FAILED check -- and a wire log
- * truncated mid-exchange does not.
+ * that never answers it at all, produces a FAILED check -- and neither a wire
+ * log truncated mid-exchange nor an obligation the scenario never exercises
+ * does. The last two are SKIPPED or PASS, never red: red has to mean the CSMS
+ * got it wrong, or it stops meaning anything.
  *
  * Why this is a guard and not a unit test. The three rules are unreachable
  * through the CLI: reaching rule 2 needs a CSMS that emits a CALLERROR, and
@@ -14,13 +16,20 @@
  * handing the helper the frames directly. Same reasoning as
  * tests/driver-env-scope.ts, and the same reason this one is TypeScript.
  *
- * Rule 3 is the one worth protecting. It is the difference between a check
- * that measures the CSMS and one that measures holdSecs, and getting it
- * backwards produces intermittent red rather than an obvious break -- which
- * is exactly the failure a guard is cheap insurance against.
+ * Rules 1 and 3 are the ones worth protecting, and for the same reason: both
+ * separate "the CSMS answered wrongly" from "we never asked properly". Rule 1
+ * turning red again would blame a CSMS for an OCA obligation none of our
+ * scenarios exercises; rule 3 turning red again would make the check measure
+ * holdSecs. Both fail intermittently or misleadingly rather than obviously,
+ * which is exactly what a guard is cheap insurance against.
  */
 
-import { AssertRecorder, assertAllAnswered, type AnsweredOptions } from "../tck/assert";
+import {
+  AssertRecorder,
+  assertAllAnswered,
+  UNEXERCISED_PREFIX,
+  type AnsweredOptions,
+} from "../tck/assert";
 import { parseLog } from "../tck/ocpp";
 
 const ACTION = "FirmwareStatusNotification";
@@ -46,7 +55,7 @@ const unrelated = () => line("Sent", [2, "zz", "Heartbeat", {}]);
 const cases: Array<{
   name: string;
   lines: string[];
-  expect: "PASS" | "FAIL";
+  expect: "PASS" | "FAIL" | "SKIPPED";
   options?: AnsweredOptions;
 }> = [
   {
@@ -65,14 +74,14 @@ const cases: Array<{
     expect: "FAIL",
   },
   {
-    name: "rule 1: the action was never sent -- not a vacuous pass",
+    name: "rule 1: the action was never sent -- SKIPPED, not a vacuous pass",
     lines: [unrelated()],
-    expect: "FAIL",
+    expect: "SKIPPED",
   },
   {
     name: "rule 1: minimum is honoured",
     lines: [req("a", "Downloading"), conf("a")],
-    expect: "FAIL",
+    expect: "SKIPPED",
     options: { minimum: 2 },
   },
   {
@@ -105,12 +114,28 @@ for (const { name, lines, expect, options } of cases) {
   );
 }
 
+// Rule 1's SKIPPED must stay TAGGED, or the summary cannot tell an
+// unexercised obligation from a value this driver could not obtain.
+{
+  const rec = new AssertRecorder();
+  assertAllAnswered(rec, parseLog(unrelated()), ACTION);
+  const detail = rec.results[0]?.detail ?? "";
+  if (!detail.startsWith(UNEXERCISED_PREFIX)) {
+    failures++;
+    process.stderr.write(
+      `FAIL: rule 1's skip reason is not tagged with UNEXERCISED_PREFIX\n` +
+        `  got: ${detail}\n`,
+    );
+  }
+}
+
 if (failures > 0) {
   process.stderr.write(
     `\nassertAllAnswered no longer enforces its own contract ` +
-      `(${failures}/${cases.length} cases wrong). See the header of this file: ` +
-      `rule 2 is what makes a CALLERROR red, rule 3 is what keeps a truncated ` +
-      `log from being red.\n`,
+      `(${failures} problem(s) over ${cases.length} cases). See the header of ` +
+      `this file: rule 2 is what makes a CALLERROR red, rule 1 is what keeps an ` +
+      `unexercised obligation orange, and rule 3 is what keeps a truncated log ` +
+      `from being red at all.\n`,
   );
   process.exit(1);
 }

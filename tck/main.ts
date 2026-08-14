@@ -18,7 +18,11 @@
  *     NOT_APPLICABLE for this CSMS, or the driver threw
  *     UnsupportedOperationError out of drive(). No container is started in
  *     the first case. Exit code 0.
- *   - PARTIAL -- zero FAILs but at least one check degraded to SKIPPED
+ *   - PARTIAL -- zero FAILs but at least one check degraded to SKIPPED,
+ *     either because this driver could not evaluate it (UNVERIFIABLE) or
+ *     because the scenario never makes the request the OCA case obliges the
+ *     CSMS to answer (UNEXERCISED). Both are orange: neither is a defect of
+ *     the CSMS under test, and neither fails the sweep.
  *     because the driver answered with assert.ts's UNVERIFIABLE sentinel.
  *     Exit code 0: a check that could not be evaluated is not a defect.
  *
@@ -918,7 +922,9 @@ async function writeSummary(
   if (partialCount > 0 || naCount > 0) {
     notes.push(
       "",
-      `${partialCount} PARTIAL (checks the driver could not evaluate were SKIPPED), ` +
+      `${partialCount} PARTIAL (SKIPPED checks: either this driver could not ` +
+        `evaluate them, or the scenario does not exercise the obligation -- the ` +
+        `check's detail says which), ` +
         `${naCount} NOT APPLICABLE (out of scope for this CSMS). Neither fails the sweep.`,
     );
   }
