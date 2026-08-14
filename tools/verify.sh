@@ -57,6 +57,9 @@ run "core is CSMS-neutral" bash tests/generic-core.sh
 # The other layering boundary the repository declares in prose: AGENTS.md and
 # everything it governs must not depend on the harness file.
 run "harness layering holds" bash tests/harness-layer.sh
+# This file, the workflow and `bun run test` are three copies of the list
+# above. They used to be kept in step by hand, and were not.
+run "gate parity holds" bash tests/gate-parity.sh
 run "vendored files match VENDOR.md" bash tests/vendor-integrity.sh
 run "scenario invariants" bash tests/spec-invariants.sh
 # After spec-invariants: this reads the artifact that one regenerates, so a

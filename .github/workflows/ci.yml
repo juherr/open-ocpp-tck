@@ -86,6 +86,13 @@ jobs:
       - name: Harness layering holds
         run: bash tests/harness-layer.sh
 
+      # This job, tools/verify.sh and `bun run test` are three copies of one
+      # list. Kept in step by hand, they drifted three times -- always the same
+      # way, a guard added to the other two and linted here without ever being
+      # run.
+      - name: Gate parity holds
+        run: bash tests/gate-parity.sh
+
       - name: Vendored files match VENDOR.md
         run: bash tests/vendor-integrity.sh
 
