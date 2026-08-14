@@ -72,8 +72,19 @@ jobs:
       - name: Exit-code rule holds
         run: bun tests/expected-failure-standing.ts
 
+      # A CALLERROR fails, a truncated log does not. In `tools/verify.sh` and
+      # `bun run test` since it was written; it was missing here, which meant
+      # CI linted it and never ran it.
+      - name: A CALLERROR fails, a truncated log does not
+        run: bun tests/assert-answered.ts
+
       - name: Core names no CSMS
         run: bash tests/generic-core.sh
+
+      # The other layering boundary: nothing outside the harness layer may
+      # cite the harness overlay.
+      - name: Harness layering holds
+        run: bash tests/harness-layer.sh
 
       - name: Vendored files match VENDOR.md
         run: bash tests/vendor-integrity.sh
@@ -82,6 +93,12 @@ jobs:
       # repository mounted read-only.
       - name: Scenario assertions and CSMS call sequences unchanged
         run: bash tests/spec-invariants.sh
+
+      # After spec-invariants, for the reason tools/verify.sh gives: this reads
+      # the artifact that one regenerates, so a stale inventory should be
+      # reported as stale rather than as a coverage hole.
+      - name: Every OCA obligation has a check
+        run: bash tests/oca-obligations.sh
 
       - name: Shell guards lint clean
         run: shellcheck tests/*.sh tools/*.sh

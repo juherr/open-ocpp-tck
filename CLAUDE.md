@@ -1,7 +1,7 @@
 # CLAUDE.md
 
 @AGENTS.md is the working loop for this repository — the install step, the
-gate, the re-pin rule for vendored files, the generated artifacts and the two
+gate, the re-pin rule for vendored files, the generated artifacts and the
 boundaries the guards enforce. Read it first; nothing in it is Claude-specific.
 
 What follows is only what the Claude Code harness needs on top.

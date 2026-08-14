@@ -30,29 +30,43 @@ set -uo pipefail
 cd "$(dirname "$0")/.." || exit 1
 
 harness_doc="CLAUDE.md"
-# This file necessarily contains the string it forbids, the same way
-# generic-core.sh must name the CSMSes it bans. Excluded by path, not by a
-# cleverer pattern: an exclusion a reader can check beats one they have to
-# decode.
-self="tests/harness-layer.sh"
 
-# --untracked, because this is a pre-commit guard: a file that violates the
-# rule and has not been `git add`ed yet is exactly the file its author is about
-# to commit. Scanning only the index would go green on it and red one commit
-# later, which is the shape of a guard people learn to run afterwards. It
-# honours .gitignore, so node_modules and results/ stay out.
-offenders=$(git grep --untracked -l -F "$harness_doc" -- . \
-  | grep -v -x -F "$harness_doc" \
-  | grep -v -x -F "$self" || true)
+# ONE PASS, and the exclusions declared once as pathspecs.
+#
+# The first shape ran `git grep -l` to list offenders and then re-grepped each
+# one for its lines. Two greps that had to be kept in step by hand, and they
+# were not: the inner one lost `--untracked`, so for exactly the case the flag
+# exists for, the guard printed a filename with no lines under it.
+#
+# WHAT THE EXCLUSIONS MEAN. The property is DIRECTIONAL -- the generic layer
+# must not depend on the harness layer -- so what is excluded is the harness
+# layer itself, not two convenient paths. `CLAUDE.md` and anything under
+# `.claude/` may cite it freely: a harness file referring to its own overlay is
+# the layer talking to itself, which is the arrow this guard permits. Only the
+# other direction is a defect. Without that, committing a `.claude/` skill that
+# points at the overlay would turn the gate red with advice -- "move the rule
+# into AGENTS.md" -- that is the exact inverse of the rule.
+#
+# This file is the third exclusion, and it necessarily contains the string it
+# forbids, the same way generic-core.sh must name the CSMSes it bans. Hardcoded
+# rather than derived from `$0`, which is whatever the caller typed: the failure
+# mode of a stale path here is loud, because the guard reports ITSELF as an
+# offender and names the path to fix.
+#
+# --untracked, because this is a pre-commit guard: a file that violates the rule
+# and has not been `git add`ed yet is exactly the file its author is about to
+# commit. Scanning only the index would go green on it and red one commit later,
+# which is the shape of a guard people learn to run afterwards. It honours
+# .gitignore, so node_modules and results/ stay out.
+offenders=$(git grep --untracked -n -F "$harness_doc" -- . \
+  ":(exclude)$harness_doc" \
+  ":(exclude).claude/" \
+  ":(exclude)tests/harness-layer.sh" || true)
 
 if [ -n "$offenders" ]; then
-  echo "FAIL: $harness_doc is cited outside itself." >&2
+  echo "FAIL: $harness_doc is cited from outside the harness layer." >&2
   echo >&2
-  while IFS= read -r file; do
-    [ -z "$file" ] && continue
-    echo "  $file" >&2
-    git grep -n -F "$harness_doc" -- "$file" | sed 's/^/      /' >&2
-  done <<< "$offenders"
+  printf '%s\n' "$offenders" | sed 's/^/  /' >&2
   echo >&2
   echo "  → $harness_doc says AGENTS.md is the working loop and that nothing" >&2
   echo "    in it is harness-specific. A file citing $harness_doc points the" >&2
@@ -63,4 +77,4 @@ if [ -n "$offenders" ]; then
   exit 1
 fi
 
-echo "Harness layering holds: $harness_doc is cited only by itself."
+echo "Harness layering holds: $harness_doc is cited only from inside the harness layer."

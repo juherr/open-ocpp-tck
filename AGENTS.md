@@ -21,10 +21,14 @@ error.
 
 ## The gate
 
-`bun run verify` is exactly what CI runs before it starts a container —
-typecheck, committed declarations, three driver scope checks, the env guard,
-and the three shell guards — with one exit code, and every step runs even
-after one fails.
+`bun run verify` is every check CI runs before it starts a container —
+typecheck, committed declarations, three driver scope checks, two in-process
+guards and five shell guards — with one exit code, and every step runs even
+after one fails, where CI enumerates them and stops at the first.
+
+That the two lists agree is maintained by hand, and it has drifted three
+times: a guard added to `verify` and to `bun run test`, and not to the
+workflow, is linted by CI and never run by it.
 
 It is usually the wrong command *during* iteration: `tests/spec-invariants.sh`
 pulls a pinned bun image, and it can only break if something under `tck/specs/`
