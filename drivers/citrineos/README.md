@@ -90,6 +90,39 @@ this development environment, not of CitrineOS in production, and swapping in
 the OIDC provider would be a change to [`api-client.ts`](api-client.ts) rather
 than a setting.
 
+## Running two workspaces at once
+
+Several checkouts of this repository share one docker daemon, and the stack is
+a singleton on three counts the daemon holds globally: the compose project name
+(hence the network and volumes), four `container_name:` values, and the
+published ports. Nothing warns you — a second `up` adopts the first one's
+containers, and `down -v` destroys a database somebody else is mid-sweep
+against.
+
+`TCK_SUFFIX` moves all three at once:
+
+```sh
+export TCK_SUFFIX=-b CITRINE_API_PORT=18080 CITRINE_GRAPHQL_PORT=18090
+docker compose -f drivers/citrineos/compose.yaml up -d --wait
+
+export CSMS_DRIVER=./drivers/citrineos/index.ts
+export CITRINE_API_URL=http://localhost:18080
+export CITRINE_GRAPHQL_URL=http://localhost:18090
+export CITRINE_NETWORK=citrineos-b_citrineos-internal
+export OCPP_CP_IDS=BCP1,BCP2,BCP3
+```
+
+**`OCPP_CP_IDS` matters as much as the ports**, and it is the part that is not
+obvious: the runner names each simulator container `simts-<cp-id>-<scenario>`,
+which is daemon-global, so two sweeps sharing `CERTCP1` collide on
+`docker run --name` *even against separate CSMS instances*. The runner refuses
+to start when it finds a simulator container driving one of your charge points
+that it did not start, and says so — without that, the symptom is a scenario
+reading the other run's transaction row and reporting it as a CSMS finding.
+
+`CITRINE_WS_URL` needs no override: the simulator resolves `citrine` inside the
+project network by *service* name, and only the container names move.
+
 ## The pinned version
 
 [`compose.yaml`](compose.yaml) pins **`v2.0.0-beta1`** by digest:
