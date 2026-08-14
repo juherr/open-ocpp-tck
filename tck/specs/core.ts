@@ -823,6 +823,17 @@ export const tc064DataTransferSpec: ScenarioSpec<void> = {
     // came back, but not that its status is one the protocol defines. The
     // hand-rolled block below does both, so it stays -- it is a superset, not a
     // survivor of the refactor.
+    //
+    // REJECTED REFACTOR, and it will be proposed again because it is the
+    // obvious one: fold the block into a new `assertResponseStatusOneOf` in
+    // assert.ts, next to assertResponseStatus, which it duplicates down to the
+    // wording of its two failure details. Not taken here for a reason outside
+    // the code -- doing it moves this scenario's entry in ASSERT-INVENTORY.txt,
+    // and that artifact is the review signal for "what does this scenario
+    // measure". Spending it on a refactor that measures exactly the same thing
+    // makes the next genuine change harder to read. Worth doing in a commit
+    // whose only job is that refactor, never bundled with one that changes a
+    // check.
     const description =
       "DataTransfer.conf received (status is the CSMS's own policy, not asserted)";
     const call = findCall(frames, "sent", "DataTransfer");

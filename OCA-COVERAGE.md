@@ -237,6 +237,26 @@ the only action answered with a CALLERROR anywhere in the suite" — true when
 written, and unverifiable afterwards, because `results/` is gitignored and CI
 artifacts expire. It is one command now.
 
+## The derivation this file does not guard
+
+"46 obligations, 46 checks" is a claim a reader has to take on faith. Nothing
+detects an obligation in the table above with no `assertAllAnswered` behind it,
+or an `assertAllAnswered` with no obligation behind it — and every other
+derivation in this repository is generated and guarded precisely so that no one
+has to: `ASSERT-INVENTORY.txt`, `DRIVE-TRACE.txt`, `types/**`, `VENDOR.md`'s
+digests.
+
+**The fix is known and deliberately not taken yet.** Make the mandated-`.conf`
+column a data file, render this table from it, and add a guard that diffs it
+against the `assertAllAnswered` lines `ASSERT-INVENTORY.txt` already extracts.
+That removes "an author remembered" from the loop without moving the per-scenario
+altitude or the review signal.
+
+It is not in the change that created this file because it is a new artifact, a
+new generator and a new guard — a feature, not the audit. Recorded here rather
+than in an issue so that the next person to notice the gap reads that it was
+seen, and not that it was missed.
+
 ## Keeping this current
 
 The reference is revised. When it is, re-derive rather than re-read: the
