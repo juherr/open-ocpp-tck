@@ -595,6 +595,31 @@ function standingOfOutcome(outcome: ScenarioOutcome): SweepStanding {
   return standingOf(outcome.verdict, outcome.expected, outcome.isolatedRetry?.verdict);
 }
 
+/** An outcome whose declaration is known present -- every standing except
+ *  "ok" implies one, but a `SweepStanding` is a string and cannot say so. */
+type DeclaredOutcome = ScenarioOutcome & { expected: ExpectedFailureEntry };
+
+/**
+ * Outcomes with a given standing, NARROWED so their declaration can be read
+ * without `?.`.
+ *
+ * The narrowing is the point rather than the filtering. Reaching for
+ * `o.expected?.finding` inside a list already filtered to a declared standing
+ * compiles, and renders the literal "undefined" into a report if the standing
+ * rule and the declaration ever disagree -- which is a report saying a finding
+ * was excused, naming nothing. The predicate makes the compiler check what the
+ * filter already implies.
+ */
+function withStanding(
+  outcomes: readonly ScenarioOutcome[],
+  standing: SweepStanding,
+): DeclaredOutcome[] {
+  return outcomes.filter(
+    (o): o is DeclaredOutcome =>
+      o.expected !== undefined && standingOfOutcome(o) === standing,
+  );
+}
+
 /**
  * The driver's declaration, as the one sentence every report renders --
  * `undefined` when it declared nothing about this scenario.
@@ -845,12 +870,8 @@ async function writeSummary(
         `${naCount} NOT APPLICABLE (out of scope for this CSMS). Neither fails the sweep.`,
     );
   }
-  const expectedFails = outcomes.filter(
-    (o) => standingOfOutcome(o) === "expected-fail",
-  );
-  const unexpectedPasses = outcomes.filter(
-    (o) => standingOfOutcome(o) === "unexpected-pass",
-  );
+  const expectedFails = withStanding(outcomes, "expected-fail");
+  const unexpectedPasses = withStanding(outcomes, "unexpected-pass");
   if (expectedFails.length > 0) {
     notes.push(
       "",
@@ -859,13 +880,11 @@ async function writeSummary(
         "rows stay DRIVABLE and the scenarios still ran; only the exit code " +
         "changed. Each entry names where the finding is written down:",
       ...expectedFails.map(
-        (o) => `- \`${o.templateId}\` — ${o.expected?.finding}`,
+        (o) => `- \`${o.templateId}\` — ${o.expected.finding}`,
       ),
     );
   }
-  const declaredButErrored = outcomes.filter(
-    (o) => o.expected !== undefined && standingOfOutcome(o) === "unexpected-fail",
-  );
+  const declaredButErrored = withStanding(outcomes, "unexpected-fail");
   if (declaredButErrored.length > 0) {
     notes.push(
       "",
@@ -1016,18 +1035,14 @@ async function runGroupSweep(
   const badOutcomes = outcomes.filter(
     (o) => standingOfOutcome(o) === "unexpected-fail",
   );
-  const expectedFails = outcomes.filter(
-    (o) => standingOfOutcome(o) === "expected-fail",
-  );
-  const unexpectedPasses = outcomes.filter(
-    (o) => standingOfOutcome(o) === "unexpected-pass",
-  );
+  const expectedFails = withStanding(outcomes, "expected-fail");
+  const unexpectedPasses = withStanding(outcomes, "unexpected-pass");
   // A subset of badOutcomes, reported on its own line because it reads as a
   // regression of the DECLARATION when it is nothing of the sort: the entry is
   // almost certainly still good and something new stopped the scenario ever
   // reaching the CSMS. Without this the maintainer sees a red build on the one
   // row they were told would be red, and goes looking in the wrong place.
-  const declaredButErrored = badOutcomes.filter((o) => o.expected !== undefined);
+  const declaredButErrored = withStanding(outcomes, "unexpected-fail");
   // A flake IS "failed, but not effectively" -- said through the shared
   // predicate rather than spelled out again, which is what the comment above
   // claims and what the previous hand-written copy quietly contradicted.
@@ -1838,23 +1853,43 @@ function exitForSingleRun(
   verdict: Verdict,
   expected: ExpectedFailureEntry | undefined,
 ): number {
-  switch (standingOf(verdict, expected)) {
-    case "ok":
-      return 0;
-    case "unexpected-fail":
-      return 1;
+  const standing = standingOf(verdict, expected);
+  // Undeclared first, so `expected` is narrowed for the rest. Reading it
+  // through `?.` under a standing the compiler cannot tie back to it is how a
+  // report ends up saying a finding was excused while naming nothing -- see
+  // withStanding() for the same hazard on the sweep side.
+  if (expected === undefined) {
+    return standing === "unexpected-fail" ? 1 : 0;
+  }
+  switch (standing) {
     case "expected-fail":
       process.stderr.write(
-        `[runner] ${templateId} EXPECTED FAIL: ${expected?.reason} ` +
-          `(${expected?.finding}) -- declared by this driver, exit 0.\n`,
+        `[runner] ${templateId} EXPECTED FAIL: ${expected.reason} ` +
+          `(${expected.finding}) -- declared by this driver, exit 0.\n`,
       );
       return 0;
     case "unexpected-pass":
       process.stderr.write(
         `[runner] ${templateId} UNEXPECTED PASS: this driver declares it ` +
-          `expected-failing (${expected?.reason} -- ${expected?.finding}), ` +
+          `expected-failing (${expected.reason} -- ${expected.finding}), ` +
           `and ${unexpectedPassDetail(verdict)}.\n`,
       );
       return 1;
+    case "unexpected-fail":
+      // Not reachable today -- a throw never reaches this function, so
+      // `verdict` is never ERROR here and a declared FAIL is expected-fail.
+      // Written out anyway rather than folded into a default: "declared and
+      // errored" is the case the sweep exists to report, and the day this
+      // path learns to catch a throw it must not silently exit 1 with no word
+      // about the declaration it was carrying.
+      process.stderr.write(
+        `[runner] ${templateId} DECLARED, BUT ERRORED (${expected.reason} -- ` +
+          `${expected.finding}): ${declaredButErroredDetail(verdict)}.\n`,
+      );
+      return 1;
+    case "ok":
+      // Unreachable: standingOf() answers "ok" only for an undeclared
+      // scenario, and that returned above.
+      return 0;
   }
 }

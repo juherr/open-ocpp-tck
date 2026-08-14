@@ -26,6 +26,7 @@
  */
 import type { ExpectedFailureEntry } from "../tck/expected";
 import {
+  declaredButErroredDetail,
   effectivelyFailed,
   standingOf,
   unexpectedPassDetail,
@@ -121,6 +122,22 @@ check(
   unexpectedPassDetail("PASS").includes("looks fixed"),
   "an outright PASS no longer reads as evidence the finding is fixed, which " +
     "is the one case where it is.",
+);
+
+// The mirror of the three above. This message points the reader AWAY from the
+// entry -- the declaration is probably intact and the crash is new -- so
+// inverting it would send them to delete a finding that still holds, which is
+// the same damage from the opposite direction.
+check(
+  declaredButErroredDetail("ERROR").includes("still good"),
+  "a declared scenario that errored no longer reads as 'the entry is " +
+    "probably still good', so the message now points at the declaration " +
+    "rather than at the crash.",
+);
+check(
+  declaredButErroredDetail("FAIL", "ERROR").includes("isolated retry"),
+  "the FAIL-then-ERROR case no longer says where the ERROR came from, so a " +
+    "reader cannot tell a crashing retry from a crashing lane.",
 );
 
 function check(condition: boolean, failure: string): void {
