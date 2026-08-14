@@ -174,7 +174,9 @@ the check could not be evaluated" is a real outcome:
   because a driver answered with `unverifiable("<why>")` instead of inventing a
   value. Exit code 0.
 
-`FAIL` and `ERROR` exit non-zero — unless your driver said so first.
+`FAIL` and `ERROR` exit non-zero. A driver may declare a scenario
+expected-failing, which excuses its `FAIL` — never its `ERROR`, and never a
+declared scenario that stops failing. See below.
 
 ## Expected failures
 

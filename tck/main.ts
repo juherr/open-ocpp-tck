@@ -1077,16 +1077,11 @@ async function runGroupSweep(
   const summaryPath = await writeSummary(groupName, outcomes, parts);
   process.stderr.write(`[runner] results table: ${summaryPath}\n`);
 
-  // A parallel-lane FAIL/ERROR that did not fail on its isolated retry is a
-  // flake, not a real failure -- it does not fail the sweep. Everything below
-  // reads that through effectivelyFailed(), via standingOf().
   const { unexpectedFails, expectedFails, unexpectedPasses, declaredButErrored, flakes } =
     parts;
-  // A subset of badOutcomes, reported on its own line because it reads as a
-  // regression of the DECLARATION when it is nothing of the sort: the entry is
-  // almost certainly still good and something new stopped the scenario ever
-  // reaching the CSMS. Without this the maintainer sees a red build on the one
-  // row they were told would be red, and goes looking in the wrong place.
+  // A parallel-lane FAIL/ERROR that did not fail on its isolated retry is a
+  // flake, not a real failure -- it does not fail the sweep. Everything here
+  // reads that through effectivelyFailed(), via standingOf().
   const flakeCount = flakes.length;
   if (flakeCount > 0) {
     process.stderr.write(
@@ -1098,6 +1093,12 @@ async function runGroupSweep(
       `[runner] ${expectedFails.length} scenario(s) in group '${groupName}' failed as this driver declared they would -- not a build failure; see ${summaryPath}\n`,
     );
   }
+  // Its own standing, and its own line, because it reads as a regression of the
+  // DECLARATION when it is nothing of the sort: the entry is almost certainly
+  // still good and something new stopped the scenario ever reaching the CSMS.
+  // Folded in with the ordinary failures, the maintainer sees a red build on
+  // the one row they were told would be red, and goes looking in the wrong
+  // place.
   if (declaredButErrored.length > 0) {
     process.stderr.write(
       `[runner] ${declaredButErrored.length} scenario(s) in group '${groupName}' are declared expected-failing and ERRORED, which is not the declared failure:\n`,

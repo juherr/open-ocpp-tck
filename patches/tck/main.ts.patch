@@ -1224,7 +1224,7 @@
            "(a sequential sweep is already isolated).\n",
        );
      }
-@@ -588,45 +1062,86 @@
+@@ -588,45 +1062,87 @@
    for (const o of outcomes) {
      const retrySuffix = o.isolatedRetry
        ? ` [isolated retry: ${o.isolatedRetry.verdict}${
@@ -1256,16 +1256,11 @@
 -  const flakeCount = outcomes.filter(
 -    (o) => o.verdict !== "PASS" && o.isolatedRetry?.verdict === "PASS",
 -  ).length;
-+  // A parallel-lane FAIL/ERROR that did not fail on its isolated retry is a
-+  // flake, not a real failure -- it does not fail the sweep. Everything below
-+  // reads that through effectivelyFailed(), via standingOf().
 +  const { unexpectedFails, expectedFails, unexpectedPasses, declaredButErrored, flakes } =
 +    parts;
-+  // A subset of badOutcomes, reported on its own line because it reads as a
-+  // regression of the DECLARATION when it is nothing of the sort: the entry is
-+  // almost certainly still good and something new stopped the scenario ever
-+  // reaching the CSMS. Without this the maintainer sees a red build on the one
-+  // row they were told would be red, and goes looking in the wrong place.
++  // A parallel-lane FAIL/ERROR that did not fail on its isolated retry is a
++  // flake, not a real failure -- it does not fail the sweep. Everything here
++  // reads that through effectivelyFailed(), via standingOf().
 +  const flakeCount = flakes.length;
    if (flakeCount > 0) {
      process.stderr.write(
@@ -1281,6 +1276,12 @@
      );
 -    process.exit(1);
    }
++  // Its own standing, and its own line, because it reads as a regression of the
++  // DECLARATION when it is nothing of the sort: the entry is almost certainly
++  // still good and something new stopped the scenario ever reaching the CSMS.
++  // Folded in with the ordinary failures, the maintainer sees a red build on
++  // the one row they were told would be red, and goes looking in the wrong
++  // place.
 +  if (declaredButErrored.length > 0) {
 +    process.stderr.write(
 +      `[runner] ${declaredButErrored.length} scenario(s) in group '${groupName}' are declared expected-failing and ERRORED, which is not the declared failure:\n`,
@@ -1333,7 +1334,7 @@
  }
  
  // ---------------------------------------------------------------------------
-@@ -642,6 +1157,8 @@
+@@ -642,6 +1158,8 @@
    cpId: string;
    connector?: number;
    timeoutSecs?: number;
@@ -1342,7 +1343,7 @@
  }
  
  function requireValue(argv: string[], index: number, flag: string): string {
-@@ -663,37 +1180,80 @@
+@@ -663,37 +1181,80 @@
    return n;
  }
  
@@ -1440,7 +1441,7 @@
  
    if (argv[0] === "run-all") {
      group = "all";
-@@ -708,18 +1268,27 @@
+@@ -708,18 +1269,27 @@
          case "--retry-failed-isolated":
            retryFailedIsolated = true;
            break;
@@ -1471,7 +1472,7 @@
      process.exit(1);
    }
  
-@@ -749,9 +1318,11 @@
+@@ -749,9 +1319,11 @@
        case "--retry-failed-isolated":
          retryFailedIsolated = true;
          break;
@@ -1484,7 +1485,7 @@
          process.exit(1);
      }
    }
-@@ -764,35 +1335,495 @@
+@@ -764,35 +1336,495 @@
      cpId,
      connector,
      timeoutSecs,
@@ -1513,7 +1514,7 @@
 +  }
 +  return [...seen].map(([templateId, group]) => ({ templateId, group }));
 +}
- 
++
 +function listScenarios(argv: string[]): number {
 +  let group: string | undefined;
 +  let asJson = false;
@@ -1696,7 +1697,7 @@
 +      );
 +    }
 +  }
-+
+ 
 +  if (capabilities) {
 +    const known = new Set<string>(CSMS_OPERATION_ACTIONS);
 +    const unknown = [...capabilities.operations].filter(
@@ -1996,7 +1997,7 @@
    }
  
    const spec = SPECS_BY_TEMPLATE_ID.get(args.templateId);
-@@ -800,18 +1831,107 @@
+@@ -800,18 +1832,107 @@
      process.stderr.write(
        `Unknown template id: ${args.templateId} (known: ${[...SPECS_BY_TEMPLATE_ID.keys()].join(", ")})\n`,
      );

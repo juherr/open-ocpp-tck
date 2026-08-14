@@ -102,7 +102,8 @@ const V2_SCOPE = {
   // cannot drift.
   "cert16-tc023-3-authorize-blocked": d(
     `${BLOCKED_UNREACHABLE} Expressible and driven: the driver sends the ` +
-      "Authorize the scenario asks for and reads the answer back. What comes " +
+      "Authorize request the scenario asks for and reads the answer back. " +
+      "What comes " +
       "back is Invalid where OCPP 1.6 requires Blocked, which is a finding " +
       "against CitrineOS rather than a gap in this driver -- declared in " +
       "expected.ts.",
