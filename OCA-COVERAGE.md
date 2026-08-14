@@ -54,18 +54,18 @@ state, which is the only reading under which the case tests anything.
 "asserted before" is what the scenario checked about the CSMS's answer before
 issue #11 was addressed; "added" is what `assertAllAnswered` now checks.
 
-**46 obligations, 39 checks.** The seven-way difference is not an oversight --
-it is the "unexercised obligations" section below. A check for a request the
-scenario never sends would report "the CSMS did not answer" about a question
-nobody asked, so those seven are recorded as coverage gaps instead. Which
-seven was measured, not guessed: a full sweep plus
-`tools/answered-report.ts`.
+**46 obligations, 46 checks.** Seven of them can never go green, because the
+scenario carrying the obligation never puts the request on the wire. Those
+report **SKIPPED**, which makes the scenario PARTIAL — orange, outside the
+exit code — rather than PASS or FAIL. Red would say "the CSMS did not answer"
+about a question nobody asked; green would hide the gap. Which seven was
+measured, not guessed: a full sweep plus `tools/answered-report.ts`.
 
 ### `tck/specs/core.ts`
 
 | scenario | OCA case | mandated `.conf` | asserted before | added |
 |---|---|---|---|---|
-| `cert16-tc001-cold-boot` | TC_001 | BootNotification, Heartbeat, StatusNotification | BootNotification | **StatusNotification** · _unexercised: Heartbeat_ |
+| `cert16-tc001-cold-boot` | TC_001 | BootNotification, Heartbeat, StatusNotification | BootNotification | **StatusNotification** · _Heartbeat (SKIPPED)_ |
 | `cert16-tc003-charging-plugin-first` | TC_003 | Authorize, StartTransaction, StatusNotification | StartTransaction | **Authorize, StatusNotification** |
 | `cert16-tc004-charging-id-first` | TC_004_1 | Authorize, StartTransaction, StatusNotification | StartTransaction | **Authorize, StatusNotification** |
 | `cert16-tc005-ev-side-disconnect` | TC_005_1 | StatusNotification, StopTransaction | — | **StatusNotification, StopTransaction** |
@@ -103,16 +103,16 @@ seven was measured, not guessed: a full sweep plus
 
 | scenario | OCA case | mandated `.conf` | asserted before | added |
 |---|---|---|---|---|
-| `cert16-tc010-remote-start` | TC_010 | Authorize, StartTransaction, StatusNotification | — | **StartTransaction, StatusNotification** · _unexercised: Authorize_ |
-| `cert16-tc011-remote-start-stop` | TC_011_1 | Authorize, StartTransaction, StatusNotification | — | **StartTransaction, StatusNotification** · _unexercised: Authorize_ |
+| `cert16-tc010-remote-start` | TC_010 | Authorize, StartTransaction, StatusNotification | — | **StartTransaction, StatusNotification** · _Authorize (SKIPPED)_ |
+| `cert16-tc011-remote-start-stop` | TC_011_1 | Authorize, StartTransaction, StatusNotification | — | **StartTransaction, StatusNotification** · _Authorize (SKIPPED)_ |
 | `cert16-tc012-remote-stop` | TC_012 | StatusNotification, StopTransaction | — | **StatusNotification, StopTransaction** |
 | `cert16-tc026-remote-start-rejected` | TC_026 | — | — | — |
 | `cert16-tc028-remote-stop-rejected` | TC_028 | — | — | — |
-| `cert16-tc054-trigger-message` | TC_054 | DiagnosticsStatusNotification, FirmwareStatusNotification, Heartbeat, MeterValues, StatusNotification | — | **Heartbeat, StatusNotification** · _unexercised: DiagnosticsStatusNotification, FirmwareStatusNotification, MeterValues_ |
+| `cert16-tc054-trigger-message` | TC_054 | DiagnosticsStatusNotification, FirmwareStatusNotification, Heartbeat, MeterValues, StatusNotification | — | **Heartbeat, StatusNotification** · _Diagnostics-/FirmwareStatusNotification, MeterValues (SKIPPED)_ |
 | `cert16-tc055-trigger-message-rejected` | TC_055 | — | — | — |
 | `cert16-tc056-central-smart-charging-txdefault` | TC_056 | — | — | — |
 | `cert16-tc057-central-smart-charging-txprofile` | TC_057 | — | — | — |
-| `cert16-tc059-remote-start-with-profile` | TC_059 | Authorize, StartTransaction, StatusNotification | — | **StartTransaction, StatusNotification** · _unexercised: Authorize_ |
+| `cert16-tc059-remote-start-with-profile` | TC_059 | Authorize, StartTransaction, StatusNotification | — | **StartTransaction, StatusNotification** · _Authorize (SKIPPED)_ |
 | `cert16-tc066-get-composite-schedule` | TC_066 | — | — | — |
 | `cert16-tc067-clear-charging-profile` | TC_067 | — | — | — |
 
@@ -135,9 +135,10 @@ seven was measured, not guessed: a full sweep plus
 
 ## Unexercised obligations
 
-Seven `.conf` obligations in the table above have no check, because the
-scenario does not put the corresponding request on the wire. Each was
-confirmed against a real sweep's logs, not inferred from reading the specs.
+Seven `.conf` obligations report SKIPPED on every driver, because the scenario
+does not put the corresponding request on the wire. Each was confirmed against
+a real sweep's logs, not inferred from reading the specs. They are checked --
+so a run shows them — but they cannot pass until the scenario changes.
 
 | scenario | OCA step | obligation | why the request is never sent |
 |---|---|---|---|
@@ -154,8 +155,10 @@ authorization. `TC_003` and `TC_004` are locally driven, do send `Authorize`,
 and do carry it.
 
 Closing any of these is a change to the scenario -- a longer hold, an extra
-trigger -- not a change to what the checks assert. They are listed here so
-that choice stays visible.
+trigger -- not a change to what the checks assert. Until then each shows up as
+a SKIPPED check tagged `UNEXERCISED_PREFIX`, which is what keeps them
+distinguishable in `summary.md` from the other reason a check is skipped: a
+value THIS CSMS could not supply. Those vary per driver; these do not.
 
 ## One unanswered request that is nobody's fault
 

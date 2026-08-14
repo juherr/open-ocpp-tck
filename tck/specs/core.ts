@@ -46,17 +46,14 @@ export const tc001ColdBootSpec: ScenarioSpec<void> = {
       "BootNotification accepted",
       { direction: "sent" },
     );
-    // TC_001 step 4: the Central System answers the connector status reports
-    // too, not only the boot. See OCA-COVERAGE.md.
-    //
-    // Step 6 (Heartbeat.conf) is NOT checked here, and the omission is
-    // measured rather than assumed: this scenario holds for 20s and the CP
-    // sends no Heartbeat in that window (confirmed by a sweep --
-    // tools/answered-report.ts reports BootNotification and
-    // StatusNotification only). Asserting it would report "the CSMS did not
-    // answer" for a request that was never made. TC_054 triggers a Heartbeat
-    // explicitly and carries the obligation instead.
+    // TC_001 steps 4 and 6. Heartbeat reports SKIPPED here rather than PASS or
+    // FAIL, and that is the intended reading: this scenario holds for 20s and
+    // the CP sends no Heartbeat in that window (measured -- a sweep's log
+    // carries BootNotification and StatusNotification only). The obligation is
+    // real and unexercised, which is orange; TC_054 triggers a Heartbeat
+    // explicitly and checks it for real.
     assertAllAnswered(rec, frames, "StatusNotification");
+    assertAllAnswered(rec, frames, "Heartbeat");
 
     const sentAvailableOnConnector1 = frames.some(
       (f) =>

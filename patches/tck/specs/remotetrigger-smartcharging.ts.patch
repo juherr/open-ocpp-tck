@@ -59,28 +59,30 @@
      assertReceived(
        rec,
        frames,
-@@ -104,8 +101,19 @@
+@@ -104,8 +101,21 @@
        "StartTransaction sent with CSMS-supplied idTag (overrides scenario's hardcoded CERT010 fallback)",
      );
      assertSent(rec, frames, "MeterValues", "MeterValues sent while charging");
-+    // TC_010 steps 8, 10, 12. Before the DB block: the early return below
++    // TC_010 steps 6, 8, 10, 12. Before the DB block: the early return below
 +    // would otherwise skip these whenever no transaction row is findable.
 +    //
-+    // Step 6 (Authorize.conf) is NOT checked, for a reason that holds for
-+    // every remote-start scenario here: the CSMS supplies the idTag in
++    // Authorize reports SKIPPED, for a reason that holds for every
++    // remote-start scenario here: the CSMS supplies the idTag in
 +    // RemoteStartTransaction, so the CP goes straight to StartTransaction and
-+    // never sends an Authorize.req. Measured, not assumed -- a sweep reports
-+    // no Authorize on the wire for this scenario at all. TC_003/TC_004 are
-+    // locally driven and do carry that obligation.
++    // never sends an Authorize.req. Measured, not assumed -- a sweep shows no
++    // Authorize on the wire for this scenario at all. Orange rather than red
++    // because that is a gap in the scenario, not a CSMS defect; TC_003/TC_004
++    // are locally driven and check the same obligation for real.
 +    assertAllAnswered(rec, frames, "StatusNotification");
 +    assertAllAnswered(rec, frames, "StartTransaction");
++    assertAllAnswered(rec, frames, "Authorize");
  
 -    const txPk = await db.latestTxPk(cpId);
 +    const txPk = await records.latestTransaction(cpId);
      if (!txPk) {
        rec.fail(
          `DB: transaction row exists for ${cpId} with id_tag CERT-TAG-1`,
-@@ -119,7 +127,7 @@
+@@ -119,7 +129,7 @@
      // thing (and reports a more useful mismatch on failure).
      assertEq(
        rec,
@@ -89,7 +91,7 @@
        "CERT-TAG-1",
        `DB: transaction row exists for ${cpId} with id_tag CERT-TAG-1`,
      );
-@@ -139,35 +147,31 @@
+@@ -139,35 +149,31 @@
    connector: 1,
    bootWaitSecs: 4,
    holdSecs: 20,
@@ -132,22 +134,23 @@
      assertResponseStatus(
        rec,
        frames,
-@@ -194,8 +198,13 @@
+@@ -194,8 +200,14 @@
        /Sent: \[2,.*"StopTransaction".*"reason":"Remote"/,
        "StopTransaction sent with reason Remote",
      );
-+    // TC_011.1 steps 8, 10, 14. Step 6 (Authorize.conf) is absent for the same
-+    // measured reason as TC_010 above: remote start carries the idTag, so no
++    // TC_011.1 steps 6, 8, 10, 14. Authorize is SKIPPED for the same measured
++    // reason as TC_010 above: remote start carries the idTag, so no
 +    // Authorize.req is ever sent.
 +    assertAllAnswered(rec, frames, "StatusNotification");
 +    assertAllAnswered(rec, frames, "StartTransaction");
++    assertAllAnswered(rec, frames, "Authorize");
  
 -    const txPk = await db.latestTxPk(cpId);
 +    const txPk = await records.latestTransaction(cpId);
      if (!txPk) {
        rec.fail(
          "DB: transaction is closed (stop_timestamp set)",
-@@ -205,7 +214,7 @@
+@@ -205,7 +217,7 @@
      }
      assertNonEmpty(
        rec,
@@ -156,7 +159,7 @@
        "DB: transaction is closed (stop_timestamp set)",
      );
    },
-@@ -223,21 +232,18 @@
+@@ -223,21 +235,18 @@
    connector: 1,
    bootWaitSecs: 4,
    holdSecs: 18,
@@ -182,7 +185,7 @@
      assertLineMatches(
        rec,
        lines,
-@@ -257,8 +263,11 @@
+@@ -257,8 +266,11 @@
        /Sent: \[2,.*"StopTransaction".*"reason":"Remote"/,
        "StopTransaction sent with reason Remote",
      );
@@ -195,7 +198,7 @@
      if (!txPk) {
        rec.fail("DB: id_tag is CERT012", "no transaction found");
        rec.fail(
-@@ -267,10 +276,10 @@
+@@ -267,10 +279,10 @@
        );
        return;
      }
@@ -208,7 +211,7 @@
        "DB: transaction is closed (stop_timestamp set)",
      );
    },
-@@ -298,19 +307,18 @@
+@@ -298,19 +310,18 @@
      connector: 1,
      bootWaitSecs: 4,
      holdSecs: 15,
@@ -235,7 +238,7 @@
        } catch (err) {
          // Mirror the bash spec's `|| true`: a failed queue POST doesn't
          // abort drive() -- assert() below fails loudly on its own if the
-@@ -319,7 +327,7 @@
+@@ -319,7 +330,7 @@
        }
        return { baselineTxPk };
      },
@@ -244,7 +247,7 @@
        assertReceived(
          rec,
          frames,
-@@ -345,7 +353,7 @@
+@@ -345,7 +356,7 @@
          "no StartTransaction sent",
        );
  
@@ -253,7 +256,7 @@
        assertEq(
          rec,
          after,
-@@ -373,9 +381,9 @@
+@@ -373,9 +384,9 @@
      connector: 1,
      bootWaitSecs: 4,
      holdSecs: 20,
@@ -265,7 +268,7 @@
        // -- on a reused charge point that could silently pick up a stale
        // closed transaction from an earlier run instead. Mirrors the bash
        // spec's `db_wait_active_tx_pk ... || true`: waitActiveTxPk rejects
-@@ -383,23 +391,20 @@
+@@ -383,23 +394,20 @@
        // empty txPk, same as the bash `|| true` swallowing a timeout.
        let txPk = "";
        try {
@@ -292,7 +295,7 @@
        assertLineMatches(
          rec,
          lines,
-@@ -429,7 +434,7 @@
+@@ -429,7 +437,7 @@
        }
        assertNonEmpty(
          rec,
@@ -301,7 +304,7 @@
          "DB: transaction is closed (stop_timestamp set)",
        );
      },
-@@ -447,14 +452,10 @@
+@@ -447,14 +455,10 @@
    connector: 1,
    bootWaitSecs: 4,
    holdSecs: 12,
@@ -318,23 +321,25 @@
      } catch (err) {
        warnOpFailed("TriggerMessage", err);
      }
-@@ -486,6 +487,15 @@
+@@ -486,6 +490,17 @@
        /Sent: \[2,.*"Heartbeat"/,
        "requested Heartbeat sent after TriggerMessage",
      );
-+    // TC_054 puts a .conf on the Central System for all six triggerable
-+    // messages (Diagnostics-/FirmwareStatusNotification, Heartbeat,
-+    // MeterValues, StatusNotification). This scenario triggers ONE of them --
-+    // see the drive() above -- so only the two the run actually produces are
-+    // checked. The other three are a scenario-coverage gap, listed as such in
-+    // OCA-COVERAGE.md rather than asserted here: a check for a request the
-+    // scenario never makes reports the wrong thing about the CSMS.
++    // TC_054 puts a .conf on the Central System for all five charge-point
++    // messages it can trigger. This scenario triggers ONE of them -- see the
++    // drive() above -- so Heartbeat and StatusNotification are checked for
++    // real and the other three report SKIPPED. Listing them is the point:
++    // the gap is in this scenario's single trigger, and leaving them out
++    // would hide that behind a green verdict.
 +    assertAllAnswered(rec, frames, "Heartbeat");
 +    assertAllAnswered(rec, frames, "StatusNotification");
++    assertAllAnswered(rec, frames, "MeterValues");
++    assertAllAnswered(rec, frames, "DiagnosticsStatusNotification");
++    assertAllAnswered(rec, frames, "FirmwareStatusNotification");
    },
  };
  
-@@ -501,14 +511,10 @@
+@@ -501,14 +516,10 @@
    connector: 1,
    bootWaitSecs: 4,
    holdSecs: 12,
@@ -351,7 +356,7 @@
      } catch (err) {
        warnOpFailed("TriggerMessage", err);
      }
-@@ -560,25 +566,24 @@
+@@ -560,25 +571,24 @@
      bootWaitSecs: 4,
      // tx-start settle(3s) + csmsCallTrigger + 10s delay-before-stop + tail.
      holdSecs: 25,
@@ -386,7 +391,7 @@
        assertLineMatches(
          rec,
          lines,
-@@ -609,7 +614,7 @@
+@@ -609,7 +619,7 @@
        // drive()'s captured pk if non-empty, else fall back to a fresh
        // lookup (defensive: TX_PK could be empty if drive() raced the DB
        // write before the profile-set op).
@@ -395,7 +400,7 @@
        if (!txPk) {
          rec.fail(
            "DB: transaction is closed (stop_timestamp set)",
-@@ -619,7 +624,7 @@
+@@ -619,7 +629,7 @@
        }
        assertNonEmpty(
          rec,
@@ -404,7 +409,7 @@
          "DB: transaction is closed (stop_timestamp set)",
        );
      },
-@@ -646,33 +651,33 @@
+@@ -646,33 +656,33 @@
      connector: 1,
      bootWaitSecs: 4,
      holdSecs: 25,
@@ -449,7 +454,7 @@
        assertLineMatches(
          rec,
          lines,
-@@ -708,7 +713,7 @@
+@@ -708,7 +718,7 @@
        }
        assertNonEmpty(
          rec,
@@ -458,7 +463,7 @@
          "DB: transaction is closed (stop_timestamp set)",
        );
      },
-@@ -739,25 +744,25 @@
+@@ -739,25 +749,25 @@
      holdSecs: 40,
      async drive({
        cpId,
@@ -494,22 +499,23 @@
        assertResponseStatus(
          rec,
          frames,
-@@ -791,8 +796,13 @@
+@@ -791,8 +801,14 @@
          /Sent: \[2,.*"StopTransaction"/,
          "StopTransaction eventually sent",
        );
-+      // TC_059 steps 8 and 10. Step 6 (Authorize.conf) is absent for the same
-+      // measured reason as TC_010 and TC_011: this is a remote start, so the
-+      // idTag arrives in the request and no Authorize.req is ever sent.
++      // TC_059 steps 6, 8, 10. Authorize is SKIPPED for the same measured
++      // reason as TC_010 and TC_011: this is a remote start, so the idTag
++      // arrives in the request and no Authorize.req is ever sent.
 +      assertAllAnswered(rec, frames, "StatusNotification");
 +      assertAllAnswered(rec, frames, "StartTransaction");
++      assertAllAnswered(rec, frames, "Authorize");
  
 -      const txPk = await db.latestTxPk(cpId);
 +      const txPk = await records.latestTransaction(cpId);
        if (!txPk) {
          rec.fail(
            "DB: transaction is closed (stop_timestamp set)",
-@@ -802,7 +812,7 @@
+@@ -802,7 +818,7 @@
        }
        assertNonEmpty(
          rec,
@@ -518,7 +524,7 @@
          "DB: transaction is closed (stop_timestamp set)",
        );
      },
-@@ -822,26 +832,25 @@
+@@ -822,26 +838,25 @@
    connector: 1,
    bootWaitSecs: 4,
    holdSecs: 15,
@@ -552,7 +558,7 @@
      // here isn't a completion barrier. Wait for the CP's own confirmation
      // that it actually applied the profile (the log literal is
      // SmartChargingHandlers.ts's "Applied charging profile #<id> to
-@@ -862,10 +871,10 @@
+@@ -862,10 +877,10 @@
      }
  
      try {
@@ -567,7 +573,7 @@
          chargingRateUnit: "W",
        });
      } catch (err) {
-@@ -908,20 +917,19 @@
+@@ -908,20 +923,19 @@
    connector: 1,
    bootWaitSecs: 4,
    holdSecs: 15,
@@ -594,7 +600,7 @@
        });
      } catch (err) {
        warnOpFailed("SetChargingProfile", err);
-@@ -944,10 +952,7 @@
+@@ -944,10 +958,7 @@
      }
  
      try {
