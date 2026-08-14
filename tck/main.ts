@@ -627,29 +627,57 @@ function standingOf(outcome: ScenarioOutcome): SweepStanding {
     return failed ? "unexpected-fail" : "ok";
   }
   if (failed) return "expected-fail";
-  // NOT APPLICABLE is unreachable here: check-driver rejects an id that is
-  // both declared expected-failing and NOT_APPLICABLE in the scope table, and
-  // the runtime UnsupportedOperationError escape would be the same
-  // contradiction arriving late. Reported as an unexpected pass rather than
-  // silently tolerated -- "it never ran" is not "it was fixed", and the
-  // message below says which.
+  // Everything else is an unexpected pass, INCLUDING NOT APPLICABLE. That one
+  // is not merely theoretical: check-driver rejects an id declared both ways,
+  // but only a driver that has been checked, and the runtime
+  // UnsupportedOperationError escape produces the same contradiction after the
+  // fact, when no offline check can have seen it. It is surfaced rather than
+  // tolerated because "it never ran" is not "it was fixed" --
+  // unexpectedPassDetail() is where the difference gets said.
   return "unexpected-pass";
 }
 
-/** Why an unexpected pass is one, in the words a reader needs to tell a fix
- *  from a flake from a contradiction without re-reading this file. */
-function unexpectedPassDetail(outcome: ScenarioOutcome): string {
-  if (outcome.verdict === "NOT APPLICABLE") {
-    return "it never ran (NOT APPLICABLE), so it cannot be failing as declared";
-  }
-  if (isFailure(outcome.verdict)) {
+/**
+ * Why an unexpected pass is one, in the words a reader needs to tell a fix
+ * from a flake from a contradiction from an unmeasured run -- without
+ * re-reading this file.
+ *
+ * The wording carries real weight, because the action it implies is DELETING A
+ * RECORDED FINDING. Only one of the four cases below is actually evidence that
+ * the CSMS was fixed; saying so for the other three would talk a maintainer
+ * into throwing away a finding that still holds.
+ *
+ * Takes the fields rather than the outcome, so that the single-scenario path
+ * -- which has no ScenarioOutcome and no isolated retry -- diagnoses the same
+ * situation the same way. It used to have a message of its own, and the two
+ * disagreed about the NOT APPLICABLE case.
+ */
+function unexpectedPassDetail(
+  verdict: Verdict,
+  isolatedRetry?: RetryOutcome,
+): string {
+  if (verdict === "NOT APPLICABLE") {
     return (
-      `it failed in the parallel lane and ${outcome.isolatedRetry?.verdict} ` +
-      "on its isolated retry -- either upstream fixed it, or the scenario is " +
-      "flaky and the flake is the bug to fix"
+      "it never ran (NOT APPLICABLE) -- the scope table and the " +
+      "expected-failure list contradict each other, so the contradiction is " +
+      "what to fix, and deleting the entry may be the wrong half"
     );
   }
-  return `it came back ${outcome.verdict} outright -- the finding looks fixed`;
+  if (verdict === "PARTIAL") {
+    return (
+      "it came back PARTIAL -- at least one check was SKIPPED because the " +
+      "driver could not evaluate it, so this is NOT evidence that the finding " +
+      "is fixed; find out which check degraded before deleting the entry"
+    );
+  }
+  if (isolatedRetry !== undefined && isFailure(verdict)) {
+    return (
+      `it failed in the parallel lane and ${isolatedRetry.verdict} on its ` +
+      "isolated retry -- either upstream fixed it, or the scenario is flaky " +
+      "and the flake is the bug to fix"
+    );
+  }
+  return `it came back ${verdict} outright -- the finding looks fixed`;
 }
 
 /**
@@ -861,7 +889,7 @@ async function writeSummary(
     } else if (standing === "unexpected-pass") {
       verdict =
         `${verdict} — UNEXPECTED PASS: declared expected-failing, but ` +
-        `${unexpectedPassDetail(o)}. Delete the entry or re-word it.`;
+        `${unexpectedPassDetail(o.verdict, o.isolatedRetry)}.`;
     }
     const base = `| ${o.templateId} | ${o.cpId} | ${verdict} | ${checks} | ${failed} | ${skipped} |`;
     if (!anyRetried) return base;
@@ -916,7 +944,7 @@ async function writeSummary(
         "known-red entry gets deleted when it stops being true, instead of " +
         "outliving the defect it documents.",
       ...unexpectedPasses.map(
-        (o) => `- \`${o.templateId}\` — ${unexpectedPassDetail(o)}`,
+        (o) => `- \`${o.templateId}\` — ${unexpectedPassDetail(o.verdict, o.isolatedRetry)}`,
       ),
     );
   }
@@ -1032,7 +1060,7 @@ async function runGroupSweep(
       standing === "expected-fail"
         ? ` [EXPECTED FAIL: ${o.expected?.reason} (${o.expected?.finding})]`
         : standing === "unexpected-pass"
-          ? ` [UNEXPECTED PASS: declared expected-failing, but ${unexpectedPassDetail(o)}]`
+          ? ` [UNEXPECTED PASS: declared expected-failing, but ${unexpectedPassDetail(o.verdict, o.isolatedRetry)}]`
           : "";
     process.stderr.write(
       `  ${o.verdict}: ${o.templateId} (${o.cpId}, ${o.checks ?? "-"} checks, ${o.failed ?? "-"} failed, ${o.skipped ?? "-"} skipped)${retrySuffix}${declaredSuffix}${reasonSuffix}\n`,
@@ -1079,7 +1107,7 @@ async function runGroupSweep(
     );
     for (const o of unexpectedPasses) {
       process.stderr.write(
-        `  ${o.templateId}: ${unexpectedPassDetail(o)} -- delete its expected-failure entry, or re-word it to say what is still true.\n`,
+        `  ${o.templateId}: ${unexpectedPassDetail(o.verdict, o.isolatedRetry)}.\n`,
       );
     }
   }
@@ -1532,7 +1560,16 @@ async function checkDriver(argv: string[]): Promise<number> {
           NOT_APPLICABLE: templateIdsWithStatus(scope, "NOT_APPLICABLE").length,
         }
       : null,
-    expectedFailures: expected ? Object.keys(expected).sort() : null,
+    // The entries, not their count and not their ids: --json is what a
+    // conformance report would read, and "which scenarios are excused, and on
+    // what recorded evidence" is the question it has to answer without going
+    // back to the driver's source. Sorted, so two runs of the same driver
+    // diff cleanly.
+    expectedFailures: expected
+      ? Object.keys(expected)
+          .sort()
+          .map((templateId) => ({ templateId, ...expected[templateId] }))
+      : null,
     problems,
     warnings,
   };
@@ -1570,8 +1607,8 @@ async function checkDriver(argv: string[]): Promise<number> {
         "-- each still runs, still prints FAIL, and fails the sweep the day it " +
         "passes:\n",
     );
-    for (const id of summary.expectedFailures) {
-      process.stderr.write(`    ${id}: ${expected?.[id]?.finding}\n`);
+    for (const entry of summary.expectedFailures) {
+      process.stderr.write(`    ${entry.templateId}: ${entry.finding}\n`);
     }
   }
   return 0;
@@ -1824,6 +1861,13 @@ export async function cli(argv: string[]): Promise<number> {
     }
     return 1;
   }
+  // Only an ASSERTION failure is excusable here. A throw out of runScenario --
+  // a bounded wait giving up, a driver blowing up -- propagates to
+  // bin/ocpp-tck.ts and exits 1 whatever the declaration says, where the sweep
+  // would have caught it as ERROR and excused it. The asymmetry is deliberate:
+  // this is the debugging mode, a stack trace is the thing worth having, and a
+  // declared finding about what a CSMS ANSWERS is not a licence to swallow a
+  // crash. CI runs the sweep, so no signal depends on the difference.
   return unexpectedPassExit(spec.templateId, verdict, expected);
 }
 
@@ -1831,9 +1875,14 @@ export async function cli(argv: string[]): Promise<number> {
  * Exit code for a single scenario that did NOT fail: 0 normally, 1 when the
  * driver declared it expected-failing.
  *
- * A single run has no isolated retry, so there is no flake to distinguish
- * here -- one non-failure IS the whole evidence, and the message says so
- * rather than asserting the finding is fixed.
+ * Shares unexpectedPassDetail() with the sweep rather than wording its own
+ * diagnosis. It did word its own, and the two disagreed on the case that
+ * matters most: a NOT APPLICABLE row that is also declared expected-failing is
+ * a contradiction between two tables, and this path told the reader to delete
+ * the entry while the sweep told them the contradiction was the thing to fix.
+ *
+ * A single run has no isolated retry, so there is no flake to distinguish --
+ * one non-failure IS the whole evidence here, and the detail says which kind.
  */
 function unexpectedPassExit(
   templateId: string,
@@ -1843,9 +1892,8 @@ function unexpectedPassExit(
   if (!expected) return 0;
   process.stderr.write(
     `[runner] ${templateId} UNEXPECTED PASS: this driver declares it ` +
-      `expected-failing (${expected.reason} -- ${expected.finding}), and it ` +
-      `came back ${verdict}. Delete the expected-failure entry, or re-word it ` +
-      "to say what is still true.\n",
+      `expected-failing (${expected.reason} -- ${expected.finding}), and ` +
+      `${unexpectedPassDetail(verdict)}.\n`,
   );
   return 1;
 }
