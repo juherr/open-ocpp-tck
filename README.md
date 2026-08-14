@@ -59,6 +59,9 @@ because an OCA obligation exists that no scenario here exercises, and 4 stay
 red because they found something. That two drivers this different need no
 change to a single scenario is the claim the pair exists to support.
 
+All 4 red ones are declared expected failures, so that sweep still exits 0 —
+and would stop doing so the day one of them passes.
+
 The 5 `PARTIAL` are worth reading rather than skipping. They are not a
 CitrineOS result at all: they are the same on every driver, because the gap is
 in our scenarios — see [`OCA-COVERAGE.md`](OCA-COVERAGE.md). Orange means the
@@ -178,9 +181,12 @@ the check could not be evaluated" is a real outcome:
 - **`NOT APPLICABLE`** — your scope table marks the scenario undrivable, or
   your driver threw `UnsupportedOperationError`. No container is started in the
   first case. Exit code 0.
-- **`PARTIAL`** — zero failures, but at least one check degraded to `SKIPPED`
-  because a driver answered with `unverifiable("<why>")` instead of inventing a
-  value. Exit code 0.
+- **`PARTIAL`** — zero failures, but at least one check degraded to `SKIPPED`,
+  for one of two reasons the check's detail tells apart: a driver answered with
+  `unverifiable("<why>")` instead of inventing a value, or the scenario does not
+  exercise an obligation the OCA case puts on the CSMS (see
+  [`OCA-COVERAGE.md`](OCA-COVERAGE.md)). The first varies per driver; the second
+  is the same for every driver, because the gap is in our scenarios. Exit code 0.
 
 `FAIL` and `ERROR` exit non-zero. A driver may declare a scenario
 expected-failing, which excuses its `FAIL` — never its `ERROR`, and never a
