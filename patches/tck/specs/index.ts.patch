@@ -1,4 +1,5 @@
 --- a/scripts/steve-verify/runner/specs/index.ts (upstream @ 604054adb0d7d7129a26a5f1ad2d5fdc290d1ca1)
++++ b/tck/specs/index.ts
 @@ -4,10 +4,10 @@
   * group modules; this file exists as the single public entry point for
   * the specs/ directory.
