@@ -97,6 +97,7 @@ FILE core.ts
     assertSent(·, ·, "BootNotification", "BootNotification.req sent")
     assertResponseStatus(·, ·, "BootNotification", "Accepted", "BootNotification accepted", {direction:"sent"})
     assertAllAnswered(·, ·, "StatusNotification")
+    assertAllAnswered(·, ·, "Heartbeat")
     AND
       AND
         AND
@@ -282,6 +283,7 @@ FILE remotetrigger-smartcharging.ts
     assertSent(·, ·, "MeterValues", "MeterValues sent while charging")
     assertAllAnswered(·, ·, "StatusNotification")
     assertAllAnswered(·, ·, "StartTransaction")
+    assertAllAnswered(·, ·, "Authorize")
     IF
       ·.fail(·, "no transaction found")
       RETURN
@@ -293,6 +295,7 @@ FILE remotetrigger-smartcharging.ts
     assertLineMatches(·, ·, /Sent: \[2,.*"StopTransaction".*"reason":"Remote"/, "StopTransaction sent with reason Remote")
     assertAllAnswered(·, ·, "StatusNotification")
     assertAllAnswered(·, ·, "StartTransaction")
+    assertAllAnswered(·, ·, "Authorize")
     IF
       ·.fail("DB: transaction is closed (stop_timestamp set)", "no transaction found")
       RETURN
@@ -328,6 +331,9 @@ FILE remotetrigger-smartcharging.ts
     assertLineAfter(·, ·, /Received: \[2,.*"TriggerMessage"/, /Sent: \[2,.*"Heartbeat"/, "requested Heartbeat sent after TriggerMessage")
     assertAllAnswered(·, ·, "Heartbeat")
     assertAllAnswered(·, ·, "StatusNotification")
+    assertAllAnswered(·, ·, "MeterValues")
+    assertAllAnswered(·, ·, "DiagnosticsStatusNotification")
+    assertAllAnswered(·, ·, "FirmwareStatusNotification")
   SPEC cert16-tc055-trigger-message-rejected connector=1 bootWaitSecs=4 holdSecs=12
     assertReceived(·, ·, "TriggerMessage", "TriggerMessage.req received")
     assertResponseStatus(·, ·, "TriggerMessage", "Rejected", "TriggerMessage rejected")
@@ -358,6 +364,7 @@ FILE remotetrigger-smartcharging.ts
     assertLineMatches(·, ·, /Sent: \[2,.*"StopTransaction"/, "StopTransaction eventually sent")
     assertAllAnswered(·, ·, "StatusNotification")
     assertAllAnswered(·, ·, "StartTransaction")
+    assertAllAnswered(·, ·, "Authorize")
     IF
       ·.fail("DB: transaction is closed (stop_timestamp set)", "no transaction found")
       RETURN
