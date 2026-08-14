@@ -65,18 +65,17 @@ bun bin/ocpp-tck.ts driver provision      # seed the idTags TC_023 needs
 bun bin/ocpp-tck.ts driver verify         # read-only: are they there?
 bun bin/ocpp-tck.ts driver selftest       # seconds: every record query, once
 
-bun run e2e                               # both sweeps: 44 + the authorize 3
+bun run e2e                               # the whole suite: 47 scenarios
 
 docker compose -f drivers/citrineos/compose.yaml down -v
 ```
 
-`bun run e2e` and not `run-all`, for the reason the root README gives: a full
-sweep is **two** invocations, because `all` is 44 scenarios and the `authorize`
-group sits outside it to mirror upstream group membership byte-for-byte. Anyone
-running `run-all` by hand gets 44/47 and reads "no failures", missing exactly
-the three scenarios that prove `driver provision` seeded anything — which for
-this driver includes the one deterministic failure. `bun run e2e:smoke` is the
-short loop while iterating.
+`bun run e2e` and not `run-all`, for the retry pass: `--retry-failed-isolated`
+re-runs a parallel lane's failures sequentially, which is the mode the runner
+calls reliable. Both cover the same 47 scenarios — the `authorize` group used
+to sit outside `all`, so a bare `run-all` reported 44/47 as "no failures" and
+skipped exactly the three scenarios that prove `driver provision` seeded
+anything. `bun run e2e:smoke` is the short loop while iterating.
 
 `CITRINE_API_URL` defaults to `localhost` because the driver runs on your host,
 while the simulator container reaches the same CitrineOS as `ws://citrine:8081/`

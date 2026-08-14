@@ -82,11 +82,12 @@ bunx ocpp-tck driver selftest    # seconds: can the driver answer the contract?
 bunx ocpp-tck run-all --group core
 ```
 
-A **full** sweep is two commands, not one: `run-all` covers 44 scenarios and the
-`authorize` group (TC_023) sits outside `all`, so "no failures, 44 scenarios"
-is not the whole suite — and TC_023 is what proves the fixtures took. Working in
-a clone, `bun run e2e` runs both, and `bun run e2e:smoke` runs the handful that
-exercise provisioning when a full sweep is too slow to iterate on.
+`run-all` is the whole suite: all 47 scenarios, one command. It did not use to
+be — the `authorize` group (TC_023) sat outside `all`, so "no failures, 44
+scenarios" read like a clean sweep while skipping exactly the three scenarios
+that prove the fixtures took. Working in a clone, `bun run e2e` is that sweep
+with a retry pass, and `bun run e2e:smoke` runs the handful that exercise
+provisioning when a full sweep is too slow to iterate on.
 
 `compose.yaml` pins [`ghcr.io/juherr/steve`][image] by digest — the `.war` is
 built into the image and the schema migrates itself on boot, so there is
