@@ -13,12 +13,14 @@
  * 18 `/ocpp/1.6/` paths with neither `reserveNow` nor `cancelReservation`
  * among them.
  *
- * TWO ROWS ARE DRIVABLE AND CURRENTLY RED, ON PURPOSE. `tck/scope.ts` forbids
+ * ONE ROW IS DRIVABLE AND CURRENTLY RED, ON PURPOSE. `tck/scope.ts` forbids
  * demoting a row to NOT_APPLICABLE to make a red scenario go away, because
- * that converts a finding about the CSMS into a silence about the harness.
- * Both are findings against CitrineOS rather than gaps in this driver, and
- * both are named in drivers/citrineos/README.md's gap table. A TCK whose
- * second driver reports 100% green is a TCK that has stopped measuring.
+ * that converts a finding about the CSMS into a silence about the harness. It
+ * is a finding against CitrineOS rather than a gap in this driver, it is named
+ * in drivers/citrineos/README.md's gap table, and the red itself is declared in
+ * expected.ts -- which is what lets a CI job stay blocking while carrying a
+ * known finding. A TCK whose second driver reports 100% green is a TCK that has
+ * stopped measuring.
  */
 import type { ScopeTable } from "../../tck/scope";
 import { type CitrineVariant } from "./variant";

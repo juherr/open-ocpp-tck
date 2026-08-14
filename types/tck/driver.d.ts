@@ -51,6 +51,7 @@
  *  3. Branch on a scenario id. A driver that wants per-scenario behaviour is
  *     describing a capability gap; declare it in the driver's scope table.
  */
+import type { ExpectedFailureTable } from "./expected";
 import type { ScopeTable } from "./scope";
 /** A CSMS-side transaction / charging-session handle. `""` = none. */
 export type TransactionRef = string;
@@ -366,8 +367,17 @@ export type CsmsEnv = Readonly<Record<string, string | undefined>>;
  *
  * `T` must not itself be callable: resolution discriminates on `typeof`, so a
  * function-valued declaration would be indistinguishable from its own
- * resolver. Both fields using it are objects, which is also what lets the two
+ * resolver. Every field using it is an object, which is also what lets the
  * resolvers below narrow the union with no cast.
+ *
+ * THAT LAST PROPERTY IS WHY THE RESOLVERS ARE NOT ONE GENERIC HELPER, which
+ * is otherwise the obvious de-duplication and has been proposed once. Factored
+ * out over an unconstrained `T`, the union becomes
+ * `((env) => T) | (T & Function)` and `typeof value === "function"` no longer
+ * narrows it -- tsc says "not all constituents are callable" and the helper
+ * needs a cast. Three short bodies that the compiler checks beat one shared
+ * body that it cannot, for a rule whose entire failure mode is a declaration
+ * being read as its own resolver.
  */
 export type EnvDependent<T> = T | ((env: CsmsEnv) => T);
 /**
@@ -416,6 +426,23 @@ export interface CsmsDriverModule {
      *  credentials, printed by `ocpp-tck check-driver`, and equally free to be a
      *  function of the environment. Resolve it with {@link driverCapabilities}. */
     readonly capabilities?: EnvDependent<CsmsCapabilities>;
+    /**
+     * Scenarios this CSMS is KNOWN to fail -- drivable, run, red, and understood.
+     *
+     * The complement of {@link CsmsDriverModule.scope}, not a part of it: a
+     * listed scenario keeps its DRIVABLE row, still starts a container and still
+     * prints FAIL. What the list changes is only the sweep's exit code, so that
+     * a job muted for one finding can still report every other scenario. An
+     * entry that PASSES fails the sweep in the other direction -- see
+     * {@link ./expected}.
+     *
+     * Absent = "every failure is a failure", which is what a driver with nothing
+     * to declare should keep saying. Free to be a function of the environment
+     * for the same reason `scope` is: a CSMS with two release lines does not
+     * have the same defects on both. Resolve it with
+     * {@link driverExpectedFailures}.
+     */
+    readonly expectedFailures?: EnvDependent<ExpectedFailureTable>;
     /** Called once per process, and the result is shared by every parallel lane,
      *  so what it returns must be safe to use concurrently and must hold no
      *  per-lane state. The contract used to promise one instance per lane, which
@@ -444,3 +471,9 @@ export interface CsmsDriverModule {
 export declare function driverScope(module: CsmsDriverModule, env: CsmsEnv): ScopeTable | undefined;
 /** {@link driverScope} for the capability declaration. */
 export declare function driverCapabilities(module: CsmsDriverModule, env: CsmsEnv): CsmsCapabilities | undefined;
+/**
+ * {@link driverScope} for the expected-failure list, and it must be resolved
+ * with the SAME env: a list naming defects of one release line, applied to a
+ * sweep pointed at the other, excuses the wrong scenarios in both directions.
+ */
+export declare function driverExpectedFailures(module: CsmsDriverModule, env: CsmsEnv): ExpectedFailureTable | undefined;

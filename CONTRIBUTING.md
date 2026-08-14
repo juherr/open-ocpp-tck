@@ -173,6 +173,52 @@ answer. If you read those fields yourself rather than through the runner, use
 `driverScope(module, env)` / `driverCapabilities(module, env)` from
 `open-ocpp-tck/driver` instead of narrowing the union by hand.
 
+## Expected failures
+
+The scope table says what your CSMS **cannot drive**. This says what it drives
+and **gets wrong**. Keeping them apart is the point: a known-red scenario keeps
+its `DRIVABLE` row, still starts a container and still prints `FAIL` — what it
+stops doing is ending the build.
+
+```ts
+expectedFailures: {
+  "cert16-tc023-3-authorize-blocked": {
+    reason: "…the mechanism, cited, the way a scope row's is…",
+    finding: "…an upstream issue, or the row of your README's gap table…",
+  },
+},
+```
+
+Same placement and same resolution rules as `scope`: on the module, read with
+no credentials, and free to be a function of the environment
+(`driverExpectedFailures(module, env)` if you read it yourself).
+
+**A declared scenario that passes fails the sweep**, as `UNEXPECTED PASS`, and
+that half is not an inconvenience — it is what the mechanism is for. Without it
+the list only ever grows, and an entry outlives the defect it documents. When
+one fires, delete the entry or re-word it to say what is still true.
+
+**An entry excuses an answer, never a crash.** A declared scenario that `ERROR`s
+— container never started, bounded wait gave up, driver threw — still fails the
+sweep, reported as `DECLARED, BUT ERRORED`. It never got an answer out of the
+CSMS, so it cannot be the finding your `reason` describes, and a job that went
+green on it would be blind to exactly the kind of breakage it exists to catch.
+Your entry is probably still good; the crash is the new thing.
+
+Three rules, and they are the difference between a reviewed list and a mute:
+
+- `reason` names the mechanism. "Known red" is the observation being explained,
+  not the explanation.
+- `finding` says where to go and read about it. `check-driver` rejects an empty
+  one, because a known-red nobody can look up is a claim nobody can review.
+- **Never add an entry to quiet a flake.** There is no "expected flaky" status,
+  deliberately: a scenario that sometimes passes has a timing bug, and it will
+  be reported as an `UNEXPECTED PASS` the first time it does. Fix the scenario.
+
+`check-driver` also rejects an id that is stale, or that your scope table calls
+`NOT_APPLICABLE` — a scenario that never starts can neither fail as declared nor
+ever pass and delete the entry.
+
 ### Two worked examples
 
 Two drivers ship here, and they are worth reading together because they solve
@@ -188,8 +234,9 @@ For the mechanics of the contract — the operation switch, the record queries,
 the bootstrap verbs — either one works as a model. For **what to do when your
 CSMS cannot do something**, read `drivers/citrineos/`: it is the one with gaps,
 so it is the one that shows a scope table with `NOT_APPLICABLE` rows each citing
-the endpoint that does not exist, a `records` object that omits `reservations`
-outright rather than faking it, and a
+the endpoint that does not exist, an `expectedFailures` list with a row that
+stays `DRIVABLE` and red on purpose, a `records` object that omits
+`reservations` outright rather than faking it, and a
 [README](drivers/citrineos/README.md) whose gap table names a source fact per
 row.
 

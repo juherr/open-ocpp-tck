@@ -26,6 +26,14 @@ in the scope table: `tck/scope.ts` forbids demoting a row to `NOT_APPLICABLE`
 to make a red scenario go away, and a TCK whose second driver reports 100%
 green is a TCK that has stopped measuring. It is below.
 
+It is **declared**, in [`expected.ts`](expected.ts), which is why the CI job
+that runs this driver is blocking rather than `continue-on-error`. The
+scenario still runs and still prints `FAIL`; the sweep reports it as
+`EXPECTED FAIL` and exits 0, so a *new* red still fails the build. The day
+upstream fixes the `Blocked` mapping, that row comes back `UNEXPECTED PASS`
+and fails the build until the entry is deleted — which is how the list shrinks
+instead of rotting.
+
 The count was 38 / 7 / 2 on 2026-08-11. The second failure was TC_044.2, and it
 was **ours**: the scenario asked for a retrieveDate +90s against a 110s hold,
 leaving ~20s for the status train. That is fixed in `tck/specs/firmware.ts`, so
@@ -146,6 +154,14 @@ and the database holds `Connectors: 0` after the whole sweep: that is
 isolated retry; there were no flakes. Nothing was reported upstream, because it
 is already fixed where it matters.
 
+**None of those sixteen is declared in [`expected.ts`](expected.ts)**, and the
+omission is about evidence rather than about CitrineOS: no CI job runs this
+line, so nothing would ever report one of those entries as an `UNEXPECTED PASS`
+and delete it. A list no run can shrink is the rot the mechanism exists to
+replace — it would read as sixteen reviewed findings while being one stale
+snapshot. On v1 every failure stays a failure; whoever puts the line back under
+a sweep gets the honest list from the run.
+
 `tc023-3` fails identically on both lines, which is the useful control: it is a
 property of the `Authorize` handler, not of either release.
 
@@ -259,10 +275,9 @@ a `reason` that cannot name the limitation is `CONDITIONAL`, not
 | **No OCPP 1.6 reservation endpoints.** No `@AsMessageEndpoint` binds `ReserveNow` or `CancelReservation` to `OCPPVersion.OCPP1_6`. The 1.6 schemas exist, the `Reservations` table exists, `evdriver.responses` lists both actions — nothing routes them, and no 1.6 response handler exists either. | 7 scenarios `NOT APPLICABLE`; the driver omits `records.reservations` entirely. | Verified at `v1.9.1`, `v2.0.0-beta1` and `main`. |
 | **Local auth list is v2-only.** `EVDriverOcpp16Api` gained `sendLocalList` / `getLocalListVersion` in the v2 line. | 6 scenarios, drivable only on the pinned prerelease. | `packages/core/src/modules/EVDriver/src/module/1.6/MessageApi.ts` |
 | **No charging-profile registry.** `ChargingProfiles` has no `description` or `name` column, and nothing to look one up by. | `refByDescription` resolves from this driver's own catalogue instead. Not a scenario cost: OCPP 1.6 carries the profile inline. | `packages/core/src/dal/layers/drizzle/schema/ChargingProfile.ts`, and [`profiles.ts`](profiles.ts) |
-| **`Blocked` is unreachable from the 1.6 `Authorize` path.** The handler reaches its status mapper only through the `status === Accepted` branch, so a stored `Blocked` falls through to the default `Invalid`. The only route to a real `Blocked` is an `IAuthorizer`, and the container registers `authorizers: asValue([])` with no setting that changes it. | TC_023.3 — see `scope.ts` for its current status. | `AuthorizeRequestOcpp16Handler.ts`, `apps/ocpp-server/src/container.ts` |
+| **`Blocked` is unreachable from the 1.6 `Authorize` path.** The handler reaches its status mapper only through the `status === Accepted` branch, so a stored `Blocked` falls through to the default `Invalid`. The only route to a real `Blocked` is an `IAuthorizer`, and the container registers `authorizers: asValue([])` with no setting that changes it. | **TC_023.3 fails**, deterministically: CitrineOS answers `{"idTagInfo":{"status":"Invalid"}}` where the scenario requires `Blocked`. Observed 3 runs out of 3. `scope.ts` keeps the row DRIVABLE and `expected.ts` declares the red, so the sweep reports it as `EXPECTED FAIL` and the job stays blocking — and `UNEXPECTED PASS` the day it is fixed. | `AuthorizeRequestOcpp16Handler.ts`, `apps/ocpp-server/src/container.ts` |
 | **No REST for `Authorizations`.** `EVDriverDataApi` exposes exactly one route, a read-only local-list-version GET. | `driver provision` writes fixtures through GraphQL. | [`provision.ts`](provision.ts) |
 | **Four foreign keys reference `Authorizations`, none cascading**: `Transactions.authorizationId`, `LocalListAuthorizations.authorizationId`, `LocalListAuthorizations.groupAuthorizationId`, and the self-reference `Authorizations.groupAuthorizationId`. | `teardown` derives its guards from the foreign keys Hasura reports instead of listing them, so a fifth on a future CitrineOS is picked up rather than aborting the whole delete. Guarding only the first was measured to leave *every* fixture in place, because psql ran the script in one implicit transaction. | Read from the foreign keys Hasura derives; see `references()` in [`provision.ts`](provision.ts). |
-| **`Blocked` is unreachable from the 1.6 `Authorize` path** *(see the row above for the mechanism)*. | **TC_023.3 fails**, deterministically: CitrineOS answers `{"idTagInfo":{"status":"Invalid"}}` where the scenario requires `Blocked`. Observed 3 runs out of 3. | Kept red on purpose — see `scope.ts`. |
 | **No 1.6 request handler for `FirmwareStatusNotification`.** Every one the charge point sends is answered with `[4,…,"NotSupported","No handler found for action: FirmwareStatusNotification at module configuration"]` — 9 across the three TC_044 logs, and the only CALLERROR the CSMS emits anywhere in the suite. | **A non-conformance, and one this suite does not detect.** OCA `TC_044_{1,2,3}_CSMS` put steps 4 and 6 on the Central System — *"The Central responds with a FirmwareStatusNotification.conf"* — and a CALLERROR is not that conf. Our scenarios pass because they assert only on the statuses the charge point *sent*. See below. | `packages/core/src/handlers/requests/1.6/` — `DiagnosticsStatusNotification` has one, `FirmwareStatusNotification` does not. No ticket upstream. |
 | **No 1.6 response handler for `UnlockConnector` or `UpdateFirmware`.** The Calls are routed and sent; the CallResults are answered with the same `NotSupported` CALLERROR. | Harmless — the six affected scenarios all pass. | `packages/core/src/handlers/responses/1.6/` |
 | **`GetConfiguration` is batched server-side.** The endpoint splits a request into batches of the station's stored `GetConfigurationMaxKeys`. | *Not* a problem in practice: an unprovisioned station has no such value, so the request stays one `GetConfiguration` on the wire and both TC_019 scenarios pass. Listed because provisioning that key would change it. | `Configuration/src/module/1.6/MessageApi.ts` |

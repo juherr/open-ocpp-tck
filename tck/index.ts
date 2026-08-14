@@ -18,6 +18,7 @@
  */
 export * from "./driver";
 export * from "./scope";
+export * from "./expected";
 export * from "./unverifiable";
 export * from "./capabilities";
 export * from "./wait";

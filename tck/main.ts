@@ -21,7 +21,21 @@
  *   - PARTIAL -- zero FAILs but at least one check degraded to SKIPPED
  *     because the driver answered with assert.ts's UNVERIFIABLE sentinel.
  *     Exit code 0: a check that could not be evaluated is not a defect.
- * Only FAIL and ERROR make the process exit non-zero.
+ *
+ * The verdict is what the CSMS did; the EXIT CODE is what that means for this
+ * driver, and the two stopped being the same thing when expected.ts arrived.
+ * A FAIL the driver declared expected exits 0 -- it is a finding already
+ * written down, not news -- and a PASS it declared expected exits 1, because
+ * a list that cannot shrink is a mute. An ERROR is never excused: a
+ * declaration covers what a CSMS ANSWERS, and an ERROR is the scenario never
+ * getting an answer. So:
+ *
+ *   exit non-zero  <=  an undeclared FAIL/ERROR, or a declared scenario that
+ *                      passed, or a declared scenario that errored.
+ *
+ * The rule itself lives in ./standing, where it is a pure function and a guard
+ * can assert the whole table without a container. A driver that declares
+ * nothing keeps the original rule exactly.
  */
 
 import { mkdirSync } from "node:fs";
@@ -31,16 +45,34 @@ import { AssertRecorder } from "./assert";
 import {
   CSMS_OPERATION_ACTIONS,
   driverCapabilities,
+  driverExpectedFailures,
   driverScope,
   UnsupportedOperationError,
 } from "./driver";
 import { loadDriverModule } from "./driver-registry";
+import {
+  expectedFailureCoverage,
+  expectedFailureFor,
+  type ExpectedFailureEntry,
+  type ExpectedFailureTable,
+} from "./expected";
 import {
   scopeCoverage,
   templateIdsWithStatus,
   type ScopeStatus,
   type ScopeTable,
 } from "./scope";
+import {
+  declaredButErroredDetail,
+  effectivelyFailed,
+  endsTheBuild,
+  isFailure,
+  standingOf,
+  unexpectedPassDetail,
+  type DeclaredStanding,
+  type SweepStanding,
+  type Verdict,
+} from "./standing";
 import {
   unsupportedChargingProfiles,
   unsupportedReservations,
@@ -98,14 +130,6 @@ interface RunOptions {
   timeoutSecs?: number;
 }
 
-/** Verdict for one scenario. PASS/FAIL/ERROR keep their upstream meaning. */
-type Verdict = "PASS" | "PARTIAL" | "FAIL" | "ERROR" | "NOT APPLICABLE";
-
-/** Only these two make the process exit non-zero. */
-function isFailure(verdict: Verdict): boolean {
-  return verdict === "FAIL" || verdict === "ERROR";
-}
-
 /** 0 FAIL + >=1 SKIPPED is PARTIAL; anything with a FAIL is FAIL. */
 function verdictForRecorder(rec: AssertRecorder): Verdict {
   if (rec.failed > 0) return "FAIL";
@@ -129,6 +153,21 @@ async function scopeEntryFor(
   return (await scopeTable())?.[templateId];
 }
 
+/**
+ * The driver's expected-failure entry for one scenario, or undefined when it
+ * declared none -- in which case every failure is a failure, which is what a
+ * driver with nothing to declare should keep saying.
+ *
+ * Offline for the same reason {@link scopeEntryFor} is, and it matters here
+ * too: `ocpp-tck run` must be able to tell you a red scenario was expected
+ * without first demanding the credential it is not going to use.
+ */
+async function expectedFailureEntryFor(
+  templateId: string,
+): Promise<ExpectedFailureEntry | undefined> {
+  return expectedFailureFor(await expectedFailureTable(), templateId);
+}
+
 /** Result of one scenario execution -- either it produced checks, or the
  *  driver declared the scenario undrivable partway through drive(). */
 type ScenarioRun =
@@ -150,6 +189,9 @@ type ScenarioRun =
 let driverModulePromise: Promise<CsmsDriverModule> | undefined;
 let driverPartsPromise: Promise<CsmsDriverParts> | undefined;
 let scopeTablePromise: Promise<ScopeTable | undefined> | undefined;
+let expectedFailurePromise:
+  | Promise<ExpectedFailureTable | undefined>
+  | undefined;
 
 /**
  * The one environment this process shows a driver, named once so that the
@@ -180,6 +222,18 @@ async function scopeTable(): Promise<ScopeTable | undefined> {
     driverScope(module, ENV),
   );
   return scopeTablePromise;
+}
+
+/** The expected-failure list, resolved once with the SAME `ENV` as the scope
+ *  table and as `create()`. A list describing one release line while the
+ *  requests target the other excuses the wrong scenarios. */
+async function expectedFailureTable(): Promise<
+  ExpectedFailureTable | undefined
+> {
+  expectedFailurePromise ??= driverModule().then((module) =>
+    driverExpectedFailures(module, ENV),
+  );
+  return expectedFailurePromise;
 }
 
 /**
@@ -530,6 +584,127 @@ interface ScenarioOutcome extends RetryOutcome {
    * a flake.
    */
   isolatedRetry?: RetryOutcome;
+  /** The driver's declaration that this scenario is known to fail, attached
+   *  whether or not it did. Both directions are reported: a declared FAIL is
+   *  excused, a declared PASS fails the sweep. */
+  expected?: ExpectedFailureEntry;
+}
+
+/** {@link standingOf} for a sweep outcome. The single-scenario path in `cli()`
+ *  has no ScenarioOutcome and calls the fields form directly, which is the
+ *  point of the split: the two paths cannot decide differently. */
+function standingOfOutcome(outcome: ScenarioOutcome): SweepStanding {
+  return standingOf(outcome.verdict, outcome.expected, outcome.isolatedRetry?.verdict);
+}
+
+/** An outcome whose declaration is known present -- every standing except
+ *  "ok" implies one, but a `SweepStanding` is a string and cannot say so. */
+type DeclaredOutcome = ScenarioOutcome & { expected: ExpectedFailureEntry };
+
+/**
+ * Outcomes with a given DECLARED standing, narrowed so the declaration can be
+ * read without `?.`.
+ *
+ * The narrowing is the point rather than the filtering. Reaching for
+ * `o.expected?.finding` inside a list already filtered to a declared standing
+ * compiles, and renders the literal "undefined" into a report if the standing
+ * rule and the declaration ever disagree -- a report saying a finding was
+ * excused while naming nothing.
+ *
+ * The parameter is {@link DeclaredStanding}, not SweepStanding, and that is
+ * what makes the promise honest rather than merely asserted: an undeclared
+ * standing cannot be passed, so "this standing implies a declaration" is
+ * checked at every call site instead of stated in this comment.
+ */
+function withStanding(
+  outcomes: readonly ScenarioOutcome[],
+  standing: DeclaredStanding,
+): DeclaredOutcome[] {
+  return outcomes.filter(
+    (o): o is DeclaredOutcome =>
+      o.expected !== undefined && standingOfOutcome(o) === standing,
+  );
+}
+
+/**
+ * Every bucket the sweep reports, in ONE pass and ONE definition.
+ *
+ * Both the markdown summary and the stderr conclusion partition the same
+ * outcomes the same way, and they used to do it with two identical-looking
+ * blocks in different functions -- the drift hazard `effectivelyFailed`'s own
+ * doc warns about, one level up. `flakes` is here for the same reason: it was
+ * spelled out by hand in three places, twice differently.
+ */
+interface StandingPartition {
+  unexpectedFails: ScenarioOutcome[];
+  expectedFails: DeclaredOutcome[];
+  declaredButErrored: DeclaredOutcome[];
+  unexpectedPasses: DeclaredOutcome[];
+  /** Failed in a lane, did not fail isolated. Not a failure; reported so a
+   *  red-looking run explains itself. */
+  flakes: ScenarioOutcome[];
+}
+
+function partitionByStanding(
+  outcomes: readonly ScenarioOutcome[],
+): StandingPartition {
+  return {
+    unexpectedFails: outcomes.filter(
+      (o) => standingOfOutcome(o) === "unexpected-fail",
+    ),
+    expectedFails: withStanding(outcomes, "expected-fail"),
+    declaredButErrored: withStanding(outcomes, "declared-but-errored"),
+    unexpectedPasses: withStanding(outcomes, "unexpected-pass"),
+    flakes: outcomes.filter(
+      (o) =>
+        isFailure(o.verdict) &&
+        !effectivelyFailed(o.verdict, o.isolatedRetry?.verdict),
+    ),
+  };
+}
+
+/**
+ * The driver's declaration, as the one sentence every report renders --
+ * `undefined` when it declared nothing about this scenario.
+ *
+ * Written once because it was written three times, and one copy had already
+ * drifted to a different separator. The two sweep renderers -- the markdown
+ * verdict cell and the stderr list -- go through here. exitForSingleRun()
+ * deliberately does NOT: its sentences have to explain an exit code and
+ * interleave the declaration differently, so forcing them through one renderer
+ * would cost more than the labels it shares.
+ *
+ * Narrowing `expected` here also removes the `?.` chains the call sites needed:
+ * they could not see that a standing of `expected-fail` implies an entry, so a
+ * broken invariant would have rendered the string "undefined" into a report.
+ */
+function declarationNote(outcome: ScenarioOutcome): string | undefined {
+  const { expected, verdict } = outcome;
+  const retryVerdict = outcome.isolatedRetry?.verdict;
+  if (!expected) return undefined;
+  // standingOfOutcome(), not standingOf() on unpacked fields: unpacking here
+  // would be a third place that maps an outcome to a standing, and the exit
+  // code reads the other one.
+  switch (standingOfOutcome(outcome)) {
+    case "expected-fail":
+      return `EXPECTED FAIL: ${expected.reason} (${expected.finding})`;
+    case "unexpected-pass":
+      return (
+        "UNEXPECTED PASS: declared expected-failing, but " +
+        unexpectedPassDetail(verdict, retryVerdict)
+      );
+    case "declared-but-errored":
+      return (
+        `DECLARED, BUT ERRORED (${expected.reason} -- ${expected.finding}): ` +
+        declaredButErroredDetail(verdict, retryVerdict)
+      );
+    case "ok":
+    case "unexpected-fail":
+      // Unreachable: `expected` is non-undefined here, and both of these are
+      // the undeclared standings. There is no note to write for a scenario
+      // this driver said nothing about.
+      return undefined;
+  }
 }
 
 /**
@@ -544,38 +719,35 @@ async function runOneForSweep<D>(
   spec: ScenarioSpec<D>,
   cpId: string,
 ): Promise<ScenarioOutcome> {
+  // What every branch below shares, stated once. `expected` is read BEFORE the
+  // run and carried even by the branches that never start a container: a
+  // declaration attached only to failures could never report the case the list
+  // exists to catch, which is the row that stopped failing. Hoisting it makes
+  // that structural instead of four sites each remembering.
+  const common = {
+    templateId: spec.templateId,
+    cpId,
+    checks: null,
+    failed: null,
+    skipped: null,
+    expected: await expectedFailureEntryFor(spec.templateId),
+  };
+
   const scope = await scopeEntryFor(spec.templateId);
   if (scope?.status === "NOT_APPLICABLE") {
     process.stderr.write(
       `[runner] === ${spec.templateId} NOT APPLICABLE (no container started): ${scope.reason}\n`,
     );
-    return {
-      templateId: spec.templateId,
-      cpId,
-      verdict: "NOT APPLICABLE",
-      checks: null,
-      failed: null,
-      skipped: null,
-      reason: scope.reason,
-    };
+    return { ...common, verdict: "NOT APPLICABLE", reason: scope.reason };
   }
 
   try {
     const run = await runScenario(spec, { cpId });
     if (run.kind === "not-applicable") {
-      return {
-        templateId: spec.templateId,
-        cpId,
-        verdict: "NOT APPLICABLE",
-        checks: null,
-        failed: null,
-        skipped: null,
-        reason: run.reason,
-      };
+      return { ...common, verdict: "NOT APPLICABLE", reason: run.reason };
     }
     return {
-      templateId: spec.templateId,
-      cpId,
+      ...common,
       verdict: verdictForRecorder(run.rec),
       checks: run.rec.total,
       failed: run.rec.failed,
@@ -587,15 +759,7 @@ async function runOneForSweep<D>(
     process.stderr.write(
       `[runner] ERROR: ${spec.templateId} on ${cpId} threw before completing: ${message}\n`,
     );
-    return {
-      templateId: spec.templateId,
-      cpId,
-      verdict: "ERROR",
-      checks: null,
-      failed: null,
-      skipped: null,
-      errorMessage: message,
-    };
+    return { ...common, verdict: "ERROR", errorMessage: message };
   }
 }
 
@@ -613,6 +777,12 @@ async function runOneForSweep<D>(
  * --parallel's wall-clock win.
  *
  * PARTIAL and NOT APPLICABLE are never retried: neither is a failure.
+ *
+ * A DECLARED expected failure IS retried, and that is not waste. The retry is
+ * what turns "it failed" into "it failed with no lane contending", which is
+ * the only evidence that would let the declaration be deleted; a declared row
+ * that passes its isolated retry is reported as an unexpected pass, because
+ * there is no "expected flaky".
  */
 async function retryFailedOutcomesIsolated(
   outcomes: ScenarioOutcome[],
@@ -708,6 +878,7 @@ function hostLoad(): string {
 async function writeSummary(
   groupName: string,
   outcomes: ScenarioOutcome[],
+  parts: StandingPartition,
 ): Promise<string> {
   const anyRetried = outcomes.some((o) => o.isolatedRetry !== undefined);
 
@@ -715,7 +886,14 @@ async function writeSummary(
     const checks = o.checks === null ? "-" : String(o.checks);
     const failed = o.failed === null ? "-" : String(o.failed);
     const skipped = o.skipped === null ? "-" : String(o.skipped);
-    const verdict = o.reason ? `${o.verdict} (${o.reason})` : o.verdict;
+    // The declaration is rendered INTO the verdict cell rather than into a
+    // column of its own, so that a reader scanning for red sees, in the same
+    // glance, whether it was already known -- and, for an unexpected pass,
+    // sees the row that has to be looked at.
+    const note = declarationNote(o);
+    const verdict =
+      (o.reason ? `${o.verdict} (${o.reason})` : o.verdict) +
+      (note ? ` — ${note}.` : "");
     const base = `| ${o.templateId} | ${o.cpId} | ${verdict} | ${checks} | ${failed} | ${skipped} |`;
     if (!anyRetried) return base;
     if (!o.isolatedRetry) return `${base} - |`;
@@ -743,10 +921,48 @@ async function writeSummary(
         `${naCount} NOT APPLICABLE (out of scope for this CSMS). Neither fails the sweep.`,
     );
   }
+  const { expectedFails, unexpectedPasses, declaredButErrored } = parts;
+  if (expectedFails.length > 0) {
+    notes.push(
+      "",
+      `${expectedFails.length} EXPECTED FAIL — declared by this driver as a ` +
+        "known finding about the CSMS, so the sweep still exits 0. The scope " +
+        "rows stay DRIVABLE and the scenarios still ran; only the exit code " +
+        "changed. Each entry names where the finding is written down:",
+      ...expectedFails.map(
+        (o) => `- \`${o.templateId}\` — ${o.expected.finding}`,
+      ),
+    );
+  }
+  if (declaredButErrored.length > 0) {
+    notes.push(
+      "",
+      `${declaredButErrored.length} DECLARED, BUT ERRORED — declared ` +
+        "expected-failing and did not produce the declared failure; it never " +
+        "got an answer out of the CSMS at all. **This fails the sweep**: an " +
+        "entry excuses what a CSMS answers, never a crash, and a job that went " +
+        "green on this would be blind to the kind of breakage it exists to " +
+        "catch. The entries below are probably still good:",
+      ...declaredButErrored.map(
+        (o) =>
+          `- \`${o.templateId}\` — ${declaredButErroredDetail(o.verdict, o.isolatedRetry?.verdict)}`,
+      ),
+    );
+  }
+  if (unexpectedPasses.length > 0) {
+    notes.push(
+      "",
+      `${unexpectedPasses.length} UNEXPECTED PASS — declared expected-failing ` +
+        "and did not fail. **This fails the sweep**, on purpose: it is how a " +
+        "known-red entry gets deleted when it stops being true, instead of " +
+        "outliving the defect it documents.",
+      ...unexpectedPasses.map(
+        (o) => `- \`${o.templateId}\` — ${unexpectedPassDetail(o.verdict, o.isolatedRetry?.verdict)}`,
+      ),
+    );
+  }
   if (anyRetried) {
-    const flakeCount = outcomes.filter(
-      (o) => o.isolatedRetry !== undefined && !isFailure(o.isolatedRetry.verdict),
-    ).length;
+    const flakeCount = parts.flakes.length;
     const confirmedCount = outcomes.filter(
       (o) => o.isolatedRetry !== undefined && isFailure(o.isolatedRetry.verdict),
     ).length;
@@ -850,43 +1066,79 @@ async function runGroupSweep(
         }]`
       : "";
     const reasonSuffix = o.reason ? ` -- ${o.reason}` : "";
+    const note = declarationNote(o);
+    const declaredSuffix = note ? ` [${note}]` : "";
     process.stderr.write(
-      `  ${o.verdict}: ${o.templateId} (${o.cpId}, ${o.checks ?? "-"} checks, ${o.failed ?? "-"} failed, ${o.skipped ?? "-"} skipped)${retrySuffix}${reasonSuffix}\n`,
+      `  ${o.verdict}: ${o.templateId} (${o.cpId}, ${o.checks ?? "-"} checks, ${o.failed ?? "-"} failed, ${o.skipped ?? "-"} skipped)${retrySuffix}${declaredSuffix}${reasonSuffix}\n`,
     );
   }
 
-  const summaryPath = await writeSummary(groupName, outcomes);
+  const parts = partitionByStanding(outcomes);
+  const summaryPath = await writeSummary(groupName, outcomes, parts);
   process.stderr.write(`[runner] results table: ${summaryPath}\n`);
 
+  const { unexpectedFails, expectedFails, unexpectedPasses, declaredButErrored, flakes } =
+    parts;
   // A parallel-lane FAIL/ERROR that did not fail on its isolated retry is a
-  // flake, not a real failure -- it does not fail the sweep.
-  const badOutcomes = outcomes.filter(
-    (o) =>
-      isFailure(o.verdict) &&
-      (o.isolatedRetry === undefined || isFailure(o.isolatedRetry.verdict)),
-  );
-  const flakeCount = outcomes.filter(
-    (o) =>
-      isFailure(o.verdict) &&
-      o.isolatedRetry !== undefined &&
-      !isFailure(o.isolatedRetry.verdict),
-  ).length;
+  // flake, not a real failure -- it does not fail the sweep. Everything here
+  // reads that through effectivelyFailed(), via standingOf().
+  const flakeCount = flakes.length;
   if (flakeCount > 0) {
     process.stderr.write(
       `[runner] ${flakeCount} parallel-only flake(s) in group '${groupName}' (did not fail on isolated retry) -- see ${summaryPath}\n`,
     );
   }
-  if (badOutcomes.length > 0) {
+  if (expectedFails.length > 0) {
     process.stderr.write(
-      `[runner] ${badOutcomes.length}/${outcomes.length} scenario(s) in group '${groupName}' FAILed or errored -- see ${summaryPath}\n`,
+      `[runner] ${expectedFails.length} scenario(s) in group '${groupName}' failed as this driver declared they would -- not a build failure; see ${summaryPath}\n`,
     );
-    return 1;
   }
+  // Its own standing, and its own line, because it reads as a regression of the
+  // DECLARATION when it is nothing of the sort: the entry is almost certainly
+  // still good and something new stopped the scenario ever reaching the CSMS.
+  // Folded in with the ordinary failures, the maintainer sees a red build on
+  // the one row they were told would be red, and goes looking in the wrong
+  // place.
+  if (declaredButErrored.length > 0) {
+    process.stderr.write(
+      `[runner] ${declaredButErrored.length} scenario(s) in group '${groupName}' are declared expected-failing and ERRORED, which is not the declared failure:\n`,
+    );
+    for (const o of declaredButErrored) {
+      process.stderr.write(
+        `  ${o.templateId}: ${declaredButErroredDetail(o.verdict, o.isolatedRetry?.verdict)}.\n`,
+      );
+    }
+  }
+  // Reported BEFORE the ordinary failures and counted separately, because the
+  // two need opposite fixes: an unexpected failure is a defect to chase, an
+  // unexpected pass is a line to look at.
+  if (unexpectedPasses.length > 0) {
+    process.stderr.write(
+      `[runner] ${unexpectedPasses.length} scenario(s) in group '${groupName}' are declared expected-failing and did NOT fail:\n`,
+    );
+    for (const o of unexpectedPasses) {
+      process.stderr.write(
+        `  ${o.templateId}: ${unexpectedPassDetail(o.verdict, o.isolatedRetry?.verdict)}.\n`,
+      );
+    }
+  }
+  if (unexpectedFails.length > 0) {
+    process.stderr.write(
+      `[runner] ${unexpectedFails.length}/${outcomes.length} scenario(s) in group '${groupName}' FAILed or errored -- see ${summaryPath}\n`,
+    );
+  }
+  // The disjunction lives in standing.ts, so a sixth standing cannot be added
+  // and silently left out of the exit code here.
+  if (outcomes.some((o) => endsTheBuild(standingOfOutcome(o)))) return 1;
+
   const partialCount = outcomes.filter((o) => o.verdict === "PARTIAL").length;
   const naCount = outcomes.filter((o) => o.verdict === "NOT APPLICABLE").length;
   process.stderr.write(
-    `[runner] no failures in group '${groupName}': ${outcomes.length} scenario(s), ` +
+    `[runner] no unexpected failures in group '${groupName}': ${outcomes.length} scenario(s), ` +
       `${partialCount} PARTIAL, ${naCount} NOT APPLICABLE` +
+      (expectedFails.length > 0
+        ? `, ${expectedFails.length} EXPECTED FAIL`
+        : "") +
       (flakeCount > 0 ? `, ${flakeCount} flake(s) resolved by isolated retry` : "") +
       ".\n",
   );
@@ -1166,10 +1418,12 @@ async function checkDriver(argv: string[]): Promise<number> {
   let module: CsmsDriverModule;
   let scope: ScopeTable | undefined;
   let capabilities: CsmsCapabilities | undefined;
+  let expected: ExpectedFailureTable | undefined;
   try {
     module = await driverModule();
     scope = await scopeTable();
     capabilities = driverCapabilities(module, ENV);
+    expected = await expectedFailureTable();
   } catch (err) {
     process.stderr.write(
       `${err instanceof Error ? err.message : String(err)}\n`,
@@ -1245,6 +1499,46 @@ async function checkDriver(argv: string[]): Promise<number> {
     }
   }
 
+  // Everything about the expected-failure list that is knowable offline. What
+  // is NOT knowable here is whether those scenarios still fail -- only a sweep
+  // answers that, by reporting an UNEXPECTED PASS.
+  if (expected) {
+    const drift = expectedFailureCoverage(expected, scope, registered);
+    if (drift.stale.length > 0) {
+      problems.push(
+        `${drift.stale.length} expected-failure entry(ies) name a scenario ` +
+          `nobody registers: ${drift.stale.join(", ")}.\n` +
+          "    -> delete the entry, or fix the templateId if the scenario was " +
+          "renamed. An entry under an old id excuses nothing and can never be " +
+          "cleaned up by a passing run.",
+      );
+    }
+    if (drift.notApplicable.length > 0) {
+      problems.push(
+        `${drift.notApplicable.length} expected-failure entry(ies) are also ` +
+          `NOT_APPLICABLE in the scope table: ${drift.notApplicable.join(", ")}.\n` +
+          "    -> both cannot be true. A NOT_APPLICABLE scenario never starts, " +
+          "so it can neither fail as declared nor ever pass and delete the entry.",
+      );
+    }
+    if (drift.reasonless.length > 0) {
+      problems.push(
+        `${drift.reasonless.length} expected-failure entry(ies) carry an ` +
+          `empty reason: ${drift.reasonless.join(", ")}. "Known red" is the ` +
+          "observation, not the mechanism.",
+      );
+    }
+    if (drift.findingless.length > 0) {
+      problems.push(
+        `${drift.findingless.length} expected-failure entry(ies) carry an ` +
+          `empty finding: ${drift.findingless.join(", ")}.\n` +
+          "    -> name where it is written down: an upstream issue, or the row " +
+          "of this driver's README gap table that carries the evidence. A " +
+          "known-red with nowhere to read about it is how the list rots.",
+      );
+    }
+  }
+
   if (capabilities) {
     const known = new Set<string>(CSMS_OPERATION_ACTIONS);
     const unknown = [...capabilities.operations].filter(
@@ -1279,6 +1573,16 @@ async function checkDriver(argv: string[]): Promise<number> {
           NOT_APPLICABLE: templateIdsWithStatus(scope, "NOT_APPLICABLE").length,
         }
       : null,
+    // The entries, not their count and not their ids: --json is what a
+    // conformance report would read, and "which scenarios are excused, and on
+    // what recorded evidence" is the question it has to answer without going
+    // back to the driver's source. Sorted, so two runs of the same driver
+    // diff cleanly.
+    expectedFailures: expected
+      ? Object.keys(expected)
+          .sort()
+          .map((templateId) => ({ templateId, ...expected[templateId] }))
+      : null,
     problems,
     warnings,
   };
@@ -1308,6 +1612,18 @@ async function checkDriver(argv: string[]): Promise<number> {
         : "") +
       ".\n",
   );
+  // Listed rather than counted: this is the one declaration whose whole job is
+  // to shrink, and a number does not tell a reviewer which rows to go and check.
+  if (summary.expectedFailures && summary.expectedFailures.length > 0) {
+    process.stderr.write(
+      `  ${summary.expectedFailures.length} scenario(s) declared expected-failing ` +
+        "-- each still runs, still prints FAIL, and fails the sweep the day it " +
+        "passes:\n",
+    );
+    for (const entry of summary.expectedFailures) {
+      process.stderr.write(`    ${entry.templateId}: ${entry.finding}\n`);
+    }
+  }
   return 0;
 }
 
@@ -1519,13 +1835,19 @@ export async function cli(argv: string[]): Promise<number> {
     return 1;
   }
 
+  // The same declaration the sweep reads, so that running one scenario by
+  // hand means what running it in the sweep means. Without this,
+  // `bun run e2e:smoke` -- which names an expected-failing scenario
+  // explicitly -- would contradict `bun run e2e` on the same commit.
+  const expected = await expectedFailureEntryFor(spec.templateId);
+
   // Scope table first -- a NOT_APPLICABLE scenario never starts a container.
   const scope = await scopeEntryFor(spec.templateId);
   if (scope?.status === "NOT_APPLICABLE") {
     process.stderr.write(
       `[runner] RESULT: ${spec.templateId} NOT APPLICABLE (no container started): ${scope.reason}\n`,
     );
-    return 0;
+    return exitForSingleRun(spec.templateId, "NOT APPLICABLE", expected);
   }
 
   const options: RunOptions = {
@@ -1538,7 +1860,79 @@ export async function cli(argv: string[]): Promise<number> {
     process.stderr.write(
       `[runner] RESULT: ${spec.templateId} NOT APPLICABLE: ${run.reason}\n`,
     );
-    return 0;
+    return exitForSingleRun(spec.templateId, "NOT APPLICABLE", expected);
   }
-  return isFailure(verdictForRecorder(run.rec)) ? 1 : 0;
+
+  return exitForSingleRun(
+    spec.templateId,
+    verdictForRecorder(run.rec),
+    expected,
+  );
+}
+
+/**
+ * Exit code for one scenario run by hand, through the SAME classifier the
+ * sweep's exit code reads.
+ *
+ * It used to re-implement the rule in nested ifs, because standingOf() took a
+ * ScenarioOutcome this path does not have. That is the mistake
+ * unexpectedPassDetail() was reshaped to fix one level down -- the two paths
+ * had already disagreed once, about NOT APPLICABLE -- so the decision gets the
+ * same treatment as the message that explains it.
+ *
+ * A single run has no isolated retry, so no flake to weigh: one outcome IS the
+ * whole evidence, and unexpectedPassDetail() says which kind of evidence.
+ *
+ * Only an ASSERTION failure reaches this function. A throw out of runScenario
+ * -- a bounded wait giving up, a driver blowing up -- propagates to
+ * bin/ocpp-tck.ts and exits 1 whatever the declaration says, where the sweep
+ * would have caught it as ERROR and excused it. Deliberate: this is the
+ * debugging mode, a stack trace is the thing worth having, and a declared
+ * finding about what a CSMS ANSWERS is not a licence to swallow a crash.
+ */
+function exitForSingleRun(
+  templateId: string,
+  verdict: Verdict,
+  expected: ExpectedFailureEntry | undefined,
+): number {
+  const standing = standingOf(verdict, expected);
+  // Undeclared first, so `expected` is narrowed for the rest. Reading it
+  // through `?.` under a standing the compiler cannot tie back to it is how a
+  // report ends up saying a finding was excused while naming nothing -- see
+  // withStanding() for the same hazard on the sweep side.
+  if (expected === undefined) {
+    return standing === "unexpected-fail" ? 1 : 0;
+  }
+  switch (standing) {
+    case "expected-fail":
+      process.stderr.write(
+        `[runner] ${templateId} EXPECTED FAIL: ${expected.reason} ` +
+          `(${expected.finding}) -- declared by this driver, exit 0.\n`,
+      );
+      return 0;
+    case "unexpected-pass":
+      process.stderr.write(
+        `[runner] ${templateId} UNEXPECTED PASS: this driver declares it ` +
+          `expected-failing (${expected.reason} -- ${expected.finding}), ` +
+          `and ${unexpectedPassDetail(verdict)}.\n`,
+      );
+      return 1;
+    case "declared-but-errored":
+      // Not reachable today -- a throw never reaches this function, so
+      // `verdict` is never ERROR here and a declared FAIL is expected-fail.
+      // Written out anyway rather than folded into a default: this is the case
+      // the sweep exists to report, and the day this path learns to catch a
+      // throw it must not silently exit 1 with no word about the declaration
+      // it was carrying.
+      process.stderr.write(
+        `[runner] ${templateId} DECLARED, BUT ERRORED (${expected.reason} -- ` +
+          `${expected.finding}): ${declaredButErroredDetail(verdict)}.\n`,
+      );
+      return 1;
+    case "ok":
+    case "unexpected-fail":
+      // Unreachable: both are the undeclared standings, and undeclared
+      // returned above.
+      return endsTheBuild(standing) ? 1 : 0;
+  }
 }

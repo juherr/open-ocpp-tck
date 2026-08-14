@@ -15,14 +15,17 @@
  * 18 `/ocpp/1.6/` paths with neither `reserveNow` nor `cancelReservation`
  * among them.
  *
- * TWO ROWS ARE DRIVABLE AND CURRENTLY RED, ON PURPOSE. `tck/scope.ts` forbids
+ * ONE ROW IS DRIVABLE AND CURRENTLY RED, ON PURPOSE. `tck/scope.ts` forbids
  * demoting a row to NOT_APPLICABLE to make a red scenario go away, because
- * that converts a finding about the CSMS into a silence about the harness.
- * Both are findings against CitrineOS rather than gaps in this driver, and
- * both are named in drivers/citrineos/README.md's gap table. A TCK whose
- * second driver reports 100% green is a TCK that has stopped measuring.
+ * that converts a finding about the CSMS into a silence about the harness. It
+ * is a finding against CitrineOS rather than a gap in this driver, it is named
+ * in drivers/citrineos/README.md's gap table, and the red itself is declared in
+ * expected.ts -- which is what lets a CI job stay blocking while carrying a
+ * known finding. A TCK whose second driver reports 100% green is a TCK that has
+ * stopped measuring.
  */
 import type { ScopeEntry, ScopeTable } from "../../tck/scope";
+import { BLOCKED_UNREACHABLE } from "./expected";
 import {
   NO_LOCAL_LIST,
   NO_RESERVATIONS,
@@ -92,16 +95,18 @@ const V2_SCOPE = {
       "expiry only inside its Accepted branch -- a row stored as Expired would " +
       "answer Invalid.",
   ),
+  // DRIVABLE AND CURRENTLY RED. The row stays DRIVABLE because demoting it
+  // would hide a finding (see tck/scope.ts); the red itself is declared in
+  // expected.ts, which is what lets CI report the other 46 scenarios without
+  // muting the job. The mechanism is stated there and imported here so the two
+  // cannot drift.
   "cert16-tc023-3-authorize-blocked": d(
-    "DRIVABLE AND CURRENTLY RED, deliberately: CitrineOS answers " +
-      '{"idTagInfo":{"status":"Invalid"}} where the scenario requires Blocked ' +
-      "(observed 3 runs out of 3). AuthorizeRequestOcpp16Handler reaches its " +
-      "status mapper only through the `status === Accepted` branch, so a stored " +
-      "Blocked falls through to the default Invalid; the only route to a real " +
-      "Blocked is an IAuthorizer, and container.ts registers " +
-      "`authorizers: asValue([])` with no setting that changes it. This is a " +
-      "finding against CitrineOS, not a gap in this driver -- demoting it to " +
-      "NOT_APPLICABLE would hide it. See tck/scope.ts.",
+    `${BLOCKED_UNREACHABLE} Expressible and driven: the driver sends the ` +
+      "Authorize request the scenario asks for and reads the answer back. " +
+      "What comes " +
+      "back is Invalid where OCPP 1.6 requires Blocked, which is a finding " +
+      "against CitrineOS rather than a gap in this driver -- declared in " +
+      "expected.ts.",
   ),
 
   // --- RemoteTrigger -------------------------------------------------------
