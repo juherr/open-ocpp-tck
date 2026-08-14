@@ -1,10 +1,10 @@
 #!/usr/bin/env bash
 # Mutation-test one guard: break what it protects, confirm it goes red, restore.
 #
-# WHY THIS EXISTS. CLAUDE.md asks for a mutation test on every new guard --
-# "break the thing it protects, confirm it goes red for that reason and no
-# other, revert" -- and doing it by hand has one failure mode that looks
-# exactly like success: THE EDIT DOES NOT APPLY. A `perl -0pi -e 's/…/…/'`
+# WHY THIS EXISTS. AGENTS.md asks for a mutation test on every new guard --
+# break what it protects, watch it go red for that reason and no other, revert
+# -- and doing it by hand has one failure mode that looks exactly like success:
+# THE EDIT DOES NOT APPLY. A `perl -0pi -e 's/…/…/'`
 # whose pattern misses (a ternary branch mistaken for the other, an escaped
 # brace, whitespace that moved) leaves the file untouched, the guard passes,
 # and the guard is recorded as verified having tested nothing.
@@ -29,8 +29,8 @@
 # the message says which.
 #
 # READ THE OUTPUT, do not just trust the exit code. "Goes red" is necessary but
-# not sufficient: CLAUDE.md asks for red *for that reason and no other*, and no
-# script can check that. The guard's own output is printed for exactly that.
+# not sufficient: the rule is red *for that reason and no other*, and no script
+# can check that. The guard's own output is printed for exactly that.
 set -uo pipefail
 
 cd "$(dirname "$0")/.." || exit 1
@@ -82,5 +82,5 @@ fi
 
 echo >&2
 echo "OK: the guard went red (exit $status) on a mutation that applied." >&2
-echo "  → now read its output above: CLAUDE.md asks for red for THAT reason" >&2
-echo "    and no other, which no exit code can tell you." >&2
+echo "  → now read its output above: the rule is red for THAT reason and no" >&2
+echo "    other, which no exit code can tell you." >&2
