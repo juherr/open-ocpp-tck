@@ -128,6 +128,14 @@ copy of the file, refuses unless that reconstruction matches the `upstream
 sha256` frozen below, then writes the new patch and rewrites that row's local
 digest. It ends by running the guard, so a re-pin that did not hold says so.
 
+The same command handles the other direction, `upstream-verbatim` →
+`upstream-patched`. There the upstream bytes are HEAD's copy of the file, since
+that is what verbatim means, and the script writes the patch, flips the row's
+origin and fills its patch cell. It leaves exactly one thing: `NOTICE` lists
+every modified file with *what* was modified, and that sentence is editorial.
+The guard cross-checks that list against these rows and fails until it is
+there.
+
 ## Refresh procedure
 
 Moving the PIN, which is the other direction: upstream changed, and every row

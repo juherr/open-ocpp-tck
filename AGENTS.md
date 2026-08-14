@@ -55,7 +55,7 @@ editing anything under `tck/`:**
 |---|---|
 | `local-upstreamable`, `local-private` | nothing to do |
 | `upstream-patched` | re-pin: `tools/repin-vendored.sh <path>` |
-| `upstream-verbatim` | the edit is also a change of origin — the row moves too |
+| `upstream-verbatim` | also a change of origin — same command, it bootstraps the row, the patch and the digest, then names the one `NOTICE` line it will not word for you |
 
 `tck/main.ts` is `upstream-patched`, so any change to the runner needs the
 re-pin. Doing it *before* `bun run verify` saves a full gate run; the script
