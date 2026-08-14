@@ -1,9 +1,9 @@
 // Copyright 2026 Julien Herr
 // SPDX-License-Identifier: Apache-2.0
 /**
- * driver-env-scope.ts -- `scope` and `capabilities` describe the server the
- * driver was RESOLVED for, not the one that happened to be in `process.env`
- * when the module was imported.
+ * driver-env-scope.ts -- `scope`, `capabilities` and `expectedFailures`
+ * describe the server the driver was RESOLVED for, not the one that happened
+ * to be in `process.env` when the module was imported.
  *
  * WHY THIS IS TYPESCRIPT AND NOT A SHELL GUARD. Every other check in this
  * directory drives the CLI, and the CLI always passes `process.env` -- which
@@ -34,10 +34,12 @@ import { csmsDriver as steve } from "../drivers/steve/index";
 import { STEVE_SCOPE } from "../drivers/steve/scope";
 import {
   driverCapabilities,
+  driverExpectedFailures,
   driverScope,
   type CsmsDriverModule,
   type CsmsEnv,
 } from "../tck/driver";
+import type { ExpectedFailureTable } from "../tck/expected";
 
 const failures: string[] = [];
 
@@ -63,6 +65,21 @@ const SYNTHETIC: CsmsDriverModule = {
     reservations: false,
     chargingProfiles: false,
   }),
+  // The third declaration, and the one where getting the env wrong is worst:
+  // a list resolved for the other release line excuses scenarios that are
+  // failing for reasons nobody has looked at, AND withholds the UNEXPECTED
+  // PASS that would delete the entries that no longer apply. Both directions
+  // are silent, which is why it is asserted here rather than left to
+  // check-driver.
+  expectedFailures: (env): ExpectedFailureTable =>
+    env.LINE === "old"
+      ? {
+          "one-scenario": {
+            reason: "the old line has the defect",
+            finding: "synthetic",
+          },
+        }
+      : {},
   create() {
     throw new Error("resolving a declaration must not call create()");
   },
@@ -71,7 +88,14 @@ const SYNTHETIC: CsmsDriverModule = {
 const PLAIN_SCOPE = {
   "one-scenario": { status: "DRIVABLE", reason: "stated once" },
 } as const;
-const PLAIN: CsmsDriverModule = { ...SYNTHETIC, scope: PLAIN_SCOPE };
+const PLAIN_EXPECTED = {
+  "one-scenario": { reason: "stated once", finding: "synthetic" },
+} as const;
+const PLAIN: CsmsDriverModule = {
+  ...SYNTHETIC,
+  scope: PLAIN_SCOPE,
+  expectedFailures: PLAIN_EXPECTED,
+};
 
 check(
   driverScope(SYNTHETIC, { LINE: "old" })?.["one-scenario"]?.status ===
@@ -85,9 +109,30 @@ check(
   "driverCapabilities() does not answer from the env it was handed.",
 );
 check(
+  driverExpectedFailures(SYNTHETIC, { LINE: "old" })?.["one-scenario"] !==
+    undefined && driverExpectedFailures(SYNTHETIC, {})?.["one-scenario"] === undefined,
+  "driverExpectedFailures() does not answer from the env it was handed.",
+);
+check(
   driverScope(PLAIN, { LINE: "old" }) === PLAIN_SCOPE,
   "a plain ScopeTable no longer resolves to itself -- the union broke the " +
     "single-release driver, which is the common case.",
+);
+check(
+  driverExpectedFailures(PLAIN, { LINE: "old" }) === PLAIN_EXPECTED,
+  "a plain ExpectedFailureTable no longer resolves to itself.",
+);
+// The field is OPTIONAL, and a driver that declares nothing must keep the
+// original rule -- every failure is a failure. Resolving `undefined` to
+// anything else would silently excuse scenarios for every driver that never
+// opted in.
+check(
+  driverExpectedFailures(
+    { ...SYNTHETIC, expectedFailures: undefined },
+    { LINE: "old" },
+  ) === undefined,
+  "a driver that declares no expected failures no longer resolves to " +
+    "undefined, so 'every failure is a failure' stopped being the default.",
 );
 
 // --- the bundled drivers use it ---------------------------------------------
@@ -160,16 +205,17 @@ check(
 
 if (failures.length > 0) {
   process.stderr.write(
-    "FAIL: a driver's scope or capabilities do not follow the environment " +
-      "they are resolved with.\n",
+    "FAIL: a driver's scope, capabilities or expected failures do not follow " +
+      "the environment they are resolved with.\n",
   );
   for (const failure of failures) process.stderr.write(`  - ${failure}\n`);
   process.exit(1);
 }
 
 process.stdout.write(
-  "Driver scope and capabilities follow the resolved environment " +
-    `(${V1_LOCAL_LIST_SCENARIOS.length} rows and ` +
+  "Driver scope, capabilities and expected failures follow the resolved " +
+    `environment (${V1_LOCAL_LIST_SCENARIOS.length} rows and ` +
     `${LOCAL_LIST_ACTIONS.length} operations differ between the two ` +
-    "CitrineOS lines, and a plain table still resolves to itself).\n",
+    "CitrineOS lines; a plain table still resolves to itself, and an absent " +
+    "expected-failure list still resolves to undefined).\n",
 );

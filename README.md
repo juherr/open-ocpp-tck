@@ -174,7 +174,34 @@ the check could not be evaluated" is a real outcome:
   because a driver answered with `unverifiable("<why>")` instead of inventing a
   value. Exit code 0.
 
-Only `FAIL` and `ERROR` exit non-zero.
+`FAIL` and `ERROR` exit non-zero — unless your driver said so first.
+
+## Expected failures
+
+A CSMS you know gets one scenario wrong should not cost you the signal from the
+other 46. Declare it, and the sweep keeps running it, keeps printing `FAIL`,
+and stops failing the build for it:
+
+```ts
+export const csmsDriver: CsmsDriverModule = {
+  expectedFailures: {
+    "cert16-tc023-3-authorize-blocked": {
+      reason: "…the mechanism, cited…",
+      finding: "…where the finding is written down…",
+    },
+  },
+};
+```
+
+The scope row stays `DRIVABLE`. Demoting it to `NOT_APPLICABLE` instead would
+convert a finding about your CSMS into a silence about the harness, and
+`check-driver` rejects an id that is declared both ways.
+
+**A declared scenario that passes fails the sweep**, reported as
+`UNEXPECTED PASS`. That is the half that matters: it is how an entry gets
+deleted the day upstream fixes the defect, instead of outliving it. There is
+deliberately no "expected flaky" — a scenario that sometimes passes has a
+timing bug, and the bug is the thing to fix.
 
 ## Environment
 

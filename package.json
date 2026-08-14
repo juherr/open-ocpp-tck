@@ -52,6 +52,10 @@
       "types": "./types/tck/scope.d.ts",
       "default": "./tck/scope.ts"
     },
+    "./expected": {
+      "types": "./types/tck/expected.d.ts",
+      "default": "./tck/expected.ts"
+    },
     "./unverifiable": {
       "types": "./types/tck/unverifiable.d.ts",
       "default": "./tck/unverifiable.ts"
