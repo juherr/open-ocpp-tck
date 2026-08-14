@@ -164,39 +164,60 @@ const V2_SCOPE = {
 
   // --- FirmwareManagement --------------------------------------------------
   // CitrineOS registers no 1.6 request handler for FirmwareStatusNotification
-  // and answers every one with a NotSupported CALLERROR -- 9 of them across the
-  // three TC_044 logs, and the only CALLERROR the CSMS sends anywhere in the
-  // captured suite.
+  // and answers every one with a NotSupported CALLERROR -- 10 across the three
+  // TC_044 logs of a sequential sweep, and the only CALLERROR the CSMS sends
+  // anywhere in the suite.
   //
-  // TWO OF THESE ROWS ARE GREEN AND MUST NOT BE READ AS "CONFORMANT". OCA
-  // TC_044_{1,2,3}_CSMS put steps 4 and 6 on the Central System: "The Central
-  // responds with a FirmwareStatusNotification.conf". A CALLERROR is not that
-  // conf, so CitrineOS does not do what those test cases require. Our scenarios
-  // pass anyway because they assert only on the statuses the CHARGE POINT sent,
-  // never on the CSMS's answer to them. That is a gap in the SCENARIOS, not
-  // evidence about CitrineOS -- see drivers/citrineos/README.md.
+  // ALL THREE ROWS ARE NOW RED, AND THAT IS THE POINT. OCA TC_044_{1,2,3}_CSMS
+  // put steps 4 and 6 on the Central System: "The Central responds with a
+  // FirmwareStatusNotification.conf". A CALLERROR is not that conf. These rows
+  // used to be green -- the scenarios asserted only the statuses the CHARGE
+  // POINT sent, never the CSMS's answer -- which was a gap in the SCENARIOS,
+  // not evidence about CitrineOS. Closing it (issue #11, assertAllAnswered)
+  // turned a documented blind spot into a measured finding: every other check
+  // in all three scenarios still passes, and the single failure in each is the
+  // CALLERROR.
   "cert16-tc044-1-firmware-update": d(
-    "Driven green. It used to flake in the parallel pass of every recorded " +
-      "run, on a timing property of the SCENARIO rather than a CitrineOS " +
-      "limitation: retrieveDate was +90s against a 115s hold, leaving ~25s for " +
-      "the status train. The spec now asks for +15s, so the train has the " +
-      "whole window; see tck/specs/firmware.ts.",
+    "Drivable, and now RED on the FirmwareStatusNotification.conf obligation " +
+      "alone: the full Downloading -> Downloaded -> Installing -> Installed " +
+      "train is asserted and passes, and the only failing check is that all " +
+      "four notifications drew a NotSupported CALLERROR. It also used to flake " +
+      "in the parallel pass of every recorded run, on a timing property of the " +
+      "SCENARIO rather than a CitrineOS limitation: retrieveDate was +90s " +
+      "against a 115s hold, leaving ~25s for the status train. The spec now " +
+      "asks for +15s, so the train has the whole window; see " +
+      "tck/specs/firmware.ts.",
   ),
   "cert16-tc044-2-firmware-download-failed": d(
-    "Driven green. It was the FLAKIEST scenario here -- 1 pass in 3 runs, " +
-      "failing even its isolated retry -- on the thinnest margin of all: " +
-      "retrieveDate was +90s against a 110s hold, leaving ~20s. The spec now " +
-      "asks for +15s and the scenario has been green since, flakes included. " +
-      "ONE OBSERVATION FROM THOSE FAILURES IS UNEXPLAINED AND WORTH KEEPING: " +
-      "the socket dropped (1006) just after CitrineOS's NotSupported " +
-      "CALLERROR, costing a reconnect and a reboot that lose the firmware " +
-      "state. Which side closed it was never established -- the obvious " +
-      "suspect is that CALLERROR, and it is wrong, because TC_044.1 and " +
-      "TC_044.3 take four of them each without disconnecting. If this ever " +
-      "recurs, start there; do not cite it as a CitrineOS defect until it is " +
-      "established.",
+    "Drivable, and now RED on the FirmwareStatusNotification.conf obligation " +
+      "alone -- the Downloading -> DownloadFailed train and both never-reached " +
+      "negatives still pass. It was also the FLAKIEST scenario here on the " +
+      "thinnest timing margin of all: retrieveDate was +90s against a 110s " +
+      "hold, leaving ~20s. The spec now asks for +15s. " +
+      "THE 1006 THIS ROW USED TO CALL UNEXPLAINED HAS AN ANSWER, AND IT IS " +
+      "NOT THE CHARGE POINT: the CitrineOS process dies on an unhandled " +
+      "promise rejection -- SequelizeForeignKeyConstraintError on " +
+      "OCPPMessages_requestMessageId_fkey, thrown from " +
+      "WebhookDispatcher.dispatchMessageReceived while persisting a message -- " +
+      "and compose's `restart: unless-stopped` brings it straight back. From " +
+      "the charge point's side that is exactly a 1006 followed by a reconnect " +
+      "and a reboot. Observed 21 restarts over one 26h session and 2 more " +
+      "inside a single sequential sweep. What is still NOT established is the " +
+      "old suspicion that the CALLERROR causes it: the violated key is " +
+      "requestMessageId, which fits 'the unhandled request was never " +
+      "persisted, a later response references it', but that chain has not " +
+      "been proven. The right next step is a CitrineOS issue for the " +
+      "unhandled rejection, which is a crash whatever triggers it.",
   ),
-  "cert16-tc044-3-firmware-install-failed": d(OBSERVED),
+  "cert16-tc044-3-firmware-install-failed": d(
+    "Drivable, and the cleanest demonstration of what issue #11 was about: " +
+      "10 of its 11 checks pass -- every status in the Downloading -> " +
+      "Downloaded -> Installing -> InstallationFailed train, both ordering " +
+      "checks, the Installed-never-reached negative, and the Boot/Status " +
+      "notification answers -- and the single failure is that all four " +
+      "FirmwareStatusNotification.req drew a NotSupported CALLERROR. Nothing " +
+      "about the scenario changed except that it now looks at the answer.",
+  ),
   "cert16-tc045-1-get-diagnostics": d(
     "Driven green. Unlike UpdateFirmware, GetDiagnostics does have a 1.6 " +
       "response handler, and DiagnosticsStatusNotification has a 1.6 request " +

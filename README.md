@@ -49,14 +49,21 @@ different surfaces, and each answers a question the other cannot:
 | Driver | Transport | What it answers | Result |
 |---|---|---|---|
 | [`drivers/steve`](drivers/steve) | HTML manager UI + WebAPI + MariaDB | *Has the harness lost a capability?* SteVe is the CSMS the scenarios were originally written against, so a scope row that had to be demoted would mean the core dropped something. | All 47 `DRIVABLE` |
-| [`drivers/citrineos`](drivers/citrineos/README.md) | JSON REST API + GraphQL | *Is the contract actually CSMS-neutral?* [CitrineOS](https://github.com/citrineos/citrineos-core) (LF Energy / S44) had no part in writing the scenarios and has a smaller OCPP 1.6 surface. | 39 `PASS`, 7 `NOT APPLICABLE`, 1 `FAIL` |
+| [`drivers/citrineos`](drivers/citrineos/README.md) | JSON REST API + GraphQL | *Is the contract actually CSMS-neutral?* [CitrineOS](https://github.com/citrineos/citrineos-core) (LF Energy / S44) had no part in writing the scenarios and has a smaller OCPP 1.6 surface. | 31 `PASS`, 5 `PARTIAL`, 4 `FAIL`, 7 `NOT APPLICABLE` |
 
 An abstraction with one implementation is neutral by assertion, so the second
 driver is what turns that into a measurement — and the result is the useful
-part: 38 scenarios pass unmodified against a CSMS that had no part in writing
-them, 7 report a capability it does not have for OCPP 1.6, and 2 stay red
-because they found something. That two drivers this different need no change to
-a single scenario is the claim the pair exists to support.
+part: 31 scenarios pass unmodified against a CSMS that had no part in writing
+them, 7 report a capability it does not have for OCPP 1.6, 5 are PARTIAL
+because an OCA obligation exists that no scenario here exercises, and 4 stay
+red because they found something. That two drivers this different need no
+change to a single scenario is the claim the pair exists to support.
+
+The 5 `PARTIAL` are worth reading rather than skipping. They are not a
+CitrineOS result at all: they are the same on every driver, because the gap is
+in our scenarios — see [`OCA-COVERAGE.md`](OCA-COVERAGE.md). Orange means the
+suite did not ask, which is a different fact from red's "the CSMS answered
+wrongly", and keeping them apart is what stops either from being noise.
 
 ## Quick start, against SteVe
 
