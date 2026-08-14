@@ -135,12 +135,22 @@ repin_one() {
     # and with a plausible-looking result. That is how a one-line-header fix got
     # undone thirty seconds after it was made, by the person who had just made
     # it and had just read the paragraph above explaining why HEAD is the source.
-    if ! git diff --quiet -- "$patch_rel" 2>/dev/null; then
+    #
+    # AGAINST HEAD, not against the index. `git diff --quiet -- <path>` compares
+    # the working tree to the INDEX, so the one edit it does not see is the one
+    # that has been `git add`ed -- and `git add` is the step between repairing a
+    # patch and committing it. The check would then pass on exactly the state it
+    # exists to refuse, and the repair would be overwritten below. Naming HEAD
+    # covers staged and unstaged with one command. No `2>/dev/null` either: it
+    # turned a git that failed for some other reason into "nothing to report".
+    if ! git diff --quiet HEAD -- "$patch_rel"; then
       echo "repin: $patch_rel has uncommitted changes, and this would discard them." >&2
       echo "  Everything here is reconstructed from HEAD, so the edit in your" >&2
       echo "  working tree is not read -- it is replaced." >&2
       echo "  → commit the patch first if the edit was deliberate," >&2
-      echo "    or 'git checkout -- $patch_rel' if it was not." >&2
+      echo "    or 'git restore --staged --worktree $patch_rel' if it was not" >&2
+      echo "    -- plain 'git checkout --' restores from the index, which is" >&2
+      echo "    where a staged edit already is." >&2
       return 1
     fi
     # HEAD's file + HEAD's patch, which the guard proved consistent when they
