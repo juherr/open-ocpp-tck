@@ -54,6 +54,9 @@ run "driver scope follows the env" bun tests/driver-env-scope.ts
 run "exit-code rule holds" bun tests/expected-failure-standing.ts
 run "a CALLERROR fails, a truncated log does not" bun tests/assert-answered.ts
 run "core is CSMS-neutral" bash tests/generic-core.sh
+# The other layering boundary the repository declares in prose: AGENTS.md and
+# everything it governs must not depend on the harness file.
+run "harness layering holds" bash tests/harness-layer.sh
 run "vendored files match VENDOR.md" bash tests/vendor-integrity.sh
 run "scenario invariants" bash tests/spec-invariants.sh
 # After spec-invariants: this reads the artifact that one regenerates, so a

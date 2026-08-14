@@ -113,8 +113,17 @@ weaker than its comment, and only the mutation nobody had to run said so.
 Stopping at the obvious ones is not rigour, it is luck: the guard ships, and
 its header is now a false claim about what the build checks.
 
-## Two boundaries the guards enforce
+## Three boundaries the guards enforce
 
+- **Nothing here depends on the harness overlay.** A coding harness may add a
+  repo-root file of its own on top of this one; that file declares the split
+  itself, and this document is the half that has to stand without it. A rule
+  written down over there and then cited from `tools/`, `tests/` or here
+  inverts the dependency, and sends a reader to a document that says it is not
+  for them. The fix is always the same shape: move the rule here, leave a
+  pointer there. Note that this bullet does not name the file — that is the
+  rule applied to itself, and the guard's failure message names it for you.
+  (`tests/harness-layer.sh`)
 - **Nothing under `tck/` may name a CSMS, and the core may not import a
   driver.** Doc comments may discuss a CSMS-shaped design they replaced;
   identifiers, string literals and imports may not. (`tests/generic-core.sh`)
