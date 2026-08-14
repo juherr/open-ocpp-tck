@@ -65,15 +65,28 @@ trap 'rm -rf "$work"' EXIT INT TERM
 # The repository is mounted READ-ONLY and copied inside the
 # container before anything installs a dependency: no node_modules, lockfile or
 # generated artifact is ever written back into the repo by this test.
+#
+# node_modules is EXCLUDED FROM THE COPY rather than deleted after it, and that
+# is a bug fix, not a speed-up. `cp -r /src/. /work/` followed by
+# `rm -rf node_modules` copied ~640 files across the read-only bind mount for
+# the sole purpose of deleting them, and on that mount the copy failed
+# intermittently -- roughly one run in three on macOS -- with busybox cp
+# reporting "can't create link" for paths whose parent directory it had not
+# created yet. Measured on origin/main, so it predates any caller: clean
+# checkout 6/6 green, same checkout after `bun install` 5/6. Never copying the
+# tree is what removes the race; the guard's own inputs are 350 files.
+#
+# find, not a glob: dotfiles have to come across (tsconfig lives beside
+# .gitignore, and a missing one changes what the extractors see), and
+# `/src/.[!.]*` matching nothing would expand to itself under `set -e`.
 if ! docker run --rm \
   -v "$repo_root:/src:ro" \
   -v "$work:/out" \
   "$bun_image" \
   sh -c "set -e
     mkdir -p /work
-    cp -r /src/. /work/
+    find /src -mindepth 1 -maxdepth 1 ! -name node_modules -exec cp -r {} /work/ ';'
     cd /work
-    rm -rf node_modules
     bun add -d 'typescript@$typescript_version' >/dev/null 2>&1
     bun tools/extract-assert-inventory.ts tck/specs > /out/ASSERT-INVENTORY.txt
     bun tools/extract-drive-trace.ts > /out/DRIVE-TRACE.txt
