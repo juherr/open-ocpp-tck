@@ -22,7 +22,7 @@ error.
 ## The gate
 
 `bun run verify` is every check CI runs before it starts a container —
-typecheck, committed declarations, three driver scope checks, two in-process
+typecheck, committed declarations, three driver scope checks, three in-process
 guards and five shell guards — with one exit code, and every step runs even
 after one fails, where CI enumerates them and stops at the first.
 
@@ -41,6 +41,7 @@ bun run check:driver:citrineos
 bun run check:driver:citrineos-v1     # the same driver's other release line
 bun tests/driver-env-scope.ts
 bun tests/expected-failure-standing.ts
+bun tests/assert-answered.ts
 ```
 
 then `bun run verify` once before committing.
