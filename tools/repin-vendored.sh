@@ -105,6 +105,22 @@ if [ "$origin" = "upstream-verbatim" ]; then
   cp "$work/head-local" "$work/upstream"
 else
   bootstrap=0
+
+  # Refuse to discard an uncommitted edit to the patch. Everything here is
+  # reconstructed from HEAD, so a patch repaired by hand and not yet committed
+  # is read as if the repair never happened and then overwritten -- silently,
+  # and with a plausible-looking result. That is how a one-line-header fix got
+  # undone thirty seconds after it was made, by the person who had just made
+  # it and had just read the paragraph above explaining why HEAD is the source.
+  if ! git diff --quiet -- "$patch_rel" 2>/dev/null; then
+    echo "repin: $patch_rel has uncommitted changes, and this would discard them." >&2
+    echo "  Everything here is reconstructed from HEAD, so the edit in your" >&2
+    echo "  working tree is not read -- it is replaced." >&2
+    echo "  → commit the patch first if the edit was deliberate," >&2
+    echo "    or 'git checkout -- $patch_rel' if it was not." >&2
+    exit 1
+  fi
+
   # HEAD's file + HEAD's patch, which the guard proved consistent when they
   # were committed.
   git show "HEAD:$patch_rel" > "$work/head-patch" 2>/dev/null ||

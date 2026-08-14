@@ -104,6 +104,15 @@ looks exactly like a guard that works; it happened here. The script cannot
 check the other half of the rule — red *for that reason and no other* — so read
 the output it prints.
 
+**One mutation per claim the guard's header makes**, and take the list from
+that header rather than from what is easy to break. `tests/oca-obligations.sh`
+claims three things; the two obvious mutations passed, and the third —
+renaming the action inside a covering helper — left it **green**, because a
+neighbouring regex in the same scenario spelt the same literal. The rule was
+weaker than its comment, and only the mutation nobody had to run said so.
+Stopping at the obvious ones is not rigour, it is luck: the guard ships, and
+its header is now a false claim about what the build checks.
+
 ## Two boundaries the guards enforce
 
 - **Nothing under `tck/` may name a CSMS, and the core may not import a
