@@ -159,6 +159,31 @@ templates are not in this repository -- they are baked into the pinned
 `ocpp-cp-simulator` image (`tck/sim.ts`). Stated here so the suite's extent is
 a number rather than an inference from "47 scenarios".
 
+## Checking a real sweep against this table
+
+```sh
+bun run e2e                             # writes results/<template-id>.log
+bun tools/answered-report.ts results/   # or --csv
+```
+
+The report prints, per scenario and per action, how many charge-point requests
+the CSMS answered, how many drew a CALLERROR, how many were never answered,
+and how many were still in flight when the container was stopped. It has no
+expectations and never fails; the checks are `assertAllAnswered`, in the
+scenarios, against the table above.
+
+Read the two together. An action the report flags that this table lists is a
+scenario already going red. An action the report flags that this table does
+**not** list is the more interesting case: either the reference obliges
+something this audit missed, or the CSMS is failing an obligation no OCA case
+happens to state.
+
+This is also what makes issue #11's original observation re-checkable. It
+rested on "scanning every captured wire log, `FirmwareStatusNotification` is
+the only action answered with a CALLERROR anywhere in the suite" — true when
+written, and unverifiable afterwards, because `results/` is gitignored and CI
+artifacts expire. It is one command now.
+
 ## Keeping this current
 
 The reference is revised. When it is, re-derive rather than re-read: the
