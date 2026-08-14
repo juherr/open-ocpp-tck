@@ -179,27 +179,26 @@ jobs:
   # CSMS-neutrality claim that only one CSMS ever exercises is a claim, not a
   # check.
   #
-  # continue-on-error, and NOT because the job is unreliable: it is expected to
-  # be red. Two of the 47 scenarios fail against the pinned CitrineOS, and both
-  # are kept red deliberately rather than demoted in the scope table --
-  # tck/scope.ts forbids demoting a row to make a red scenario go away, and
-  # these are findings about CitrineOS:
+  # BLOCKING, while still carrying a known finding. One of the 47 scenarios
+  # fails against the pinned CitrineOS -- cert16-tc023-3-authorize-blocked,
+  # deterministic (3 runs of 3): CitrineOS answers Invalid where OCPP 1.6
+  # requires Blocked. It is kept red rather than demoted in the scope table,
+  # which tck/scope.ts forbids, and it is DECLARED in
+  # drivers/citrineos/expected.ts, so the sweep reports it as EXPECTED FAIL and
+  # exits 0.
   #
-  #   cert16-tc023-3-authorize-blocked   deterministic (3 runs of 3): CitrineOS
-  #                                      answers Invalid where OCPP 1.6 requires
-  #                                      Blocked.
-  #   cert16-tc044-2-firmware-download-failed
-  #                                      flaky (1 pass in 3), thinnest timing
-  #                                      margin of any scenario.
-  #
-  # So this job's value is the OTHER 45, and the artifact it uploads. Turn it
-  # blocking only once both rows are green -- i.e. once upstream fixes the
-  # Blocked mapping -- and not merely because it has been quiet for a while.
-  # drivers/citrineos/README.md carries the full gap table.
+  # This job used to be continue-on-error for that one row, and that is what
+  # the declaration replaced. continue-on-error is job-granular where the
+  # intent is scenario-granular: a broken compose.yaml, a failed provision, a
+  # verify mismatch and a regression from 1 failure to 20 were all as green as
+  # the finding it was muted for, so the job could not report the one thing it
+  # exists to report -- the other 46. Now a new red fails the build, and the
+  # day upstream fixes the Blocked mapping that row fails as UNEXPECTED PASS
+  # until its entry is deleted. drivers/citrineos/README.md carries the full
+  # gap table.
   e2e-citrineos:
     runs-on: ubuntu-latest
     needs: check
-    continue-on-error: true
     timeout-minutes: 45
     env:
       CSMS_DRIVER: ./drivers/citrineos/index.ts
