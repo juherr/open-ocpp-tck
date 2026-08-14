@@ -367,8 +367,17 @@ export type CsmsEnv = Readonly<Record<string, string | undefined>>;
  *
  * `T` must not itself be callable: resolution discriminates on `typeof`, so a
  * function-valued declaration would be indistinguishable from its own
- * resolver. Both fields using it are objects, which is also what lets the two
+ * resolver. Every field using it is an object, which is also what lets the
  * resolvers below narrow the union with no cast.
+ *
+ * THAT LAST PROPERTY IS WHY THE RESOLVERS ARE NOT ONE GENERIC HELPER, which
+ * is otherwise the obvious de-duplication and has been proposed once. Factored
+ * out over an unconstrained `T`, the union becomes
+ * `((env) => T) | (T & Function)` and `typeof value === "function"` no longer
+ * narrows it -- tsc says "not all constituents are callable" and the helper
+ * needs a cast. Three short bodies that the compiler checks beat one shared
+ * body that it cannot, for a rule whose entire failure mode is a declaration
+ * being read as its own resolver.
  */
 export type EnvDependent<T> = T | ((env: CsmsEnv) => T);
 /**

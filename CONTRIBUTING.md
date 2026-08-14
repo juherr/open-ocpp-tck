@@ -198,6 +198,13 @@ that half is not an inconvenience — it is what the mechanism is for. Without i
 the list only ever grows, and an entry outlives the defect it documents. When
 one fires, delete the entry or re-word it to say what is still true.
 
+**An entry excuses an answer, never a crash.** A declared scenario that `ERROR`s
+— container never started, bounded wait gave up, driver threw — still fails the
+sweep, reported as `DECLARED, BUT ERRORED`. It never got an answer out of the
+CSMS, so it cannot be the finding your `reason` describes, and a job that went
+green on it would be blind to exactly the kind of breakage it exists to catch.
+Your entry is probably still good; the crash is the new thing.
+
 Three rules, and they are the difference between a reviewed list and a mute:
 
 - `reason` names the mechanism. "Known red" is the observation being explained,

@@ -203,6 +203,11 @@ deleted the day upstream fixes the defect, instead of outliving it. There is
 deliberately no "expected flaky" — a scenario that sometimes passes has a
 timing bug, and the bug is the thing to fix.
 
+**A declared scenario that `ERROR`s also fails the sweep**, as
+`DECLARED, BUT ERRORED`. An entry excuses what a CSMS *answers*; an `ERROR` is
+the scenario never getting an answer, and a green build there would be blind to
+the kind of breakage the mechanism exists to catch.
+
 ## Environment
 
 | Variable | Default | Meaning |

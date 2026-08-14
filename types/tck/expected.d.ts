@@ -23,6 +23,14 @@
  * UNEXPECTED PASS, with a non-zero exit -- which is how a row gets deleted
  * when upstream fixes the defect, instead of outliving it.
  *
+ * WHAT AN ENTRY DOES NOT EXCUSE: a crash. It says what a CSMS *answers* --
+ * its `reason` cites a handler, a status mapping, a field that comes back
+ * wrong -- and a scenario that ERRORs never got an answer to be wrong about.
+ * So a declared scenario that errors still fails the sweep, and is reported
+ * separately from an ordinary failure because the entry is probably still good
+ * and the crash is the new thing. The rule is {@link ./standing}'s
+ * `standingOf`, and `tests/expected-failure-standing.ts` asserts the table.
+ *
  * RULES FOR A DRIVER AUTHOR EDITING ITS LIST
  *  - `reason` names the mechanism, cited, the way a scope row's does. "Fails
  *    on this CSMS" is not a reason; it is the observation being explained.

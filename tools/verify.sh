@@ -47,6 +47,11 @@ run "driver scope: citrineos" bun run check:driver:citrineos
 # driver claims unverified -- and the v1 table is the derived one.
 run "driver scope: citrineos (v1)" bun run check:driver:citrineos-v1
 run "driver scope follows the env" bun tests/driver-env-scope.ts
+# The exit-code rule, whole. Pure and offline because tck/standing.ts is a
+# module of its own -- reaching these rows through a sweep would take a
+# container per row, and engineering a CSMS that fails a chosen scenario a
+# chosen way for the rows that matter.
+run "exit-code rule holds" bun tests/expected-failure-standing.ts
 run "core is CSMS-neutral" bash tests/generic-core.sh
 run "vendored files match VENDOR.md" bash tests/vendor-integrity.sh
 run "scenario invariants" bash tests/spec-invariants.sh

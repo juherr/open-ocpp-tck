@@ -34,6 +34,7 @@ bun run check:driver:steve
 bun run check:driver:citrineos
 bun run check:driver:citrineos-v1     # the same driver's other release line
 bun tests/driver-env-scope.ts
+bun tests/expected-failure-standing.ts
 ```
 
 then `bun run verify` once before committing.
@@ -79,9 +80,14 @@ There is no unit-test framework and no `*.test.ts`. `tests/` holds offline
 guards, each with a header stating the property it protects. `bun run test`
 chains them — note `bun test` is Bun's own runner and finds nothing here.
 
-Shell is the default; `tests/driver-env-scope.ts` is TypeScript because the
-property it asserts (a driver's declarations follow the env they are *resolved*
-with) is unreachable through the CLI, which can only ever pass `process.env`.
+Shell is the default, and the two TypeScript ones are TypeScript because what
+they assert is unreachable through the CLI. `driver-env-scope.ts`: a driver's
+declarations follow the env they are *resolved* with, where the CLI can only
+ever pass `process.env`. `expected-failure-standing.ts`: the rule that decides
+whether a red sweep ends the build, which from a shell would cost a container
+per row — and, for the rows that matter, a CSMS engineered to fail a chosen
+scenario a chosen way. `tck/standing.ts` is a module of its own so that guard
+can be a table.
 
 ## Two boundaries the guards enforce
 

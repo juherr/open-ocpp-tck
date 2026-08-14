@@ -65,6 +65,13 @@ jobs:
       - name: Driver scope follows the environment
         run: bun tests/driver-env-scope.ts
 
+      # In-process for the same reason: the rule that decides whether a red
+      # sweep ends the build is not reachable from a shell without running a
+      # scenario, and the rows that matter would each need a CSMS engineered to
+      # fail a chosen way.
+      - name: Exit-code rule holds
+        run: bun tests/expected-failure-standing.ts
+
       - name: Core names no CSMS
         run: bash tests/generic-core.sh
 
