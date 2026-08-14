@@ -139,14 +139,16 @@
  // ---------------------------------------------------------------------------
  // Runner core
  // ---------------------------------------------------------------------------
-@@ -60,95 +114,242 @@
+@@ -60,95 +114,244 @@
    timeoutSecs?: number;
  }
  
 +/** Verdict for one scenario. PASS/FAIL/ERROR keep their upstream meaning. */
 +type Verdict = "PASS" | "PARTIAL" | "FAIL" | "ERROR" | "NOT APPLICABLE";
 +
-+/** Only these two make the process exit non-zero. */
++/** The two verdicts that count as a failure. Whether one ends the process
++ *  non-zero is {@link standingOf}'s answer, not this one's -- see the exit-code
++ *  rule at the top of this file. */
 +function isFailure(verdict: Verdict): boolean {
 +  return verdict === "FAIL" || verdict === "ERROR";
 +}
@@ -222,8 +224,8 @@
 +  templateId: string,
 +): Promise<ExpectedFailureEntry | undefined> {
 +  return expectedFailureFor(await expectedFailureTable(), templateId);
- }
- 
++}
++
 +/** Result of one scenario execution -- either it produced checks, or the
 + *  driver declared the scenario undrivable partway through drive(). */
 +type ScenarioRun =
@@ -261,8 +263,8 @@
 +async function driverModule(): Promise<CsmsDriverModule> {
 +  driverModulePromise ??= loadDriverModule();
 +  return driverModulePromise;
-+}
-+
+ }
+ 
 +async function driver(): Promise<CsmsDriverParts> {
 +  driverPartsPromise ??= (async () => {
 +    const module = await driverModule();
@@ -443,7 +445,7 @@
          30_000,
        );
      } catch (err) {
-@@ -176,13 +377,25 @@
+@@ -176,13 +379,25 @@
  
      if (spec.drive) {
        process.stderr.write(`[runner] running drive() for ${spec.templateId}\n`);
@@ -476,7 +478,7 @@
      } else {
        process.stderr.write(
          `[runner] no drive() defined (CP-only scenario) -- nothing to do while it runs\n`,
-@@ -190,15 +403,18 @@
+@@ -190,15 +405,18 @@
        driveState = undefined as D;
      }
  
@@ -498,7 +500,7 @@
    // it a FAIL in a swept scenario is un-post-mortem-able: the sim container
    // is already stopped+removed by the time assert() reports, so this
    // capture is the only surviving record of what was (or wasn't) on the
-@@ -218,6 +434,10 @@
+@@ -218,6 +436,10 @@
      );
    }
  
@@ -509,7 +511,7 @@
    const frames = parseLog(lines.join("\n"));
    const rec = new AssertRecorder();
  
-@@ -228,34 +448,53 @@
+@@ -228,34 +450,53 @@
      frames,
      lines,
      rec,
@@ -572,7 +574,7 @@
  // ---------------------------------------------------------------------------
  
  // eslint-disable-next-line @typescript-eslint/no-explicit-any
-@@ -265,8 +504,6 @@
+@@ -265,8 +506,6 @@
    "remotetrigger-smartcharging": REMOTETRIGGER_SMARTCHARGING_SPECS,
    firmware: FIRMWARE_SPECS,
    authorize: AUTHORIZE_SPECS,
@@ -581,7 +583,7 @@
    all: [
      ...CORE_SPECS,
      ...AUTHLIST_RESERVATION_SPECS,
-@@ -286,66 +523,219 @@
+@@ -286,66 +525,241 @@
      .map((spec) => [spec.templateId, spec]),
  );
  
@@ -688,13 +690,13 @@
 + *
 + * A parallel-lane FAIL/ERROR that did not fail its isolated retry is a flake,
 + * not a failure; see {@link retryFailedOutcomesIsolated}.
-+ */
-+function effectivelyFailed(outcome: ScenarioOutcome): boolean {
-+  if (!isFailure(outcome.verdict)) return false;
-+  return (
-+    outcome.isolatedRetry === undefined ||
-+    isFailure(outcome.isolatedRetry.verdict)
-+  );
+  */
++function effectivelyFailed(
++  verdict: Verdict,
++  isolatedRetry?: RetryOutcome,
++): boolean {
++  if (!isFailure(verdict)) return false;
++  return isolatedRetry === undefined || isFailure(isolatedRetry.verdict);
 +}
 +
 +/**
@@ -717,9 +719,13 @@
 +  | "unexpected-fail"
 +  | "unexpected-pass";
 +
-+function standingOf(outcome: ScenarioOutcome): SweepStanding {
-+  const failed = effectivelyFailed(outcome);
-+  if (outcome.expected === undefined) {
++function standingOf(
++  verdict: Verdict,
++  expected: ExpectedFailureEntry | undefined,
++  isolatedRetry?: RetryOutcome,
++): SweepStanding {
++  const failed = effectivelyFailed(verdict, isolatedRetry);
++  if (expected === undefined) {
 +    return failed ? "unexpected-fail" : "ok";
 +  }
 +  if (failed) return "expected-fail";
@@ -731,6 +737,35 @@
 +  // tolerated because "it never ran" is not "it was fixed" --
 +  // unexpectedPassDetail() is where the difference gets said.
 +  return "unexpected-pass";
++}
++
++/** {@link standingOf} for a sweep outcome. The single-scenario path in `cli()`
++ *  has no ScenarioOutcome and calls the fields form directly, which is the
++ *  point of the split: the two paths cannot decide differently. */
++function standingOfOutcome(outcome: ScenarioOutcome): SweepStanding {
++  return standingOf(outcome.verdict, outcome.expected, outcome.isolatedRetry);
++}
++
++/**
++ * The driver's declaration, as the one sentence every report renders --
++ * `undefined` when it declared nothing about this scenario.
++ *
++ * Written once because it was written three times: the markdown summary, the
++ * sweep's stderr list and the single-scenario line each rebuilt it, and the
++ * fourth copy had already drifted to a different separator. It is the same
++ * mistake unexpectedPassDetail() was extracted to fix, one level up.
++ *
++ * Narrowing `expected` here also removes the `?.` chains the call sites needed:
++ * they could not see that a standing of `expected-fail` implies an entry, so a
++ * broken invariant would have rendered the string "undefined" into a report.
++ */
++function declarationNote(outcome: ScenarioOutcome): string | undefined {
++  const { expected } = outcome;
++  if (!expected) return undefined;
++  return effectivelyFailed(outcome.verdict, outcome.isolatedRetry)
++    ? `EXPECTED FAIL: ${expected.reason} (${expected.finding})`
++    : "UNEXPECTED PASS: declared expected-failing, but " +
++        unexpectedPassDetail(outcome.verdict, outcome.isolatedRetry);
 +}
 +
 +/**
@@ -783,70 +818,66 @@
 + *
 + * The scope table is consulted FIRST -- a NOT_APPLICABLE scenario never
 + * starts a container.
-  */
++ */
  async function runOneForSweep<D>(
    spec: ScenarioSpec<D>,
    cpId: string,
  ): Promise<ScenarioOutcome> {
-+  // Read before the run and carried on every branch, including the ones that
-+  // never start a container: a declaration that only got attached to failures
-+  // could never report the case the list exists to catch, which is the row
-+  // that stopped failing.
-+  const expected = await expectedFailureEntryFor(spec.templateId);
++  // What every branch below shares, stated once. `expected` is read BEFORE the
++  // run and carried even by the branches that never start a container: a
++  // declaration attached only to failures could never report the case the list
++  // exists to catch, which is the row that stopped failing. Hoisting it makes
++  // that structural instead of four sites each remembering.
++  const common = {
++    templateId: spec.templateId,
++    cpId,
++    checks: null,
++    failed: null,
++    skipped: null,
++    expected: await expectedFailureEntryFor(spec.templateId),
++  };
++
 +  const scope = await scopeEntryFor(spec.templateId);
 +  if (scope?.status === "NOT_APPLICABLE") {
 +    process.stderr.write(
 +      `[runner] === ${spec.templateId} NOT APPLICABLE (no container started): ${scope.reason}\n`,
 +    );
-+    return {
-+      templateId: spec.templateId,
-+      cpId,
-+      verdict: "NOT APPLICABLE",
-+      checks: null,
-+      failed: null,
-+      skipped: null,
-+      reason: scope.reason,
-+      expected,
-+    };
++    return { ...common, verdict: "NOT APPLICABLE", reason: scope.reason };
 +  }
 +
    try {
 -    const rec = await runScenario(spec, { cpId });
 +    const run = await runScenario(spec, { cpId });
 +    if (run.kind === "not-applicable") {
-+      return {
-+        templateId: spec.templateId,
-+        cpId,
-+        verdict: "NOT APPLICABLE",
-+        checks: null,
-+        failed: null,
-+        skipped: null,
-+        reason: run.reason,
-+        expected,
-+      };
++      return { ...common, verdict: "NOT APPLICABLE", reason: run.reason };
 +    }
      return {
-       templateId: spec.templateId,
-       cpId,
+-      templateId: spec.templateId,
+-      cpId,
 -      verdict: rec.verdict,
 -      checks: rec.total,
 -      failed: rec.failed,
++      ...common,
 +      verdict: verdictForRecorder(run.rec),
 +      checks: run.rec.total,
 +      failed: run.rec.failed,
 +      skipped: run.rec.skipped,
-+      expected,
      };
    } catch (err) {
      const message =
-@@ -359,58 +749,47 @@
-       verdict: "ERROR",
-       checks: null,
-       failed: null,
-+      skipped: null,
-       errorMessage: message,
-+      expected,
-     };
+@@ -353,64 +767,44 @@
+     process.stderr.write(
+       `[runner] ERROR: ${spec.templateId} on ${cpId} threw before completing: ${message}\n`,
+     );
+-    return {
+-      templateId: spec.templateId,
+-      cpId,
+-      verdict: "ERROR",
+-      checks: null,
+-      failed: null,
+-      errorMessage: message,
+-    };
++    return { ...common, verdict: "ERROR", errorMessage: message };
    }
  }
  
@@ -920,7 +951,7 @@
    );
  
    for (const outcome of toRetry) {
-@@ -432,13 +811,14 @@
+@@ -432,13 +826,14 @@
        verdict: retryOutcome.verdict,
        checks: retryOutcome.checks,
        failed: retryOutcome.failed,
@@ -937,7 +968,7 @@
            : " -- CONFIRMED (fails isolated too, not a parallel-lane artifact)\n"),
      );
    }
-@@ -451,11 +831,43 @@
+@@ -451,11 +846,43 @@
    return new Date().toISOString().replace(/\.\d{3}Z$/, "Z");
  }
  
@@ -986,25 +1017,20 @@
  async function writeSummary(
    groupName: string,
    outcomes: ScenarioOutcome[],
-@@ -465,45 +877,97 @@
+@@ -465,45 +892,92 @@
    const rows = outcomes.map((o) => {
      const checks = o.checks === null ? "-" : String(o.checks);
      const failed = o.failed === null ? "-" : String(o.failed);
 -    const base = `| ${o.templateId} | ${o.cpId} | ${o.verdict} | ${checks} | ${failed} |`;
 +    const skipped = o.skipped === null ? "-" : String(o.skipped);
-+    let verdict = o.reason ? `${o.verdict} (${o.reason})` : o.verdict;
 +    // The declaration is rendered INTO the verdict cell rather than into a
 +    // column of its own, so that a reader scanning for red sees, in the same
 +    // glance, whether it was already known -- and, for an unexpected pass,
-+    // sees the row that has to be deleted.
-+    const standing = standingOf(o);
-+    if (standing === "expected-fail") {
-+      verdict = `${verdict} — EXPECTED FAIL: ${o.expected?.reason} (${o.expected?.finding})`;
-+    } else if (standing === "unexpected-pass") {
-+      verdict =
-+        `${verdict} — UNEXPECTED PASS: declared expected-failing, but ` +
-+        `${unexpectedPassDetail(o.verdict, o.isolatedRetry)}.`;
-+    }
++    // sees the row that has to be looked at.
++    const note = declarationNote(o);
++    const verdict =
++      (o.reason ? `${o.verdict} (${o.reason})` : o.verdict) +
++      (note ? ` — ${note}.` : "");
 +    const base = `| ${o.templateId} | ${o.cpId} | ${verdict} | ${checks} | ${failed} | ${skipped} |`;
      if (!anyRetried) return base;
      if (!o.isolatedRetry) return `${base} - |`;
@@ -1038,10 +1064,10 @@
 +    );
 +  }
 +  const expectedFails = outcomes.filter(
-+    (o) => standingOf(o) === "expected-fail",
++    (o) => standingOfOutcome(o) === "expected-fail",
 +  );
 +  const unexpectedPasses = outcomes.filter(
-+    (o) => standingOf(o) === "unexpected-pass",
++    (o) => standingOfOutcome(o) === "unexpected-pass",
 +  );
 +  if (expectedFails.length > 0) {
 +    notes.push(
@@ -1099,7 +1125,7 @@
        "",
        header,
        separator,
-@@ -518,54 +982,53 @@
+@@ -518,54 +992,53 @@
  }
  
  /** Sequential or parallel group sweep. Writes results/summary.md and exits
@@ -1179,7 +1205,7 @@
      );
    } else {
      for (let i = 0; i < specs.length; i++) {
-@@ -574,11 +1037,11 @@
+@@ -574,11 +1047,11 @@
    }
  
    if (retryFailedIsolated) {
@@ -1193,7 +1219,7 @@
            "(a sequential sweep is already isolated).\n",
        );
      }
-@@ -588,45 +1051,85 @@
+@@ -588,45 +1061,80 @@
    for (const o of outcomes) {
      const retrySuffix = o.isolatedRetry
        ? ` [isolated retry: ${o.isolatedRetry.verdict}${
@@ -1202,13 +1228,8 @@
          }]`
        : "";
 +    const reasonSuffix = o.reason ? ` -- ${o.reason}` : "";
-+    const standing = standingOf(o);
-+    const declaredSuffix =
-+      standing === "expected-fail"
-+        ? ` [EXPECTED FAIL: ${o.expected?.reason} (${o.expected?.finding})]`
-+        : standing === "unexpected-pass"
-+          ? ` [UNEXPECTED PASS: declared expected-failing, but ${unexpectedPassDetail(o.verdict, o.isolatedRetry)}]`
-+          : "";
++    const note = declarationNote(o);
++    const declaredSuffix = note ? ` [${note}]` : "";
      process.stderr.write(
 -      `  ${o.verdict}: ${o.templateId} (${o.cpId}, ${o.checks ?? "-"} checks, ${o.failed ?? "-"} failed)${retrySuffix}\n`,
 +      `  ${o.verdict}: ${o.templateId} (${o.cpId}, ${o.checks ?? "-"} checks, ${o.failed ?? "-"} failed, ${o.skipped ?? "-"} skipped)${retrySuffix}${declaredSuffix}${reasonSuffix}\n`,
@@ -1227,20 +1248,20 @@
 +  // reads that through effectivelyFailed(), via standingOf().
    const badOutcomes = outcomes.filter(
 -    (o) => o.verdict !== "PASS" && o.isolatedRetry?.verdict !== "PASS",
-+    (o) => standingOf(o) === "unexpected-fail",
++    (o) => standingOfOutcome(o) === "unexpected-fail",
    );
 +  const expectedFails = outcomes.filter(
-+    (o) => standingOf(o) === "expected-fail",
++    (o) => standingOfOutcome(o) === "expected-fail",
 +  );
 +  const unexpectedPasses = outcomes.filter(
-+    (o) => standingOf(o) === "unexpected-pass",
++    (o) => standingOfOutcome(o) === "unexpected-pass",
 +  );
++  // A flake IS "failed, but not effectively" -- said through the shared
++  // predicate rather than spelled out again, which is what the comment above
++  // claims and what the previous hand-written copy quietly contradicted.
    const flakeCount = outcomes.filter(
 -    (o) => o.verdict !== "PASS" && o.isolatedRetry?.verdict === "PASS",
-+    (o) =>
-+      isFailure(o.verdict) &&
-+      o.isolatedRetry !== undefined &&
-+      !isFailure(o.isolatedRetry.verdict),
++    (o) => isFailure(o.verdict) && !effectivelyFailed(o.verdict, o.isolatedRetry),
    ).length;
    if (flakeCount > 0) {
      process.stderr.write(
@@ -1294,7 +1315,7 @@
  }
  
  // ---------------------------------------------------------------------------
-@@ -642,6 +1145,8 @@
+@@ -642,6 +1150,8 @@
    cpId: string;
    connector?: number;
    timeoutSecs?: number;
@@ -1303,7 +1324,7 @@
  }
  
  function requireValue(argv: string[], index: number, flag: string): string {
-@@ -663,37 +1168,80 @@
+@@ -663,37 +1173,80 @@
    return n;
  }
  
@@ -1401,7 +1422,7 @@
  
    if (argv[0] === "run-all") {
      group = "all";
-@@ -708,18 +1256,27 @@
+@@ -708,18 +1261,27 @@
          case "--retry-failed-isolated":
            retryFailedIsolated = true;
            break;
@@ -1432,7 +1453,7 @@
      process.exit(1);
    }
  
-@@ -749,9 +1306,11 @@
+@@ -749,9 +1311,11 @@
        case "--retry-failed-isolated":
          retryFailedIsolated = true;
          break;
@@ -1445,7 +1466,7 @@
          process.exit(1);
      }
    }
-@@ -764,35 +1323,495 @@
+@@ -764,35 +1328,495 @@
      cpId,
      connector,
      timeoutSecs,
@@ -1474,7 +1495,7 @@
 +  }
 +  return [...seen].map(([templateId, group]) => ({ templateId, group }));
 +}
-+
+ 
 +function listScenarios(argv: string[]): number {
 +  let group: string | undefined;
 +  let asJson = false;
@@ -1657,7 +1678,7 @@
 +      );
 +    }
 +  }
- 
++
 +  if (capabilities) {
 +    const known = new Set<string>(CSMS_OPERATION_ACTIONS);
 +    const unknown = [...capabilities.operations].filter(
@@ -1957,7 +1978,7 @@
    }
  
    const spec = SPECS_BY_TEMPLATE_ID.get(args.templateId);
-@@ -800,18 +1819,81 @@
+@@ -800,18 +1824,86 @@
      process.stderr.write(
        `Unknown template id: ${args.templateId} (known: ${[...SPECS_BY_TEMPLATE_ID.keys()].join(", ")})\n`,
      );
@@ -1985,7 +2006,7 @@
      );
 -    process.exit(1);
 -  });
-+    return unexpectedPassExit(spec.templateId, "NOT APPLICABLE", expected);
++    return exitForSingleRun(spec.templateId, "NOT APPLICABLE", expected);
 +  }
 +
 +  const options: RunOptions = {
@@ -1998,53 +2019,58 @@
 +    process.stderr.write(
 +      `[runner] RESULT: ${spec.templateId} NOT APPLICABLE: ${run.reason}\n`,
 +    );
-+    return unexpectedPassExit(spec.templateId, "NOT APPLICABLE", expected);
++    return exitForSingleRun(spec.templateId, "NOT APPLICABLE", expected);
 +  }
 +
-+  const verdict = verdictForRecorder(run.rec);
-+  if (isFailure(verdict)) {
-+    if (expected) {
-+      process.stderr.write(
-+        `[runner] ${spec.templateId} EXPECTED FAIL: ${expected.reason} ` +
-+          `(${expected.finding}) -- declared by this driver, exit 0.\n`,
-+      );
-+      return 0;
-+    }
-+    return 1;
-+  }
-+  // Only an ASSERTION failure is excusable here. A throw out of runScenario --
-+  // a bounded wait giving up, a driver blowing up -- propagates to
-+  // bin/ocpp-tck.ts and exits 1 whatever the declaration says, where the sweep
-+  // would have caught it as ERROR and excused it. The asymmetry is deliberate:
-+  // this is the debugging mode, a stack trace is the thing worth having, and a
-+  // declared finding about what a CSMS ANSWERS is not a licence to swallow a
-+  // crash. CI runs the sweep, so no signal depends on the difference.
-+  return unexpectedPassExit(spec.templateId, verdict, expected);
++  return exitForSingleRun(
++    spec.templateId,
++    verdictForRecorder(run.rec),
++    expected,
++  );
  }
 +
 +/**
-+ * Exit code for a single scenario that did NOT fail: 0 normally, 1 when the
-+ * driver declared it expected-failing.
++ * Exit code for one scenario run by hand, through the SAME classifier the
++ * sweep's exit code reads.
 + *
-+ * Shares unexpectedPassDetail() with the sweep rather than wording its own
-+ * diagnosis. It did word its own, and the two disagreed on the case that
-+ * matters most: a NOT APPLICABLE row that is also declared expected-failing is
-+ * a contradiction between two tables, and this path told the reader to delete
-+ * the entry while the sweep told them the contradiction was the thing to fix.
++ * It used to re-implement the rule in nested ifs, because standingOf() took a
++ * ScenarioOutcome this path does not have. That is the mistake
++ * unexpectedPassDetail() was reshaped to fix one level down -- the two paths
++ * had already disagreed once, about NOT APPLICABLE -- so the decision gets the
++ * same treatment as the message that explains it.
 + *
-+ * A single run has no isolated retry, so there is no flake to distinguish --
-+ * one non-failure IS the whole evidence here, and the detail says which kind.
++ * A single run has no isolated retry, so no flake to weigh: one outcome IS the
++ * whole evidence, and unexpectedPassDetail() says which kind of evidence.
++ *
++ * Only an ASSERTION failure reaches this function. A throw out of runScenario
++ * -- a bounded wait giving up, a driver blowing up -- propagates to
++ * bin/ocpp-tck.ts and exits 1 whatever the declaration says, where the sweep
++ * would have caught it as ERROR and excused it. Deliberate: this is the
++ * debugging mode, a stack trace is the thing worth having, and a declared
++ * finding about what a CSMS ANSWERS is not a licence to swallow a crash.
 + */
-+function unexpectedPassExit(
++function exitForSingleRun(
 +  templateId: string,
 +  verdict: Verdict,
 +  expected: ExpectedFailureEntry | undefined,
 +): number {
-+  if (!expected) return 0;
-+  process.stderr.write(
-+    `[runner] ${templateId} UNEXPECTED PASS: this driver declares it ` +
-+      `expected-failing (${expected.reason} -- ${expected.finding}), and ` +
-+      `${unexpectedPassDetail(verdict)}.\n`,
-+  );
-+  return 1;
++  switch (standingOf(verdict, expected)) {
++    case "ok":
++      return 0;
++    case "unexpected-fail":
++      return 1;
++    case "expected-fail":
++      process.stderr.write(
++        `[runner] ${templateId} EXPECTED FAIL: ${expected?.reason} ` +
++          `(${expected?.finding}) -- declared by this driver, exit 0.\n`,
++      );
++      return 0;
++    case "unexpected-pass":
++      process.stderr.write(
++        `[runner] ${templateId} UNEXPECTED PASS: this driver declares it ` +
++          `expected-failing (${expected?.reason} -- ${expected?.finding}), ` +
++          `and ${unexpectedPassDetail(verdict)}.\n`,
++      );
++      return 1;
++  }
 +}
