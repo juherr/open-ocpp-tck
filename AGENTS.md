@@ -21,10 +21,17 @@ error.
 
 ## The gate
 
-`bun run verify` is exactly what CI runs before it starts a container —
-typecheck, committed declarations, three driver scope checks, the env guard,
-and the three shell guards — with one exit code, and every step runs even
-after one fails.
+`bun run verify` is every check CI runs before it starts a container —
+typecheck, committed declarations, three driver scope checks, three in-process
+guards and six shell guards — with one exit code, and every step runs even
+after one fails, where CI enumerates them and stops at the first.
+
+There is a third copy of that list — `bun run test`, the guards without the
+typecheck, the declarations and the linter. The three were kept in step by
+hand and drifted three times, always the same way: a guard added to `verify`
+and to `bun run test`, and not to the workflow, is linted by CI and never run
+by it. `tests/gate-parity.sh` now holds `verify` and the workflow to the same
+sequence, and every link of `bun run test` to being one of its steps.
 
 It is usually the wrong command *during* iteration: `tests/spec-invariants.sh`
 pulls a pinned bun image, and it can only break if something under `tck/specs/`
@@ -37,6 +44,7 @@ bun run check:driver:citrineos
 bun run check:driver:citrineos-v1     # the same driver's other release line
 bun tests/driver-env-scope.ts
 bun tests/expected-failure-standing.ts
+bun tests/assert-answered.ts
 ```
 
 then `bun run verify` once before committing.
@@ -113,8 +121,25 @@ weaker than its comment, and only the mutation nobody had to run said so.
 Stopping at the obvious ones is not rigour, it is luck: the guard ships, and
 its header is now a false claim about what the build checks.
 
-## Two boundaries the guards enforce
+## Five boundaries the guards enforce
 
+- **The gate is one list.** `tools/verify.sh` and the workflow's `check` job
+  must run the same commands in the same order, minus the CI-only setup the
+  guard lists explicitly — a step added to one and not the other is either a
+  gate you cannot reproduce locally or one CI lints and never runs.
+  `bun run test` is a declared subset, the guards without the typecheck, the
+  declarations and the linter: every link in it must be one of those commands,
+  which is what stops a guard from being reachable only through it. Being a
+  subset, it is neither complete nor ordered. (`tests/gate-parity.sh`)
+- **Nothing here depends on the harness overlay.** A coding harness may add a
+  repo-root file of its own on top of this one; that file declares the split
+  itself, and this document is the half that has to stand without it. A rule
+  written down over there and then cited from `tools/`, `tests/` or here
+  inverts the dependency, and sends a reader to a document that says it is not
+  for them. The fix is always the same shape: move the rule here, leave a
+  pointer there. Note that this bullet does not name the file — that is the
+  rule applied to itself, and the guard's failure message names it for you.
+  (`tests/harness-layer.sh`)
 - **Nothing under `tck/` may name a CSMS, and the core may not import a
   driver.** Doc comments may discuss a CSMS-shaped design they replaced;
   identifiers, string literals and imports may not. (`tests/generic-core.sh`)
