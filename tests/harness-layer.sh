@@ -1,8 +1,14 @@
 #!/usr/bin/env bash
 # The generic layer must not depend on the harness layer.
 #
-# THE PROPERTY: no file in this repository cites CLAUDE.md, except CLAUDE.md
-# itself and this guard.
+# THE PROPERTY: no file in this repository cites CLAUDE.md, except the harness
+# layer itself -- CLAUDE.md and anything under .claude/ -- and this guard. The
+# exclusion of .claude/ is not a convenience; the property is directional, and
+# the paragraph on the exclusions below says why.
+#
+# AND: a search that fails is not a search that found nothing. `git grep` exits
+# 1 on no match and 128 on error, and collapsing the two would make this guard
+# print its success line on a broken search.
 #
 # CLAUDE.md declares the split in its own first paragraph -- "@AGENTS.md is the
 # working loop for this repository ... nothing in it is Claude-specific. What
@@ -61,7 +67,22 @@ harness_doc="CLAUDE.md"
 offenders=$(git grep --untracked -n -F "$harness_doc" -- . \
   ":(exclude)$harness_doc" \
   ":(exclude).claude/" \
-  ":(exclude)tests/harness-layer.sh" || true)
+  ":(exclude)tests/harness-layer.sh")
+status=$?
+
+# NO `|| true` ON THE SEARCH. `git grep` exits 0 with matches, 1 with none, and
+# 128 when the search itself failed -- no repository, a pathspec magic this git
+# does not know, a bad option. `|| true` maps all three onto an empty
+# `offenders`, so the two cases that mean OPPOSITE things -- "nothing cites the
+# overlay" and "this guard did not run" -- both print the success line below.
+# A layering guard that silently becomes a no-op is worse than an absent one:
+# CI keeps listing it as a step, and the step keeps passing.
+if [ "$status" -gt 1 ]; then
+  echo "FAIL: git grep exited $status, so the search itself failed." >&2
+  echo "  → this guard checked nothing; green here would be a no-op, not a" >&2
+  echo "    pass. Fix the search before reading anything into the result." >&2
+  exit 1
+fi
 
 if [ -n "$offenders" ]; then
   echo "FAIL: $harness_doc is cited from outside the harness layer." >&2
