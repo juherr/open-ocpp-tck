@@ -72,6 +72,13 @@ export declare class AssertRecorder {
     /** Count of checks degraded to SKIPPED, exposed to the runner so it can
      *  render the `skipped` summary column and derive the PARTIAL verdict. */
     get skipped(): number;
+    /** The subset of {@link skipped} that no driver can ever turn green,
+     *  because the SCENARIO does not make the request (see
+     *  {@link UNEXERCISED_PREFIX}). Exposed so the runner can report the two
+     *  causes apart: without it, a scenario already PARTIAL for an unexercised
+     *  obligation hides a NEW driver limitation appearing beside it -- the
+     *  count does not move and the verdict was already orange. */
+    get unexercised(): number;
     get verdict(): "PASS" | "FAIL";
 }
 /** check_log_contains equivalent: at least one CALL exists for direction+action. */
@@ -105,9 +112,9 @@ export interface AnsweredOptions {
     /** Which side sent the CALLs being answered (default "sent": the charge
      *  point, which is the direction every OCA `_CSMS` obligation is in). */
     direction?: Direction;
-    /** How many such CALLs the scenario requires. Default 1. Fewer than this is
-     *  SKIPPED and tagged {@link UNEXERCISED_PREFIX} -- never a vacuous pass,
-     *  and never a FAIL either; see rule 1 on {@link assertAllAnswered}. */
+    /** How many such CALLs the scenario requires. Default 1. Fewer is SKIPPED
+     *  and tagged {@link UNEXERCISED_PREFIX} -- see rule 1 on
+     *  {@link assertAllAnswered}. */
     minimum?: number;
 }
 /**
@@ -163,6 +170,38 @@ export interface AnsweredOptions {
  *    unanswered CALL damning is that the CSMS demonstrably had the chance and
  *    took it for someone else.
  */
+/** One CALLERROR the peer answered with, already rendered for a message. */
+export interface AnswerError {
+    errorCode: string;
+    errorDescription: string;
+    uniqueId: string;
+}
+/** How a peer answered every CALL for one action. See {@link tallyAnswers}. */
+export interface AnswerTally {
+    /** Total CALLs found for the action+direction asked about. */
+    total: number;
+    /** Answered with a CALLRESULT. */
+    answered: number;
+    /** Answered with a CALLERROR, in log order. */
+    errors: AnswerError[];
+    /** Unanswered, with the peer demonstrably still answering afterwards. */
+    unanswered: number;
+    /** Unanswered, with nothing answered after them -- the log was truncated. */
+    outstanding: number;
+}
+/**
+ * Classifies every CALL for `action`+`direction` by how the peer answered it.
+ * The three rules on {@link assertAllAnswered} are implemented HERE, once.
+ *
+ * Separate from the assertion so that anything else reading a wire log gets
+ * the same verdicts -- `tools/answered-report.ts` is the reason it exists.
+ * That tool used to carry its own copy of this loop, kept in step with a
+ * comment saying it must be; rule 3 had already been wrong once, only
+ * `assert.ts`'s copy was guarded, and the two had already drifted (the copy
+ * hardcoded the response direction). A report whose job is to explain the
+ * checks must not be able to disagree with them.
+ */
+export declare function tallyAnswers(frames: readonly Frame[], action: string, direction?: Direction): AnswerTally;
 export declare function assertAllAnswered(rec: AssertRecorder, frames: readonly Frame[], action: string, description?: string, options?: AnsweredOptions): void;
 export declare function assertEq(rec: AssertRecorder, actual: unknown, expected: unknown, description: string): void;
 export declare function assertTrue(rec: AssertRecorder, condition: boolean, description: string, detail?: string): void;

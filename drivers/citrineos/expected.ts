@@ -37,7 +37,6 @@ export const BLOCKED_UNREACHABLE =
   "Blocked is an IAuthorizer, and container.ts registers " +
   "`authorizers: asValue([])` with no setting that changes it.";
 
-
 /**
  * Why every FirmwareStatusNotification the charge point sends comes back as a
  * CALLERROR, worded once.
@@ -66,15 +65,10 @@ const FIRMWARE_FINDING =
   'FirmwareStatusNotification". Upstream citrineos/citrineos#216.';
 
 /**
- * Why all three TC_044 rows arrived here at once, and why none of them is a
- * flake: until issue #11 these scenarios asserted only the statuses the CHARGE
- * POINT sent, never the CSMS's answer, so they were green over ten CALLERRORs.
- * assertAllAnswered closed that. Every other check in all three still passes --
- * the whole status train, the ordering checks, the never-reached negatives --
- * and the single failure in each is the CALLERROR. Deterministic: the handler
- * is absent, not intermittent.
+ * None of the three TC_044 rows is a flake, which is the one thing this table
+ * may never be used to quiet: the handler is absent, not intermittent. Why
+ * they all arrived at once is in scope.ts, on the rows themselves.
  */
-
 const V2_EXPECTED_FAILURES: ExpectedFailureTable = {
   "cert16-tc044-1-firmware-update": {
     reason:

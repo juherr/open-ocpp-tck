@@ -169,7 +169,7 @@ const V2_SCOPE = {
   // which is a finding about CitrineOS, not a reason to demote a scope row.
   //
   // They used to be green: the scenarios asserted only the statuses the CHARGE
-  // POINT sent, never the CSMS's answer, so ten CALLERRORs passed unnoticed.
+  // POINT sent, never the CSMS's answer, so every CALLERROR passed unnoticed.
   // That was a gap in the SCENARIOS, not evidence about CitrineOS. Closing it
   // (issue #11, assertAllAnswered) turned a documented blind spot into a
   // measured finding: every other check in all three still passes, and the

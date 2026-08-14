@@ -6,7 +6,7 @@
  /**
   * assert.ts -- typed assertion DSL for scenario specs, mirroring lib.sh's
   * check_* helpers but operating on parsed {@link Frame}s (see ocpp.ts)
-@@ -13,24 +15,95 @@
+@@ -13,22 +15,93 @@
    type Frame,
  } from "./ocpp";
  
@@ -89,8 +89,8 @@
    fail(description: string, detail?: string): void {
 -    this.checks.push({ description, pass: false, detail });
 +    this.checks.push({ description, pass: false, detail, status: "FAIL" });
-   }
- 
++  }
++
 +  /** Records a check that could not be evaluated at all -- neither a pass
 +   *  nor a failure. `reason` explains what the driver could not obtain. */
 +  skip(description: string, reason: string): void {
@@ -100,12 +100,10 @@
 +      detail: reason,
 +      status: "SKIPPED",
 +    });
-+  }
-+
-   get results(): readonly CheckResult[] {
-     return this.checks;
    }
-@@ -40,9 +113,15 @@
+ 
+   get results(): readonly CheckResult[] {
+@@ -40,9 +113,27 @@
    }
  
    get failed(): number {
@@ -119,10 +117,22 @@
 +    return this.checks.filter((c) => c.status === "SKIPPED").length;
 +  }
 +
++  /** The subset of {@link skipped} that no driver can ever turn green,
++   *  because the SCENARIO does not make the request (see
++   *  {@link UNEXERCISED_PREFIX}). Exposed so the runner can report the two
++   *  causes apart: without it, a scenario already PARTIAL for an unexercised
++   *  obligation hides a NEW driver limitation appearing beside it -- the
++   *  count does not move and the verdict was already orange. */
++  get unexercised(): number {
++    return this.checks.filter(
++      (c) => c.status === "SKIPPED" && c.detail?.startsWith(UNEXERCISED_PREFIX),
++    ).length;
++  }
++
    get verdict(): "PASS" | "FAIL" {
      return this.failed > 0 ? "FAIL" : "PASS";
    }
-@@ -208,8 +287,147 @@
+@@ -208,8 +299,207 @@
      rec.fail(
        description,
        `expected idTagInfo.status=${expectedStatus}, got status=${String(status)} (uniqueId=${call.uniqueId})`,
@@ -134,9 +144,9 @@
 +  /** Which side sent the CALLs being answered (default "sent": the charge
 +   *  point, which is the direction every OCA `_CSMS` obligation is in). */
 +  direction?: Direction;
-+  /** How many such CALLs the scenario requires. Default 1. Fewer than this is
-+   *  SKIPPED and tagged {@link UNEXERCISED_PREFIX} -- never a vacuous pass,
-+   *  and never a FAIL either; see rule 1 on {@link assertAllAnswered}. */
++  /** How many such CALLs the scenario requires. Default 1. Fewer is SKIPPED
++   *  and tagged {@link UNEXERCISED_PREFIX} -- see rule 1 on
++   *  {@link assertAllAnswered}. */
 +  minimum?: number;
 +}
 +
@@ -193,16 +203,44 @@
 + *    unanswered CALL damning is that the CSMS demonstrably had the chance and
 + *    took it for someone else.
 + */
-+export function assertAllAnswered(
-+  rec: AssertRecorder,
++/** One CALLERROR the peer answered with, already rendered for a message. */
++export interface AnswerError {
++  errorCode: string;
++  errorDescription: string;
++  uniqueId: string;
++}
++
++/** How a peer answered every CALL for one action. See {@link tallyAnswers}. */
++export interface AnswerTally {
++  /** Total CALLs found for the action+direction asked about. */
++  total: number;
++  /** Answered with a CALLRESULT. */
++  answered: number;
++  /** Answered with a CALLERROR, in log order. */
++  errors: AnswerError[];
++  /** Unanswered, with the peer demonstrably still answering afterwards. */
++  unanswered: number;
++  /** Unanswered, with nothing answered after them -- the log was truncated. */
++  outstanding: number;
++}
++
++/**
++ * Classifies every CALL for `action`+`direction` by how the peer answered it.
++ * The three rules on {@link assertAllAnswered} are implemented HERE, once.
++ *
++ * Separate from the assertion so that anything else reading a wire log gets
++ * the same verdicts -- `tools/answered-report.ts` is the reason it exists.
++ * That tool used to carry its own copy of this loop, kept in step with a
++ * comment saying it must be; rule 3 had already been wrong once, only
++ * `assert.ts`'s copy was guarded, and the two had already drifted (the copy
++ * hardcoded the response direction). A report whose job is to explain the
++ * checks must not be able to disagree with them.
++ */
++export function tallyAnswers(
 +  frames: readonly Frame[],
 +  action: string,
-+  description = `every ${action}.req answered with a ${action}.conf`,
-+  options: AnsweredOptions = {},
-+): void {
-+  const direction = options.direction ?? "sent";
-+  const minimum = options.minimum ?? 1;
-+
++  direction: Direction = "sent",
++): AnswerTally {
 +  // One pass: the matching CALLs with their positions, and the position of
 +  // the last response the peer sent at all -- rule 3 needs both.
 +  const responseDirection: Direction =
@@ -219,58 +257,90 @@
 +    }
 +  });
 +
-+  if (calls.length < minimum) {
-+    rec.skip(
-+      description,
-+      `${UNEXERCISED_PREFIX} expected at least ${minimum} ${direction} CALL for action=${action}, found ${calls.length}`,
-     );
-+    return;
-   }
-+
-+  const errored: string[] = [];
-+  let unanswered = 0;
-+  let outstanding = 0;
++  const tally: AnswerTally = {
++    total: calls.length,
++    answered: 0,
++    errors: [],
++    unanswered: 0,
++    outstanding: 0,
++  };
 +
 +  for (const { frame: call, index } of calls) {
 +    const response = findResponseFor(frames, call);
 +    if (!response) {
 +      // Rule 3: damning only if the peer answered something after this CALL.
-+      if (index < lastResponseIndex) unanswered++;
-+      else outstanding++;
++      if (index < lastResponseIndex) tally.unanswered++;
++      else tally.outstanding++;
 +      continue;
 +    }
 +    if (response.kind === "callerror") {
-+      errored.push(
-+        `${response.errorCode}: ${response.errorDescription} (uniqueId=${call.uniqueId})`,
-+      );
++      tally.errors.push({
++        errorCode: response.errorCode,
++        errorDescription: response.errorDescription,
++        uniqueId: call.uniqueId,
++      });
++      continue;
 +    }
++    tally.answered++;
 +  }
 +
-+  if (errored.length === 0 && unanswered === 0) {
-+    const tail =
++  return tally;
++}
++
++export function assertAllAnswered(
++  rec: AssertRecorder,
++  frames: readonly Frame[],
++  action: string,
++  description = `every ${action}.req answered with a ${action}.conf`,
++  options: AnsweredOptions = {},
++): void {
++  const direction = options.direction ?? "sent";
++  const minimum = options.minimum ?? 1;
++
++  const { total, errors, unanswered, outstanding } = tallyAnswers(
++    frames,
++    action,
++    direction,
++  );
++
++  if (total < minimum) {
++    rec.skip(
++      description,
++      `${UNEXERCISED_PREFIX} expected at least ${minimum} ${direction} CALL for action=${action}, found ${total}`,
+     );
++    return;
+   }
++
++  if (errors.length === 0 && unanswered === 0) {
++    const stillOutstanding =
 +      outstanding > 0
-+        ? ` (${calls.length - outstanding}/${calls.length} answered; ${outstanding} still outstanding when the log ended)`
-+        : ` (${calls.length}/${calls.length} answered)`;
-+    rec.pass(`${description}${tail}`);
++        ? `; ${outstanding} still outstanding when the log ended`
++        : "";
++    rec.pass(
++      `${description} (${total - outstanding}/${total} answered${stillOutstanding})`,
++    );
 +    return;
 +  }
 +
 +  const parts: string[] = [];
-+  if (errored.length > 0) {
++  if (errors.length > 0) {
++    const rendered = errors.map(
++      (e) => `${e.errorCode}: ${e.errorDescription} (uniqueId=${e.uniqueId})`,
++    );
 +    parts.push(
-+      `${errored.length}/${calls.length} answered with a CALLERROR -- ${errored.join("; ")}`,
++      `${errors.length}/${total} answered with a CALLERROR -- ${rendered.join("; ")}`,
 +    );
 +  }
 +  if (unanswered > 0) {
 +    parts.push(
-+      `${unanswered}/${calls.length} never answered (the log continued past them)`,
++      `${unanswered}/${total} never answered (the log continued past them)`,
 +    );
 +  }
 +  rec.fail(description, parts.join("; "));
  }
  
  export function assertEq(
-@@ -218,6 +436,11 @@
+@@ -218,6 +508,11 @@
    expected: unknown,
    description: string,
  ): void {
@@ -282,7 +352,7 @@
    if (actual === expected) {
      rec.pass(description);
    } else {
-@@ -346,6 +569,11 @@
+@@ -346,6 +641,11 @@
    value: string,
    description: string,
  ): void {

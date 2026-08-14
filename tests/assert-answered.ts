@@ -56,6 +56,8 @@ const cases: Array<{
   name: string;
   lines: string[];
   expect: "PASS" | "FAIL" | "SKIPPED";
+  /** Required opening of the check's detail, where the case pins one. */
+  detailPrefix?: string;
   options?: AnsweredOptions;
 }> = [
   {
@@ -74,9 +76,12 @@ const cases: Array<{
     expect: "FAIL",
   },
   {
+    // The tag matters as much as the status: without it the summary cannot
+    // tell an unexercised obligation from a value this driver could not get.
     name: "rule 1: the action was never sent -- SKIPPED, not a vacuous pass",
     lines: [unrelated()],
     expect: "SKIPPED",
+    detailPrefix: UNEXERCISED_PREFIX,
   },
   {
     name: "rule 1: minimum is honoured",
@@ -123,37 +128,27 @@ const cases: Array<{
 ];
 
 let failures = 0;
-for (const { name, lines, expect, options } of cases) {
+for (const { name, lines, expect, detailPrefix, options } of cases) {
   const rec = new AssertRecorder();
   assertAllAnswered(rec, parseLog(lines.join("\n")), ACTION, undefined, options);
   const result = rec.results[0];
-  if (result?.status === expect) continue;
+  const wrongStatus = result?.status !== expect;
+  const wrongDetail =
+    detailPrefix !== undefined && !result?.detail?.startsWith(detailPrefix);
+  if (!wrongStatus && !wrongDetail) continue;
   failures++;
   process.stderr.write(
-    `FAIL: ${name}\n  expected ${expect}, got ${result?.status}` +
+    `FAIL: ${name}\n  expected ${expect}` +
+      `${detailPrefix ? ` with detail opening "${detailPrefix}"` : ""}` +
+      `, got ${result?.status}` +
       `${result?.detail ? ` (${result.detail})` : ""}\n`,
   );
-}
-
-// Rule 1's SKIPPED must stay TAGGED, or the summary cannot tell an
-// unexercised obligation from a value this driver could not obtain.
-{
-  const rec = new AssertRecorder();
-  assertAllAnswered(rec, parseLog(unrelated()), ACTION);
-  const detail = rec.results[0]?.detail ?? "";
-  if (!detail.startsWith(UNEXERCISED_PREFIX)) {
-    failures++;
-    process.stderr.write(
-      `FAIL: rule 1's skip reason is not tagged with UNEXERCISED_PREFIX\n` +
-        `  got: ${detail}\n`,
-    );
-  }
 }
 
 if (failures > 0) {
   process.stderr.write(
     `\nassertAllAnswered no longer enforces its own contract ` +
-      `(${failures} problem(s) over ${cases.length} cases). See the header of ` +
+      `(${failures}/${cases.length} cases wrong). See the header of ` +
       `this file: rule 2 is what makes a CALLERROR red, rule 1 is what keeps an ` +
       `unexercised obligation orange, and rule 3 is what keeps a truncated log ` +
       `from being red at all.\n`,
