@@ -8,7 +8,6 @@
  */
 
 import {
-  findAllCalls,
   findCall,
   findResponseFor,
   type CallFrame,
@@ -337,16 +336,22 @@ export interface AnsweredOptions {
  *    errorDescription. A CALLERROR is a response, but it is not the `.conf`
  *    the test case asks for.
  *
- * 3. A CALL with no response AND no frame of any kind after it in the log is
- *    OUTSTANDING, not unanswered, and does NOT fail. The runner stops the
- *    simulator container after `holdSecs` (see main.ts), which truncates the
- *    wire log at an arbitrary point -- frequently mid-exchange, because the
- *    charge point keeps sending Heartbeats and StatusNotifications until the
- *    moment it is killed. Failing on that trailing CALL would make this
- *    helper measure `holdSecs` rather than the CSMS, and it would do it
- *    intermittently, which is the worst kind of red. A CALL with no response
- *    but with later frames IS a failure: the conversation demonstrably
- *    continued without it being answered.
+ * 3. A CALL with no response is OUTSTANDING, not unanswered, unless the peer
+ *    answered something LATER in the log. The runner stops the simulator
+ *    container after `holdSecs` (see main.ts), which truncates the wire log at
+ *    an arbitrary point -- frequently mid-exchange, because the charge point
+ *    keeps sending Heartbeats and StatusNotifications until the moment it is
+ *    killed. Failing on those trailing CALLs would make this helper measure
+ *    `holdSecs` rather than the CSMS, intermittently, which is the worst kind
+ *    of red.
+ *
+ *    The test is "did the peer keep answering after this CALL", NOT "is this
+ *    the very last frame". The last-frame version was wrong and quietly so: a
+ *    charge point that fires two requests back to back before the container
+ *    dies leaves the FIRST of them with a later frame after it, so it was
+ *    reported unanswered while its identical twin was forgiven. What makes an
+ *    unanswered CALL damning is that the CSMS demonstrably had the chance and
+ *    took it for someone else.
  */
 export function assertAllAnswered(
   rec: AssertRecorder,
@@ -358,7 +363,22 @@ export function assertAllAnswered(
   const direction = options.direction ?? "sent";
   const minimum = options.minimum ?? 1;
 
-  const calls = findAllCalls(frames, direction, action);
+  // One pass: the matching CALLs with their positions, and the position of
+  // the last response the peer sent at all -- rule 3 needs both.
+  const responseDirection: Direction =
+    direction === "sent" ? "received" : "sent";
+  const calls: Array<{ frame: CallFrame; index: number }> = [];
+  let lastResponseIndex = -1;
+  frames.forEach((frame, index) => {
+    if (frame.kind === "call") {
+      if (frame.direction === direction && frame.action === action) {
+        calls.push({ frame, index });
+      }
+    } else if (frame.direction === responseDirection) {
+      lastResponseIndex = index;
+    }
+  });
+
   if (calls.length < minimum) {
     rec.skip(
       description,
@@ -371,13 +391,12 @@ export function assertAllAnswered(
   let unanswered = 0;
   let outstanding = 0;
 
-  for (const call of calls) {
+  for (const { frame: call, index } of calls) {
     const response = findResponseFor(frames, call);
     if (!response) {
-      // Rule 3: only a CALL the wire log outlived counts as unanswered.
-      const isLast = frames.indexOf(call) === frames.length - 1;
-      if (isLast) outstanding++;
-      else unanswered++;
+      // Rule 3: damning only if the peer answered something after this CALL.
+      if (index < lastResponseIndex) unanswered++;
+      else outstanding++;
       continue;
     }
     if (response.kind === "callerror") {

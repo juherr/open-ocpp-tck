@@ -22,8 +22,8 @@
  *     either because this driver could not evaluate it (UNVERIFIABLE) or
  *     because the scenario never makes the request the OCA case obliges the
  *     CSMS to answer (UNEXERCISED). Both are orange: neither is a defect of
- *     the CSMS under test, and neither fails the sweep.
- *     because the driver answered with assert.ts's UNVERIFIABLE sentinel.
+ *     the CSMS under test, and neither fails the sweep. Which of the two it
+ *     was is in the check's detail, printed under the SKIPPED line.
  *     Exit code 0: a check that could not be evaluated is not a defect.
  *
  * The verdict is what the CSMS did; the EXIT CODE is what that means for this
@@ -923,8 +923,8 @@ async function writeSummary(
     notes.push(
       "",
       `${partialCount} PARTIAL (SKIPPED checks: either this driver could not ` +
-        `evaluate them, or the scenario does not exercise the obligation -- the ` +
-        `check's detail says which), ` +
+        `evaluate them, or the scenario does not exercise the obligation -- ` +
+        `this table carries neither detail, the run log does), ` +
         `${naCount} NOT APPLICABLE (out of scope for this CSMS). Neither fails the sweep.`,
     );
   }

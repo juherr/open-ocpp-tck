@@ -156,9 +156,11 @@ and do carry it.
 
 Closing any of these is a change to the scenario -- a longer hold, an extra
 trigger -- not a change to what the checks assert. Until then each shows up as
-a SKIPPED check tagged `UNEXERCISED_PREFIX`, which is what keeps them
-distinguishable in `summary.md` from the other reason a check is skipped: a
-value THIS CSMS could not supply. Those vary per driver; these do not.
+a SKIPPED check whose detail is tagged `UNEXERCISED_PREFIX`, which is what
+tells it apart from the other reason a check is skipped: a value THIS CSMS
+could not supply. Those vary per driver; these do not. The tag is in the run
+log, under the `SKIPPED:` line -- `summary.md` counts skipped checks but does
+not say why, so read the run when the two need separating.
 
 ## One unanswered request that is nobody's fault
 

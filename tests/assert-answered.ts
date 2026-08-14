@@ -90,8 +90,29 @@ const cases: Array<{
     expect: "PASS",
   },
   {
-    name: "rule 3: an unanswered CALL the log outlived is a failure",
+    name: "rule 3: an unanswered CALL the CSMS answered past is a failure",
     lines: [req("a", "Downloading"), req("b", "Installed"), conf("b")],
+    expect: "FAIL",
+  },
+  {
+    // The regression this case exists for: a charge point firing two requests
+    // back to back before the container dies. Both were cut off, but only the
+    // literal last frame used to be forgiven, so the first went red for a
+    // reason that has nothing to do with the CSMS.
+    name: "rule 3: a truncated tail BURST is outstanding, not unanswered",
+    lines: [req("a", "Downloading"), conf("a"), req("b", "Installing"), req("c", "Installed")],
+    expect: "PASS",
+  },
+  {
+    // ...and the mirror image, so the fix cannot be "forgive everything":
+    // an answer after the gap means the CSMS had its chance.
+    name: "rule 3: a gap before a later answer is still a failure",
+    lines: [
+      req("a", "Downloading"),
+      req("b", "Installing"),
+      req("c", "Installed"),
+      conf("c"),
+    ],
     expect: "FAIL",
   },
   {

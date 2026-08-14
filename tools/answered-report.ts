@@ -58,7 +58,17 @@ interface Tally {
 
 function tally(frames: readonly Frame[]): Map<string, Tally> {
   const byAction = new Map<string, Tally>();
-  const lastIndex = frames.length - 1;
+
+  // Same rule as assertAllAnswered's rule 3, and it must stay the same rule:
+  // an unanswered CALL is only damning if the CSMS answered something after
+  // it. Anything past the last response it sent was cut off when the runner
+  // stopped the container, not ignored.
+  let lastResponseIndex = -1;
+  frames.forEach((frame, index) => {
+    if (frame.kind !== "call" && frame.direction === "received") {
+      lastResponseIndex = index;
+    }
+  });
 
   frames.forEach((frame, index) => {
     if (frame.kind !== "call" || frame.direction !== "sent") return;
@@ -73,10 +83,8 @@ function tally(frames: readonly Frame[]): Map<string, Tally> {
 
     const response = findResponseFor(frames, call);
     if (!response) {
-      // Same rule as assertAllAnswered's rule 3: a CALL the log did not
-      // outlive was cut off by the container stopping, not ignored.
-      if (index === lastIndex) t.outstanding++;
-      else t.unanswered++;
+      if (index < lastResponseIndex) t.unanswered++;
+      else t.outstanding++;
       return;
     }
     if (response.kind === "callerror") {
@@ -136,7 +144,10 @@ for (const file of files) {
           t.callerror,
           t.unanswered,
           t.outstanding,
-          JSON.stringify(t.errorSample ?? ""),
+          // CSV quoting, not JSON: a `"` inside the sample doubles, it does
+          // not backslash-escape. Error descriptions come from the CSMS, so
+          // this field is the only one that can carry either character.
+          `"${(t.errorSample ?? "").replace(/"/g, '""')}"`,
         ].join(","),
       );
     } else {
