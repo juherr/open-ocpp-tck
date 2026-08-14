@@ -85,6 +85,7 @@ strongest available demonstration that the core names no CSMS.
 | `drivers/citrineos/profiles.ts` | `local-upstreamable` | `—` | `—` | `—` | `—` |
 | `drivers/citrineos/records.ts` | `local-upstreamable` | `—` | `—` | `—` | `—` |
 | `drivers/citrineos/scope.ts` | `local-upstreamable` | `—` | `—` | `—` | `—` |
+| `drivers/citrineos/expected.ts` | `local-upstreamable` | `—` | `—` | `—` | `—` |
 | `drivers/citrineos/variant.ts` | `local-upstreamable` | `—` | `—` | `—` | `—` |
 | `drivers/citrineos/provision.ts` | `local-upstreamable` | `—` | `—` | `—` | `—` |
 

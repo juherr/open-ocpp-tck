@@ -55,6 +55,7 @@ import {
   teardownCommand,
   verifyCommand,
 } from "./provision";
+import { citrineosExpectedFailures } from "./expected";
 import { CitrineRecords } from "./records";
 import { toCitrineRequest } from "./requests";
 import { citrineosScope } from "./scope";
@@ -124,6 +125,10 @@ export const csmsDriver: CsmsDriverModule = {
   displayName: "CitrineOS",
   scope: (env) => citrineosScope(resolveVariant(env)),
   capabilities: (env) => capabilitiesFor(resolveVariant(env)),
+  // A function of the environment for the same reason the two above are: which
+  // line this driver is pointed at decides which defects it meets. See
+  // expected.ts for why the v1 list is empty rather than sixteen rows long.
+  expectedFailures: (env) => citrineosExpectedFailures(resolveVariant(env)),
   create(env: CsmsEnv): CsmsDriverParts {
     const cfg = defaultCitrineConfig(env);
     const records = new CitrineRecords(cfg);
