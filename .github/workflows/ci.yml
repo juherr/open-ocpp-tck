@@ -93,6 +93,11 @@ jobs:
       - name: Gate parity holds
         run: bash tests/gate-parity.sh
 
+      # The numbers AGENTS.md writes out in prose, against what is there.
+      # Three were wrong at once, and none was caught by reading.
+      - name: Doc counts hold
+        run: bash tests/doc-counts.sh
+
       - name: Vendored files match VENDOR.md
         run: bash tests/vendor-integrity.sh
 
