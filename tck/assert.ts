@@ -1,4 +1,4 @@
-// Derived from shiv3/ocpp-cp-simulator src/cp/application/verification/assert.ts (re-exported upstream as scripts/steve-verify/runner/assert.ts) @ 604054adb0d7d7129a26a5f1ad2d5fdc290d1ca1 (Apache-2.0). Modified: added the UNVERIFIABLE_PREFIX sentinel, a third SKIPPED check outcome, and the AssertRecorder.skipped counter; assertEq/assertNonEmpty short-circuit to SKIPPED when a value carries the sentinel. Everything else is unchanged.
+// Derived from shiv3/ocpp-cp-simulator src/cp/application/verification/assert.ts (re-exported upstream as scripts/steve-verify/runner/assert.ts) @ 604054adb0d7d7129a26a5f1ad2d5fdc290d1ca1 (Apache-2.0). Modified: added the UNVERIFIABLE_PREFIX sentinel, a third SKIPPED check outcome, and the AssertRecorder.skipped counter; assertEq/assertNonEmpty short-circuit to SKIPPED when a value carries the sentinel; added assertAllAnswered and AnsweredOptions, which have no upstream counterpart. Everything else is unchanged.
 
 /**
  * assert.ts -- typed assertion DSL for scenario specs, mirroring lib.sh's
@@ -8,6 +8,7 @@
  */
 
 import {
+  findAllCalls,
   findCall,
   findResponseFor,
   type CallFrame,
@@ -269,6 +270,115 @@ export function assertIdTagInfoStatus(
       `expected idTagInfo.status=${expectedStatus}, got status=${String(status)} (uniqueId=${call.uniqueId})`,
     );
   }
+}
+
+export interface AnsweredOptions {
+  /** Which side sent the CALLs being answered (default "sent": the charge
+   *  point, which is the direction every OCA `_CSMS` obligation is in). */
+  direction?: Direction;
+  /** How many such CALLs the scenario requires. Default 1. Zero CALLs is a
+   *  FAIL, never a vacuous pass -- see the note on emptiness below. */
+  minimum?: number;
+}
+
+/**
+ * Asserts that EVERY CALL the charge point sent for `action` was answered by
+ * the CSMS with a CALLRESULT. This is the check for the right-hand column of
+ * an OCA `_CSMS` test case: "The Central System responds with a X.conf".
+ *
+ * It exists because asserting what the CHARGE POINT sent -- which is what
+ * most of this file's helpers do -- cannot see a CSMS that answers with a
+ * CALLERROR or with nothing. A suite made only of those assertions reports
+ * green for a CSMS that never answered anything, and did: see OCA-COVERAGE.md.
+ *
+ * Correlation is {@link findResponseFor}'s, i.e. by OCPP-J uniqueId, so a
+ * scenario that sends the same action four times (TC_044's
+ * FirmwareStatusNotification train) gets four independent verdicts rather
+ * than one lucky match.
+ *
+ * THREE RULES, and the third is the one to read:
+ *
+ * 1. Fewer than `minimum` CALLs for `action` -- FAIL. An "every X was
+ *    answered" check over zero Xs passes trivially, and a check that passes
+ *    when the scenario did nothing is worse than no check: it reads as
+ *    coverage. If a scenario legitimately may not send `action`, it does not
+ *    want this helper.
+ *
+ * 2. A response that is a CALLERROR -- FAIL, naming errorCode and
+ *    errorDescription. A CALLERROR is a response, but it is not the `.conf`
+ *    the test case asks for.
+ *
+ * 3. A CALL with no response AND no frame of any kind after it in the log is
+ *    OUTSTANDING, not unanswered, and does NOT fail. The runner stops the
+ *    simulator container after `holdSecs` (see main.ts), which truncates the
+ *    wire log at an arbitrary point -- frequently mid-exchange, because the
+ *    charge point keeps sending Heartbeats and StatusNotifications until the
+ *    moment it is killed. Failing on that trailing CALL would make this
+ *    helper measure `holdSecs` rather than the CSMS, and it would do it
+ *    intermittently, which is the worst kind of red. A CALL with no response
+ *    but with later frames IS a failure: the conversation demonstrably
+ *    continued without it being answered.
+ */
+export function assertAllAnswered(
+  rec: AssertRecorder,
+  frames: readonly Frame[],
+  action: string,
+  description = `every ${action}.req answered with a ${action}.conf`,
+  options: AnsweredOptions = {},
+): void {
+  const direction = options.direction ?? "sent";
+  const minimum = options.minimum ?? 1;
+
+  const calls = findAllCalls(frames, direction, action);
+  if (calls.length < minimum) {
+    rec.fail(
+      description,
+      `expected at least ${minimum} ${direction} CALL for action=${action}, found ${calls.length}`,
+    );
+    return;
+  }
+
+  const errored: string[] = [];
+  let unanswered = 0;
+  let outstanding = 0;
+
+  for (const call of calls) {
+    const response = findResponseFor(frames, call);
+    if (!response) {
+      // Rule 3: only a CALL the wire log outlived counts as unanswered.
+      const isLast = frames.indexOf(call) === frames.length - 1;
+      if (isLast) outstanding++;
+      else unanswered++;
+      continue;
+    }
+    if (response.kind === "callerror") {
+      errored.push(
+        `${response.errorCode}: ${response.errorDescription} (uniqueId=${call.uniqueId})`,
+      );
+    }
+  }
+
+  if (errored.length === 0 && unanswered === 0) {
+    const tail =
+      outstanding > 0
+        ? ` (${calls.length - outstanding}/${calls.length} answered; ${outstanding} still outstanding when the log ended)`
+        : ` (${calls.length}/${calls.length} answered)`;
+    rec.pass(`${description}${tail}`);
+    return;
+  }
+
+  const parts: string[] = [];
+  if (errored.length > 0) {
+    parts.push(
+      `${errored.length}/${calls.length} answered with a CALLERROR -- ${errored.join("; ")}`,
+    );
+  }
+  if (unanswered > 0) {
+    parts.push(
+      `${unanswered}/${calls.length} never answered (the log continued past them)`,
+    );
+  }
+  rec.fail(description, parts.join("; "));
 }
 
 export function assertEq(

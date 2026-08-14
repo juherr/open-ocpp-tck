@@ -82,14 +82,17 @@ There is no unit-test framework and no `*.test.ts`. `tests/` holds offline
 guards, each with a header stating the property it protects. `bun run test`
 chains them — note `bun test` is Bun's own runner and finds nothing here.
 
-Shell is the default, and the two TypeScript ones are TypeScript because what
-they assert is unreachable through the CLI. `driver-env-scope.ts`: a driver's
-declarations follow the env they are *resolved* with, where the CLI can only
-ever pass `process.env`. `expected-failure-standing.ts`: the rule that decides
-whether a red sweep ends the build, which from a shell would cost a container
-per row — and, for the rows that matter, a CSMS engineered to fail a chosen
-scenario a chosen way. `tck/standing.ts` is a module of its own so that guard
-can be a table.
+Shell is the default, and the three TypeScript ones are TypeScript because
+what they assert is unreachable through the CLI. `driver-env-scope.ts`: a
+driver's declarations follow the env they are *resolved* with, where the CLI
+can only ever pass `process.env`. `expected-failure-standing.ts`: the rule that
+decides whether a red sweep ends the build, which from a shell would cost a
+container per row — and, for the rows that matter, a CSMS engineered to fail a
+chosen scenario a chosen way. `tck/standing.ts` is a module of its own so that
+guard can be a table. `assert-answered.ts`: reaching `assertAllAnswered`'s
+rules needs a CSMS that emits a CALLERROR and a run truncated between a CALL
+and its response — both real, neither reproducible offline except by handing
+the helper the frames.
 
 A new guard earns its place by failing correctly, so break what it protects and
 watch it go red before committing it. `tools/mutate.sh <file> <perl-expr> --
