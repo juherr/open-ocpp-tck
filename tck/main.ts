@@ -83,6 +83,7 @@ import {
   defaultSimConfig,
   startSim,
   type SimConfig,
+  assertNoForeignSweep,
 } from "./sim";
 import type {
   CsmsCapabilities,
@@ -1008,6 +1009,8 @@ async function runGroupSweep(
   }
 
   const stations = resolveStations();
+  // Before `driver provision` state or prepareStation() touches anything.
+  await assertNoForeignSweep(stations);
   // Lane count IS the station count: one lane per station, never more. A
   // single resolved station therefore forces sequential execution however
   // --parallel was passed.
@@ -1849,6 +1852,8 @@ export async function cli(argv: string[]): Promise<number> {
     );
     return exitForSingleRun(spec.templateId, "NOT APPLICABLE", expected);
   }
+
+  await assertNoForeignSweep([args.cpId]);
 
   const options: RunOptions = {
     cpId: args.cpId,

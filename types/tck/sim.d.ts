@@ -82,6 +82,34 @@ export interface SimProcess {
      *  process. Idempotent, never throws. */
     stop(): Promise<void>;
 }
+/**
+ * Refuses to start when another sweep is already driving one of OUR charge
+ * points, and says so when one is driving different ones.
+ *
+ * WHY. Several checkouts of this repository get worked on at once against one
+ * docker daemon, and nothing warns you. Two sweeps sharing a charge point id
+ * interleave their scenarios in one CSMS database, and the result is not a
+ * clean failure: a scenario reads a transaction row the OTHER run created and
+ * reports a conformance finding about the CSMS. That happened here -- a TC_005
+ * assertion failed on `id_tag CERT018`, a tag belonging to a different
+ * scenario entirely -- and it cost a full sweep to attribute.
+ *
+ * THE CHECK IS ON THE CHARGE POINT ID, NOT ON "IS ANYTHING RUNNING", because
+ * running two sweeps at once is legitimate and is the documented way out: a
+ * second CSMS on its own ports with its own OCPP_CP_IDS (see
+ * drivers/citrineos/README.md). Refusing that would forbid the fix along with
+ * the problem. Sharing a cp-id is the part that cannot be made safe -- the
+ * container name is daemon-global, so `docker run --name` collides even when
+ * the two CSMS are genuinely separate.
+ *
+ * CALLED ONCE PER PROCESS, FROM THE ENTRY POINTS, and that placement is the
+ * point rather than tidiness: `prepareStation()` writes to the CSMS before the
+ * first container starts, so a check inside startSim() would refuse only after
+ * this process had already written into a database another sweep was using.
+ * It also runs before any container of ours exists, so our own parallel lanes
+ * never look foreign to each other.
+ */
+export declare function assertNoForeignSweep(cpIds: readonly string[]): Promise<void>;
 /** Starts a detached-from-shell but attached-to-us simulator container for
  *  one charge point, running JSON-Lines mode. `templateId` is only used to
  *  build a readable, collision-avoiding container name (mirrors lib.sh's
