@@ -71,6 +71,7 @@ because a diff is reviewable where a digest is not.
 |---|---|---|
 | `types/**/*.d.ts` | `bun run build:types` | `tests/types-current.sh` |
 | `tck/specs/ASSERT-INVENTORY.txt`, `DRIVE-TRACE.txt` | `bash tests/spec-invariants.sh --regenerate` | `tests/spec-invariants.sh` |
+| `tck/specs/OCA-OBLIGATIONS.txt` | hand-maintained, not generated | `tests/oca-obligations.sh` |
 | `patches/**`, `VENDOR.md` digests | `tools/repin-vendored.sh <path>` | `tests/vendor-integrity.sh` |
 
 Never hand-edit them. The diff of `types/` **is** the change to this package's
@@ -108,6 +109,10 @@ the output it prints.
 - **Nothing under `tck/` may name a CSMS, and the core may not import a
   driver.** Doc comments may discuss a CSMS-shaped design they replaced;
   identifiers, string literals and imports may not. (`tests/generic-core.sh`)
+- **Every OCA obligation has a check, and every answered-check has an
+  obligation.** `tck/specs/OCA-OBLIGATIONS.txt` is the table; adding an
+  `assertAllAnswered` without a row, or a row without the check, fails.
+  (`tests/oca-obligations.sh`)
 - **A scenario's assertions and its CSMS call sequence may not change.**
   Changing what a scenario measures is legitimate and moves the two committed
   artifacts above — say why in the pull request. (`tests/spec-invariants.sh`)

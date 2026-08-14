@@ -1,0 +1,75 @@
+# OCA-OBLIGATIONS -- every `.conf` an OCA `_CSMS` case owes a request the
+# charge point sent, and the check that covers it.
+#
+# THIS FILE IS THE TABLE. OCA-COVERAGE.md explains where these rows come from
+# and what they mean; it does not restate them, because two copies of a
+# 53-row derivation drift and the prose copy is the one nobody diffs.
+#
+# Hand-maintained, and guarded: tests/oca-obligations.sh cross-checks it
+# against tck/specs/ASSERT-INVENTORY.txt in both directions, so an obligation
+# with no check and a check with no obligation are both build failures. That
+# is the point -- before it, "46 obligations, 46 checks" was a number a
+# reviewer had to take on faith, and it was wrong (there are 53; 46 of them
+# are the checks issue #11 added).
+#
+# checked-by:
+#   assertAllAnswered      the check added for this obligation
+#   assertResponseStatus   already covered, top-level status
+#   assertIdTagInfoStatus  already covered, idTagInfo.status
+#   inline                 a hand-rolled block -- see the spec, and the
+#                          rejected-refactor note next to it
+#
+# scenario / action / checked-by / OCA case
+cert16-tc001-cold-boot                    BootNotification               assertResponseStatus   TC_001
+cert16-tc001-cold-boot                    Heartbeat                      assertAllAnswered      TC_001
+cert16-tc001-cold-boot                    StatusNotification             assertAllAnswered      TC_001
+cert16-tc003-charging-plugin-first        Authorize                      assertAllAnswered      TC_003
+cert16-tc003-charging-plugin-first        StartTransaction               assertIdTagInfoStatus  TC_003
+cert16-tc003-charging-plugin-first        StatusNotification             assertAllAnswered      TC_003
+cert16-tc004-charging-id-first            Authorize                      assertAllAnswered      TC_004_1
+cert16-tc004-charging-id-first            StartTransaction               assertIdTagInfoStatus  TC_004_1
+cert16-tc004-charging-id-first            StatusNotification             assertAllAnswered      TC_004_1
+cert16-tc005-ev-side-disconnect           StatusNotification             assertAllAnswered      TC_005_1
+cert16-tc005-ev-side-disconnect           StopTransaction                assertAllAnswered      TC_005_1
+cert16-tc013-hard-reset                   BootNotification               assertAllAnswered      TC_013
+cert16-tc013-hard-reset                   StatusNotification             assertAllAnswered      TC_013
+cert16-tc014-soft-reset                   BootNotification               assertAllAnswered      TC_014
+cert16-tc014-soft-reset                   StatusNotification             assertAllAnswered      TC_014
+cert16-tc018-unlock-failure               StatusNotification             assertAllAnswered      TC_018_1
+cert16-tc018-unlock-failure               StopTransaction                assertAllAnswered      TC_018_1
+cert16-tc024-lock-failure                 StatusNotification             assertAllAnswered      TC_024
+cert16-tc064-data-transfer                DataTransfer                   inline                 TC_064
+cert16-reservation-basic                  Authorize                      assertAllAnswered      TC_046
+cert16-reservation-basic                  StartTransaction               assertAllAnswered      TC_046
+cert16-reservation-basic                  StatusNotification             assertAllAnswered      TC_046
+cert16-tc048-2-reserve-now-occupied       StatusNotification             assertAllAnswered      TC_048_2
+cert16-tc048-3-reserve-now-unavailable    StatusNotification             assertAllAnswered      TC_048_3
+cert16-tc051-cancel-reservation           StatusNotification             assertAllAnswered      TC_051
+cert16-tc052-cancel-reservation-rejected  StatusNotification             assertAllAnswered      TC_052
+cert16-tc010-remote-start                 Authorize                      assertAllAnswered      TC_010
+cert16-tc010-remote-start                 StartTransaction               assertAllAnswered      TC_010
+cert16-tc010-remote-start                 StatusNotification             assertAllAnswered      TC_010
+cert16-tc011-remote-start-stop            Authorize                      assertAllAnswered      TC_011_1
+cert16-tc011-remote-start-stop            StartTransaction               assertAllAnswered      TC_011_1
+cert16-tc011-remote-start-stop            StatusNotification             assertAllAnswered      TC_011_1
+cert16-tc012-remote-stop                  StatusNotification             assertAllAnswered      TC_012
+cert16-tc012-remote-stop                  StopTransaction                assertAllAnswered      TC_012
+cert16-tc054-trigger-message              DiagnosticsStatusNotification  assertAllAnswered      TC_054
+cert16-tc054-trigger-message              FirmwareStatusNotification     assertAllAnswered      TC_054
+cert16-tc054-trigger-message              Heartbeat                      assertAllAnswered      TC_054
+cert16-tc054-trigger-message              MeterValues                    assertAllAnswered      TC_054
+cert16-tc054-trigger-message              StatusNotification             assertAllAnswered      TC_054
+cert16-tc059-remote-start-with-profile    Authorize                      assertAllAnswered      TC_059
+cert16-tc059-remote-start-with-profile    StartTransaction               assertAllAnswered      TC_059
+cert16-tc059-remote-start-with-profile    StatusNotification             assertAllAnswered      TC_059
+cert16-tc044-1-firmware-update            BootNotification               assertAllAnswered      TC_044_1
+cert16-tc044-1-firmware-update            FirmwareStatusNotification     assertAllAnswered      TC_044_1
+cert16-tc044-1-firmware-update            StatusNotification             assertAllAnswered      TC_044_1
+cert16-tc044-2-firmware-download-failed   FirmwareStatusNotification     assertAllAnswered      TC_044_2
+cert16-tc044-3-firmware-install-failed    BootNotification               assertAllAnswered      TC_044_3
+cert16-tc044-3-firmware-install-failed    FirmwareStatusNotification     assertAllAnswered      TC_044_3
+cert16-tc044-3-firmware-install-failed    StatusNotification             assertAllAnswered      TC_044_3
+cert16-tc045-1-get-diagnostics            DiagnosticsStatusNotification  assertAllAnswered      TC_045_1
+cert16-tc023-1-authorize-invalid          Authorize                      assertIdTagInfoStatus  TC_023_1
+cert16-tc023-2-authorize-expired          Authorize                      assertIdTagInfoStatus  TC_023_2
+cert16-tc023-3-authorize-blocked          Authorize                      assertIdTagInfoStatus  TC_023_3

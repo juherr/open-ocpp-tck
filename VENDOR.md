@@ -71,6 +71,7 @@ strongest available demonstration that the core names no CSMS.
 | `bin/ocpp-tck.ts` | `local-upstreamable` | `—` | `—` | `—` | `—` |
 | `tck/specs/ASSERT-INVENTORY.txt` | `local-upstreamable` | `—` | `—` | `—` | `—` |
 | `tck/specs/DRIVE-TRACE.txt` | `local-upstreamable` | `—` | `—` | `—` | `—` |
+| `tck/specs/OCA-OBLIGATIONS.txt` | `local-upstreamable` | `—` | `—` | `—` | `—` |
 | `drivers/steve/index.ts` | `local-upstreamable` | `—` | `—` | `—` | `—` |
 | `drivers/steve/forms.ts` | `local-upstreamable` | `—` | `—` | `—` | `—` |
 | `drivers/steve/records.ts` | `local-upstreamable` | `—` | `—` | `—` | `—` |

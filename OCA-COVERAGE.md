@@ -51,87 +51,27 @@ state, which is the only reading under which the case tests anything.
 
 ## Coverage
 
-"asserted before" is what the scenario checked about the CSMS's answer before
-issue #11 was addressed; "added" is what `assertAllAnswered` now checks.
+The table itself is [`tck/specs/OCA-OBLIGATIONS.txt`](tck/specs/OCA-OBLIGATIONS.txt),
+one row per obligation: scenario, action, the check that covers it, and the OCA
+case it comes from. It lives there rather than here because
+`tests/oca-obligations.sh` cross-checks it against
+`tck/specs/ASSERT-INVENTORY.txt` in both directions — an obligation with no
+check and a check with no obligation are both build failures.
 
-**46 obligations, 46 checks.** Seven of them can never go green, because the
-scenario carrying the obligation never puts the request on the wire. Those
-report **SKIPPED**, which makes the scenario PARTIAL — orange, outside the
-exit code — rather than PASS or FAIL. Red would say "the CSMS did not answer"
-about a question nobody asked; green would hide the gap. Which seven was
-measured, not guessed: a full sweep plus `tools/answered-report.ts`.
+**53 obligations. 46 are the `assertAllAnswered` checks issue #11 added; the
+other 7 were already covered** by `assertResponseStatus`,
+`assertIdTagInfoStatus`, or the hand-rolled block in `cert16-tc064`.
 
-### `tck/specs/core.ts`
+That count used to be stated here as "46 obligations, 46 checks", which was
+wrong in a way nothing could catch — it counted only the new checks and called
+them the whole set. The guard exists because of it, and found it.
 
-| scenario | OCA case | mandated `.conf` | asserted before | added |
-|---|---|---|---|---|
-| `cert16-tc001-cold-boot` | TC_001 | BootNotification, Heartbeat, StatusNotification | BootNotification | **StatusNotification** · _Heartbeat (SKIPPED)_ |
-| `cert16-tc003-charging-plugin-first` | TC_003 | Authorize, StartTransaction, StatusNotification | StartTransaction | **Authorize, StatusNotification** |
-| `cert16-tc004-charging-id-first` | TC_004_1 | Authorize, StartTransaction, StatusNotification | StartTransaction | **Authorize, StatusNotification** |
-| `cert16-tc005-ev-side-disconnect` | TC_005_1 | StatusNotification, StopTransaction | — | **StatusNotification, StopTransaction** |
-| `cert16-tc013-hard-reset` | TC_013 | BootNotification, StatusNotification | — | **BootNotification, StatusNotification** |
-| `cert16-tc014-soft-reset` | TC_014 | BootNotification, StatusNotification | — | **BootNotification, StatusNotification** |
-| `cert16-tc017-unlock-occupied` | TC_017_1, TC_017_2 | — | — | — |
-| `cert16-tc018-unlock-failure` | TC_018_1 | StatusNotification, StopTransaction | — | **StatusNotification, StopTransaction** |
-| `cert16-tc019-get-configuration-all` | TC_019_1 | — | — | — |
-| `cert16-tc019-get-configuration-key` | TC_019_2 | — | — | — |
-| `cert16-tc021-change-configuration` | TC_021 | — | — | — |
-| `cert16-tc024-lock-failure` | TC_024 | StatusNotification | — | **StatusNotification** |
-| `cert16-tc031-unlock-unknown-connector` | TC_031 | — | — | — |
-| `cert16-tc061-clear-cache` | TC_061 | — | — | — |
-| `cert16-tc064-data-transfer` | TC_064 | DataTransfer | DataTransfer | — |
-
-### `tck/specs/authlist-reservation.ts`
-
-| scenario | OCA case | mandated `.conf` | asserted before | added |
-|---|---|---|---|---|
-| `cert16-tc042-1-get-local-list-version-not-supported` | TC_042_1 | — | — | — |
-| `cert16-tc042-2-get-local-list-version-empty` | TC_042_2 | — | — | — |
-| `cert16-tc043-1-send-local-list-not-supported` | TC_043_1 | — | — | — |
-| `cert16-tc043-3-send-local-list-failed` | TC_043_3 | — | — | — |
-| `cert16-tc043-4-send-local-list-full` | TC_043_4 | — | — | — |
-| `cert16-tc043-5-send-local-list-differential` | TC_043_5 | — | — | — |
-| `cert16-reservation-basic` | TC_046 | Authorize, StartTransaction, StatusNotification | — | **Authorize, StartTransaction, StatusNotification** |
-| `cert16-tc048-1-reserve-now-faulted` | TC_048_1 | — | — | — |
-| `cert16-tc048-2-reserve-now-occupied` | TC_048_2 | StatusNotification | — | **StatusNotification** |
-| `cert16-tc048-3-reserve-now-unavailable` | TC_048_3 | StatusNotification | — | **StatusNotification** |
-| `cert16-tc048-4-reserve-now-rejected` | TC_048_4 | — | — | — |
-| `cert16-tc051-cancel-reservation` | TC_051 | StatusNotification | — | **StatusNotification** |
-| `cert16-tc052-cancel-reservation-rejected` | TC_052 | StatusNotification | — | **StatusNotification** |
-
-### `tck/specs/remotetrigger-smartcharging.ts`
-
-| scenario | OCA case | mandated `.conf` | asserted before | added |
-|---|---|---|---|---|
-| `cert16-tc010-remote-start` | TC_010 | Authorize, StartTransaction, StatusNotification | — | **StartTransaction, StatusNotification** · _Authorize (SKIPPED)_ |
-| `cert16-tc011-remote-start-stop` | TC_011_1 | Authorize, StartTransaction, StatusNotification | — | **StartTransaction, StatusNotification** · _Authorize (SKIPPED)_ |
-| `cert16-tc012-remote-stop` | TC_012 | StatusNotification, StopTransaction | — | **StatusNotification, StopTransaction** |
-| `cert16-tc026-remote-start-rejected` | TC_026 | — | — | — |
-| `cert16-tc028-remote-stop-rejected` | TC_028 | — | — | — |
-| `cert16-tc054-trigger-message` | TC_054 | DiagnosticsStatusNotification, FirmwareStatusNotification, Heartbeat, MeterValues, StatusNotification | — | **Heartbeat, StatusNotification** · _Diagnostics-/FirmwareStatusNotification, MeterValues (SKIPPED)_ |
-| `cert16-tc055-trigger-message-rejected` | TC_055 | — | — | — |
-| `cert16-tc056-central-smart-charging-txdefault` | TC_056 | — | — | — |
-| `cert16-tc057-central-smart-charging-txprofile` | TC_057 | — | — | — |
-| `cert16-tc059-remote-start-with-profile` | TC_059 | Authorize, StartTransaction, StatusNotification | — | **StartTransaction, StatusNotification** · _Authorize (SKIPPED)_ |
-| `cert16-tc066-get-composite-schedule` | TC_066 | — | — | — |
-| `cert16-tc067-clear-charging-profile` | TC_067 | — | — | — |
-
-### `tck/specs/firmware.ts`
-
-| scenario | OCA case | mandated `.conf` | asserted before | added |
-|---|---|---|---|---|
-| `cert16-tc044-1-firmware-update` | TC_044_1 | BootNotification, FirmwareStatusNotification, StatusNotification | — | **BootNotification, FirmwareStatusNotification, StatusNotification** |
-| `cert16-tc044-2-firmware-download-failed` | TC_044_2 | FirmwareStatusNotification | — | **FirmwareStatusNotification** |
-| `cert16-tc044-3-firmware-install-failed` | TC_044_3 | BootNotification, FirmwareStatusNotification, StatusNotification | — | **BootNotification, FirmwareStatusNotification, StatusNotification** |
-| `cert16-tc045-1-get-diagnostics` | TC_045_1 | DiagnosticsStatusNotification | — | **DiagnosticsStatusNotification** |
-
-### `tck/specs/authorize.ts`
-
-| scenario | OCA case | mandated `.conf` | asserted before | added |
-|---|---|---|---|---|
-| `cert16-tc023-1-authorize-invalid` | TC_023_1 | Authorize | Authorize | — |
-| `cert16-tc023-2-authorize-expired` | TC_023_2 | Authorize | Authorize | — |
-| `cert16-tc023-3-authorize-blocked` | TC_023_3 | Authorize | Authorize | — |
+Seven of the 46 can never go green: the scenario carrying the obligation never
+puts the request on the wire. Those report **SKIPPED**, which makes the
+scenario PARTIAL — orange, outside the exit code — rather than PASS or FAIL.
+Red would say "the CSMS did not answer" about a question nobody asked; green
+would hide the gap. Which seven was measured, not guessed: a full sweep plus
+`tools/answered-report.ts`.
 
 ## Unexercised obligations
 
@@ -237,25 +177,17 @@ the only action answered with a CALLERROR anywhere in the suite" — true when
 written, and unverifiable afterwards, because `results/` is gitignored and CI
 artifacts expire. It is one command now.
 
-## The derivation this file does not guard
+## What the guard still cannot check
 
-"46 obligations, 46 checks" is a claim a reader has to take on faith. Nothing
-detects an obligation in the table above with no `assertAllAnswered` behind it,
-or an `assertAllAnswered` with no obligation behind it — and every other
-derivation in this repository is generated and guarded precisely so that no one
-has to: `ASSERT-INVENTORY.txt`, `DRIVE-TRACE.txt`, `types/**`, `VENDOR.md`'s
-digests.
+`tests/oca-obligations.sh` keeps the table and the scenarios describing the
+same set. It cannot check that a row is FAITHFUL to the reference — that
+TC_046 really does oblige a `StartTransaction.conf`. That is a reading of a
+PDF; the method is written down above so it can be redone, and no guard
+replaces redoing it.
 
-**The fix is known and deliberately not taken yet.** Make the mandated-`.conf`
-column a data file, render this table from it, and add a guard that diffs it
-against the `assertAllAnswered` lines `ASSERT-INVENTORY.txt` already extracts.
-That removes "an author remembered" from the loop without moving the per-scenario
-altitude or the review signal.
-
-It is not in the change that created this file because it is a new artifact, a
-new generator and a new guard — a feature, not the audit. Recorded here rather
-than in an issue so that the next person to notice the gap reads that it was
-seen, and not that it was missed.
+So the failure mode that remains is a row that was wrong from the start, and it
+stays wrong quietly. Re-derive rather than re-read when the reference is
+revised.
 
 ## Keeping this current
 
