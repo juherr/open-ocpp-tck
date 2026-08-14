@@ -60,6 +60,13 @@ run "harness layering holds" bash tests/harness-layer.sh
 # This file, the workflow and `bun run test` are three copies of the list
 # above. They used to be kept in step by hand, and were not.
 run "gate parity holds" bash tests/gate-parity.sh
+# And the other thing AGENTS.md asserts about this file: the numbers it writes
+# out in prose. Three of them were wrong at once.
+run "doc counts hold" bash tests/doc-counts.sh
+# Before vendor-integrity, which reads the manifest this one proves the re-pin
+# script will not corrupt. Builds a throwaway git repository; touches nothing
+# here.
+run "repin refuses what it promises to" bash tests/repin-refusals.sh
 run "vendored files match VENDOR.md" bash tests/vendor-integrity.sh
 run "scenario invariants" bash tests/spec-invariants.sh
 # After spec-invariants: this reads the artifact that one regenerates, so a

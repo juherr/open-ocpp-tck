@@ -23,7 +23,7 @@ error.
 
 `bun run verify` is every check CI runs before it starts a container —
 typecheck, committed declarations, three driver scope checks, three in-process
-guards and six shell guards — with one exit code, and every step runs even
+guards and eight shell guards — with one exit code, and every step runs even
 after one fails, where CI enumerates them and stops at the first.
 
 There is a third copy of that list — `bun run test`, the guards without the
@@ -103,6 +103,15 @@ rules needs a CSMS that emits a CALLERROR and a run truncated between a CALL
 and its response — both real, neither reproducible offline except by handing
 the helper the frames.
 
+One guard builds a fixture instead of reading the tree.
+`tests/repin-refusals.sh` exercises `tools/repin-vendored.sh` in a throwaway
+git repository, because that script is the only one here that *writes* — to
+`VENDOR.md` and to `patches/` — so what is worth testing about it is which
+states it refuses to write, and that is a question about a repository, not
+about a file. It works because the script does `cd "$(dirname "$0")/.."`: a
+copy at `<fixture>/tools/` can only ever operate on the fixture, which is what
+makes running it in the gate safe.
+
 A new guard earns its place by failing correctly, so break what it protects and
 watch it go red before committing it. `tools/mutate.sh <file> <perl-expr> --
 <command>` does the edit, the run and the restore — and, the part worth having,
@@ -121,7 +130,7 @@ weaker than its comment, and only the mutation nobody had to run said so.
 Stopping at the obvious ones is not rigour, it is luck: the guard ships, and
 its header is now a false claim about what the build checks.
 
-## Five boundaries the guards enforce
+## Six boundaries the guards enforce
 
 - **The gate is one list.** `tools/verify.sh` and the workflow's `check` job
   must run the same commands in the same order, minus the CI-only setup the
@@ -131,6 +140,12 @@ its header is now a false claim about what the build checks.
   declarations and the linter: every link in it must be one of those commands,
   which is what stops a guard from being reachable only through it. Being a
   subset, it is neither complete nor ordered. (`tests/gate-parity.sh`)
+- **The numbers written out above are the numbers there are.** The count in
+  this heading against its bullets, and the gate sentence's three counts
+  against what `tools/verify.sh` runs. A step of a kind that sentence does not
+  mention fails too, rather than going uncounted. Three of these numbers were
+  wrong at once, and none was found by reading — a reader checks the sentence
+  for sense, and the sentence always makes sense. (`tests/doc-counts.sh`)
 - **Nothing here depends on the harness overlay.** A coding harness may add a
   repo-root file of its own on top of this one; that file declares the split
   itself, and this document is the half that has to stand without it. A rule
