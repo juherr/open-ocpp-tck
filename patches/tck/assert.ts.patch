@@ -122,16 +122,21 @@
    get verdict(): "PASS" | "FAIL" {
      return this.failed > 0 ? "FAIL" : "PASS";
    }
-@@ -212,12 +291,155 @@
-   }
- }
- 
+@@ -208,8 +287,147 @@
+     rec.fail(
+       description,
+       `expected idTagInfo.status=${expectedStatus}, got status=${String(status)} (uniqueId=${call.uniqueId})`,
++    );
++  }
++}
++
 +export interface AnsweredOptions {
 +  /** Which side sent the CALLs being answered (default "sent": the charge
 +   *  point, which is the direction every OCA `_CSMS` obligation is in). */
 +  direction?: Direction;
-+  /** How many such CALLs the scenario requires. Default 1. Zero CALLs is a
-+   *  FAIL, never a vacuous pass -- see the note on emptiness below. */
++  /** How many such CALLs the scenario requires. Default 1. Fewer than this is
++   *  SKIPPED and tagged {@link UNEXERCISED_PREFIX} -- never a vacuous pass,
++   *  and never a FAIL either; see rule 1 on {@link assertAllAnswered}. */
 +  minimum?: number;
 +}
 +
@@ -218,9 +223,9 @@
 +    rec.skip(
 +      description,
 +      `${UNEXERCISED_PREFIX} expected at least ${minimum} ${direction} CALL for action=${action}, found ${calls.length}`,
-+    );
+     );
 +    return;
-+  }
+   }
 +
 +  const errored: string[] = [];
 +  let unanswered = 0;
@@ -262,11 +267,10 @@
 +    );
 +  }
 +  rec.fail(description, parts.join("; "));
-+}
-+
+ }
+ 
  export function assertEq(
-   rec: AssertRecorder,
-   actual: unknown,
+@@ -218,6 +436,11 @@
    expected: unknown,
    description: string,
  ): void {
@@ -278,7 +282,7 @@
    if (actual === expected) {
      rec.pass(description);
    } else {
-@@ -346,6 +568,11 @@
+@@ -346,6 +569,11 @@
    value: string,
    description: string,
  ): void {

@@ -295,8 +295,9 @@ export interface AnsweredOptions {
   /** Which side sent the CALLs being answered (default "sent": the charge
    *  point, which is the direction every OCA `_CSMS` obligation is in). */
   direction?: Direction;
-  /** How many such CALLs the scenario requires. Default 1. Zero CALLs is a
-   *  FAIL, never a vacuous pass -- see the note on emptiness below. */
+  /** How many such CALLs the scenario requires. Default 1. Fewer than this is
+   *  SKIPPED and tagged {@link UNEXERCISED_PREFIX} -- never a vacuous pass,
+   *  and never a FAIL either; see rule 1 on {@link assertAllAnswered}. */
   minimum?: number;
 }
 
