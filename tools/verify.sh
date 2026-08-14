@@ -56,6 +56,9 @@ run "a CALLERROR fails, a truncated log does not" bun tests/assert-answered.ts
 run "core is CSMS-neutral" bash tests/generic-core.sh
 run "vendored files match VENDOR.md" bash tests/vendor-integrity.sh
 run "scenario invariants" bash tests/spec-invariants.sh
+# After spec-invariants: this reads the artifact that one regenerates, so a
+# stale inventory should be reported as stale, not as a coverage hole.
+run "every OCA obligation has a check" bash tests/oca-obligations.sh
 
 # Not fatal when absent: shellcheck is a linter, and refusing to verify a
 # TypeScript repository because a shell linter is missing would push people to
