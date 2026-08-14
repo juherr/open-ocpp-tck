@@ -12,6 +12,7 @@
  */
 
 import {
+  assertAllAnswered,
   assertEq,
   assertLineAfter,
   assertLineMatches,
@@ -100,6 +101,19 @@ export const tc010RemoteStartSpec: ScenarioSpec<void> = {
       "StartTransaction sent with CSMS-supplied idTag (overrides scenario's hardcoded CERT010 fallback)",
     );
     assertSent(rec, frames, "MeterValues", "MeterValues sent while charging");
+    // TC_010 steps 6, 8, 10, 12. Before the DB block: the early return below
+    // would otherwise skip these whenever no transaction row is findable.
+    //
+    // Authorize reports SKIPPED, for a reason that holds for every
+    // remote-start scenario here: the CSMS supplies the idTag in
+    // RemoteStartTransaction, so the CP goes straight to StartTransaction and
+    // never sends an Authorize.req. Measured, not assumed -- a sweep shows no
+    // Authorize on the wire for this scenario at all. Orange rather than red
+    // because that is a gap in the scenario, not a CSMS defect; TC_003/TC_004
+    // are locally driven and check the same obligation for real.
+    assertAllAnswered(rec, frames, "StatusNotification");
+    assertAllAnswered(rec, frames, "StartTransaction");
+    assertAllAnswered(rec, frames, "Authorize");
 
     const txPk = await records.latestTransaction(cpId);
     if (!txPk) {
@@ -186,6 +200,12 @@ export const tc011RemoteStartStopSpec: ScenarioSpec<void> = {
       /Sent: \[2,.*"StopTransaction".*"reason":"Remote"/,
       "StopTransaction sent with reason Remote",
     );
+    // TC_011.1 steps 6, 8, 10, 14. Authorize is SKIPPED for the same measured
+    // reason as TC_010 above: remote start carries the idTag, so no
+    // Authorize.req is ever sent.
+    assertAllAnswered(rec, frames, "StatusNotification");
+    assertAllAnswered(rec, frames, "StartTransaction");
+    assertAllAnswered(rec, frames, "Authorize");
 
     const txPk = await records.latestTransaction(cpId);
     if (!txPk) {
@@ -246,6 +266,9 @@ export const tc012RemoteStopSpec: ScenarioSpec<void> = {
       /Sent: \[2,.*"StopTransaction".*"reason":"Remote"/,
       "StopTransaction sent with reason Remote",
     );
+    // TC_012 steps 6 and 8.
+    assertAllAnswered(rec, frames, "StatusNotification");
+    assertAllAnswered(rec, frames, "StopTransaction");
 
     const txPk = await records.latestTransaction(cpId);
     if (!txPk) {
@@ -467,6 +490,17 @@ export const tc054TriggerMessageSpec: ScenarioSpec<void> = {
       /Sent: \[2,.*"Heartbeat"/,
       "requested Heartbeat sent after TriggerMessage",
     );
+    // TC_054 puts a .conf on the Central System for all five charge-point
+    // messages it can trigger. This scenario triggers ONE of them -- see the
+    // drive() above -- so Heartbeat and StatusNotification are checked for
+    // real and the other three report SKIPPED. Listing them is the point:
+    // the gap is in this scenario's single trigger, and leaving them out
+    // would hide that behind a green verdict.
+    assertAllAnswered(rec, frames, "Heartbeat");
+    assertAllAnswered(rec, frames, "StatusNotification");
+    assertAllAnswered(rec, frames, "MeterValues");
+    assertAllAnswered(rec, frames, "DiagnosticsStatusNotification");
+    assertAllAnswered(rec, frames, "FirmwareStatusNotification");
   },
 };
 
@@ -767,6 +801,12 @@ export const tc059RemoteStartWithProfileSpec: ScenarioSpec<RemoteStartWithProfil
         /Sent: \[2,.*"StopTransaction"/,
         "StopTransaction eventually sent",
       );
+      // TC_059 steps 6, 8, 10. Authorize is SKIPPED for the same measured
+      // reason as TC_010 and TC_011: this is a remote start, so the idTag
+      // arrives in the request and no Authorize.req is ever sent.
+      assertAllAnswered(rec, frames, "StatusNotification");
+      assertAllAnswered(rec, frames, "StartTransaction");
+      assertAllAnswered(rec, frames, "Authorize");
 
       const txPk = await records.latestTransaction(cpId);
       if (!txPk) {

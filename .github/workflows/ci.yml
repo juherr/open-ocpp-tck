@@ -194,14 +194,15 @@ jobs:
       # cross-lane interference into a red build. The retry re-runs only the
       # failures, sequentially, which is the mode the runner calls reliable.
       #
-      # `bun run e2e`, not the two commands it wraps. A full sweep is two
-      # invocations -- `all` is 44 scenarios and the authorize group (TC_023)
-      # sits outside it, see TODO(upstream) at the GROUPS registry in
-      # tck/main.ts -- and that fact used to live only in this file. Anyone
-      # running `run-all` by hand got 44/47 and read "no failures", missing
-      # exactly the three scenarios that prove `driver provision` seeded
-      # anything. One script means CI and a human run the same thing, and it
-      # means the two lanes cannot drift apart either.
+      # `bun run e2e`, not the command it wraps, so CI and a human run the same
+      # thing and the two lanes cannot drift apart either. A full sweep used to
+      # be TWO invocations -- `all` was 44 scenarios and the authorize group
+      # (TC_023) sat outside it -- and that fact lived only in this file, so
+      # anyone running `run-all` by hand got 44/47, read "no failures", and
+      # missed exactly the three scenarios that prove `driver provision` seeded
+      # anything. "authorize" is folded into "all" now (see the GROUPS registry
+      # in tck/main.ts), so one invocation is the whole suite and the trap is
+      # gone rather than documented.
       - name: Conformance sweep
         run: bun run e2e
 

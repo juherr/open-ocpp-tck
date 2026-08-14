@@ -18,8 +18,12 @@
  *     NOT_APPLICABLE for this CSMS, or the driver threw
  *     UnsupportedOperationError out of drive(). No container is started in
  *     the first case. Exit code 0.
- *   - PARTIAL -- zero FAILs but at least one check degraded to SKIPPED
- *     because the driver answered with assert.ts's UNVERIFIABLE sentinel.
+ *   - PARTIAL -- zero FAILs but at least one check degraded to SKIPPED,
+ *     either because this driver could not evaluate it (UNVERIFIABLE) or
+ *     because the scenario never makes the request the OCA case obliges the
+ *     CSMS to answer (UNEXERCISED). Both are orange: neither is a defect of
+ *     the CSMS under test, and neither fails the sweep. Which of the two it
+ *     was is in the check's detail, printed under the SKIPPED line.
  *     Exit code 0: a check that could not be evaluated is not a defect.
  *
  * The verdict is what the CSMS did; the EXIT CODE is what that means for this
@@ -480,30 +484,27 @@ async function runScenario<D>(
 }
 
 // ---------------------------------------------------------------------------
-// Spec registry -- groups mirror the upstream group names and array
-// membership/order exactly (44 scenarios total: 15 core + 13
-// authlist-reservation + 12 remotetrigger-smartcharging + 4 firmware).
+// Spec registry -- the five groups mirror the upstream group names and array
+// membership/order exactly (47 scenarios total: 15 core + 13
+// authlist-reservation + 12 remotetrigger-smartcharging + 4 firmware + 3
+// authorize).
 //
-// "authorize" (the 3 TC_023 Authorize-outcome scenarios) is a separate
-// group, deliberately NOT folded into "all"; run `run-all --group authorize`
-// (3 scenarios) as its own sweep.
+// DIVERGENCE FROM UPSTREAM, deliberate: "all" includes "authorize". Upstream
+// leaves the 3 TC_023 scenarios outside it, and this registry used to mirror
+// that, with a TODO saying the fix belonged upstream because fidelity was
+// worth more than tidiness and every re-sync would otherwise re-litigate it.
 //
-// TODO(upstream): fold "authorize" into "all" and delete this carve-out.
-// There is nothing about TC_023 that warrants special handling -- it needs no
-// capability the other 44 do not, and its only distinguishing trait is that it
-// asserts on CSMS-held state. It sits outside "all" solely because this
-// registry mirrors upstream's group membership and order exactly, and upstream
-// puts it outside. That fidelity is worth more than the tidiness, so the fix
-// belongs upstream rather than here: folding it in locally would make this
-// file disagree with the pinned upstream for a cosmetic reason, and every
-// future re-sync would have to re-litigate it.
+// That trade was wrong, and the comment made the case against itself: anyone
+// running "all" and reading "44 scenarios, no failures" believes they ran the
+// suite. They did not run the three scenarios that most directly exercise
+// CSMS-side authorization state -- the ones that prove `driver provision`
+// seeded anything at all. A default that silently under-reports coverage is a
+// correctness problem, not a cosmetic one, and no amount of re-sync
+// convenience buys it back.
 //
-// The carve-out is not free. Anyone running "all" and reading "44 scenarios,
-// no failures" will believe they ran the suite; they did not run the three
-// scenarios that most directly exercise CSMS-side authorization state. Every
-// caller therefore has to know to add a second sweep -- see the two sweep
-// steps in .github/workflows/ci.yml. Until upstream folds it in, that
-// duplication is the cost of not diverging.
+// The divergence is cheap to carry because it is recorded: this file is
+// upstream-patched, so the delta lives in patches/tck/main.ts.patch and any
+// re-sync has to look at it. That is what the vendoring machinery is FOR.
 // ---------------------------------------------------------------------------
 
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
@@ -518,13 +519,16 @@ const GROUPS: Record<string, ScenarioSpec<any>[]> = {
     ...AUTHLIST_RESERVATION_SPECS,
     ...REMOTETRIGGER_SMARTCHARGING_SPECS,
     ...FIRMWARE_SPECS,
+    ...AUTHORIZE_SPECS,
   ],
 };
 
-// Built from every group (not just "all") so `run <template-id>` also
-// resolves specs from groups intentionally excluded from "all" (e.g.
-// "authorize" -- see the GROUPS comment above). Map construction dedupes
-// the same spec object appearing under both its own group and "all".
+// Built from every group rather than from "all" alone. Since "all" now holds
+// every scenario the two are equivalent, and that is exactly why this stays
+// as it is: it keeps `run <template-id>` resolving from the groups, so a
+// future group excluded from "all" cannot silently become unrunnable by id.
+// Map construction dedupes the same spec object appearing under both its own
+// group and "all".
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
 const SPECS_BY_TEMPLATE_ID = new Map<string, ScenarioSpec<any>>(
   Object.values(GROUPS)
@@ -918,7 +922,9 @@ async function writeSummary(
   if (partialCount > 0 || naCount > 0) {
     notes.push(
       "",
-      `${partialCount} PARTIAL (checks the driver could not evaluate were SKIPPED), ` +
+      `${partialCount} PARTIAL (SKIPPED checks: either this driver could not ` +
+        `evaluate them, or the scenario does not exercise the obligation -- ` +
+        `this table carries neither detail, the run log does), ` +
         `${naCount} NOT APPLICABLE (out of scope for this CSMS). Neither fails the sweep.`,
     );
   }

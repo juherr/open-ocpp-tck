@@ -4,10 +4,10 @@
  * group modules; this file exists as the single public entry point for
  * the specs/ directory.
  *
- * AUTHORIZE_SPECS (issue #181's TC_023 Authorize-outcome scenarios) is
- * deliberately NOT folded into main.ts's "all" group -- run-all --parallel
- * stays at its existing 44-scenario baseline; run the 3 authorize specs via
- * `run-all --group authorize` (or `run <template-id>`) as a separate sweep.
+ * AUTHORIZE_SPECS (issue #181's TC_023 Authorize-outcome scenarios) IS folded
+ * into main.ts's "all" group, unlike upstream, so `run-all` is the whole
+ * suite at 47 scenarios rather than 44 with a footnote. See the registry
+ * comment in main.ts for why that divergence is worth carrying.
  */
 export { CORE_SPECS } from "./core";
 export { AUTHLIST_RESERVATION_SPECS } from "./authlist-reservation";

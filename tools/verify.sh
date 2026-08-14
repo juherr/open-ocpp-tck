@@ -52,6 +52,7 @@ run "driver scope follows the env" bun tests/driver-env-scope.ts
 # container per row, and engineering a CSMS that fails a chosen scenario a
 # chosen way for the rows that matter.
 run "exit-code rule holds" bun tests/expected-failure-standing.ts
+run "a CALLERROR fails, a truncated log does not" bun tests/assert-answered.ts
 run "core is CSMS-neutral" bash tests/generic-core.sh
 run "vendored files match VENDOR.md" bash tests/vendor-integrity.sh
 run "scenario invariants" bash tests/spec-invariants.sh

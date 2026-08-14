@@ -49,14 +49,24 @@ different surfaces, and each answers a question the other cannot:
 | Driver | Transport | What it answers | Result |
 |---|---|---|---|
 | [`drivers/steve`](drivers/steve) | HTML manager UI + WebAPI + MariaDB | *Has the harness lost a capability?* SteVe is the CSMS the scenarios were originally written against, so a scope row that had to be demoted would mean the core dropped something. | All 47 `DRIVABLE` |
-| [`drivers/citrineos`](drivers/citrineos/README.md) | JSON REST API + GraphQL | *Is the contract actually CSMS-neutral?* [CitrineOS](https://github.com/citrineos/citrineos-core) (LF Energy / S44) had no part in writing the scenarios and has a smaller OCPP 1.6 surface. | 39 `PASS`, 7 `NOT APPLICABLE`, 1 `FAIL` |
+| [`drivers/citrineos`](drivers/citrineos/README.md) | JSON REST API + GraphQL | *Is the contract actually CSMS-neutral?* [CitrineOS](https://github.com/citrineos/citrineos-core) (LF Energy / S44) had no part in writing the scenarios and has a smaller OCPP 1.6 surface. | 31 `PASS`, 5 `PARTIAL`, 4 `FAIL`, 7 `NOT APPLICABLE` |
 
 An abstraction with one implementation is neutral by assertion, so the second
 driver is what turns that into a measurement — and the result is the useful
-part: 38 scenarios pass unmodified against a CSMS that had no part in writing
-them, 7 report a capability it does not have for OCPP 1.6, and 2 stay red
-because they found something. That two drivers this different need no change to
-a single scenario is the claim the pair exists to support.
+part: 31 scenarios pass unmodified against a CSMS that had no part in writing
+them, 7 report a capability it does not have for OCPP 1.6, 5 are PARTIAL
+because an OCA obligation exists that no scenario here exercises, and 4 stay
+red because they found something. That two drivers this different need no
+change to a single scenario is the claim the pair exists to support.
+
+All 4 red ones are declared expected failures, so that sweep still exits 0 —
+and would stop doing so the day one of them passes.
+
+The 5 `PARTIAL` are worth reading rather than skipping. They are not a
+CitrineOS result at all: they are the same on every driver, because the gap is
+in our scenarios — see [`OCA-COVERAGE.md`](OCA-COVERAGE.md). Orange means the
+suite did not ask, which is a different fact from red's "the CSMS answered
+wrongly", and keeping them apart is what stops either from being noise.
 
 ## Quick start, against SteVe
 
@@ -82,11 +92,12 @@ bunx ocpp-tck driver selftest    # seconds: can the driver answer the contract?
 bunx ocpp-tck run-all --group core
 ```
 
-A **full** sweep is two commands, not one: `run-all` covers 44 scenarios and the
-`authorize` group (TC_023) sits outside `all`, so "no failures, 44 scenarios"
-is not the whole suite — and TC_023 is what proves the fixtures took. Working in
-a clone, `bun run e2e` runs both, and `bun run e2e:smoke` runs the handful that
-exercise provisioning when a full sweep is too slow to iterate on.
+`run-all` is the whole suite: all 47 scenarios, one command. It did not use to
+be — the `authorize` group (TC_023) sat outside `all`, so "no failures, 44
+scenarios" read like a clean sweep while skipping exactly the three scenarios
+that prove the fixtures took. Working in a clone, `bun run e2e` is that sweep
+with a retry pass, and `bun run e2e:smoke` runs the handful that exercise
+provisioning when a full sweep is too slow to iterate on.
 
 `compose.yaml` pins [`ghcr.io/juherr/steve`][image] by digest — the `.war` is
 built into the image and the schema migrates itself on boot, so there is
@@ -170,9 +181,12 @@ the check could not be evaluated" is a real outcome:
 - **`NOT APPLICABLE`** — your scope table marks the scenario undrivable, or
   your driver threw `UnsupportedOperationError`. No container is started in the
   first case. Exit code 0.
-- **`PARTIAL`** — zero failures, but at least one check degraded to `SKIPPED`
-  because a driver answered with `unverifiable("<why>")` instead of inventing a
-  value. Exit code 0.
+- **`PARTIAL`** — zero failures, but at least one check degraded to `SKIPPED`,
+  for one of two reasons the check's detail tells apart: a driver answered with
+  `unverifiable("<why>")` instead of inventing a value, or the scenario does not
+  exercise an obligation the OCA case puts on the CSMS (see
+  [`OCA-COVERAGE.md`](OCA-COVERAGE.md)). The first varies per driver; the second
+  is the same for every driver, because the gap is in our scenarios. Exit code 0.
 
 `FAIL` and `ERROR` exit non-zero. A driver may declare a scenario
 expected-failing, which excuses its `FAIL` — never its `ERROR`, and never a

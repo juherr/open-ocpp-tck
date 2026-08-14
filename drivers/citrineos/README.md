@@ -39,18 +39,23 @@ was **ours**: the scenario asked for a retrieveDate +90s against a 110s hold,
 leaving ~20s for the status train. That is fixed in `tck/specs/firmware.ts`, so
 what remains is the CitrineOS finding alone.
 
-A second CitrineOS defect is reported and NOT counted here, because these
-scenarios cannot see it: OCPP 1.6 `FirmwareStatusNotification` is answered with
-a `NotSupported` CALLERROR where OCA TC_044 puts a `.conf` on the Central
-System ([citrineos/citrineos#216][i216]). Our assertions read only what the
-CHARGE POINT sent, never the CSMS's answer to it, so three rows stay green over
-nine CALLERRORs. That is a gap in the scenarios, not evidence about CitrineOS —
-`scope.ts` says so on each of those rows.
+A second CitrineOS defect **is** counted here now, and it used to be invisible:
+OCPP 1.6 `FirmwareStatusNotification` is answered with a `NotSupported`
+CALLERROR where OCA TC_044 puts a `.conf` on the Central System
+([citrineos/citrineos#216][i216]). The assertions used to read only what the
+CHARGE POINT sent, so three scenarios stayed green over ten CALLERRORs — a gap
+in the scenarios, not evidence about CitrineOS. Issue #11 closed it, and the
+three TC_044 rows are red: in each, every pre-existing check still passes and
+the one failure is the CALLERROR.
 
-The interesting result is the other 38. The core, remote-trigger, smart-charging,
-local-auth-list and firmware groups all pass unmodified against a CSMS that had
-no part in writing them — which is the strongest evidence available that the
-scenarios test OCPP rather than SteVe.
+Five scenarios are `PARTIAL`, and they are not a CitrineOS result: an OCA
+obligation exists that no scenario here exercises, which is the same on every
+driver. See [`OCA-COVERAGE.md`](../../OCA-COVERAGE.md).
+
+The interesting result is the other 31. The core, remote-trigger,
+smart-charging and local-auth-list groups all pass unmodified against a CSMS
+that had no part in writing them — which is the strongest evidence available
+that the scenarios test OCPP rather than SteVe.
 
 ## Quick start
 
@@ -65,18 +70,17 @@ bun bin/ocpp-tck.ts driver provision      # seed the idTags TC_023 needs
 bun bin/ocpp-tck.ts driver verify         # read-only: are they there?
 bun bin/ocpp-tck.ts driver selftest       # seconds: every record query, once
 
-bun run e2e                               # both sweeps: 44 + the authorize 3
+bun run e2e                               # the whole suite: 47 scenarios
 
 docker compose -f drivers/citrineos/compose.yaml down -v
 ```
 
-`bun run e2e` and not `run-all`, for the reason the root README gives: a full
-sweep is **two** invocations, because `all` is 44 scenarios and the `authorize`
-group sits outside it to mirror upstream group membership byte-for-byte. Anyone
-running `run-all` by hand gets 44/47 and reads "no failures", missing exactly
-the three scenarios that prove `driver provision` seeded anything — which for
-this driver includes the one deterministic failure. `bun run e2e:smoke` is the
-short loop while iterating.
+`bun run e2e` and not `run-all`, for the retry pass: `--retry-failed-isolated`
+re-runs a parallel lane's failures sequentially, which is the mode the runner
+calls reliable. Both cover the same 47 scenarios — the `authorize` group used
+to sit outside `all`, so a bare `run-all` reported 44/47 as "no failures" and
+skipped exactly the three scenarios that prove `driver provision` seeded
+anything. `bun run e2e:smoke` is the short loop while iterating.
 
 `CITRINE_API_URL` defaults to `localhost` because the driver runs on your host,
 while the simulator container reaches the same CitrineOS as `ws://citrine:8081/`
@@ -311,7 +315,8 @@ a `reason` that cannot name the limitation is `CONDITIONAL`, not
 | **`Blocked` is unreachable from the 1.6 `Authorize` path.** The handler reaches its status mapper only through the `status === Accepted` branch, so a stored `Blocked` falls through to the default `Invalid`. The only route to a real `Blocked` is an `IAuthorizer`, and the container registers `authorizers: asValue([])` with no setting that changes it. | **TC_023.3 fails**, deterministically: CitrineOS answers `{"idTagInfo":{"status":"Invalid"}}` where the scenario requires `Blocked`. Observed 3 runs out of 3. `scope.ts` keeps the row DRIVABLE and `expected.ts` declares the red, so the sweep reports it as `EXPECTED FAIL` and the job stays blocking — and `UNEXPECTED PASS` the day it is fixed. | `AuthorizeRequestOcpp16Handler.ts`, `apps/ocpp-server/src/container.ts` |
 | **No REST for `Authorizations`.** `EVDriverDataApi` exposes exactly one route, a read-only local-list-version GET. | `driver provision` writes fixtures through GraphQL. | [`provision.ts`](provision.ts) |
 | **Four foreign keys reference `Authorizations`, none cascading**: `Transactions.authorizationId`, `LocalListAuthorizations.authorizationId`, `LocalListAuthorizations.groupAuthorizationId`, and the self-reference `Authorizations.groupAuthorizationId`. | `teardown` derives its guards from the foreign keys Hasura reports instead of listing them, so a fifth on a future CitrineOS is picked up rather than aborting the whole delete. Guarding only the first was measured to leave *every* fixture in place, because psql ran the script in one implicit transaction. | Read from the foreign keys Hasura derives; see `references()` in [`provision.ts`](provision.ts). |
-| **No 1.6 request handler for `FirmwareStatusNotification`.** Every one the charge point sends is answered with `[4,…,"NotSupported","No handler found for action: FirmwareStatusNotification at module configuration"]` — 9 across the three TC_044 logs, and the only CALLERROR the CSMS emits anywhere in the suite. | **A non-conformance, and one this suite does not detect.** OCA `TC_044_{1,2,3}_CSMS` put steps 4 and 6 on the Central System — *"The Central responds with a FirmwareStatusNotification.conf"* — and a CALLERROR is not that conf. Our scenarios pass because they assert only on the statuses the charge point *sent*. See below. | `packages/core/src/handlers/requests/1.6/` — `DiagnosticsStatusNotification` has one, `FirmwareStatusNotification` does not. No ticket upstream. |
+| **No 1.6 request handler for `FirmwareStatusNotification`.** Every one the charge point sends is answered with `[4,…,"NotSupported","No handler found for action: FirmwareStatusNotification at module configuration"]` — 10 across the three TC_044 logs, and the only CALLERROR the CSMS emits anywhere in the suite. | **A non-conformance, and the suite now detects it.** OCA `TC_044_{1,2,3}_CSMS` put steps 4 and 6 on the Central System — *"The Central responds with a FirmwareStatusNotification.conf"* — and a CALLERROR is not that conf. **TC_044.1/.2/.3 fail**, each on that check alone. Until issue #11 they passed, because they asserted only the statuses the charge point *sent*. | `packages/core/src/handlers/requests/1.6/` — `DiagnosticsStatusNotification` has one, `FirmwareStatusNotification` does not. No ticket upstream. |
+| **An unhandled promise rejection kills the process.** `WebhookDispatcher.dispatchMessageReceived` persists every message; a `SequelizeForeignKeyConstraintError` on `OCPPMessages_requestMessageId_fkey` escapes as an uncaught rejection and Node exits. | Compose's `restart: unless-stopped` restarts it, so from the charge point's side it is a 1006 followed by a reconnect and a reboot — which is what `scope.ts` recorded as unexplained on TC_044.2. Observed 21 restarts across one 26h session and 2 more inside a single sequential sweep; scenarios caught mid-restart fail for reasons that have nothing to do with what they assert. **Run sequentially and re-run any isolated failure before believing it.** | Stack in the container log: `router.js onMessage` → `webhook.dispatcher.js:103` → `Base.js:57`. Whether the CALLERROR above is the trigger is *not* established — the violated key is `requestMessageId`. |
 | **No 1.6 response handler for `UnlockConnector` or `UpdateFirmware`.** The Calls are routed and sent; the CallResults are answered with the same `NotSupported` CALLERROR. | Harmless — the six affected scenarios all pass. | `packages/core/src/handlers/responses/1.6/` |
 | **`GetConfiguration` is batched server-side.** The endpoint splits a request into batches of the station's stored `GetConfigurationMaxKeys`. | *Not* a problem in practice: an unprovisioned station has no such value, so the request stays one `GetConfiguration` on the wire and both TC_019 scenarios pass. Listed because provisioning that key would change it. | `Configuration/src/module/1.6/MessageApi.ts` |
 | **`SendLocalList` requires a strictly increasing `listVersion`,** and refuses otherwise *before* anything reaches the wire. Four scenarios send version 1. | `prepareStation` clears the station's stored list version each run, so a refusal cannot masquerade as a charge point ignoring the request. | `LocalAuthListService.ts`, and [`records.ts`](records.ts) |

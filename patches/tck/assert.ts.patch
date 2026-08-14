@@ -1,12 +1,12 @@
 --- /tmp/ocpp-upstream/src/cp/application/verification/assert.ts	2026-07-31 20:05:48
 +++ tck/assert.ts	2026-07-31 20:09:33
 @@ -1,3 +1,5 @@
-+// Derived from shiv3/ocpp-cp-simulator src/cp/application/verification/assert.ts (re-exported upstream as scripts/steve-verify/runner/assert.ts) @ 604054adb0d7d7129a26a5f1ad2d5fdc290d1ca1 (Apache-2.0). Modified: added the UNVERIFIABLE_PREFIX sentinel, a third SKIPPED check outcome, and the AssertRecorder.skipped counter; assertEq/assertNonEmpty short-circuit to SKIPPED when a value carries the sentinel. Everything else is unchanged.
++// Derived from shiv3/ocpp-cp-simulator src/cp/application/verification/assert.ts (re-exported upstream as scripts/steve-verify/runner/assert.ts) @ 604054adb0d7d7129a26a5f1ad2d5fdc290d1ca1 (Apache-2.0). Modified: added the UNVERIFIABLE_PREFIX sentinel, a third SKIPPED check outcome, and the AssertRecorder.skipped counter; assertEq/assertNonEmpty short-circuit to SKIPPED when a value carries the sentinel; added assertAllAnswered and AnsweredOptions, which have no upstream counterpart. Everything else is unchanged.
 +
  /**
   * assert.ts -- typed assertion DSL for scenario specs, mirroring lib.sh's
   * check_* helpers but operating on parsed {@link Frame}s (see ocpp.ts)
-@@ -13,24 +15,75 @@
+@@ -13,22 +15,93 @@
    type Frame,
  } from "./ocpp";
  
@@ -43,6 +43,26 @@
 +  return undefined;
 +}
 +
++/**
++ * Marker opening the SKIPPED reason when a check could not be evaluated
++ * because THE SCENARIO never made the request, as opposed to
++ * {@link UNVERIFIABLE_PREFIX}'s "this CSMS could not tell us".
++ *
++ * Both degrade a check to SKIPPED and both make the scenario PARTIAL, so
++ * without a marker the summary's `skipped` column would merge two facts that
++ * point at different work:
++ *
++ *   UNVERIFIABLE  -- varies per driver. A limitation of the CSMS under test.
++ *   UNEXERCISED   -- identical for every driver. A gap in OUR scenarios,
++ *                    and a TODO for this suite rather than for the CSMS.
++ *
++ * A prefix rather than a fourth CheckStatus on purpose: the distinction is
++ * worth recording, not worth widening the public verdict vocabulary and the
++ * summary schema for. If the unexercised set ever grows past what
++ * OCA-COVERAGE.md can carry, promote it then.
++ */
++export const UNEXERCISED_PREFIX = "scenario does not exercise this:";
++
 +export type CheckStatus = "PASS" | "FAIL" | "SKIPPED";
 +
  export interface CheckResult {
@@ -69,8 +89,8 @@
    fail(description: string, detail?: string): void {
 -    this.checks.push({ description, pass: false, detail });
 +    this.checks.push({ description, pass: false, detail, status: "FAIL" });
-   }
- 
++  }
++
 +  /** Records a check that could not be evaluated at all -- neither a pass
 +   *  nor a failure. `reason` explains what the driver could not obtain. */
 +  skip(description: string, reason: string): void {
@@ -80,12 +100,10 @@
 +      detail: reason,
 +      status: "SKIPPED",
 +    });
-+  }
-+
-   get results(): readonly CheckResult[] {
-     return this.checks;
    }
-@@ -40,9 +93,15 @@
+ 
+   get results(): readonly CheckResult[] {
+@@ -40,9 +113,27 @@
    }
  
    get failed(): number {
@@ -99,10 +117,230 @@
 +    return this.checks.filter((c) => c.status === "SKIPPED").length;
 +  }
 +
++  /** The subset of {@link skipped} that no driver can ever turn green,
++   *  because the SCENARIO does not make the request (see
++   *  {@link UNEXERCISED_PREFIX}). Exposed so the runner can report the two
++   *  causes apart: without it, a scenario already PARTIAL for an unexercised
++   *  obligation hides a NEW driver limitation appearing beside it -- the
++   *  count does not move and the verdict was already orange. */
++  get unexercised(): number {
++    return this.checks.filter(
++      (c) => c.status === "SKIPPED" && c.detail?.startsWith(UNEXERCISED_PREFIX),
++    ).length;
++  }
++
    get verdict(): "PASS" | "FAIL" {
      return this.failed > 0 ? "FAIL" : "PASS";
    }
-@@ -218,6 +277,11 @@
+@@ -208,8 +299,207 @@
+     rec.fail(
+       description,
+       `expected idTagInfo.status=${expectedStatus}, got status=${String(status)} (uniqueId=${call.uniqueId})`,
++    );
++  }
++}
++
++export interface AnsweredOptions {
++  /** Which side sent the CALLs being answered (default "sent": the charge
++   *  point, which is the direction every OCA `_CSMS` obligation is in). */
++  direction?: Direction;
++  /** How many such CALLs the scenario requires. Default 1. Fewer is SKIPPED
++   *  and tagged {@link UNEXERCISED_PREFIX} -- see rule 1 on
++   *  {@link assertAllAnswered}. */
++  minimum?: number;
++}
++
++/**
++ * Asserts that EVERY CALL the charge point sent for `action` was answered by
++ * the CSMS with a CALLRESULT. This is the check for the right-hand column of
++ * an OCA `_CSMS` test case: "The Central System responds with a X.conf".
++ *
++ * It exists because asserting what the CHARGE POINT sent -- which is what
++ * most of this file's helpers do -- cannot see a CSMS that answers with a
++ * CALLERROR or with nothing. A suite made only of those assertions reports
++ * green for a CSMS that never answered anything, and did: see OCA-COVERAGE.md.
++ *
++ * Correlation is {@link findResponseFor}'s, i.e. by OCPP-J uniqueId, so a
++ * scenario that sends the same action four times (TC_044's
++ * FirmwareStatusNotification train) gets four independent verdicts rather
++ * than one lucky match.
++ *
++ * THREE RULES, and the third is the one to read:
++ *
++ * 1. Fewer than `minimum` CALLs for `action` -- SKIPPED, tagged
++ *    {@link UNEXERCISED_PREFIX}, which makes the scenario PARTIAL rather than
++ *    FAIL. An "every X was answered" check over zero Xs passes trivially, so
++ *    it must not pass; but it must not go red either, because red here would
++ *    say "the CSMS did not answer" about a question the scenario never asked.
++ *    Several OCA obligations land exactly there -- a locally-driven case
++ *    mandates Authorize.conf and the remote-start scenario carrying that case
++ *    never sends Authorize.req. Orange states the gap without blaming the
++ *    CSMS for it; OCA-COVERAGE.md lists what closing each would take.
++ *
++ *    This is deliberately independent of whether the CP *should* have sent
++ *    it. Scenarios that require the request assert that separately (TC_013
++ *    has its own "CP reconnects and sends a fresh BootNotification" check),
++ *    which keeps this helper about one thing: did the CSMS answer.
++ *
++ * 2. A response that is a CALLERROR -- FAIL, naming errorCode and
++ *    errorDescription. A CALLERROR is a response, but it is not the `.conf`
++ *    the test case asks for.
++ *
++ * 3. A CALL with no response is OUTSTANDING, not unanswered, unless the peer
++ *    answered something LATER in the log. The runner stops the simulator
++ *    container after `holdSecs` (see main.ts), which truncates the wire log at
++ *    an arbitrary point -- frequently mid-exchange, because the charge point
++ *    keeps sending Heartbeats and StatusNotifications until the moment it is
++ *    killed. Failing on those trailing CALLs would make this helper measure
++ *    `holdSecs` rather than the CSMS, intermittently, which is the worst kind
++ *    of red.
++ *
++ *    The test is "did the peer keep answering after this CALL", NOT "is this
++ *    the very last frame". The last-frame version was wrong and quietly so: a
++ *    charge point that fires two requests back to back before the container
++ *    dies leaves the FIRST of them with a later frame after it, so it was
++ *    reported unanswered while its identical twin was forgiven. What makes an
++ *    unanswered CALL damning is that the CSMS demonstrably had the chance and
++ *    took it for someone else.
++ */
++/** One CALLERROR the peer answered with, already rendered for a message. */
++export interface AnswerError {
++  errorCode: string;
++  errorDescription: string;
++  uniqueId: string;
++}
++
++/** How a peer answered every CALL for one action. See {@link tallyAnswers}. */
++export interface AnswerTally {
++  /** Total CALLs found for the action+direction asked about. */
++  total: number;
++  /** Answered with a CALLRESULT. */
++  answered: number;
++  /** Answered with a CALLERROR, in log order. */
++  errors: AnswerError[];
++  /** Unanswered, with the peer demonstrably still answering afterwards. */
++  unanswered: number;
++  /** Unanswered, with nothing answered after them -- the log was truncated. */
++  outstanding: number;
++}
++
++/**
++ * Classifies every CALL for `action`+`direction` by how the peer answered it.
++ * The three rules on {@link assertAllAnswered} are implemented HERE, once.
++ *
++ * Separate from the assertion so that anything else reading a wire log gets
++ * the same verdicts -- `tools/answered-report.ts` is the reason it exists.
++ * That tool used to carry its own copy of this loop, kept in step with a
++ * comment saying it must be; rule 3 had already been wrong once, only
++ * `assert.ts`'s copy was guarded, and the two had already drifted (the copy
++ * hardcoded the response direction). A report whose job is to explain the
++ * checks must not be able to disagree with them.
++ */
++export function tallyAnswers(
++  frames: readonly Frame[],
++  action: string,
++  direction: Direction = "sent",
++): AnswerTally {
++  // One pass: the matching CALLs with their positions, and the position of
++  // the last response the peer sent at all -- rule 3 needs both.
++  const responseDirection: Direction =
++    direction === "sent" ? "received" : "sent";
++  const calls: Array<{ frame: CallFrame; index: number }> = [];
++  let lastResponseIndex = -1;
++  frames.forEach((frame, index) => {
++    if (frame.kind === "call") {
++      if (frame.direction === direction && frame.action === action) {
++        calls.push({ frame, index });
++      }
++    } else if (frame.direction === responseDirection) {
++      lastResponseIndex = index;
++    }
++  });
++
++  const tally: AnswerTally = {
++    total: calls.length,
++    answered: 0,
++    errors: [],
++    unanswered: 0,
++    outstanding: 0,
++  };
++
++  for (const { frame: call, index } of calls) {
++    const response = findResponseFor(frames, call);
++    if (!response) {
++      // Rule 3: damning only if the peer answered something after this CALL.
++      if (index < lastResponseIndex) tally.unanswered++;
++      else tally.outstanding++;
++      continue;
++    }
++    if (response.kind === "callerror") {
++      tally.errors.push({
++        errorCode: response.errorCode,
++        errorDescription: response.errorDescription,
++        uniqueId: call.uniqueId,
++      });
++      continue;
++    }
++    tally.answered++;
++  }
++
++  return tally;
++}
++
++export function assertAllAnswered(
++  rec: AssertRecorder,
++  frames: readonly Frame[],
++  action: string,
++  description = `every ${action}.req answered with a ${action}.conf`,
++  options: AnsweredOptions = {},
++): void {
++  const direction = options.direction ?? "sent";
++  const minimum = options.minimum ?? 1;
++
++  const { total, errors, unanswered, outstanding } = tallyAnswers(
++    frames,
++    action,
++    direction,
++  );
++
++  if (total < minimum) {
++    rec.skip(
++      description,
++      `${UNEXERCISED_PREFIX} expected at least ${minimum} ${direction} CALL for action=${action}, found ${total}`,
+     );
++    return;
+   }
++
++  if (errors.length === 0 && unanswered === 0) {
++    const stillOutstanding =
++      outstanding > 0
++        ? `; ${outstanding} still outstanding when the log ended`
++        : "";
++    rec.pass(
++      `${description} (${total - outstanding}/${total} answered${stillOutstanding})`,
++    );
++    return;
++  }
++
++  const parts: string[] = [];
++  if (errors.length > 0) {
++    const rendered = errors.map(
++      (e) => `${e.errorCode}: ${e.errorDescription} (uniqueId=${e.uniqueId})`,
++    );
++    parts.push(
++      `${errors.length}/${total} answered with a CALLERROR -- ${rendered.join("; ")}`,
++    );
++  }
++  if (unanswered > 0) {
++    parts.push(
++      `${unanswered}/${total} never answered (the log continued past them)`,
++    );
++  }
++  rec.fail(description, parts.join("; "));
+ }
+ 
+ export function assertEq(
+@@ -218,6 +508,11 @@
    expected: unknown,
    description: string,
  ): void {
@@ -114,7 +352,7 @@
    if (actual === expected) {
      rec.pass(description);
    } else {
-@@ -346,6 +410,11 @@
+@@ -346,6 +641,11 @@
    value: string,
    description: string,
  ): void {

@@ -28,6 +28,25 @@ import { type CallFrame, type Direction, type Frame } from "./ocpp";
  * unverifiable.ts re-exports it, which is the import a driver should use.
  */
 export declare const UNVERIFIABLE_PREFIX = " CSMS_UNVERIFIABLE:";
+/**
+ * Marker opening the SKIPPED reason when a check could not be evaluated
+ * because THE SCENARIO never made the request, as opposed to
+ * {@link UNVERIFIABLE_PREFIX}'s "this CSMS could not tell us".
+ *
+ * Both degrade a check to SKIPPED and both make the scenario PARTIAL, so
+ * without a marker the summary's `skipped` column would merge two facts that
+ * point at different work:
+ *
+ *   UNVERIFIABLE  -- varies per driver. A limitation of the CSMS under test.
+ *   UNEXERCISED   -- identical for every driver. A gap in OUR scenarios,
+ *                    and a TODO for this suite rather than for the CSMS.
+ *
+ * A prefix rather than a fourth CheckStatus on purpose: the distinction is
+ * worth recording, not worth widening the public verdict vocabulary and the
+ * summary schema for. If the unexercised set ever grows past what
+ * OCA-COVERAGE.md can carry, promote it then.
+ */
+export declare const UNEXERCISED_PREFIX = "scenario does not exercise this:";
 export type CheckStatus = "PASS" | "FAIL" | "SKIPPED";
 export interface CheckResult {
     description: string;
@@ -53,6 +72,13 @@ export declare class AssertRecorder {
     /** Count of checks degraded to SKIPPED, exposed to the runner so it can
      *  render the `skipped` summary column and derive the PARTIAL verdict. */
     get skipped(): number;
+    /** The subset of {@link skipped} that no driver can ever turn green,
+     *  because the SCENARIO does not make the request (see
+     *  {@link UNEXERCISED_PREFIX}). Exposed so the runner can report the two
+     *  causes apart: without it, a scenario already PARTIAL for an unexercised
+     *  obligation hides a NEW driver limitation appearing beside it -- the
+     *  count does not move and the verdict was already orange. */
+    get unexercised(): number;
     get verdict(): "PASS" | "FAIL";
 }
 /** check_log_contains equivalent: at least one CALL exists for direction+action. */
@@ -82,6 +108,101 @@ export declare function assertResponseStatus(rec: AssertRecorder, frames: readon
  * rather than a top-level `status` field. Same uniqueId-paired correlation.
  */
 export declare function assertIdTagInfoStatus(rec: AssertRecorder, frames: readonly Frame[], action: string, expectedStatus: string, description: string, options?: ResponseStatusOptions): void;
+export interface AnsweredOptions {
+    /** Which side sent the CALLs being answered (default "sent": the charge
+     *  point, which is the direction every OCA `_CSMS` obligation is in). */
+    direction?: Direction;
+    /** How many such CALLs the scenario requires. Default 1. Fewer is SKIPPED
+     *  and tagged {@link UNEXERCISED_PREFIX} -- see rule 1 on
+     *  {@link assertAllAnswered}. */
+    minimum?: number;
+}
+/**
+ * Asserts that EVERY CALL the charge point sent for `action` was answered by
+ * the CSMS with a CALLRESULT. This is the check for the right-hand column of
+ * an OCA `_CSMS` test case: "The Central System responds with a X.conf".
+ *
+ * It exists because asserting what the CHARGE POINT sent -- which is what
+ * most of this file's helpers do -- cannot see a CSMS that answers with a
+ * CALLERROR or with nothing. A suite made only of those assertions reports
+ * green for a CSMS that never answered anything, and did: see OCA-COVERAGE.md.
+ *
+ * Correlation is {@link findResponseFor}'s, i.e. by OCPP-J uniqueId, so a
+ * scenario that sends the same action four times (TC_044's
+ * FirmwareStatusNotification train) gets four independent verdicts rather
+ * than one lucky match.
+ *
+ * THREE RULES, and the third is the one to read:
+ *
+ * 1. Fewer than `minimum` CALLs for `action` -- SKIPPED, tagged
+ *    {@link UNEXERCISED_PREFIX}, which makes the scenario PARTIAL rather than
+ *    FAIL. An "every X was answered" check over zero Xs passes trivially, so
+ *    it must not pass; but it must not go red either, because red here would
+ *    say "the CSMS did not answer" about a question the scenario never asked.
+ *    Several OCA obligations land exactly there -- a locally-driven case
+ *    mandates Authorize.conf and the remote-start scenario carrying that case
+ *    never sends Authorize.req. Orange states the gap without blaming the
+ *    CSMS for it; OCA-COVERAGE.md lists what closing each would take.
+ *
+ *    This is deliberately independent of whether the CP *should* have sent
+ *    it. Scenarios that require the request assert that separately (TC_013
+ *    has its own "CP reconnects and sends a fresh BootNotification" check),
+ *    which keeps this helper about one thing: did the CSMS answer.
+ *
+ * 2. A response that is a CALLERROR -- FAIL, naming errorCode and
+ *    errorDescription. A CALLERROR is a response, but it is not the `.conf`
+ *    the test case asks for.
+ *
+ * 3. A CALL with no response is OUTSTANDING, not unanswered, unless the peer
+ *    answered something LATER in the log. The runner stops the simulator
+ *    container after `holdSecs` (see main.ts), which truncates the wire log at
+ *    an arbitrary point -- frequently mid-exchange, because the charge point
+ *    keeps sending Heartbeats and StatusNotifications until the moment it is
+ *    killed. Failing on those trailing CALLs would make this helper measure
+ *    `holdSecs` rather than the CSMS, intermittently, which is the worst kind
+ *    of red.
+ *
+ *    The test is "did the peer keep answering after this CALL", NOT "is this
+ *    the very last frame". The last-frame version was wrong and quietly so: a
+ *    charge point that fires two requests back to back before the container
+ *    dies leaves the FIRST of them with a later frame after it, so it was
+ *    reported unanswered while its identical twin was forgiven. What makes an
+ *    unanswered CALL damning is that the CSMS demonstrably had the chance and
+ *    took it for someone else.
+ */
+/** One CALLERROR the peer answered with, already rendered for a message. */
+export interface AnswerError {
+    errorCode: string;
+    errorDescription: string;
+    uniqueId: string;
+}
+/** How a peer answered every CALL for one action. See {@link tallyAnswers}. */
+export interface AnswerTally {
+    /** Total CALLs found for the action+direction asked about. */
+    total: number;
+    /** Answered with a CALLRESULT. */
+    answered: number;
+    /** Answered with a CALLERROR, in log order. */
+    errors: AnswerError[];
+    /** Unanswered, with the peer demonstrably still answering afterwards. */
+    unanswered: number;
+    /** Unanswered, with nothing answered after them -- the log was truncated. */
+    outstanding: number;
+}
+/**
+ * Classifies every CALL for `action`+`direction` by how the peer answered it.
+ * The three rules on {@link assertAllAnswered} are implemented HERE, once.
+ *
+ * Separate from the assertion so that anything else reading a wire log gets
+ * the same verdicts -- `tools/answered-report.ts` is the reason it exists.
+ * That tool used to carry its own copy of this loop, kept in step with a
+ * comment saying it must be; rule 3 had already been wrong once, only
+ * `assert.ts`'s copy was guarded, and the two had already drifted (the copy
+ * hardcoded the response direction). A report whose job is to explain the
+ * checks must not be able to disagree with them.
+ */
+export declare function tallyAnswers(frames: readonly Frame[], action: string, direction?: Direction): AnswerTally;
+export declare function assertAllAnswered(rec: AssertRecorder, frames: readonly Frame[], action: string, description?: string, options?: AnsweredOptions): void;
 export declare function assertEq(rec: AssertRecorder, actual: unknown, expected: unknown, description: string): void;
 export declare function assertTrue(rec: AssertRecorder, condition: boolean, description: string, detail?: string): void;
 /**
