@@ -264,6 +264,6 @@ or `DRIVE-TRACE.txt`. That is intended: the diff is the review. Regenerate with
 `bash tests/spec-invariants.sh --regenerate` and explain the change in the pull
 request.
 
-If you edit anything under `tck/` or `drivers/steve/`, run
+If you edit anything under `tck/` or `drivers/`, run
 `bun run build:types` and commit the result — `tests/types-current.sh` fails
 otherwise.
