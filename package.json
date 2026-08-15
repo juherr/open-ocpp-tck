@@ -1,6 +1,6 @@
 {
   "name": "open-ocpp-tck",
-  "version": "0.1.0",
+  "version": "0.2.0",
   "description": "OCPP 1.6 conformance TCK: 47 scenario specs, an OCPP-J assertion engine, a docker-run charge-point simulator, and a CSMS driver contract. Bring your own CSMS driver.",
   "keywords": [
     "ocpp",
