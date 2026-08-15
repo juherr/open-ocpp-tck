@@ -93,6 +93,20 @@ FILE authorize.ts
     assertNoTransactionForTag(·, "CERT023-BLK", ·, ·)
 
 FILE core.ts
+  HELPER assertGetConfigurationUnfiltered
+    IF
+      ·.fail(·, "no Received CALL found for action=GetConfiguration")
+      RETURN
+    FOROF
+      IF
+        OR
+          OR
+      IF
+        OR
+          AND
+        ·.pass(·)
+        RETURN
+    ·.fail(·, ·)
   SPEC cert16-tc001-cold-boot connector=1 bootWaitSecs=4 holdSecs=20
     assertSent(·, ·, "BootNotification", "BootNotification.req sent")
     assertResponseStatus(·, ·, "BootNotification", "Accepted", "BootNotification accepted", {direction:"sent"})
@@ -194,7 +208,7 @@ FILE core.ts
       RETURN
     assertNonEmpty(·, ·, "DB: transaction is closed (stop_timestamp set)")
   SPEC cert16-tc019-get-configuration-all connector=1 bootWaitSecs=4 holdSecs=12
-    assertLineMatches(·, ·, /Received: \[2,.*"GetConfiguration".*"key":\[\]/, "GetConfiguration(no filter).req received")
+    assertGetConfigurationUnfiltered(·, ·, "GetConfiguration(no filter).req received")
     assertLineMatches(·, ·, /Sent: \[3,.*"configurationKey":\[{"key"/, "CALLRESULT returns a configurationKey list")
     assertLineMatches(·, ·, /"HeartbeatInterval"/, "response includes HeartbeatInterval")
     assertLineMatches(·, ·, /"SupportedFeatureProfiles"/, "response includes SupportedFeatureProfiles")
@@ -202,7 +216,9 @@ FILE core.ts
     assertLineMatches(·, ·, /Received: \[2,.*"GetConfiguration".*"key":\["HeartbeatInterval"\]/, "GetConfiguration(HeartbeatInterval).req received")
     assertLineMatches(·, ·, /Sent: \[3,.*"configurationKey":\[{"key":"HeartbeatInterval"/, "CALLRESULT returns the HeartbeatInterval key")
   SPEC cert16-tc021-change-configuration connector=1 bootWaitSecs=4 holdSecs=12
-    assertLineMatches(·, ·, /Received: \[2,.*"ChangeConfiguration".*"key":"MeterValueSampleInterval".*"value":"10"/, "ChangeConfiguration(MeterValueSampleInterval=10).req received")
+    assertReceived(·, ·, "ChangeConfiguration", "ChangeConfiguration.req received")
+    assertEq(·, ·, "MeterValueSampleInterval", "ChangeConfiguration.req asks for MeterValueSampleInterval")
+    assertEq(·, ·, "10", "ChangeConfiguration.req carries value 10")
     assertResponseStatus(·, ·, "ChangeConfiguration", "Accepted", "ChangeConfiguration accepted")
   SPEC cert16-tc024-lock-failure connector=1 bootWaitSecs=4 holdSecs=12
     assertLineMatches(·, ·, /Sent: \[2,.*"StatusNotification".*"errorCode":"ConnectorLockFailure".*"status":"Faulted"/, "StatusNotification(Faulted, ConnectorLockFailure) sent")

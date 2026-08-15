@@ -53,6 +53,11 @@ run "driver scope follows the env" bun tests/driver-env-scope.ts
 # chosen way for the rows that matter.
 run "exit-code rule holds" bun tests/expected-failure-standing.ts
 run "a CALLERROR fails, a truncated log does not" bun tests/assert-answered.ts
+# In-process for the third time, and the most literal case of it: both bundled
+# drivers spell an unfiltered GetConfiguration `{"key":[]}`, so the encoding
+# TC_019_1 used to reject -- an omitted member -- cannot be produced by any run
+# this repository can perform, only by handing the helper the frames.
+run "an unfiltered GetConfiguration is a shape, not a spelling" bun tests/get-configuration-filter.ts
 run "core is CSMS-neutral" bash tests/generic-core.sh
 # The other layering boundary the repository declares in prose: AGENTS.md and
 # everything it governs must not depend on the harness file.

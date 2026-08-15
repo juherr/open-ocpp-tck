@@ -20,10 +20,85 @@ import {
   assertReceived,
   assertResponseStatus,
   assertSent,
+  type AssertRecorder,
 } from "../assert";
-import { findCall, findResponseFor } from "../ocpp";
+import { findAllCalls, findCall, findResponseFor, type Frame } from "../ocpp";
 import type { ScenarioSpec } from "../spec-types";
 import { sleep } from "../util";
+
+/**
+ * TC_019_1's actual obligation: a GetConfiguration reached the charge point
+ * asking for NO filter. OCPP 1.6 makes `key` 0..N optional and defines its
+ * ABSENCE as "return every key", so `{}` and `{"key":[]}` are the same request
+ * and a CSMS may send either. Checking the wire text for one of them failed a
+ * conformant CSMS on its serialisation while the rest of the scenario passed
+ * (issue #31) -- so this reads the parsed frame, which is also what keeps
+ * TC_019_1 distinguishable from TC_019_2's `{"key":["HeartbeatInterval"]}`.
+ *
+ * Any received GetConfiguration satisfying it is enough, matching the any-line
+ * semantics of the assertLineMatches this replaced: a CSMS that also makes
+ * filtered requests is not failed for them.
+ *
+ * A malformed payload is not one of those witnesses. An OCPP-J CALL carries a
+ * JSON OBJECT, and reading `key` off anything else -- `null`, an array, a
+ * scalar -- yields undefined, which is the same shape an omitted member has.
+ * Without the check below, `[2,"id","GetConfiguration",null]` would report a
+ * conformance PASS: a green check for a request that is not a GetConfiguration
+ * at all, which is the failure this whole helper exists to stop happening in
+ * the other direction.
+ *
+ * Exported ONLY so tests/get-configuration-filter.ts can reach it -- neither
+ * spelling is reproducible from a bundled driver, so the guard has to hand the
+ * helper its frames. Not part of the driver-author surface: tck/index.ts
+ * deliberately re-exports no specs.
+ *
+ * NOT GENERALISED into an assert.ts primitive, and here is the survey so the
+ * question is not re-opened blind. Every `Sent:` regex in specs/ matches our
+ * own simulator's JSON.stringify output and cannot vary. Of the `Received:`
+ * ones -- the only CSMS-serialised half -- most pin nothing past the action
+ * name, and exactly one other was at genuine risk: TC_021, which pinned member
+ * ORDER. It is fixed below, by composing assertReceived with assertEq rather
+ * than by a second helper, because what it needs is a value comparison the DSL
+ * already has. Two instances, two shapes, no third caller: a generic
+ * "assert a received payload satisfies a predicate" would be speculative here,
+ * and it would put message-specific knowledge in a DSL that is message-agnostic
+ * by construction. This helper stays in specs/ for the same reason -- "`key`
+ * absent means return everything" is GetConfiguration semantics, not assertion
+ * machinery.
+ */
+export function assertGetConfigurationUnfiltered(
+  rec: AssertRecorder,
+  frames: readonly Frame[],
+  description: string,
+): void {
+  const calls = findAllCalls(frames, "received", "GetConfiguration");
+  if (calls.length === 0) {
+    rec.fail(description, "no Received CALL found for action=GetConfiguration");
+    return;
+  }
+  const seen: string[] = [];
+  for (const call of calls) {
+    const payload = call.payload;
+    if (
+      typeof payload !== "object" ||
+      payload === null ||
+      Array.isArray(payload)
+    ) {
+      seen.push(`malformed payload ${JSON.stringify(payload)}`);
+      continue;
+    }
+    const key = (payload as { key?: unknown }).key;
+    if (key == null || (Array.isArray(key) && key.length === 0)) {
+      rec.pass(description);
+      return;
+    }
+    seen.push(`key=${JSON.stringify(key)}`);
+  }
+  rec.fail(
+    description,
+    `no received GetConfiguration asked for every key: ${seen.join("; ")}`,
+  );
+}
 
 // ---------------------------------------------------------------------------
 // TC_001 Cold Boot -- CP-only, no CSMS-side operator action.
@@ -584,11 +659,10 @@ export const tc019GetConfigurationAllSpec: ScenarioSpec<void> = {
       );
     }
   },
-  assert({ lines, rec }) {
-    assertLineMatches(
+  assert({ frames, lines, rec }) {
+    assertGetConfigurationUnfiltered(
       rec,
-      lines,
-      /Received: \[2,.*"GetConfiguration".*"key":\[\]/,
+      frames,
       "GetConfiguration(no filter).req received",
     );
     assertLineMatches(
@@ -674,12 +748,41 @@ export const tc021ChangeConfigurationSpec: ScenarioSpec<void> = {
       );
     }
   },
-  assert({ frames, lines, rec }) {
-    assertLineMatches(
+  assert({ frames, rec }) {
+    // The second instance of issue #31, and the one its report could not find:
+    // its grep looked for an empty optional member, where this was a regex
+    // matching `"key":...` BEFORE `"value":...`. That pins JSON member order,
+    // which JSON does not define -- a CSMS serialising {value, key} is
+    // conformant and was reported as failing. main.ts hit the same bug once
+    // on BootNotification.conf and fixed it with order-free lookaheads; going
+    // one better here and comparing the members as VALUES also drops the
+    // assumption that the CSMS puts no whitespace around its colons.
+    //
+    // Composed from the existing DSL rather than given a helper of its own:
+    // assertReceived already hands back the frame it found, and assertEq
+    // already renders a value mismatch. Three checks where there was one, and
+    // the extra two are the point -- a CSMS that applies the right key with
+    // the wrong value now reports which, instead of "the regex did not match".
+    const req = assertReceived(
       rec,
-      lines,
-      /Received: \[2,.*"ChangeConfiguration".*"key":"MeterValueSampleInterval".*"value":"10"/,
-      "ChangeConfiguration(MeterValueSampleInterval=10).req received",
+      frames,
+      "ChangeConfiguration",
+      "ChangeConfiguration.req received",
+    );
+    const payload = req?.payload as
+      | { key?: unknown; value?: unknown }
+      | undefined;
+    assertEq(
+      rec,
+      payload?.key,
+      "MeterValueSampleInterval",
+      "ChangeConfiguration.req asks for MeterValueSampleInterval",
+    );
+    assertEq(
+      rec,
+      payload?.value,
+      "10",
+      "ChangeConfiguration.req carries value 10",
     );
     assertResponseStatus(
       rec,

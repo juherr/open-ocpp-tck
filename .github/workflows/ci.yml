@@ -78,6 +78,13 @@ jobs:
       - name: A CALLERROR fails, a truncated log does not
         run: bun tests/assert-answered.ts
 
+      # In-process for the same reason, in its most literal form: both bundled
+      # drivers spell an unfiltered GetConfiguration `{"key":[]}`, so the
+      # encoding TC_019_1 used to reject -- an omitted member -- is not
+      # reachable from any sweep, offline or live. Only from the frames.
+      - name: An unfiltered GetConfiguration is a shape, not a spelling
+        run: bun tests/get-configuration-filter.ts
+
       - name: Core names no CSMS
         run: bash tests/generic-core.sh
 
