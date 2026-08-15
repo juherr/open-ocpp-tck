@@ -35,6 +35,18 @@ import type { ScenarioSpec } from "../spec-types";
  * spelling is reproducible from a bundled driver, so the guard has to hand the
  * helper its frames. Not part of the driver-author surface: tck/index.ts
  * deliberately re-exports no specs.
+ *
+ * NOT GENERALISED, and here is the survey so the question is not re-opened
+ * blind. Every `Sent:` regex in specs/ matches our own simulator's
+ * JSON.stringify output and cannot vary. Of the `Received:` ones -- the only
+ * CSMS-serialised half -- most pin nothing past the action name, and one other
+ * is at genuine risk: TC_021 below matches `"key":...` before `"value":...`,
+ * so it pins member ORDER, which JSON does not define. That is the same bug
+ * as this one and main.ts already fixed an instance of it (see its
+ * BootNotification.conf wait, which matches both members with lookaheads
+ * rather than in sequence). It is left alone HERE because changing what a
+ * second scenario measures belongs in its own commit with its own live run --
+ * not because nobody looked.
  */
 export declare function assertGetConfigurationUnfiltered(rec: AssertRecorder, frames: readonly Frame[], description: string): void;
 export declare const tc001ColdBootSpec: ScenarioSpec<void>;

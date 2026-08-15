@@ -25,7 +25,7 @@
  * TypeScript rather than shell -- an assertion whose only witness is a CSMS
  * nobody here runs is exactly the assertion worth pinning.
  *
- * The last part matters as much as the first two, and it is why this is not
+ * The third part matters as much as the first two, and it is why this is not
  * simply "match GetConfiguration and stop": TC_019_2 sends
  * `{"key":["HeartbeatInterval"]}` and the two scenarios have to stay
  * distinguishable. A helper that forgave a non-empty filter would turn TC_019_1
@@ -41,16 +41,20 @@ import { assertGetConfigurationUnfiltered } from "../tck/specs/core";
 
 const DESCRIPTION = "GetConfiguration(no filter).req received";
 
-/** A Logger frame line in the shape ocpp.ts parses (see its LOG_LINE_RE). */
-function line(direction: "Sent" | "Received", frame: unknown): string {
-  return `[2026-08-14T00:00:00Z] [INFO] [ws] ${direction}: ${JSON.stringify(frame)}`;
-}
+/**
+ * A Logger frame line in the shape ocpp.ts parses (see its LOG_LINE_RE).
+ *
+ * Only RECEIVED CALLs, and no responses: unlike tests/assert-answered.ts,
+ * whose fixtures pair a request with its answer because assertAllAnswered
+ * correlates by uniqueId, nothing here reads a response or an id. Carrying
+ * them anyway would state a property this guard does not check.
+ */
+const received = (frame: unknown) =>
+  `[2026-08-14T00:00:00Z] [INFO] [ws] Received: ${JSON.stringify(frame)}`;
 
-const req = (id: string, payload: unknown) =>
-  line("Received", [2, id, "GetConfiguration", payload]);
-const conf = (id: string) =>
-  line("Sent", [3, id, { configurationKey: [{ key: "HeartbeatInterval", value: "60" }] }]);
-const unrelated = () => line("Received", [2, "zz", "TriggerMessage", {}]);
+const req = (payload: unknown) =>
+  received([2, "a", "GetConfiguration", payload]);
+const unrelated = () => received([2, "zz", "TriggerMessage", {}]);
 
 const cases: Array<{
   name: string;
@@ -60,13 +64,13 @@ const cases: Array<{
   {
     // The issue #31 case, and the only one no driver here can produce.
     name: "the key member is omitted -- the idiomatic 'no filter'",
-    lines: [req("a", {}), conf("a")],
+    lines: [req({})],
     expect: "PASS",
   },
   {
     // What both bundled drivers send. Was the ONLY accepted spelling.
     name: "the key member is an empty array -- the same request",
-    lines: [req("a", { key: [] }), conf("a")],
+    lines: [req({ key: [] })],
     expect: "PASS",
   },
   {
@@ -74,14 +78,14 @@ const cases: Array<{
     // serialises its optional members as explicit nulls is still asking for
     // everything.
     name: "the key member is null",
-    lines: [req("a", { key: null }), conf("a")],
+    lines: [req({ key: null })],
     expect: "PASS",
   },
   {
     // TC_019_2's request. The two scenarios measure different things and this
     // is the assertion that keeps them apart.
     name: "a non-empty filter is NOT an unfiltered request",
-    lines: [req("a", { key: ["HeartbeatInterval"] }), conf("a")],
+    lines: [req({ key: ["HeartbeatInterval"] })],
     expect: "FAIL",
   },
   {
@@ -94,14 +98,14 @@ const cases: Array<{
     // member unless the shape is checked first -- so without that check this
     // case reports a conformance PASS for a request that is not one.
     name: "a null payload is malformed, not unfiltered",
-    lines: [req("a", null), conf("a")],
+    lines: [req(null)],
     expect: "FAIL",
   },
   {
     // Same hole through the other opening: an array has no `key` property
     // either, and typeof [] === "object" gets past a null check alone.
     name: "an array payload is malformed, not unfiltered",
-    lines: [req("a", []), conf("a")],
+    lines: [req([])],
     expect: "FAIL",
   },
   {
@@ -111,14 +115,14 @@ const cases: Array<{
     // Array.isArray -- without it those two clauses cover the two above and
     // the typeof clause is unprotected.
     name: "a scalar payload is malformed, not unfiltered",
-    lines: [req("a", "HeartbeatInterval"), conf("a")],
+    lines: [req("HeartbeatInterval")],
     expect: "FAIL",
   },
   {
     // Malformed is "not a witness", NOT "poison": a CSMS that also made a
     // proper unfiltered request has satisfied TC_019_1.
     name: "a malformed request beside a well-formed one still passes",
-    lines: [req("a", null), req("b", {}), conf("b")],
+    lines: [req(null), req({})],
     expect: "PASS",
   },
   {
@@ -126,7 +130,7 @@ const cases: Array<{
     // but a CSMS that batches or retries must not be failed for the requests
     // it made besides the unfiltered one.
     name: "an unfiltered request among filtered ones still passes",
-    lines: [req("a", { key: ["HeartbeatInterval"] }), req("b", {}), conf("b")],
+    lines: [req({ key: ["HeartbeatInterval"] }), req({})],
     expect: "PASS",
   },
 ];

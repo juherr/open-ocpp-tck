@@ -8,7 +8,7 @@
    assertEq,
    assertIdTagInfoStatus,
    assertLineAfter,
-@@ -19,11 +20,72 @@
+@@ -19,11 +20,84 @@
    assertReceived,
    assertResponseStatus,
    assertSent,
@@ -44,6 +44,18 @@
 + * spelling is reproducible from a bundled driver, so the guard has to hand the
 + * helper its frames. Not part of the driver-author surface: tck/index.ts
 + * deliberately re-exports no specs.
++ *
++ * NOT GENERALISED, and here is the survey so the question is not re-opened
++ * blind. Every `Sent:` regex in specs/ matches our own simulator's
++ * JSON.stringify output and cannot vary. Of the `Received:` ones -- the only
++ * CSMS-serialised half -- most pin nothing past the action name, and one other
++ * is at genuine risk: TC_021 below matches `"key":...` before `"value":...`,
++ * so it pins member ORDER, which JSON does not define. That is the same bug
++ * as this one and main.ts already fixed an instance of it (see its
++ * BootNotification.conf wait, which matches both members with lookaheads
++ * rather than in sequence). It is left alone HERE because changing what a
++ * second scenario measures belongs in its own commit with its own live run --
++ * not because nobody looked.
 + */
 +export function assertGetConfigurationUnfiltered(
 +  rec: AssertRecorder,
@@ -82,7 +94,7 @@
  // ---------------------------------------------------------------------------
  // TC_001 Cold Boot -- CP-only, no CSMS-side operator action.
  // ---------------------------------------------------------------------------
-@@ -45,6 +107,14 @@
+@@ -45,6 +119,14 @@
        "BootNotification accepted",
        { direction: "sent" },
      );
@@ -97,7 +109,7 @@
  
      const sentAvailableOnConnector1 = frames.some(
        (f) =>
-@@ -96,7 +166,7 @@
+@@ -96,7 +178,7 @@
    bootWaitSecs: 4,
    // delay-connect(2s) + delay-idtag(2s) + bounded meter block(30s) + tail.
    holdSecs: 45,
@@ -106,7 +118,7 @@
      assertLineOrder(
        rec,
        lines,
-@@ -115,7 +185,7 @@
+@@ -115,7 +197,7 @@
        frames,
        "StartTransaction",
        "Accepted",
@@ -115,7 +127,7 @@
      );
      assertSent(rec, frames, "MeterValues", "MeterValues sent while charging");
      assertLineOrder(
-@@ -132,8 +202,13 @@
+@@ -132,8 +214,13 @@
        /Sent: \[2,.*"StatusNotification".*"status":"Available"/,
        "final StatusNotification(Available) sent",
      );
@@ -130,7 +142,7 @@
      if (!txPk) {
        rec.fail(
          `DB: transaction row exists for ${cpId}`,
-@@ -142,10 +217,10 @@
+@@ -142,10 +229,10 @@
        return;
      }
      rec.pass(`DB: transaction row exists for ${cpId} (pk=${txPk})`);
@@ -143,7 +155,7 @@
        "DB: transaction is closed (stop_timestamp set)",
      );
    },
-@@ -163,7 +238,7 @@
+@@ -163,7 +250,7 @@
    bootWaitSecs: 4,
    // delay-idtag(2s) + bounded meter block(30s) + tail.
    holdSecs: 40,
@@ -152,7 +164,7 @@
      assertLineMatches(
        rec,
        lines,
-@@ -175,7 +250,7 @@
+@@ -175,7 +262,7 @@
        frames,
        "StartTransaction",
        "Accepted",
@@ -161,7 +173,7 @@
      );
      assertSent(rec, frames, "MeterValues", "MeterValues sent while charging");
      assertLineOrder(
-@@ -191,8 +266,13 @@
+@@ -191,8 +278,13 @@
        /Sent: \[2,.*"StatusNotification".*"status":"Available"/,
        "final StatusNotification(Available) sent",
      );
@@ -176,7 +188,7 @@
      if (!txPk) {
        rec.fail(
          `DB: transaction row exists for ${cpId}`,
-@@ -201,10 +281,10 @@
+@@ -201,10 +293,10 @@
        return;
      }
      rec.pass(`DB: transaction row exists for ${cpId} (pk=${txPk})`);
@@ -189,7 +201,7 @@
        "DB: transaction is closed (stop_timestamp set)",
      );
    },
-@@ -222,7 +302,7 @@
+@@ -222,7 +314,7 @@
    bootWaitSecs: 4,
    // bounded meter block(15s) + tail.
    holdSecs: 25,
@@ -198,7 +210,7 @@
      assertLineMatches(
        rec,
        lines,
-@@ -236,8 +316,11 @@
+@@ -236,8 +328,11 @@
        /Sent: \[2,.*"StopTransaction".*"reason":"EVDisconnected"/,
        "StopTransaction sent with reason EVDisconnected",
      );
@@ -211,7 +223,7 @@
      if (!txPk) {
        rec.fail(
          `DB: transaction row exists for ${cpId}`,
-@@ -246,10 +329,10 @@
+@@ -246,10 +341,10 @@
        return;
      }
      rec.pass(`DB: transaction row exists for ${cpId} (pk=${txPk})`);
@@ -224,7 +236,7 @@
        "EVDisconnected",
        "DB: stop_reason is EVDisconnected",
      );
-@@ -267,20 +350,17 @@
+@@ -267,20 +362,17 @@
    connector: 1,
    bootWaitSecs: 4,
    holdSecs: 25,
@@ -249,7 +261,7 @@
      assertLineMatches(
        rec,
        lines,
-@@ -319,8 +399,15 @@
+@@ -319,8 +411,15 @@
          `expected >=2 BootNotification.req sends (initial + post-reboot), got ${bootCount}`,
        );
      }
@@ -266,7 +278,7 @@
      if (!txPk) {
        rec.fail(
          `DB: transaction row exists for ${cpId}`,
-@@ -330,7 +417,7 @@
+@@ -330,7 +429,7 @@
      }
      assertEq(
        rec,
@@ -275,7 +287,7 @@
        "HardReset",
        "DB: stop_reason is HardReset",
      );
-@@ -355,20 +442,17 @@
+@@ -355,20 +454,17 @@
    connector: 1,
    bootWaitSecs: 4,
    holdSecs: 25,
@@ -300,7 +312,7 @@
      assertLineMatches(
        rec,
        lines,
-@@ -392,8 +476,12 @@
+@@ -392,8 +488,12 @@
        /Sent: \[2,.*"BootNotification"/,
        "CP sends a fresh BootNotification after Soft Reset (reboot on the same socket)",
      );
@@ -314,7 +326,7 @@
      if (!txPk) {
        rec.fail(
          `DB: transaction row exists for ${cpId}`,
-@@ -403,7 +491,7 @@
+@@ -403,7 +503,7 @@
      }
      assertEq(
        rec,
@@ -323,7 +335,7 @@
        "SoftReset",
        "DB: stop_reason is SoftReset",
      );
-@@ -421,7 +509,7 @@
+@@ -421,7 +521,7 @@
    connector: 1,
    bootWaitSecs: 4,
    holdSecs: 35,
@@ -332,7 +344,7 @@
      // Timing: delay(2s) -> plug-in -> preparing -> tx-start -> charging ->
      // meter-auto(maxTime 15s, BLOCKS) -> unlock pre-arm (instant) ->
      // delay(10s window) -> tx-stop. The pre-arm window for
-@@ -430,17 +518,14 @@
+@@ -430,17 +530,14 @@
      // rationale, see .superpowers/sdd/steve-verify-results-g1.md).
      await sleep(20_000);
      try {
@@ -353,7 +365,7 @@
      assertReceived(
        rec,
        frames,
-@@ -461,7 +546,7 @@
+@@ -461,7 +558,7 @@
        "StopTransaction sent (session completes normally)",
      );
  
@@ -362,7 +374,7 @@
      if (!txPk) {
        rec.fail(
          `DB: transaction row exists for ${cpId}`,
-@@ -471,7 +556,7 @@
+@@ -471,7 +568,7 @@
      }
      assertNonEmpty(
        rec,
@@ -371,7 +383,7 @@
        "DB: transaction is closed (stop_timestamp set)",
      );
    },
-@@ -488,21 +573,18 @@
+@@ -488,21 +585,18 @@
    connector: 1,
    bootWaitSecs: 4,
    holdSecs: 35,
@@ -397,7 +409,7 @@
      assertReceived(
        rec,
        frames,
-@@ -522,8 +604,11 @@
+@@ -522,8 +616,11 @@
        "StopTransaction",
        "StopTransaction sent (session completes normally despite unlock failure)",
      );
@@ -410,7 +422,7 @@
      if (!txPk) {
        rec.fail(
          `DB: transaction row exists for ${cpId}`,
-@@ -533,7 +618,7 @@
+@@ -533,7 +630,7 @@
      }
      assertNonEmpty(
        rec,
@@ -419,7 +431,7 @@
        "DB: transaction is closed (stop_timestamp set)",
      );
    },
-@@ -550,23 +635,20 @@
+@@ -550,23 +647,20 @@
    connector: 1,
    bootWaitSecs: 4,
    holdSecs: 12,
@@ -449,7 +461,7 @@
        "GetConfiguration(no filter).req received",
      );
      assertLineMatches(
-@@ -601,16 +683,13 @@
+@@ -601,16 +695,13 @@
    connector: 1,
    bootWaitSecs: 4,
    holdSecs: 12,
@@ -469,7 +481,7 @@
        );
      }
    },
-@@ -641,19 +720,17 @@
+@@ -641,19 +732,17 @@
    connector: 1,
    bootWaitSecs: 4,
    holdSecs: 12,
@@ -494,7 +506,7 @@
        );
      }
    },
-@@ -685,7 +762,7 @@
+@@ -685,7 +774,7 @@
    connector: 1,
    bootWaitSecs: 4,
    holdSecs: 12,
@@ -503,7 +515,7 @@
      // Field order on the wire is errorCode before status (confirmed live),
      // so match them independently rather than assuming an order.
      assertLineMatches(
-@@ -706,6 +783,9 @@
+@@ -706,6 +795,9 @@
        /Sent: \[2,.*"StatusNotification".*"status":"Available"/,
        "final StatusNotification(Available) sent after plug-out",
      );
@@ -513,7 +525,7 @@
    },
  };
  
-@@ -720,16 +800,13 @@
+@@ -720,16 +812,13 @@
    connector: 1,
    bootWaitSecs: 4,
    holdSecs: 10,
@@ -533,7 +545,7 @@
        );
      }
    },
-@@ -760,15 +837,13 @@
+@@ -760,15 +849,13 @@
    connector: 1,
    bootWaitSecs: 4,
    holdSecs: 15,
@@ -552,7 +564,7 @@
        );
      }
    },
-@@ -791,7 +866,7 @@
+@@ -791,7 +878,7 @@
  export const tc064DataTransferSpec: ScenarioSpec<void> = {
    templateId: "cert16-tc064-data-transfer",
    description:
@@ -561,7 +573,7 @@
    connector: 1,
    bootWaitSecs: 4,
    holdSecs: 10,
-@@ -803,8 +878,24 @@
+@@ -803,8 +890,24 @@
        "DataTransfer.req sent with expected vendorId/messageId/data",
      );
  
