@@ -8,7 +8,7 @@
    assertEq,
    assertIdTagInfoStatus,
    assertLineAfter,
-@@ -19,11 +20,84 @@
+@@ -19,11 +20,86 @@
    assertReceived,
    assertResponseStatus,
    assertSent,
@@ -45,17 +45,19 @@
 + * helper its frames. Not part of the driver-author surface: tck/index.ts
 + * deliberately re-exports no specs.
 + *
-+ * NOT GENERALISED, and here is the survey so the question is not re-opened
-+ * blind. Every `Sent:` regex in specs/ matches our own simulator's
-+ * JSON.stringify output and cannot vary. Of the `Received:` ones -- the only
-+ * CSMS-serialised half -- most pin nothing past the action name, and one other
-+ * is at genuine risk: TC_021 below matches `"key":...` before `"value":...`,
-+ * so it pins member ORDER, which JSON does not define. That is the same bug
-+ * as this one and main.ts already fixed an instance of it (see its
-+ * BootNotification.conf wait, which matches both members with lookaheads
-+ * rather than in sequence). It is left alone HERE because changing what a
-+ * second scenario measures belongs in its own commit with its own live run --
-+ * not because nobody looked.
++ * NOT GENERALISED into an assert.ts primitive, and here is the survey so the
++ * question is not re-opened blind. Every `Sent:` regex in specs/ matches our
++ * own simulator's JSON.stringify output and cannot vary. Of the `Received:`
++ * ones -- the only CSMS-serialised half -- most pin nothing past the action
++ * name, and exactly one other was at genuine risk: TC_021, which pinned member
++ * ORDER. It is fixed below, by composing assertReceived with assertEq rather
++ * than by a second helper, because what it needs is a value comparison the DSL
++ * already has. Two instances, two shapes, no third caller: a generic
++ * "assert a received payload satisfies a predicate" would be speculative here,
++ * and it would put message-specific knowledge in a DSL that is message-agnostic
++ * by construction. This helper stays in specs/ for the same reason -- "`key`
++ * absent means return everything" is GetConfiguration semantics, not assertion
++ * machinery.
 + */
 +export function assertGetConfigurationUnfiltered(
 +  rec: AssertRecorder,
@@ -94,7 +96,7 @@
  // ---------------------------------------------------------------------------
  // TC_001 Cold Boot -- CP-only, no CSMS-side operator action.
  // ---------------------------------------------------------------------------
-@@ -45,6 +119,14 @@
+@@ -45,6 +121,14 @@
        "BootNotification accepted",
        { direction: "sent" },
      );
@@ -109,7 +111,7 @@
  
      const sentAvailableOnConnector1 = frames.some(
        (f) =>
-@@ -96,7 +178,7 @@
+@@ -96,7 +180,7 @@
    bootWaitSecs: 4,
    // delay-connect(2s) + delay-idtag(2s) + bounded meter block(30s) + tail.
    holdSecs: 45,
@@ -118,7 +120,7 @@
      assertLineOrder(
        rec,
        lines,
-@@ -115,7 +197,7 @@
+@@ -115,7 +199,7 @@
        frames,
        "StartTransaction",
        "Accepted",
@@ -127,7 +129,7 @@
      );
      assertSent(rec, frames, "MeterValues", "MeterValues sent while charging");
      assertLineOrder(
-@@ -132,8 +214,13 @@
+@@ -132,8 +216,13 @@
        /Sent: \[2,.*"StatusNotification".*"status":"Available"/,
        "final StatusNotification(Available) sent",
      );
@@ -142,7 +144,7 @@
      if (!txPk) {
        rec.fail(
          `DB: transaction row exists for ${cpId}`,
-@@ -142,10 +229,10 @@
+@@ -142,10 +231,10 @@
        return;
      }
      rec.pass(`DB: transaction row exists for ${cpId} (pk=${txPk})`);
@@ -155,7 +157,7 @@
        "DB: transaction is closed (stop_timestamp set)",
      );
    },
-@@ -163,7 +250,7 @@
+@@ -163,7 +252,7 @@
    bootWaitSecs: 4,
    // delay-idtag(2s) + bounded meter block(30s) + tail.
    holdSecs: 40,
@@ -164,7 +166,7 @@
      assertLineMatches(
        rec,
        lines,
-@@ -175,7 +262,7 @@
+@@ -175,7 +264,7 @@
        frames,
        "StartTransaction",
        "Accepted",
@@ -173,7 +175,7 @@
      );
      assertSent(rec, frames, "MeterValues", "MeterValues sent while charging");
      assertLineOrder(
-@@ -191,8 +278,13 @@
+@@ -191,8 +280,13 @@
        /Sent: \[2,.*"StatusNotification".*"status":"Available"/,
        "final StatusNotification(Available) sent",
      );
@@ -188,7 +190,7 @@
      if (!txPk) {
        rec.fail(
          `DB: transaction row exists for ${cpId}`,
-@@ -201,10 +293,10 @@
+@@ -201,10 +295,10 @@
        return;
      }
      rec.pass(`DB: transaction row exists for ${cpId} (pk=${txPk})`);
@@ -201,7 +203,7 @@
        "DB: transaction is closed (stop_timestamp set)",
      );
    },
-@@ -222,7 +314,7 @@
+@@ -222,7 +316,7 @@
    bootWaitSecs: 4,
    // bounded meter block(15s) + tail.
    holdSecs: 25,
@@ -210,7 +212,7 @@
      assertLineMatches(
        rec,
        lines,
-@@ -236,8 +328,11 @@
+@@ -236,8 +330,11 @@
        /Sent: \[2,.*"StopTransaction".*"reason":"EVDisconnected"/,
        "StopTransaction sent with reason EVDisconnected",
      );
@@ -223,7 +225,7 @@
      if (!txPk) {
        rec.fail(
          `DB: transaction row exists for ${cpId}`,
-@@ -246,10 +341,10 @@
+@@ -246,10 +343,10 @@
        return;
      }
      rec.pass(`DB: transaction row exists for ${cpId} (pk=${txPk})`);
@@ -236,7 +238,7 @@
        "EVDisconnected",
        "DB: stop_reason is EVDisconnected",
      );
-@@ -267,20 +362,17 @@
+@@ -267,20 +364,17 @@
    connector: 1,
    bootWaitSecs: 4,
    holdSecs: 25,
@@ -261,7 +263,7 @@
      assertLineMatches(
        rec,
        lines,
-@@ -319,8 +411,15 @@
+@@ -319,8 +413,15 @@
          `expected >=2 BootNotification.req sends (initial + post-reboot), got ${bootCount}`,
        );
      }
@@ -278,7 +280,7 @@
      if (!txPk) {
        rec.fail(
          `DB: transaction row exists for ${cpId}`,
-@@ -330,7 +429,7 @@
+@@ -330,7 +431,7 @@
      }
      assertEq(
        rec,
@@ -287,7 +289,7 @@
        "HardReset",
        "DB: stop_reason is HardReset",
      );
-@@ -355,20 +454,17 @@
+@@ -355,20 +456,17 @@
    connector: 1,
    bootWaitSecs: 4,
    holdSecs: 25,
@@ -312,7 +314,7 @@
      assertLineMatches(
        rec,
        lines,
-@@ -392,8 +488,12 @@
+@@ -392,8 +490,12 @@
        /Sent: \[2,.*"BootNotification"/,
        "CP sends a fresh BootNotification after Soft Reset (reboot on the same socket)",
      );
@@ -326,7 +328,7 @@
      if (!txPk) {
        rec.fail(
          `DB: transaction row exists for ${cpId}`,
-@@ -403,7 +503,7 @@
+@@ -403,7 +505,7 @@
      }
      assertEq(
        rec,
@@ -335,7 +337,7 @@
        "SoftReset",
        "DB: stop_reason is SoftReset",
      );
-@@ -421,7 +521,7 @@
+@@ -421,7 +523,7 @@
    connector: 1,
    bootWaitSecs: 4,
    holdSecs: 35,
@@ -344,7 +346,7 @@
      // Timing: delay(2s) -> plug-in -> preparing -> tx-start -> charging ->
      // meter-auto(maxTime 15s, BLOCKS) -> unlock pre-arm (instant) ->
      // delay(10s window) -> tx-stop. The pre-arm window for
-@@ -430,17 +530,14 @@
+@@ -430,17 +532,14 @@
      // rationale, see .superpowers/sdd/steve-verify-results-g1.md).
      await sleep(20_000);
      try {
@@ -365,7 +367,7 @@
      assertReceived(
        rec,
        frames,
-@@ -461,7 +558,7 @@
+@@ -461,7 +560,7 @@
        "StopTransaction sent (session completes normally)",
      );
  
@@ -374,7 +376,7 @@
      if (!txPk) {
        rec.fail(
          `DB: transaction row exists for ${cpId}`,
-@@ -471,7 +568,7 @@
+@@ -471,7 +570,7 @@
      }
      assertNonEmpty(
        rec,
@@ -383,7 +385,7 @@
        "DB: transaction is closed (stop_timestamp set)",
      );
    },
-@@ -488,21 +585,18 @@
+@@ -488,21 +587,18 @@
    connector: 1,
    bootWaitSecs: 4,
    holdSecs: 35,
@@ -409,7 +411,7 @@
      assertReceived(
        rec,
        frames,
-@@ -522,8 +616,11 @@
+@@ -522,8 +618,11 @@
        "StopTransaction",
        "StopTransaction sent (session completes normally despite unlock failure)",
      );
@@ -422,7 +424,7 @@
      if (!txPk) {
        rec.fail(
          `DB: transaction row exists for ${cpId}`,
-@@ -533,7 +630,7 @@
+@@ -533,7 +632,7 @@
      }
      assertNonEmpty(
        rec,
@@ -431,7 +433,7 @@
        "DB: transaction is closed (stop_timestamp set)",
      );
    },
-@@ -550,23 +647,20 @@
+@@ -550,23 +649,20 @@
    connector: 1,
    bootWaitSecs: 4,
    holdSecs: 12,
@@ -461,7 +463,7 @@
        "GetConfiguration(no filter).req received",
      );
      assertLineMatches(
-@@ -601,16 +695,13 @@
+@@ -601,16 +697,13 @@
    connector: 1,
    bootWaitSecs: 4,
    holdSecs: 12,
@@ -481,7 +483,7 @@
        );
      }
    },
-@@ -641,19 +732,17 @@
+@@ -641,29 +734,56 @@
    connector: 1,
    bootWaitSecs: 4,
    holdSecs: 12,
@@ -506,7 +508,51 @@
        );
      }
    },
-@@ -685,7 +774,7 @@
+-  assert({ frames, lines, rec }) {
+-    assertLineMatches(
++  assert({ frames, rec }) {
++    // The second instance of issue #31, and the one its report could not find:
++    // its grep looked for an empty optional member, where this was a regex
++    // matching `"key":...` BEFORE `"value":...`. That pins JSON member order,
++    // which JSON does not define -- a CSMS serialising {value, key} is
++    // conformant and was reported as failing. main.ts hit the same bug once
++    // on BootNotification.conf and fixed it with order-free lookaheads; going
++    // one better here and comparing the members as VALUES also drops the
++    // assumption that the CSMS puts no whitespace around its colons.
++    //
++    // Composed from the existing DSL rather than given a helper of its own:
++    // assertReceived already hands back the frame it found, and assertEq
++    // already renders a value mismatch. Three checks where there was one, and
++    // the extra two are the point -- a CSMS that applies the right key with
++    // the wrong value now reports which, instead of "the regex did not match".
++    const req = assertReceived(
+       rec,
+-      lines,
+-      /Received: \[2,.*"ChangeConfiguration".*"key":"MeterValueSampleInterval".*"value":"10"/,
+-      "ChangeConfiguration(MeterValueSampleInterval=10).req received",
++      frames,
++      "ChangeConfiguration",
++      "ChangeConfiguration.req received",
+     );
++    const payload = req?.payload as
++      | { key?: unknown; value?: unknown }
++      | undefined;
++    assertEq(
++      rec,
++      payload?.key,
++      "MeterValueSampleInterval",
++      "ChangeConfiguration.req asks for MeterValueSampleInterval",
++    );
++    assertEq(
++      rec,
++      payload?.value,
++      "10",
++      "ChangeConfiguration.req carries value 10",
++    );
+     assertResponseStatus(
+       rec,
+       frames,
+@@ -685,7 +805,7 @@
    connector: 1,
    bootWaitSecs: 4,
    holdSecs: 12,
@@ -515,7 +561,7 @@
      // Field order on the wire is errorCode before status (confirmed live),
      // so match them independently rather than assuming an order.
      assertLineMatches(
-@@ -706,6 +795,9 @@
+@@ -706,6 +826,9 @@
        /Sent: \[2,.*"StatusNotification".*"status":"Available"/,
        "final StatusNotification(Available) sent after plug-out",
      );
@@ -525,7 +571,7 @@
    },
  };
  
-@@ -720,16 +812,13 @@
+@@ -720,16 +843,13 @@
    connector: 1,
    bootWaitSecs: 4,
    holdSecs: 10,
@@ -545,7 +591,7 @@
        );
      }
    },
-@@ -760,15 +849,13 @@
+@@ -760,15 +880,13 @@
    connector: 1,
    bootWaitSecs: 4,
    holdSecs: 15,
@@ -564,7 +610,7 @@
        );
      }
    },
-@@ -791,7 +878,7 @@
+@@ -791,7 +909,7 @@
  export const tc064DataTransferSpec: ScenarioSpec<void> = {
    templateId: "cert16-tc064-data-transfer",
    description:
@@ -573,7 +619,7 @@
    connector: 1,
    bootWaitSecs: 4,
    holdSecs: 10,
-@@ -803,8 +890,24 @@
+@@ -803,8 +921,24 @@
        "DataTransfer.req sent with expected vendorId/messageId/data",
      );
  

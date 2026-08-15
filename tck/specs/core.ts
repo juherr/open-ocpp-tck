@@ -52,17 +52,19 @@ import { sleep } from "../util";
  * helper its frames. Not part of the driver-author surface: tck/index.ts
  * deliberately re-exports no specs.
  *
- * NOT GENERALISED, and here is the survey so the question is not re-opened
- * blind. Every `Sent:` regex in specs/ matches our own simulator's
- * JSON.stringify output and cannot vary. Of the `Received:` ones -- the only
- * CSMS-serialised half -- most pin nothing past the action name, and one other
- * is at genuine risk: TC_021 below matches `"key":...` before `"value":...`,
- * so it pins member ORDER, which JSON does not define. That is the same bug
- * as this one and main.ts already fixed an instance of it (see its
- * BootNotification.conf wait, which matches both members with lookaheads
- * rather than in sequence). It is left alone HERE because changing what a
- * second scenario measures belongs in its own commit with its own live run --
- * not because nobody looked.
+ * NOT GENERALISED into an assert.ts primitive, and here is the survey so the
+ * question is not re-opened blind. Every `Sent:` regex in specs/ matches our
+ * own simulator's JSON.stringify output and cannot vary. Of the `Received:`
+ * ones -- the only CSMS-serialised half -- most pin nothing past the action
+ * name, and exactly one other was at genuine risk: TC_021, which pinned member
+ * ORDER. It is fixed below, by composing assertReceived with assertEq rather
+ * than by a second helper, because what it needs is a value comparison the DSL
+ * already has. Two instances, two shapes, no third caller: a generic
+ * "assert a received payload satisfies a predicate" would be speculative here,
+ * and it would put message-specific knowledge in a DSL that is message-agnostic
+ * by construction. This helper stays in specs/ for the same reason -- "`key`
+ * absent means return everything" is GetConfiguration semantics, not assertion
+ * machinery.
  */
 export function assertGetConfigurationUnfiltered(
   rec: AssertRecorder,
@@ -746,12 +748,41 @@ export const tc021ChangeConfigurationSpec: ScenarioSpec<void> = {
       );
     }
   },
-  assert({ frames, lines, rec }) {
-    assertLineMatches(
+  assert({ frames, rec }) {
+    // The second instance of issue #31, and the one its report could not find:
+    // its grep looked for an empty optional member, where this was a regex
+    // matching `"key":...` BEFORE `"value":...`. That pins JSON member order,
+    // which JSON does not define -- a CSMS serialising {value, key} is
+    // conformant and was reported as failing. main.ts hit the same bug once
+    // on BootNotification.conf and fixed it with order-free lookaheads; going
+    // one better here and comparing the members as VALUES also drops the
+    // assumption that the CSMS puts no whitespace around its colons.
+    //
+    // Composed from the existing DSL rather than given a helper of its own:
+    // assertReceived already hands back the frame it found, and assertEq
+    // already renders a value mismatch. Three checks where there was one, and
+    // the extra two are the point -- a CSMS that applies the right key with
+    // the wrong value now reports which, instead of "the regex did not match".
+    const req = assertReceived(
       rec,
-      lines,
-      /Received: \[2,.*"ChangeConfiguration".*"key":"MeterValueSampleInterval".*"value":"10"/,
-      "ChangeConfiguration(MeterValueSampleInterval=10).req received",
+      frames,
+      "ChangeConfiguration",
+      "ChangeConfiguration.req received",
+    );
+    const payload = req?.payload as
+      | { key?: unknown; value?: unknown }
+      | undefined;
+    assertEq(
+      rec,
+      payload?.key,
+      "MeterValueSampleInterval",
+      "ChangeConfiguration.req asks for MeterValueSampleInterval",
+    );
+    assertEq(
+      rec,
+      payload?.value,
+      "10",
+      "ChangeConfiguration.req carries value 10",
     );
     assertResponseStatus(
       rec,
