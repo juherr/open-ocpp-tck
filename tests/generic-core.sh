@@ -14,7 +14,7 @@
 # The scan runs in two directions, because the boundary has two sides:
 #
 #   the core           must name NO CSMS at all
-#   the reference driver   must name only its own
+#   every driver       must name only its own
 #
 # Plus the layering rule, which is what keeps this repository consumable as a
 # package: the core imports no driver. A driver depends on the core, never the
@@ -31,7 +31,7 @@ subtree="."
 status=0
 
 core_dir="$subtree/tck"
-steve_driver="$subtree/drivers/steve"
+drivers_dir="$subtree/drivers"
 
 if [ ! -d "$core_dir" ]; then
   echo "FAIL: $core_dir does not exist — there is no core left to check." >&2
@@ -107,10 +107,129 @@ scan() { # scan <dir> <forbidden-alternation> <why>
   done < <(find "$dir" -type f \( -name '*.ts' -o -name '*.json' -o -name '*.sh' \) | sort)
 }
 
-scan "$core_dir" 'steve|stevedb|mariadb|brs|firebase|firebasetoken' \
+# --- who owns which name ----------------------------------------------------
+# A driver may name its own CSMS -- that is what it is for. Naming another's is
+# the coupling, so the pattern applied to a driver is the union of every name
+# below MINUS the row it owns, and the pattern applied to the core is the whole
+# union.
+#
+# WHAT TO SCAN IS DERIVED; WHAT TO FORBID IS DECLARED. Which directories exist
+# under drivers/ is read off the disk, because that half used to be written out
+# -- one `drivers/steve`, hardcoded, serving as both "the directory to scan"
+# and "the driver whose names are allowed there". drivers/citrineos was added
+# later and was scanned by neither: it could name SteVe in an identifier and
+# the guard reported the tree clean, and the core's pattern never learnt the
+# word `citrineos` either. Reading the listing is what gets the next driver
+# scanned the day it lands rather than the day somebody remembers a third line.
+#
+# The names, and which driver owns them, cannot be read off the disk -- no
+# listing knows SteVe's schema is `stevedb` -- so they are declared here, and
+# the union below is built from THIS DECLARATION, never from the listing.
+# Building it from the listing reads as the same thing and is not: an earlier
+# draft did, and `rm -r drivers/steve` then took `steve` out of the CORE's
+# pattern, turning the guard green on a `SteveFailure` in tck/standing.ts it
+# had been red on a moment earlier. A guard whose strictness can be edited by
+# the tree it guards fails in the LAXER direction, the one this file already
+# says is the only one that matters. Measured, not imagined.
+#
+# So `known_drivers` is the authority, and both ways it can drift are reported
+# rather than silently subtracted from the union: a directory that is not in
+# it, and an entry of it with no `csms_names` row.
+#
+# `mariadb` is SteVe's, and no `postgres` row answers it on the CitrineOS side:
+# this table holds names that IDENTIFY a CSMS. `mariadb` is inherited from the
+# core's original pattern and kept because a `mariadb` in the core is SteVe's
+# stack leaking; `postgres` in a third driver would be a database, not a name.
+#
+# The rows are redundant on purpose. Matching is by SUBSTRING, so `steve`
+# already covers `stevedb` and `citrine` already covers `citrineos` -- the same
+# way `firebase` already covers `firebasetoken` below. Reducing each row to its
+# minimal set would leave the guard byte-for-byte as strict and leave the table
+# unable to answer the only question a reader brings to it: what names does
+# this CSMS go by.
+#
+# CONTRIBUTING.md tells a driver author to edit `known_drivers` and
+# `csms_names` by name -- rename them there too, or that page sends the next
+# author looking for a variable this file no longer has.
+known_drivers='steve citrineos'
+
+csms_names() { # <driver directory> -> alternation of the names that driver owns
+  case "$1" in
+    steve) printf 'steve|stevedb|mariadb' ;;
+    citrineos) printf 'citrine|citrineos' ;;
+    *) return 1 ;;
+  esac
+}
+
+is_known() { # <driver directory> -> is it declared above?
+  case " $known_drivers " in
+    *" $1 "*) return 0 ;;
+    *) return 1 ;;
+  esac
+}
+
+# The CSMS with no driver here: the private third party this core was
+# generalised against. Nobody owns it, so nobody may name it -- and, further
+# down, not in a comment either.
+unowned_names='brs|firebase|firebasetoken|bornerecharge'
+
+# A glob, the same idiom and for the same reason as
+# tools/extract-fixture-tags.sh: the next driver is covered the day it lands,
+# and an empty glob is itself a failure rather than a silent pass.
+shopt -s nullglob
+drivers=()
+for d in "$drivers_dir"/*/; do
+  d="${d%/}"
+  drivers+=("${d##*/}")
+done
+shopt -u nullglob
+
+if [ "${#drivers[@]}" -eq 0 ]; then
+  echo "FAIL: no driver directory under $drivers_dir." >&2
+  echo "  → this guard takes its scans from that listing, so an empty one" >&2
+  echo "    means it checked nothing and said the tree was clean." >&2
+  status=1
+fi
+
+# One pass over the declaration, and `declared` carries the ids that survived
+# it. The second loop below then never sees a `known_drivers` entry with no
+# row, so it needs no error branch of its own -- an earlier shape had one that
+# stayed silent "because the first loop reported it", which is an ordering
+# invariant a comment can assert and nothing can check.
+all_names="$unowned_names"
+declared=''
+for id in $known_drivers; do
+  if ! owned="$(csms_names "$id")"; then
+    echo "FAIL: '$id' is in known_drivers with no csms_names() row." >&2
+    echo "  → the list and the table have drifted, and the names that driver" >&2
+    echo "    owns are missing from every pattern below, the core's included." >&2
+    status=1
+    continue
+  fi
+  declared="$declared $id"
+  all_names="$all_names|$owned"
+done
+
+scan "$core_dir" "$all_names" \
   "the core names a CSMS — it must not know which one it is testing"
-scan "$steve_driver" 'brs|firebase|firebasetoken' \
-  "the reference driver names a CSMS that is not its own"
+
+for id in ${drivers[@]+"${drivers[@]}"}; do
+  if ! is_known "$id"; then
+    echo "FAIL: drivers/$id is not declared in known_drivers." >&2
+    echo "  → declare it there and give it a csms_names() row; until then it" >&2
+    echo "    is not scanned, and every other driver may name its CSMS." >&2
+    status=1
+    continue
+  fi
+  others="$unowned_names"
+  for other in $declared; do
+    if [ "$other" != "$id" ]; then
+      others="$others|$(csms_names "$other")"
+    fi
+  done
+  scan "$drivers_dir/$id" "$others" \
+    "this driver names a CSMS that is not its own"
+done
 
 # --- one third party's name, comments included -------------------------------
 # The scans above strip comments first, and that is the right rule for a CSMS
@@ -142,8 +261,23 @@ scan_including_comments() { # <dir> <forbidden-alternation> <why>
   done < <(find "$dir" -type f | sort)
 }
 
-for public_dir in "$core_dir" "$steve_driver" "$subtree/patches" "$subtree/bin"; do
-  scan_including_comments "$public_dir" 'brs|firebase|bornerecharge' \
+# `$drivers_dir`, not one driver each: this find recurses and filters on no
+# extension, so every driver is covered -- README and compose file included --
+# and a driver csms_names() has never heard of is covered too. THIS COVERAGE
+# MUST NOT DEPEND ON THAT TABLE. The scans above are about coupling and can
+# afford to report an unknown driver and move on; this one is about a third
+# party's name reaching a public diff, and the driver most likely to carry it
+# is the one nobody has finished wiring in yet.
+#
+# `$unowned_names` and not a second spelling of it: this is the same list, the
+# names no driver here owns, and it was written out twice until the two copies
+# had drifted by an entry -- harmlessly, since `firebase` covers
+# `firebasetoken` by substring, but with no way for a reader to tell drift from
+# design. A driver's own names are deliberately NOT in it: `steve` and
+# `citrineos` name public projects, and drivers/citrineos/README.md compares
+# its gaps to the SteVe driver's on purpose -- documentation, not disclosure.
+for public_dir in "$core_dir" "$drivers_dir" "$subtree/patches" "$subtree/bin"; do
+  scan_including_comments "$public_dir" "$unowned_names" \
     "names a third party's private CSMS — comments and patches included, because this repository is public and patches/ becomes an upstream pull request"
 done
 
@@ -160,6 +294,6 @@ if [ -d "$subtree/drivers" ] && grep -rnE 'from "[^"]*drivers/' "$core_dir" 2>/d
 fi
 
 if [ "$status" -eq 0 ]; then
-  echo "Core is CSMS-neutral: no CSMS named in $core_dir, and no upstream-bound file depends on a private driver."
+  echo "Core is CSMS-neutral: no CSMS named in $core_dir, no driver in $drivers_dir names another's, and no upstream-bound file depends on a private driver."
 fi
 exit "$status"
