@@ -59,8 +59,10 @@
 # both look like "no disagreement found". Both fail here instead, by name.
 #
 # Offline: `git rev-parse` and `git show` read the local object database. This
-# script fetches nothing -- which is why CI must check out WITH tags, and both
-# `actions/checkout` steps set `fetch-tags: true` for that reason.
+# script fetches nothing, so CI must hand it a clone that already has the tags
+# -- `fetch-depth: 0` AND `fetch-tags: true` on the `check` job's checkout, for
+# the reason spelled out there. When they are absent this guard says so in as
+# many words rather than reporting it as a missing release.
 set -uo pipefail
 
 cd "$(dirname "$0")/.." || exit 1
@@ -135,15 +137,27 @@ ref=$(cat "$work/refs")
 # ------------------------------------------------------------------ part 2
 if ! git rev-parse --verify --quiet "refs/tags/$ref^{commit}" >/dev/null; then
   echo "FAIL: the documented ref '$ref' is not a tag in this repository." >&2
-  echo "  → if the release has not been cut yet, cut it: the documentation" >&2
-  echo "    is already telling people to install a tag that does not exist." >&2
-  echo "  → if it exists on the remote, this clone has no tags. CI checks" >&2
-  echo "    out shallow and tagless by default; both actions/checkout steps" >&2
-  echo "    set 'fetch-tags: true' so that this cannot pass, or fail, for" >&2
-  echo "    the wrong reason." >&2
-  echo "  → a branch or a commit sha would resolve here and then move or" >&2
-  echo "    never be reachable again; the documented install ref has to be" >&2
-  echo "    a tag." >&2
+  # WHICH of the two causes it is, rather than a pair of bullets leaving the
+  # reader to guess. They need opposite fixes -- cut a release, or fix the
+  # checkout -- and the clone itself knows the answer. Printing it is also
+  # what makes CI self-verifying: a tagless clone says so in the log instead
+  # of impersonating a missing release.
+  tags=$(git tag -l | wc -l | tr -d ' ')
+  if [ "$tags" -eq 0 ]; then
+    echo "    This clone has NO tags at all." >&2
+    echo "  → so this says nothing about the release. Fix the checkout:" >&2
+    echo "    the check job sets fetch-depth: 0 and fetch-tags: true for" >&2
+    echo "    exactly this, and a shallow tagless clone would otherwise" >&2
+    echo "    make this guard red no matter what the documentation says." >&2
+  else
+    echo "    This clone has $tags tag(s): $(git tag -l | tr '\n' ' ')" >&2
+    echo "  → the clone has tags and '$ref' is not among them, so the" >&2
+    echo "    release has not been cut. Cut it: the documentation is" >&2
+    echo "    already telling people to install a tag that does not exist." >&2
+  fi
+  echo "  → note a branch or a commit sha would not help: one moves, the" >&2
+  echo "    other is not what anybody pins. The documented install ref has" >&2
+  echo "    to be a tag." >&2
   exit 1
 fi
 

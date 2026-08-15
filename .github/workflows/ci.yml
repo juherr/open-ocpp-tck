@@ -25,13 +25,20 @@ jobs:
           # in .git/config where every later step -- install scripts, the
           # sweep, the containers it spawns -- could read it.
           persist-credentials: false
-          # The clone is shallow AND tagless by default, and
           # tests/documented-install-ref.sh resolves the tag the documentation
-          # cites out of the object database. Without this it would fail on
-          # "no such tag" everywhere, which is a failed lookup wearing a
-          # guard's clothes -- the shape 68d3458 fixed elsewhere. Depth stays
-          # 1: a shallow fetch still brings the tag's complete tree, which is
-          # all the byte comparison needs.
+          # cites out of the object database, so this job -- and only this job
+          # -- needs the tags. Without them it fails on "no such tag" whatever
+          # the documentation says, which is a failed lookup wearing a guard's
+          # clothes: the shape 68d3458 fixed elsewhere.
+          #
+          # BOTH options, and the depth is not redundant. `fetch-tags` alone
+          # only stops checkout passing `--no-tags`; what remains is git's tag
+          # auto-following, and a `--depth=1` fetch of a single pull-request
+          # ref follows nothing, because the tag points at a commit on main
+          # that the fetch never downloads. Measured on this repository's own
+          # CI, not assumed -- the first attempt shipped `fetch-tags` at depth
+          # 1 and the fetch command carried no `--tags` at all.
+          fetch-depth: 0
           fetch-tags: true
 
       - uses: oven-sh/setup-bun@0c5077e51419868618aeaa5fe8019c62421857d6 # v2.2.0
@@ -207,10 +214,11 @@ jobs:
           # .git/config where every later step -- install scripts, the sweep,
           # the containers it spawns -- could read it.
           persist-credentials: false
-          # Same as the check job. This one runs no guard that needs tags, and
-          # sets it anyway: two checkout steps differing in one option are read
-          # as a deliberate distinction, and there is none to make here.
-          fetch-tags: true
+          # Deliberately NOT the check job's fetch-depth/fetch-tags pair. No
+          # guard here reads a tag, and a full clone is time this job spends
+          # before it can even start pulling images. The asymmetry is stated
+          # rather than smoothed over: it is one job's requirement, not a
+          # repository-wide setting.
 
       # Started before the toolchain, and deliberately without --wait: pulling
       # the pinned images and cold-booting the CSMS (SteVe's healthcheck allows
