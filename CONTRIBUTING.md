@@ -245,9 +245,14 @@ row.
 Pull requests welcome for the core, either bundled driver, and new scenarios.
 Two rules the test suite enforces rather than merely documents:
 
-- **`tests/generic-core.sh`** — nothing under `tck/` may name a CSMS, and the
-  core may not import a driver. Doc comments may *discuss* a CSMS-shaped design
-  they replaced; identifiers, string literals and imports may not.
+- **`tests/generic-core.sh`** — nothing under `tck/` may name a CSMS, no driver
+  may name another driver's, and the core may not import a driver. Doc comments
+  may *discuss* a CSMS-shaped design they replaced; identifiers, string literals
+  and imports may not. A new driver's directory is picked up from `drivers/*`
+  on its own, but it has to be declared in that guard — `known_drivers`, plus a
+  `csms_names` row for the names it owns: the CSMS, its schema, whatever else
+  identifies it. The guard says so until both are there, and it forbids those
+  names in the core and in every other driver from then on.
 - **`tests/vendor-integrity.sh`** — files vendored from
   `shiv3/ocpp-cp-simulator` are digest-pinned in `VENDOR.md`, and each patch is
   reverse-applied to check it still reconstructs the pinned upstream bytes.

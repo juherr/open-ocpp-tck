@@ -160,9 +160,12 @@ its header is now a false claim about what the build checks.
   pointer there. Note that this bullet does not name the file — that is the
   rule applied to itself, and the guard's failure message names it for you.
   (`tests/harness-layer.sh`)
-- **Nothing under `tck/` may name a CSMS, and the core may not import a
-  driver.** Doc comments may discuss a CSMS-shaped design they replaced;
-  identifiers, string literals and imports may not. (`tests/generic-core.sh`)
+- **Nothing under `tck/` may name a CSMS, no driver may name another's, and
+  the core may not import a driver.** Doc comments may discuss a CSMS-shaped
+  design they replaced; identifiers, string literals and imports may not. The
+  drivers to scan are derived from `drivers/*`; the names each one owns are a
+  table in the guard, and a driver missing from it is reported rather than
+  skipped. (`tests/generic-core.sh`)
 - **Every OCA obligation has a check, and every answered-check has an
   obligation.** `tck/specs/OCA-OBLIGATIONS.txt` is the table; adding an
   `assertAllAnswered` without a row, or a row without the check, fails.
