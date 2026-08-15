@@ -23,7 +23,7 @@ error.
 
 `bun run verify` is every check CI runs before it starts a container —
 typecheck, committed declarations, three driver scope checks, four in-process
-guards and eight shell guards — with one exit code, and every step runs even
+guards and nine shell guards — with one exit code, and every step runs even
 after one fails, where CI enumerates them and stops at the first.
 
 There is a third copy of that list — `bun run test`, the guards without the
@@ -135,7 +135,7 @@ weaker than its comment, and only the mutation nobody had to run said so.
 Stopping at the obvious ones is not rigour, it is luck: the guard ships, and
 its header is now a false claim about what the build checks.
 
-## Six boundaries the guards enforce
+## Seven boundaries the guards enforce
 
 - **The gate is one list.** `tools/verify.sh` and the workflow's `check` job
   must run the same commands in the same order, minus the CI-only setup the
@@ -173,6 +173,15 @@ its header is now a false claim about what the build checks.
 - **A scenario's assertions and its CSMS call sequence may not change.**
   Changing what a scenario measures is legitimate and moves the two committed
   artifacts above — say why in the pull request. (`tests/spec-invariants.sh`)
+- **The documented install command installs the contract the documents
+  describe.** Every tracked `*.md` citing `github:<slug>#<ref>` cites the same
+  ref, that ref is a tag that exists, and `tck/driver.ts` at it matches the
+  tree byte for byte. The ref and the slug are read from the files, never
+  spelled in the guard. Accept the price it comes with: after a change to
+  `tck/driver.ts` this is red — on the branch and on `main` — until the tag is
+  cut and both pages cite it. That is the release procedure, and the red is the
+  reminder. The header says why `tck/driver.ts` alone.
+  (`tests/documented-install-ref.sh`)
 
 ## Conventions
 

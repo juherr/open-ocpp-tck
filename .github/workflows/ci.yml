@@ -25,6 +25,14 @@ jobs:
           # in .git/config where every later step -- install scripts, the
           # sweep, the containers it spawns -- could read it.
           persist-credentials: false
+          # The clone is shallow AND tagless by default, and
+          # tests/documented-install-ref.sh resolves the tag the documentation
+          # cites out of the object database. Without this it would fail on
+          # "no such tag" everywhere, which is a failed lookup wearing a
+          # guard's clothes -- the shape 68d3458 fixed elsewhere. Depth stays
+          # 1: a shallow fetch still brings the tag's complete tree, which is
+          # all the byte comparison needs.
+          fetch-tags: true
 
       - uses: oven-sh/setup-bun@0c5077e51419868618aeaa5fe8019c62421857d6 # v2.2.0
         with:
@@ -104,6 +112,13 @@ jobs:
       # Three were wrong at once, and none was caught by reading.
       - name: Doc counts hold
         run: bash tests/doc-counts.sh
+
+      # The documented install command, against what it installs. Reads the
+      # tag out of the object database, which is why this job checks out with
+      # fetch-tags: without them `git rev-parse` fails and the guard would be
+      # red for a reason that has nothing to do with the documentation.
+      - name: Documented install ref resolves
+        run: bash tests/documented-install-ref.sh
 
       # The only script here that rewrites VENDOR.md and patches/, exercised
       # in a throwaway git repository. Before vendor-integrity, which reads
@@ -192,6 +207,10 @@ jobs:
           # .git/config where every later step -- install scripts, the sweep,
           # the containers it spawns -- could read it.
           persist-credentials: false
+          # Same as the check job. This one runs no guard that needs tags, and
+          # sets it anyway: two checkout steps differing in one option are read
+          # as a deliberate distinction, and there is none to make here.
+          fetch-tags: true
 
       # Started before the toolchain, and deliberately without --wait: pulling
       # the pinned images and cold-booting the CSMS (SteVe's healthcheck allows

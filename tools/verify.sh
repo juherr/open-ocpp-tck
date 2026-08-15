@@ -68,6 +68,10 @@ run "gate parity holds" bash tests/gate-parity.sh
 # And the other thing AGENTS.md asserts about this file: the numbers it writes
 # out in prose. Three of them were wrong at once.
 run "doc counts hold" bash tests/doc-counts.sh
+# The other documentation claim with a checkable referent: the install command
+# the docs give installs the driver contract they document. Needs tags, which
+# is why CI checks out with fetch-tags.
+run "documented install ref resolves" bash tests/documented-install-ref.sh
 # Before vendor-integrity, which reads the manifest this one proves the re-pin
 # script will not corrupt. Builds a throwaway git repository; touches nothing
 # here.
