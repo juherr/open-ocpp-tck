@@ -23,6 +23,14 @@ import type { ScenarioSpec } from "../spec-types";
  * semantics of the assertLineMatches this replaced: a CSMS that also makes
  * filtered requests is not failed for them.
  *
+ * A malformed payload is not one of those witnesses. An OCPP-J CALL carries a
+ * JSON OBJECT, and reading `key` off anything else -- `null`, an array, a
+ * scalar -- yields undefined, which is the same shape an omitted member has.
+ * Without the check below, `[2,"id","GetConfiguration",null]` would report a
+ * conformance PASS: a green check for a request that is not a GetConfiguration
+ * at all, which is the failure this whole helper exists to stop happening in
+ * the other direction.
+ *
  * Exported ONLY so tests/get-configuration-filter.ts can reach it -- neither
  * spelling is reproducible from a bundled driver, so the guard has to hand the
  * helper its frames. Not part of the driver-author surface: tck/index.ts

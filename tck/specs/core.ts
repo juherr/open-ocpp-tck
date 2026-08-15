@@ -39,6 +39,14 @@ import { sleep } from "../util";
  * semantics of the assertLineMatches this replaced: a CSMS that also makes
  * filtered requests is not failed for them.
  *
+ * A malformed payload is not one of those witnesses. An OCPP-J CALL carries a
+ * JSON OBJECT, and reading `key` off anything else -- `null`, an array, a
+ * scalar -- yields undefined, which is the same shape an omitted member has.
+ * Without the check below, `[2,"id","GetConfiguration",null]` would report a
+ * conformance PASS: a green check for a request that is not a GetConfiguration
+ * at all, which is the failure this whole helper exists to stop happening in
+ * the other direction.
+ *
  * Exported ONLY so tests/get-configuration-filter.ts can reach it -- neither
  * spelling is reproducible from a bundled driver, so the guard has to hand the
  * helper its frames. Not part of the driver-author surface: tck/index.ts
@@ -54,21 +62,28 @@ export function assertGetConfigurationUnfiltered(
     rec.fail(description, "no Received CALL found for action=GetConfiguration");
     return;
   }
-  const filters = calls.map(
-    (call) => (call.payload as { key?: unknown } | null)?.key,
-  );
-  const unfiltered = filters.some(
-    (key) => key == null || (Array.isArray(key) && key.length === 0),
-  );
-  if (unfiltered) {
-    rec.pass(description);
-  } else {
-    rec.fail(
-      description,
-      `every received GetConfiguration carried a key filter: ` +
-        filters.map((key) => JSON.stringify(key)).join(", "),
-    );
+  const seen: string[] = [];
+  for (const call of calls) {
+    const payload = call.payload;
+    if (
+      typeof payload !== "object" ||
+      payload === null ||
+      Array.isArray(payload)
+    ) {
+      seen.push(`malformed payload ${JSON.stringify(payload)}`);
+      continue;
+    }
+    const key = (payload as { key?: unknown }).key;
+    if (key == null || (Array.isArray(key) && key.length === 0)) {
+      rec.pass(description);
+      return;
+    }
+    seen.push(`key=${JSON.stringify(key)}`);
   }
+  rec.fail(
+    description,
+    `no received GetConfiguration asked for every key: ${seen.join("; ")}`,
+  );
 }
 
 // ---------------------------------------------------------------------------

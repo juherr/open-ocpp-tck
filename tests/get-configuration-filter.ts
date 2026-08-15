@@ -1,10 +1,14 @@
 /**
  * tests/get-configuration-filter.ts -- guard over what TC_019_1 measures.
  *
- * PROPERTY, in four parts. A GetConfiguration that asks for NO filter passes
+ * PROPERTY, in six parts. A GetConfiguration that asks for NO filter passes
  * whichever way the CSMS spells it -- both an ABSENT `key` member and an EMPTY
  * `key` array -- while a request carrying a NON-EMPTY filter fails, and so does
- * a run where no GetConfiguration ever reached the charge point.
+ * a run where no GetConfiguration ever reached the charge point. A MALFORMED
+ * payload is not a witness either: an OCPP-J CALL carries a JSON object, and
+ * `null` or an array in that position reads back as an absent `key` unless
+ * something checks the shape. And ONE unfiltered request is enough, however
+ * many filtered ones the CSMS sent beside it.
  *
  * Why the two spellings are one request. OCPP 1.6 makes GetConfiguration.req's
  * `key` 0..N optional and defines its ABSENCE as "return every key". `{}` and
@@ -84,6 +88,38 @@ const cases: Array<{
     name: "the CSMS never sent GetConfiguration at all",
     lines: [unrelated()],
     expect: "FAIL",
+  },
+  {
+    // `(null)?.key` is undefined, which is indistinguishable from an omitted
+    // member unless the shape is checked first -- so without that check this
+    // case reports a conformance PASS for a request that is not one.
+    name: "a null payload is malformed, not unfiltered",
+    lines: [req("a", null), conf("a")],
+    expect: "FAIL",
+  },
+  {
+    // Same hole through the other opening: an array has no `key` property
+    // either, and typeof [] === "object" gets past a null check alone.
+    name: "an array payload is malformed, not unfiltered",
+    lines: [req("a", []), conf("a")],
+    expect: "FAIL",
+  },
+  {
+    // And the third opening, which is the one a null-check alone misses:
+    // typeof "foo" is not "object", and ("foo").key is undefined all the same.
+    // This case is why the shape check tests the type and not just null and
+    // Array.isArray -- without it those two clauses cover the two above and
+    // the typeof clause is unprotected.
+    name: "a scalar payload is malformed, not unfiltered",
+    lines: [req("a", "HeartbeatInterval"), conf("a")],
+    expect: "FAIL",
+  },
+  {
+    // Malformed is "not a witness", NOT "poison": a CSMS that also made a
+    // proper unfiltered request has satisfied TC_019_1.
+    name: "a malformed request beside a well-formed one still passes",
+    lines: [req("a", null), req("b", {}), conf("b")],
+    expect: "PASS",
   },
   {
     // Same any-frame semantics the log-line regex had: the scenario asks once,
