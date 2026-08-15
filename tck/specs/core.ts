@@ -20,10 +20,56 @@ import {
   assertReceived,
   assertResponseStatus,
   assertSent,
+  type AssertRecorder,
 } from "../assert";
-import { findCall, findResponseFor } from "../ocpp";
+import { findAllCalls, findCall, findResponseFor, type Frame } from "../ocpp";
 import type { ScenarioSpec } from "../spec-types";
 import { sleep } from "../util";
+
+/**
+ * TC_019_1's actual obligation: a GetConfiguration reached the charge point
+ * asking for NO filter. OCPP 1.6 makes `key` 0..N optional and defines its
+ * ABSENCE as "return every key", so `{}` and `{"key":[]}` are the same request
+ * and a CSMS may send either. Checking the wire text for one of them failed a
+ * conformant CSMS on its serialisation while the rest of the scenario passed
+ * (issue #31) -- so this reads the parsed frame, which is also what keeps
+ * TC_019_1 distinguishable from TC_019_2's `{"key":["HeartbeatInterval"]}`.
+ *
+ * Any received GetConfiguration satisfying it is enough, matching the any-line
+ * semantics of the assertLineMatches this replaced: a CSMS that also makes
+ * filtered requests is not failed for them.
+ *
+ * Exported ONLY so tests/get-configuration-filter.ts can reach it -- neither
+ * spelling is reproducible from a bundled driver, so the guard has to hand the
+ * helper its frames. Not part of the driver-author surface: tck/index.ts
+ * deliberately re-exports no specs.
+ */
+export function assertGetConfigurationUnfiltered(
+  rec: AssertRecorder,
+  frames: readonly Frame[],
+  description: string,
+): void {
+  const calls = findAllCalls(frames, "received", "GetConfiguration");
+  if (calls.length === 0) {
+    rec.fail(description, "no Received CALL found for action=GetConfiguration");
+    return;
+  }
+  const filters = calls.map(
+    (call) => (call.payload as { key?: unknown } | null)?.key,
+  );
+  const unfiltered = filters.some(
+    (key) => key == null || (Array.isArray(key) && key.length === 0),
+  );
+  if (unfiltered) {
+    rec.pass(description);
+  } else {
+    rec.fail(
+      description,
+      `every received GetConfiguration carried a key filter: ` +
+        filters.map((key) => JSON.stringify(key)).join(", "),
+    );
+  }
+}
 
 // ---------------------------------------------------------------------------
 // TC_001 Cold Boot -- CP-only, no CSMS-side operator action.
@@ -584,11 +630,10 @@ export const tc019GetConfigurationAllSpec: ScenarioSpec<void> = {
       );
     }
   },
-  assert({ lines, rec }) {
-    assertLineMatches(
+  assert({ frames, lines, rec }) {
+    assertGetConfigurationUnfiltered(
       rec,
-      lines,
-      /Received: \[2,.*"GetConfiguration".*"key":\[\]/,
+      frames,
       "GetConfiguration(no filter).req received",
     );
     assertLineMatches(
