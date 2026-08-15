@@ -2,8 +2,10 @@
  * tests/get-configuration-filter.ts -- guard over what TC_019_1 measures.
  *
  * PROPERTY, in six parts. A GetConfiguration that asks for NO filter passes
- * whichever way the CSMS spells it -- both an ABSENT `key` member and an EMPTY
- * `key` array -- while a request carrying a NON-EMPTY filter fails, and so does
+ * whichever way the CSMS spells it -- an ABSENT `key` member, an EMPTY `key`
+ * array, or a null one, which is how some CSMSs write an unset optional member
+ * and is NOT the same encoding as omitting it -- while a request carrying a
+ * NON-EMPTY filter fails, and so does
  * a run where no GetConfiguration ever reached the charge point. A MALFORMED
  * payload is not a witness either: an OCPP-J CALL carries a JSON object, and
  * `null` or an array in that position reads back as an absent `key` unless
@@ -74,9 +76,18 @@ const cases: Array<{
     expect: "PASS",
   },
   {
-    // Absent and null are the same absence over the wire: a CSMS that
-    // serialises its optional members as explicit nulls is still asking for
-    // everything.
+    // NOT the same encoding as an omitted member: `{"key":null}` puts the
+    // member on the wire with a null value, and OCPP 1.6 types `key` as an
+    // array, so it is not strictly schema-valid either. Accepted as "no
+    // filter" all the same -- a CSMS that writes its unset optional members as
+    // explicit nulls is asking for every key, and failing it would be the same
+    // spelling-over-substance verdict issue #31 is about.
+    //
+    // The asymmetry with the malformed-payload cases below is deliberate. A
+    // CALL payload MUST be an object: that is the OCPP-J envelope, and reading
+    // a member off a non-object means the frame was never a GetConfiguration
+    // request at all. A null MEMBER inside a well-formed payload is one CSMS's
+    // way of spelling "unset", which is a different thing entirely.
     name: "the key member is null",
     lines: [req({ key: null })],
     expect: "PASS",
