@@ -334,11 +334,17 @@ if ! git rev-parse --verify --quiet "refs/tags/$ref^{commit}" >/dev/null; then
     echo "FAIL: the documented ref '$ref' is not a tag, and it is not later" >&2
     echo "      than the last release, '$latest'." >&2
     echo >&2
-    echo "  → package.json declares $declared while $latest is already cut," >&2
-    echo "    so this is a manifest that moved backwards -- a bad merge, or" >&2
-    echo "    a revert that reached it. Left alone it is a silent way out of" >&2
-    echo "    the byte comparison: the ref agrees with the manifest and the" >&2
-    echo "    tag is missing for the wrong reason." >&2
+    echo "  → package.json declares $declared while $latest is already cut." >&2
+    echo "    Two ways in, and they need opposite fixes, so neither is" >&2
+    echo "    assumed here: the MANIFEST moved backwards (a bad merge, a" >&2
+    echo "    revert that reached it), or the RELEASE moved on and the" >&2
+    echo "    documentation stayed behind (a tag cut while these pages still" >&2
+    echo "    named an older one). Compare the two above and fix whichever" >&2
+    echo "    is stale." >&2
+    echo "  → either way it may not stand: an unreleased ref is accepted" >&2
+    echo "    only ahead of every release, or the ref agrees with the" >&2
+    echo "    manifest while the tag is missing for the wrong reason and the" >&2
+    echo "    byte comparison never runs." >&2
     exit 1
   fi
 
