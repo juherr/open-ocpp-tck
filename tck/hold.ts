@@ -24,6 +24,7 @@
 
 import type { AssertContext, ScenarioSpec } from "./spec-types";
 import { AssertRecorder } from "./assert";
+import { UnsupportedOperationError } from "./driver";
 
 /** The environment this module reads. `process.env`-shaped, and passed in so
  *  the guard can hand it a table row instead of mutating the process. */
@@ -98,6 +99,14 @@ export interface WireSoFar {
  * A THROW COUNTS AS NOT SATISFIED: an assertion reaching for a row that is not
  * there yet is exactly the state worth waiting through, and the final pass is
  * the one whose error, if any, becomes the scenario's ERROR verdict.
+ *
+ * WITH ONE EXCEPTION, and it is the difference between "not yet" and "never".
+ * `UnsupportedOperationError` is a driver answering that the CSMS cannot do
+ * this at all -- `withCapabilityStubs` raises it for an absent reservation or
+ * charging-profile registry -- and no amount of waiting turns that into a
+ * capability. Treating it like a late row would spend the entire cap on a
+ * scenario whose answer arrived with the first attempt, and then report the
+ * same error anyway.
  */
 export async function assertionsSatisfiedNow<D>(
   spec: ScenarioSpec<D>,
@@ -109,7 +118,8 @@ export async function assertionsSatisfiedNow<D>(
   const rec = new AssertRecorder();
   try {
     await spec.assert({ ...ctx, frames: parseLog(lines.join("\n")), lines, rec });
-  } catch {
+  } catch (err) {
+    if (err instanceof UnsupportedOperationError) throw err;
     return false;
   }
   return rec.failed === 0;

@@ -315,6 +315,21 @@ function mergeSimTransport(
   };
 }
 
+/**
+ * The observation-window cap, resolved once per process.
+ *
+ * Memoised because a mistyped `OCPP_TCK_MAX_EXTRA_HOLD_SECS` warns, and the
+ * warning belongs to the setting rather than to each of the 47 scenarios that
+ * reads it -- 47 identical lines is how a real one stops being read.
+ */
+let maxExtraHold: number | undefined;
+function resolvedMaxExtraHoldSecs(): number {
+  maxExtraHold ??= maxExtraHoldSecs(process.env, (message) =>
+    process.stderr.write(`[runner] WARN: ${message}\n`),
+  );
+  return maxExtraHold;
+}
+
 async function runScenario<D>(
   spec: ScenarioSpec<D>,
   options: RunOptions,
@@ -429,9 +444,7 @@ async function runScenario<D>(
         { cpId: options.cpId, connector, records, driveState },
         sim,
         parseLog,
-        maxExtraHoldSecs(process.env, (message) =>
-          process.stderr.write(`[runner] WARN: ${message}\n`),
-        ),
+        resolvedMaxExtraHoldSecs(),
         sleep,
         (cap) =>
           process.stderr.write(

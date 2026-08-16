@@ -12,7 +12,10 @@
  *      exactly the cap and not a poll more;
  *   4. an assert() that THROWS counts as not satisfied and is waited through,
  *      rather than ending the window on an exception the runner would then
- *      re-raise from a state it never gave time to settle;
+ *      re-raise from a state it never gave time to settle -- EXCEPT an
+ *      `UnsupportedOperationError`, which is a driver saying the CSMS cannot
+ *      do this at all, and which therefore ends the window at once instead of
+ *      spending the cap to report the same answer;
  *   5. a cap of 0 restores the fixed window exactly, and a cap that is not a
  *      non-negative number warns and falls back rather than disabling the
  *      extension in silence.
@@ -40,6 +43,7 @@
  * whole window.
  */
 import type { AssertContext, ScenarioSpec } from "../tck/spec-types";
+import { UnsupportedOperationError } from "../tck/driver";
 import {
   DEFAULT_MAX_EXTRA_HOLD_SECS,
   HOLD_POLL_SECS,
@@ -81,7 +85,7 @@ const noFrames = (): AssertContext<void>["frames"] => [];
 async function run(
   satisfiedAfterSecs: number | "never",
   maxExtraSecs: number,
-  behaviour: "record" | "throw" = "record",
+  behaviour: "record" | "throw" | "unsupported" = "record",
 ): Promise<{ added: number; attempts: number }> {
   const wire = new FakeWire();
   let attempts = 0;
@@ -92,6 +96,9 @@ async function run(
       const satisfied =
         satisfiedAfterSecs !== "never" && wire.elapsed >= satisfiedAfterSecs;
       if (satisfied) return;
+      if (behaviour === "unsupported") {
+        throw new UnsupportedOperationError("ReserveNow", "no such registry");
+      }
       if (behaviour === "throw") throw new Error("the row is not there yet");
       rec.fail("the frame has not arrived", "still short");
     },
@@ -179,6 +186,24 @@ async function run(
     late.added === HOLD_POLL_SECS,
     `an assert() that throws once and then passes added ${late.added}s rather ` +
       `than ${HOLD_POLL_SECS}s, so a recovered throw does not close the window.`,
+  );
+
+  // "Never", not "not yet". A driver reporting the CSMS cannot do this at all
+  // has answered on the first attempt, and waiting the cap out only delays the
+  // identical error -- so the window must let it through rather than swallow
+  // it into another poll.
+  let raised: unknown;
+  try {
+    await run("never", 30, "unsupported");
+  } catch (err) {
+    raised = err;
+  }
+  check(
+    raised instanceof UnsupportedOperationError,
+    `an UnsupportedOperationError from assert() was ${
+      raised === undefined ? "swallowed into another poll" : "replaced by " + String(raised)
+    }. It is a permanent answer, and burning the cap on it delays an error the ` +
+      "runner is going to report unchanged.",
   );
 }
 

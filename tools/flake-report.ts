@@ -233,9 +233,27 @@ function collect(root: string): {
   const runs: ParsedRun[] = [];
   const withoutSummary: string[] = [];
   const unreadable: string[] = [];
-  for (const entry of readdirSync(root).sort()) {
+  let entries: string[];
+  try {
+    entries = readdirSync(root).sort();
+  } catch {
+    // By name, rather than as a stack trace out of node:fs. A mistyped path is
+    // the most likely way to run this wrong, and the whole file is written so
+    // that reading nothing never looks like finding nothing.
+    throw new Error(`cannot read the corpus directory '${root}'`);
+  }
+  for (const entry of entries) {
     const dir = join(root, entry);
-    if (!statSync(dir).isDirectory()) continue;
+    let isDir: boolean;
+    try {
+      isDir = statSync(dir).isDirectory();
+    } catch {
+      // A dangling symlink is not a run and is not a reason to abandon the
+      // other 118.
+      unreadable.push(entry);
+      continue;
+    }
+    if (!isDir) continue;
     let text: string;
     try {
       text = readFileSync(join(dir, "summary.md"), "utf8");
@@ -318,11 +336,23 @@ function renderMarkdown(
 }
 
 function main(argv: string[]): number {
-  const args = argv.filter((a) => !a.startsWith("--"));
-  const asJson = argv.includes("--json");
-  const minRunsIdx = argv.indexOf("--min-runs");
-  const minRuns = minRunsIdx === -1 ? 1 : Number(argv[minRunsIdx + 1]);
-  const root = args[0];
+  // ONE PASS, so that a flag's VALUE is consumed rather than left to be
+  // mistaken for the corpus path. Filtering out `--`-prefixed words and taking
+  // the first survivor reads correctly and resolves `--min-runs 5 corpus` to a
+  // corpus directory named "5" -- an argument order this usage line does not
+  // forbid, failing in a way it does not mention.
+  const positional: string[] = [];
+  let asJson = false;
+  let minRuns = 1;
+  for (let i = 0; i < argv.length; i++) {
+    if (argv[i] === "--json") asJson = true;
+    else if (argv[i] === "--min-runs") minRuns = Number(argv[++i]);
+    else if (argv[i].startsWith("--")) {
+      process.stderr.write(`Unknown argument: ${argv[i]}\n`);
+      return 2;
+    } else positional.push(argv[i]);
+  }
+  const root = positional[0];
 
   if (!root || Number.isNaN(minRuns)) {
     process.stderr.write(
@@ -335,7 +365,18 @@ function main(argv: string[]): number {
     return 2;
   }
 
-  const { runs, withoutSummary, unreadable } = collect(root);
+  let collected;
+  try {
+    collected = collect(root);
+  } catch (err) {
+    process.stderr.write(
+      `${err instanceof Error ? err.message : String(err)}\n` +
+        "  → the argument is the directory holding one subdirectory per run,\n" +
+        "    not a run directory and not a summary.md.\n",
+    );
+    return 2;
+  }
+  const { runs, withoutSummary, unreadable } = collected;
   if (runs.length === 0) {
     process.stderr.write(
       `No run under ${root} had a readable summary.md. That is not an empty ` +

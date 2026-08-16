@@ -162,7 +162,7 @@
  // ---------------------------------------------------------------------------
  // Runner core
  // ---------------------------------------------------------------------------
-@@ -60,95 +136,237 @@
+@@ -60,95 +136,252 @@
    timeoutSecs?: number;
  }
  
@@ -237,8 +237,8 @@
 +  templateId: string,
 +): Promise<ExpectedFailureEntry | undefined> {
 +  return expectedFailureFor(await expectedFailureTable(), templateId);
-+}
-+
+ }
+ 
 +/** Result of one scenario execution -- either it produced checks, or the
 + *  driver declared the scenario undrivable partway through drive(). */
 +type ScenarioRun =
@@ -276,8 +276,8 @@
 +async function driverModule(): Promise<CsmsDriverModule> {
 +  driverModulePromise ??= loadDriverModule();
 +  return driverModulePromise;
- }
- 
++}
++
 +async function driver(): Promise<CsmsDriverParts> {
 +  driverPartsPromise ??= (async () => {
 +    const module = await driverModule();
@@ -380,6 +380,21 @@
 +  };
 +}
 +
++/**
++ * The observation-window cap, resolved once per process.
++ *
++ * Memoised because a mistyped `OCPP_TCK_MAX_EXTRA_HOLD_SECS` warns, and the
++ * warning belongs to the setting rather than to each of the 47 scenarios that
++ * reads it -- 47 identical lines is how a real one stops being read.
++ */
++let maxExtraHold: number | undefined;
++function resolvedMaxExtraHoldSecs(): number {
++  maxExtraHold ??= maxExtraHoldSecs(process.env, (message) =>
++    process.stderr.write(`[runner] WARN: ${message}\n`),
++  );
++  return maxExtraHold;
++}
++
  async function runScenario<D>(
    spec: ScenarioSpec<D>,
    options: RunOptions,
@@ -461,7 +476,7 @@
          30_000,
        );
      } catch (err) {
-@@ -176,13 +394,25 @@
+@@ -176,13 +409,25 @@
  
      if (spec.drive) {
        process.stderr.write(`[runner] running drive() for ${spec.templateId}\n`);
@@ -494,7 +509,7 @@
      } else {
        process.stderr.write(
          `[runner] no drive() defined (CP-only scenario) -- nothing to do while it runs\n`,
-@@ -190,15 +420,42 @@
+@@ -190,15 +435,40 @@
        driveState = undefined as D;
      }
  
@@ -508,9 +523,7 @@
 +        { cpId: options.cpId, connector, records, driveState },
 +        sim,
 +        parseLog,
-+        maxExtraHoldSecs(process.env, (message) =>
-+          process.stderr.write(`[runner] WARN: ${message}\n`),
-+        ),
++        resolvedMaxExtraHoldSecs(),
 +        sleep,
 +        (cap) =>
 +          process.stderr.write(
@@ -540,18 +553,18 @@
    // it a FAIL in a swept scenario is un-post-mortem-able: the sim container
    // is already stopped+removed by the time assert() reports, so this
    // capture is the only surviving record of what was (or wasn't) on the
-@@ -218,6 +475,10 @@
+@@ -216,6 +486,10 @@
+         err instanceof Error ? err.message : String(err)
+       }\n`,
      );
-   }
- 
-+  if (unsupported !== undefined) {
-+    return { kind: "not-applicable", reason: unsupported };
 +  }
 +
-   const frames = parseLog(lines.join("\n"));
-   const rec = new AssertRecorder();
++  if (unsupported !== undefined) {
++    return { kind: "not-applicable", reason: unsupported };
+   }
  
-@@ -228,34 +489,50 @@
+   const frames = parseLog(lines.join("\n"));
+@@ -228,34 +502,50 @@
      frames,
      lines,
      rec,
@@ -613,7 +626,7 @@
  // ---------------------------------------------------------------------------
  
  // eslint-disable-next-line @typescript-eslint/no-explicit-any
-@@ -265,20 +542,21 @@
+@@ -265,20 +555,21 @@
    "remotetrigger-smartcharging": REMOTETRIGGER_SMARTCHARGING_SPECS,
    firmware: FIRMWARE_SPECS,
    authorize: AUTHORIZE_SPECS,
@@ -641,7 +654,7 @@
  // eslint-disable-next-line @typescript-eslint/no-explicit-any
  const SPECS_BY_TEMPLATE_ID = new Map<string, ScenarioSpec<any>>(
    Object.values(GROUPS)
-@@ -286,66 +564,236 @@
+@@ -286,66 +577,236 @@
      .map((spec) => [spec.templateId, spec]),
  );
  
@@ -917,7 +930,7 @@
      };
    } catch (err) {
      const message =
-@@ -353,64 +801,44 @@
+@@ -353,64 +814,44 @@
      process.stderr.write(
        `[runner] ERROR: ${spec.templateId} on ${cpId} threw before completing: ${message}\n`,
      );
@@ -1003,7 +1016,7 @@
    );
  
    for (const outcome of toRetry) {
-@@ -432,13 +860,14 @@
+@@ -432,13 +873,14 @@
        verdict: retryOutcome.verdict,
        checks: retryOutcome.checks,
        failed: retryOutcome.failed,
@@ -1020,7 +1033,7 @@
            : " -- CONFIRMED (fails isolated too, not a parallel-lane artifact)\n"),
      );
    }
-@@ -451,59 +880,167 @@
+@@ -451,59 +893,167 @@
    return new Date().toISOString().replace(/\.\d{3}Z$/, "Z");
  }
  
@@ -1211,7 +1224,7 @@
        "",
        header,
        separator,
-@@ -518,54 +1055,55 @@
+@@ -518,54 +1068,55 @@
  }
  
  /** Sequential or parallel group sweep. Writes results/summary.md and exits
@@ -1293,7 +1306,7 @@
      );
    } else {
      for (let i = 0; i < specs.length; i++) {
-@@ -574,11 +1112,11 @@
+@@ -574,11 +1125,11 @@
    }
  
    if (retryFailedIsolated) {
@@ -1307,7 +1320,7 @@
            "(a sequential sweep is already isolated).\n",
        );
      }
-@@ -588,45 +1126,87 @@
+@@ -588,45 +1139,87 @@
    for (const o of outcomes) {
      const retrySuffix = o.isolatedRetry
        ? ` [isolated retry: ${o.isolatedRetry.verdict}${
@@ -1417,7 +1430,7 @@
  }
  
  // ---------------------------------------------------------------------------
-@@ -642,6 +1222,8 @@
+@@ -642,6 +1235,8 @@
    cpId: string;
    connector?: number;
    timeoutSecs?: number;
@@ -1426,7 +1439,7 @@
  }
  
  function requireValue(argv: string[], index: number, flag: string): string {
-@@ -663,37 +1245,80 @@
+@@ -663,37 +1258,80 @@
    return n;
  }
  
@@ -1453,25 +1466,23 @@
        `${Object.keys(GROUPS).join("|")} [--parallel] [--retry-failed-isolated]\n` +
 -      "       bun scripts/steve-verify/runner/main.ts run-all " +
 -      "[--group <name>] [--parallel] [--retry-failed-isolated]\n" +
--      "\n" +
--      "--retry-failed-isolated: after a --parallel sweep, re-run any " +
--      "non-PASS scenario once more, sequentially and isolated, and report " +
--      "both verdicts (parallel-fail -> isolated-pass = flake; still fails " +
--      "isolated = real fail). No effect without --parallel.\n",
 +      "       ocpp-tck run-all [--group <name>] [--parallel] " +
 +      "[--retry-failed-isolated] [--results-dir DIR]\n" +
 +      "       ocpp-tck list-scenarios [--group <name>] [--json]\n" +
 +      "       ocpp-tck check-driver [--driver SPEC] [--json]\n" +
 +      "       ocpp-tck print-sim-image\n" +
 +      "       ocpp-tck driver <verb> [args...]\n" +
-+      "\n" +
+       "\n" +
+-      "--retry-failed-isolated: after a --parallel sweep, re-run any " +
+-      "non-PASS scenario once more, sequentially and isolated, and report " +
 +      "check-driver is fully offline: it reads the driver MODULE (never " +
 +      "create()), so it needs no CSMS, no docker, no network and no " +
 +      "credentials.\n" +
 +      "\n" +
 +      "--retry-failed-isolated: after a parallel sweep, re-run any " +
 +      "FAIL/ERROR scenario once more, sequentially and isolated, and report " +
-+      "both verdicts (parallel-fail -> isolated-pass = flake; still fails " +
+       "both verdicts (parallel-fail -> isolated-pass = flake; still fails " +
+-      "isolated = real fail). No effect without --parallel.\n",
 +      "isolated = real fail). No effect without parallel lanes.\n" +
 +      "\n" +
 +      "Environment: CSMS_DRIVER (module specifier of the driver to load), " +
@@ -1526,7 +1537,7 @@
  
    if (argv[0] === "run-all") {
      group = "all";
-@@ -708,18 +1333,27 @@
+@@ -708,18 +1346,27 @@
          case "--retry-failed-isolated":
            retryFailedIsolated = true;
            break;
@@ -1557,7 +1568,7 @@
      process.exit(1);
    }
  
-@@ -749,9 +1383,11 @@
+@@ -749,9 +1396,11 @@
        case "--retry-failed-isolated":
          retryFailedIsolated = true;
          break;
@@ -1570,7 +1581,7 @@
          process.exit(1);
      }
    }
-@@ -764,35 +1400,495 @@
+@@ -764,35 +1413,495 @@
      cpId,
      connector,
      timeoutSecs,
@@ -2082,7 +2093,7 @@
    }
  
    const spec = SPECS_BY_TEMPLATE_ID.get(args.templateId);
-@@ -800,18 +1896,109 @@
+@@ -800,18 +1909,109 @@
      process.stderr.write(
        `Unknown template id: ${args.templateId} (known: ${[...SPECS_BY_TEMPLATE_ID.keys()].join(", ")})\n`,
      );
