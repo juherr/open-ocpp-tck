@@ -4,8 +4,11 @@
  * observation-window.ts -- when the runner stops watching the wire, offline.
  *
  * THE PROPERTY, in five parts:
- *   1. a scenario whose assertions all pass at the floor adds NOTHING -- the
- *      fixed-window behaviour, unchanged, for every green scenario;
+ *   1. a scenario whose assertions all pass at the floor adds NO WAITING and
+ *      asks exactly once -- the fixed-window timing, unchanged, for every
+ *      green scenario. Note this counts sleeps and attempts, not work: the
+ *      one extra assert() pass every scenario now runs is real and is
+ *      accounted for in tck/hold.ts's header, not here;
  *   2. one that is still short waits, and closes the window the moment it
  *      becomes satisfiable -- not at the cap, and not one poll later;
  *   3. one that never becomes satisfiable stops at the cap, having added
@@ -14,8 +17,9 @@
  *      rather than ending the window on an exception the runner would then
  *      re-raise from a state it never gave time to settle -- EXCEPT an
  *      `UnsupportedOperationError`, which is a driver saying the CSMS cannot
- *      do this at all, and which therefore ends the window at once instead of
- *      spending the cap to report the same answer;
+ *      do this at all, and which therefore STOPS the window at once instead of
+ *      spending the cap to reach the same answer. Stops, and does not raise:
+ *      raising would leave `runScenario` before it writes the wire log;
  *   5. a cap of 0 restores the fixed window exactly, and a cap that is not a
  *      non-negative number warns and falls back rather than disabling the
  *      extension in silence.
@@ -66,13 +70,6 @@ const CTX = {
   driveState: undefined,
 };
 
-/** A wire whose captured lines grow as the fake clock advances, so a spec can
- *  become satisfiable at a chosen second the way a real CSMS does. */
-class FakeWire {
-  lines: string[] = [];
-  elapsed = 0;
-}
-
 /** parseLog's stand-in. The window passes frames through to the spec and never
  *  reads them itself, so a spec that ignores them needs nothing real here. */
 const noFrames = (): AssertContext<void>["frames"] => [];
@@ -87,7 +84,11 @@ async function run(
   maxExtraSecs: number,
   behaviour: "record" | "throw" | "unsupported" = "record",
 ): Promise<{ added: number; attempts: number }> {
-  const wire = new FakeWire();
+  // The fake wire carries no lines: what this file drives is the CLOCK, and
+  // every row below decides satisfiability from elapsed seconds rather than
+  // from what is on the wire. `lines` is here because the window's parameter
+  // type asks for it, and stays empty because filling it would be scenery.
+  const wire = { lines: [] as string[], elapsed: 0 };
   let attempts = 0;
   const spec: ScenarioSpec<void> = {
     templateId: "fake",
@@ -192,18 +193,13 @@ async function run(
   // has answered on the first attempt, and waiting the cap out only delays the
   // identical error -- so the window must let it through rather than swallow
   // it into another poll.
-  let raised: unknown;
-  try {
-    await run("never", 30, "unsupported");
-  } catch (err) {
-    raised = err;
-  }
+  const impossible = await run("never", 30, "unsupported");
   check(
-    raised instanceof UnsupportedOperationError,
-    `an UnsupportedOperationError from assert() was ${
-      raised === undefined ? "swallowed into another poll" : "replaced by " + String(raised)
-    }. It is a permanent answer, and burning the cap on it delays an error the ` +
-      "runner is going to report unchanged.",
+    impossible.added === 0 && impossible.attempts === 1,
+    `an UnsupportedOperationError from assert() added ${impossible.added}s over ` +
+      `${impossible.attempts} attempt(s) instead of stopping on the first. It ` +
+      "is a permanent answer, and burning the cap on it only delays an error " +
+      "the runner reports unchanged.",
   );
 }
 

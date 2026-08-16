@@ -20,15 +20,23 @@
  * would cost a container, a CSMS, and a CSMS engineered to answer late --
  * where the rule itself is a table, and `tests/observation-window.ts` reads it
  * as one.
+ *
+ * TRIED AND REJECTED: reusing `waitForCondition` (wait.ts) for the loop below.
+ * It is the most predictable review comment on this file, so here is the
+ * measurement rather than the argument again. Three of its properties are
+ * wrong here and each is deliberate over there: it THROWS on exhaustion, where
+ * reaching the cap is a normal outcome this runner reports and continues past;
+ * it reads `Date.now()` and calls `setTimeout` itself, where the whole premise
+ * of the guard is a fake clock; and it returns the predicate's value, where
+ * the runner needs the elapsed seconds it stores and prints. Generalising
+ * `waitForCondition` to cover both would widen `WaitForConditionOptions`,
+ * which `tck/index.ts` publishes to driver authors, for about ten lines of
+ * shared `for(;;)`. What is left in common is the shape of a loop, not a rule.
  */
 
 import type { AssertContext, ScenarioSpec } from "./spec-types";
 import { AssertRecorder } from "./assert";
-import { UnsupportedOperationError } from "./driver";
-
-/** The environment this module reads. `process.env`-shaped, and passed in so
- *  the guard can hand it a table row instead of mutating the process. */
-export type HoldEnv = Record<string, string | undefined>;
+import { UnsupportedOperationError, type CsmsEnv } from "./driver";
 
 /** Seconds between two attempts to close the window. */
 export const HOLD_POLL_SECS = 5;
@@ -54,8 +62,24 @@ export const DEFAULT_MAX_EXTRA_HOLD_SECS = 30;
  * twelve-minute investment to lose to a typo in an environment variable -- but
  * silence would let that typo read as "the extension is off", so it says so.
  */
+let memoised: number | undefined;
+
+/**
+ * {@link maxExtraHoldSecs} against `process.env`, resolved once per process.
+ *
+ * Memoised because a mistyped value warns, and the warning belongs to the
+ * setting rather than to each of the 47 scenarios that reads it -- 47
+ * identical lines is how a real warning stops being read.
+ */
+export function resolvedMaxExtraHoldSecs(
+  warn: (message: string) => void,
+): number {
+  memoised ??= maxExtraHoldSecs(process.env, warn);
+  return memoised;
+}
+
 export function maxExtraHoldSecs(
-  env: HoldEnv,
+  env: CsmsEnv,
   warn: (message: string) => void = () => {},
 ): number {
   const raw = env.OCPP_TCK_MAX_EXTRA_HOLD_SECS?.trim();
@@ -76,6 +100,36 @@ export function maxExtraHoldSecs(
  *  only read the wire, and the type says so. */
 export interface WireSoFar {
   readonly lines: readonly string[];
+}
+
+/**
+ * What the runner prints when a window closes at its cap, and when one closed
+ * late.
+ *
+ * HERE RATHER THAN AT THE CALL SITE, which is `tck/main.ts` -- a vendored
+ * `upstream-patched` file whose diff against upstream every re-pin re-records
+ * and every reviewer re-reads. `tck/standing.ts` already sets this shape:
+ * `unexpectedPassDetail` and `declaredButErroredDetail` keep the prose beside
+ * the rule it explains, and the runner just calls them.
+ */
+export function capReachedMessage(templateId: string, cap: number): string {
+  return (
+    `observation window for ${templateId} reached its +${cap}s cap with ` +
+    "assertions still short -- reporting what is on the wire. If this is a " +
+    "real finding the cap cost nothing; if it is not, the cap is the number " +
+    "to raise (OCPP_TCK_MAX_EXTRA_HOLD_SECS)."
+  );
+}
+
+export function heldMessage(
+  templateId: string,
+  holdSecs: number,
+  extra: number,
+): string {
+  return (
+    `held ${templateId} for ${holdSecs}+${extra}s -- assertions were still ` +
+    "short at the floor"
+  );
 }
 
 /**
@@ -105,24 +159,32 @@ export interface WireSoFar {
  * this at all -- `withCapabilityStubs` raises it for an absent reservation or
  * charging-profile registry -- and no amount of waiting turns that into a
  * capability. Treating it like a late row would spend the entire cap on a
- * scenario whose answer arrived with the first attempt, and then report the
- * same error anyway.
+ * scenario whose answer arrived with the first attempt.
+ *
+ * `"impossible"` STOPS THE WINDOW WITHOUT RAISING, and the distinction is not
+ * cosmetic. Raising from here would leave `runScenario` through the one `try`
+ * whose `finally` only stops the container -- so the run would skip the write
+ * of `results/<template-id>.log`, which is the only surviving record of the
+ * wire once that container is removed. Stopping instead lets the run reach its
+ * own assert pass, which raises the identical error with the log already on
+ * disk. Same ERROR verdict, same message, the evidence kept.
  */
-export async function assertionsSatisfiedNow<D>(
+type Readiness = "satisfied" | "short" | "impossible";
+
+async function assertionsSatisfiedNow<D>(
   spec: ScenarioSpec<D>,
   ctx: Omit<AssertContext<D>, "frames" | "lines" | "rec">,
   wire: WireSoFar,
   parseLog: (text: string) => AssertContext<D>["frames"],
-): Promise<boolean> {
+): Promise<Readiness> {
   const lines = [...wire.lines];
   const rec = new AssertRecorder();
   try {
     await spec.assert({ ...ctx, frames: parseLog(lines.join("\n")), lines, rec });
   } catch (err) {
-    if (err instanceof UnsupportedOperationError) throw err;
-    return false;
+    return err instanceof UnsupportedOperationError ? "impossible" : "short";
   }
-  return rec.failed === 0;
+  return rec.failed === 0 ? "satisfied" : "short";
 }
 
 /**
@@ -131,9 +193,18 @@ export async function assertionsSatisfiedNow<D>(
  *
  * `holdSecs` KEEPS ITS MEANING as the floor: the runner sleeps it in full
  * before calling this, every spec's tuned timing is preserved, and a scenario
- * whose assertions all pass at the floor adds NOTHING -- byte for byte the
- * behaviour that shipped before this module, and the reason a green sweep does
- * not get slower.
+ * whose assertions all pass at the floor adds NO WAITING -- the reason a green
+ * sweep does not get slower on the clock.
+ *
+ * IT DOES ADD WORK, and "adds nothing" was the wrong word for it. Every
+ * scenario now runs `assert()` once more than it used to, and a struggling one
+ * runs it up to eight times. `records` is driver-supplied, so those are real
+ * queries against the CSMS: 35 of them across the 17 scenarios whose
+ * assertions read the database, on a sweep where nothing extends. On a driver
+ * whose records go through `docker exec` that is ~1-2% of a sweep's wall
+ * clock; on one that goes over HTTP it is less. Measured, stated, and accepted
+ * -- but a green sweep that got slower is not evidence against this module,
+ * and the guard counts sleeps, so it cannot see this.
  *
  * A NEGATIVE ASSERTION CANNOT BE WEAKENED HERE. The window only ever grows, so
  * "no StartTransaction was sent" gets longer to observe a violation and never
@@ -155,7 +226,9 @@ export async function extendObservationWindow<D>(
   if (maxExtraSecs <= 0) return 0;
   let extra = 0;
   for (;;) {
-    if (await assertionsSatisfiedNow(spec, ctx, wire, parseLog)) return extra;
+    if ((await assertionsSatisfiedNow(spec, ctx, wire, parseLog)) !== "short") {
+      return extra;
+    }
     if (extra >= maxExtraSecs) {
       onCapReached(maxExtraSecs);
       return extra;

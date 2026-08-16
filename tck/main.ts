@@ -105,7 +105,12 @@ import {
   REMOTETRIGGER_SMARTCHARGING_SPECS,
 } from "./specs/index";
 import type { ScenarioSpec } from "./spec-types";
-import { extendObservationWindow, maxExtraHoldSecs } from "./hold";
+import {
+  capReachedMessage,
+  extendObservationWindow,
+  heldMessage,
+  resolvedMaxExtraHoldSecs,
+} from "./hold";
 import { sleep } from "./util";
 import { WaitTimeoutError } from "./wait";
 
@@ -315,21 +320,6 @@ function mergeSimTransport(
   };
 }
 
-/**
- * The observation-window cap, resolved once per process.
- *
- * Memoised because a mistyped `OCPP_TCK_MAX_EXTRA_HOLD_SECS` warns, and the
- * warning belongs to the setting rather than to each of the 47 scenarios that
- * reads it -- 47 identical lines is how a real one stops being read.
- */
-let maxExtraHold: number | undefined;
-function resolvedMaxExtraHoldSecs(): number {
-  maxExtraHold ??= maxExtraHoldSecs(process.env, (message) =>
-    process.stderr.write(`[runner] WARN: ${message}\n`),
-  );
-  return maxExtraHold;
-}
-
 async function runScenario<D>(
   spec: ScenarioSpec<D>,
   options: RunOptions,
@@ -439,27 +429,20 @@ async function runScenario<D>(
     // cannot assert on.
     if (unsupported === undefined) {
       await sleep(holdSecs * 1000);
+      const warn = (m: string): void => {
+        process.stderr.write(`[runner] ${m}\n`);
+      };
       extraHoldSecs = await extendObservationWindow(
         spec,
         { cpId: options.cpId, connector, records, driveState },
         sim,
         parseLog,
-        resolvedMaxExtraHoldSecs(),
+        resolvedMaxExtraHoldSecs((m) => warn(`WARN: ${m}`)),
         sleep,
-        (cap) =>
-          process.stderr.write(
-            `[runner] observation window for ${spec.templateId} reached its ` +
-              `+${cap}s cap with assertions still short -- reporting what is ` +
-              "on the wire. If this is a real finding the cap cost nothing; " +
-              "if it is not, the cap is the number to raise " +
-              "(OCPP_TCK_MAX_EXTRA_HOLD_SECS).\n",
-          ),
+        (cap) => warn(capReachedMessage(spec.templateId, cap)),
       );
       if (extraHoldSecs > 0) {
-        process.stderr.write(
-          `[runner] held ${spec.templateId} for ${holdSecs}+${extraHoldSecs}s ` +
-            "-- assertions were still short at the floor\n",
-        );
+        warn(heldMessage(spec.templateId, holdSecs, extraHoldSecs));
       }
     }
   } finally {
@@ -926,16 +909,24 @@ function hostLoad(): string {
   return `Host load ${one.toFixed(2)} over ${cores} core(s)${note}.`;
 }
 
-/** Renders + writes results/summary.md. Same columns as upstream plus
- *  `skipped`; when any outcome carries an `isolatedRetry`
- *  (--retry-failed-isolated ran), an extra "isolated retry" column and a
- *  flake-count note are added. */
+/**
+ * Renders + writes results/summary.md. Same columns as upstream plus
+ * `skipped`, then one conditional column per thing the run actually did:
+ * "isolated retry" when --retry-failed-isolated ran, "held past floor" when a
+ * scenario outlived its holdSecs.
+ *
+ * THIS TABLE IS READ OUTSIDE THIS RUNTIME: `tools/flake-report.ts` mines it
+ * across archived CI artifacts, by header NAME, so appending a column is free
+ * and renaming or reordering one is not. That file's header carries the rest,
+ * including why no machine-readable twin is emitted beside it.
+ */
 async function writeSummary(
   groupName: string,
   outcomes: ScenarioOutcome[],
   parts: StandingPartition,
 ): Promise<string> {
   const anyRetried = outcomes.some((o) => o.isolatedRetry !== undefined);
+  const anyHeld = outcomes.some((o) => (o.extraHoldSecs ?? 0) > 0);
 
   const rows = outcomes.map((o) => {
     const checks = o.checks === null ? "-" : String(o.checks);
@@ -949,20 +940,27 @@ async function writeSummary(
     const verdict =
       (o.reason ? `${o.verdict} (${o.reason})` : o.verdict) +
       (note ? ` — ${note}.` : "");
-    const base = `| ${o.templateId} | ${o.cpId} | ${verdict} | ${checks} | ${failed} | ${skipped} |`;
-    if (!anyRetried) return base;
-    if (!o.isolatedRetry) return `${base} - |`;
-    const flake = !isFailure(o.isolatedRetry.verdict);
-    const label = `${o.isolatedRetry.verdict}${flake ? " (flake)" : " (confirmed)"}`;
-    return `${base} ${label} |`;
+    let row = `| ${o.templateId} | ${o.cpId} | ${verdict} | ${checks} | ${failed} | ${skipped} |`;
+    if (anyRetried) {
+      if (!o.isolatedRetry) row += " - |";
+      else {
+        const flake = !isFailure(o.isolatedRetry.verdict);
+        row += ` ${o.isolatedRetry.verdict}${flake ? " (flake)" : " (confirmed)"} |`;
+      }
+    }
+    // A COLUMN AND NOT A NOTE: a number left in the prose underneath is one
+    // no archived sweep can ever be joined back to its own scenario row.
+    // Appended, never inserted, and conditional like the one above -- the
+    // corpus is already two table shapes and its reader already sniffs.
+    if (anyHeld) row += ` ${o.extraHoldSecs ? `+${o.extraHoldSecs}s` : "-"} |`;
+    return row;
   });
 
-  const header = anyRetried
-    ? "| scenario | cp | verdict | checks | failed | skipped | isolated retry |"
-    : "| scenario | cp | verdict | checks | failed | skipped |";
-  const separator = anyRetried
-    ? "| --- | --- | --- | --- | --- | --- | --- |"
-    : "| --- | --- | --- | --- | --- | --- |";
+  const columns = ["scenario", "cp", "verdict", "checks", "failed", "skipped"];
+  if (anyRetried) columns.push("isolated retry");
+  if (anyHeld) columns.push("held past floor");
+  const header = `| ${columns.join(" | ")} |`;
+  const separator = `| ${columns.map(() => "---").join(" | ")} |`;
 
   const notes: string[] = [];
   const partialCount = outcomes.filter((o) => o.verdict === "PARTIAL").length;
@@ -1018,21 +1016,15 @@ async function writeSummary(
       ),
     );
   }
-  // A NOTE AND NOT A COLUMN, deliberately. The table's shape is what every
-  // archived sweep is read back through, and adding a column to it would
-  // reformat the corpus mid-history for a number most rows carry as zero.
-  const extended = outcomes.filter((o) => (o.extraHoldSecs ?? 0) > 0);
-  if (extended.length > 0) {
+  if (anyHeld) {
+    const extended = outcomes.filter((o) => (o.extraHoldSecs ?? 0) > 0);
     notes.push(
       "",
-      `${extended.length} scenario(s) held past holdSecs: their assertions ` +
-        "were still short when the fixed window would have closed, so the " +
-        "window was extended. A row here that PASSED was a FAIL under the " +
-        "fixed window — a false finding this run did not report. One that " +
-        "failed anyway spent the extra seconds proving it.",
-      ...extended.map(
-        (o) => `- \`${o.templateId}\` — +${o.extraHoldSecs}s, ${o.verdict}`,
-      ),
+      `${extended.length} scenario(s) held past holdSecs — see the last ` +
+        "column. Their assertions were still short when the fixed window " +
+        "would have closed, so it was extended. A row that PASSED there was " +
+        "a FAIL under the fixed window, a false finding this run did not " +
+        "report; one that failed anyway spent the extra seconds proving it.",
     );
   }
 
@@ -1292,6 +1284,10 @@ async function printUsage(): Promise<void> {
       "Environment: CSMS_DRIVER (module specifier of the driver to load), " +
       "OCPP_TCK_RESULTS_DIR (default ./results), OCPP_TCK_DRIVERS_DIR " +
       "(default ./drivers, used only to list candidates in errors), " +
+      "OCPP_TCK_MAX_EXTRA_HOLD_SECS (default 30; seconds a scenario's " +
+      "observation window may run past its holdSecs while its assertions are " +
+      "still short -- 0 restores a fixed window, which is what to set when " +
+      "measuring a sweep's own timing), " +
       "OCPP_CP_IDS (comma-separated charge point ids; the " +
       "parallel lane count derives from it -- one station means sequential), " +
       "OCPP_STATIONS (ocpp_id=station_id[,...] override when the stations were " +

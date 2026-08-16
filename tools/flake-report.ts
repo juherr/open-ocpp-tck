@@ -48,6 +48,16 @@
  * as "nothing to see here", which is the failure mode of every flake
  * impression it exists to replace.
  *
+ * WHY IT PARSES MARKDOWN INSTEAD OF READING A MACHINE-READABLE TWIN, since
+ * that is the obvious objection and it has been costed. Emitting
+ * `results/outcomes.json` beside the summary would archive for free -- CI
+ * uploads `results/` wholesale -- but it answers nothing about the ~119
+ * artifacts that already exist, which are the entire corpus this file was
+ * written for. The markdown path would have to be written and kept anyway,
+ * and two parsers for one fact is the drift `tck/standing.ts` warns about,
+ * one level up. Revisit when most of the corpus carries both; until then the
+ * defence against a reordered column is reading cells by header NAME, below.
+ *
  * Offline: reads a directory. It downloads nothing -- fetching the corpus is
  * `gh run download`, which is the operator's business and not this tool's.
  *
@@ -69,9 +79,18 @@
 
 import { readdirSync, readFileSync, statSync } from "node:fs";
 import { join } from "node:path";
+import {
+  effectivelyFailed,
+  isFailure,
+  type Verdict,
+} from "../tck/standing";
 
-type Verdict = "PASS" | "PARTIAL" | "FAIL" | "ERROR" | "NOT APPLICABLE";
-
+// The verdict vocabulary and the flake rule come from the runner that wrote
+// these tables, never from a second copy here. `tck/standing.ts` says why in
+// its own words -- "ONE definition, deliberately ... written twice they would
+// drift, and the drift would be silent in the worst possible place" -- and a
+// flake record that disagreed with the sweep that produced it is exactly that
+// place. `tools/answered-report.ts` already imports from `../tck/`.
 const VERDICTS: readonly Verdict[] = [
   "NOT APPLICABLE",
   "PARTIAL",
@@ -96,6 +115,10 @@ interface Observation {
    *  failed in its lane. `null` everywhere else -- including a run that used
    *  the flag and where this row simply did not fail. */
   retryVerdict: Verdict | null;
+  /** Seconds this scenario's observation window ran past its holdSecs. `null`
+   *  on every run archived before the runner grew that column, which is most
+   *  of the corpus -- so it reads as "not recorded", never as zero. */
+  extraHoldSecs: number | null;
 }
 
 interface ParsedRun {
@@ -127,30 +150,50 @@ function parseSummary(runLabel: string, text: string): ParsedRun | null {
 
   const headerIdx = lines.findIndex((l) => l.startsWith("| scenario |"));
   if (headerIdx === -1) return null;
-  const columns = lines[headerIdx].split("|").length;
-  const hasRetry = lines[headerIdx].includes("isolated retry");
+  // BY NAME, NOT BY POSITION. `writeSummary` appends a column per thing a run
+  // actually did -- "isolated retry" when it retried, "held past floor" when a
+  // window outlived its holdSecs -- so the corpus is already several table
+  // shapes and will grow more. Reading `cells[7]` would make every one of
+  // those a silent misparse of the column that moved into it; reading the
+  // header makes an unknown shape a row this file reports as unparsed.
+  const columns = lines[headerIdx].split("|").map((c) => c.trim());
+  const at = (name: string): number => columns.indexOf(name);
+  const [verdictAt, templateAt, cpAt, retryAt, heldAt] = [
+    at("verdict"),
+    at("scenario"),
+    at("cp"),
+    at("isolated retry"),
+    at("held past floor"),
+  ];
+  if (verdictAt === -1 || templateAt === -1 || cpAt === -1) return null;
+
+  /** A cell that a run of this shape may not have, or may have left as "-". */
+  const optional = (cells: string[], index: number): string | null => {
+    if (index === -1) return null;
+    const cell = cells[index];
+    return cell === "-" || cell === "" ? null : cell;
+  };
 
   const observations: Observation[] = [];
   const unparsed: string[] = [];
   for (const line of lines.slice(headerIdx + 2)) {
     if (!line.startsWith("|")) continue;
     const cells = line.split("|").map((c) => c.trim());
-    if (cells.length !== columns) {
+    if (cells.length !== columns.length) {
       unparsed.push(line);
       continue;
     }
-    const verdict = leadingVerdict(cells[3]);
+    const verdict = leadingVerdict(cells[verdictAt]);
     if (verdict === null) {
       unparsed.push(line);
       continue;
     }
-    // "-" when the run retried nothing for this row; "VERDICT (flake)" or
-    // "VERDICT (confirmed)" when it did. The parenthetical is the runner's own
-    // adjudication and is re-derived here from the verdict rather than trusted
-    // as prose -- one reading of `effectivelyFailed`, not two.
-    const retryCell = hasRetry ? cells[7] : "-";
-    const retryVerdict =
-      retryCell === "-" || retryCell === "" ? null : leadingVerdict(retryCell);
+    // The retry cell reads "VERDICT (flake)" or "VERDICT (confirmed)". Only
+    // the verdict is taken: the parenthetical is the runner's adjudication
+    // rendered as prose, and re-deriving it through `effectivelyFailed` keeps
+    // this file to one reading of that rule rather than trusting a word.
+    const retryCell = optional(cells, retryAt);
+    const heldCell = optional(cells, heldAt);
 
     observations.push({
       run: runLabel,
@@ -159,16 +202,15 @@ function parseSummary(runLabel: string, text: string): ParsedRun | null {
       load,
       cores,
       saturated,
-      templateId: cells[1],
-      cpId: cells[2],
+      templateId: cells[templateAt],
+      cpId: cells[cpAt],
       verdict,
-      retryVerdict,
+      retryVerdict: retryCell === null ? null : leadingVerdict(retryCell),
+      extraHoldSecs: heldCell === null ? null : Number(heldCell.replace(/[+s]/g, "")),
     });
   }
   return { run: runLabel, observations, unparsed };
 }
-
-const isFailure = (v: Verdict): boolean => v === "FAIL" || v === "ERROR";
 
 interface ScenarioStats {
   templateId: string;
@@ -201,7 +243,9 @@ function aggregate(observations: Observation[]): ScenarioStats[] {
   for (const [templateId, list] of byScenario) {
     const failures = list.filter((o) => isFailure(o.verdict));
     const adjudicated = failures.filter((o) => o.retryVerdict !== null);
-    const flakes = adjudicated.filter((o) => !isFailure(o.retryVerdict!));
+    const flakes = adjudicated.filter(
+      (o) => !effectivelyFailed(o.verdict, o.retryVerdict ?? undefined),
+    );
     stats.push({
       templateId,
       runs: list.length,
@@ -225,11 +269,13 @@ function aggregate(observations: Observation[]): ScenarioStats[] {
 
 /** Every directory under `root` that holds a summary.md, plus the ones that
  *  hold artifacts and no summary -- the second count is part of the answer. */
-function collect(root: string): {
+interface Corpus {
   runs: ParsedRun[];
   withoutSummary: string[];
   unreadable: string[];
-} {
+}
+
+function collect(root: string): Corpus {
   const runs: ParsedRun[] = [];
   const withoutSummary: string[] = [];
   const unreadable: string[] = [];
@@ -269,13 +315,12 @@ function collect(root: string): {
 }
 
 function renderMarkdown(
+  corpus: Corpus,
   stats: ScenarioStats[],
-  runs: ParsedRun[],
-  withoutSummary: string[],
-  unreadable: string[],
+  observations: Observation[],
   minRuns: number,
 ): string {
-  const observations = runs.flatMap((r) => r.observations);
+  const { runs, withoutSummary, unreadable } = corpus;
   const partialRuns = runs.filter((r) => r.observations.length < 10);
   const withRetry = runs.filter((r) =>
     r.observations.some((o) => o.retryVerdict !== null),
@@ -413,9 +458,7 @@ function main(argv: string[]): number {
     return 0;
   }
 
-  process.stdout.write(
-    renderMarkdown(stats, runs, withoutSummary, unreadable, minRuns),
-  );
+  process.stdout.write(renderMarkdown(collected, stats, observations, minRuns));
   return 0;
 }
 
