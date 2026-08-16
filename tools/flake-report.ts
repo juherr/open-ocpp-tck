@@ -49,7 +49,13 @@
  *     Runs from here on keep both -- `<template-id>.log` for the sweep,
  *     `<template-id>.retry.log` for the re-run -- and a red sweep also carries
  *     the CSMS's own `csms-<driver>.log`. Neither is read here; they are what
- *     makes a row in this table answerable once it is found.
+ *     makes a row in this table answerable once it is found, and they are what
+ *     root-caused the SteVe deadlock behind most of this corpus's flakes.
+ *   - A `held past floor` column appears in a handful of v0.2.1-era artifacts
+ *     and nowhere else: the observation-window extension that wrote it was
+ *     removed once measurement showed it addressed nothing. It is still parsed,
+ *     because those artifacts are real and reading a column by name costs
+ *     nothing; expect `extraHoldSecs` to be null everywhere else.
  *
  * NO SILENT CAPS: a row this parser cannot read is reported as unparsed, by
  * file. A report that quietly dropped what it could not understand would read
