@@ -175,14 +175,20 @@ its header is now a false claim about what the build checks.
   artifacts above — say why in the pull request. (`tests/spec-invariants.sh`)
 - **The documented install command installs the contract the documents
   describe.** Every tracked `*.md` citing a `github:<owner>/<repo>#<ref>`
-  install command names this repository and the same ref, that ref is a tag
-  that exists, and `tck/driver.ts` at it matches the tree byte for byte. The
-  ref and the slug are read from the files, never spelled in the guard —
-  and the slug is checked, not merely filtered by, or the one page naming a
-  different repository would be the one page invisible to the guard. Accept the price it comes with: after a change to
-  `tck/driver.ts` this is red — on the branch and on `main` — until the tag is
-  cut and both pages cite it. That is the release procedure, and the red is the
-  reminder. The header says why `tck/driver.ts` alone.
+  install command names this repository and the same ref, and then that ref is
+  one of exactly two things: a tag that exists whose `tck/driver.ts` matches
+  the tree byte for byte, or a tag that does not exist yet named
+  `v<package.json's version>`, that version being later than every `vN.N.N`
+  tag the clone has — and it must have one, or a broken checkout would satisfy
+  the second shape by having no tags to disagree with. The ref, the slug and
+  the version are read from the files, never spelled in the guard — and the
+  slug is checked, not merely filtered by, or the one page naming a different
+  repository would be the one page invisible to the guard. The price is a
+  swap, not a saving: between merge and release the documented ref does not
+  resolve, where it used to be the build that was red. So changing
+  `tck/driver.ts` obliges you to bump the manifest and repoint both pages in
+  the same pull request, which is a thing you can actually do from a branch —
+  cutting a tag is not. The header says why `tck/driver.ts` alone.
   (`tests/documented-install-ref.sh`)
 
 ## Conventions
