@@ -16,7 +16,7 @@ driving it, and the core never learns which CSMS it is testing.
 ```sh
 mkdir acme-ocpp-tck && cd acme-ocpp-tck
 bun init -y
-bun add github:juherr/open-ocpp-tck#v0.1.0
+bun add github:juherr/open-ocpp-tck#v0.2.0
 bun add -d @types/bun typescript
 ```
 
@@ -264,6 +264,6 @@ or `DRIVE-TRACE.txt`. That is intended: the diff is the review. Regenerate with
 `bash tests/spec-invariants.sh --regenerate` and explain the change in the pull
 request.
 
-If you edit anything under `tck/` or `drivers/steve/`, run
+If you edit anything under `tck/` or `drivers/`, run
 `bun run build:types` and commit the result — `tests/types-current.sh` fails
 otherwise.
