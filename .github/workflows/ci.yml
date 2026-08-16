@@ -290,17 +290,38 @@ jobs:
       # say whether the cause was the CSMS, the container's resources, or this
       # suite (see the issue this step closes).
       #
-      # failure() and not always(): on a green sweep this is megabytes nobody
-      # reads, and the artifact is downloaded in bulk when mining the archive.
-      # Into results/ so the existing upload carries it -- a second
+      # A RED ROW, not a red job -- and the difference is the whole point.
+      # `if: failure()` was the first shape and it missed the one case this
+      # capture exists for: a parallel FAIL whose isolated retry passes is a
+      # flake, standingOf() calls it "ok", the sweep exits 0 and the job is
+      # GREEN. The CALLERROR worth explaining happened inside exactly that. Of
+      # 34 archived SteVe sweeps, 20 had a red row; almost all were green jobs.
+      #
+      # So the trigger reads the summary, with the job's own status kept for
+      # the failures that never get as far as writing one. Still nothing on a
+      # clean sweep: that was the right half of the first shape -- megabytes
+      # nobody reads, in an artifact downloaded in bulk when mining the archive.
+      # Into results/ so the existing upload carries it; a second
       # upload-artifact step would be a second retention policy to keep in step.
-      - name: Capture the CSMS log when the sweep is red
-        if: failure()
+      - name: Capture the CSMS log when any scenario went red
+        if: always()
         run: |
           # mkdir -p: a sweep that died before writing its first scenario log
           # leaves no results/ at all, and the redirect below would then fail
           # for a reason that has nothing to do with the CSMS.
           mkdir -p results
+          # `if` and not `&&`: the default shell is `bash -e`, where a bare
+          # compound that ends non-zero would abort the step on the ordinary
+          # no-match case.
+          if grep -qE '^\| cert16-[^|]*\|[^|]*\| *(FAIL|ERROR) ' results/summary.md 2>/dev/null; then
+            red=1
+          else
+            red=0
+          fi
+          if [ "$red" = 0 ] && [ "${{ job.status }}" = success ]; then
+            echo "no red row and the job is green -- nothing worth capturing"
+            exit 0
+          fi
           docker compose -f drivers/${{ matrix.driver }}/compose.yaml logs \
             --no-color --timestamps > results/csms-${{ matrix.driver }}.log
           wc -l results/csms-${{ matrix.driver }}.log
