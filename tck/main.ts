@@ -105,6 +105,12 @@ import {
   REMOTETRIGGER_SMARTCHARGING_SPECS,
 } from "./specs/index";
 import type { ScenarioSpec } from "./spec-types";
+import {
+  capReachedMessage,
+  extendObservationWindow,
+  heldMessage,
+  resolvedMaxExtraHoldSecs,
+} from "./hold";
 import { sleep } from "./util";
 import { WaitTimeoutError } from "./wait";
 
@@ -176,7 +182,7 @@ async function expectedFailureEntryFor(
 /** Result of one scenario execution -- either it produced checks, or the
  *  driver declared the scenario undrivable partway through drive(). */
 type ScenarioRun =
-  | { kind: "checked"; rec: AssertRecorder }
+  | { kind: "checked"; rec: AssertRecorder; extraHoldSecs: number }
   | { kind: "not-applicable"; reason: string };
 
 /**
@@ -344,6 +350,9 @@ async function runScenario<D>(
   let driveState!: D;
   /** Set only when drive() reported an operation the CSMS cannot do. */
   let unsupported: string | undefined;
+  /** Seconds the observation window ran past `holdSecs`; 0 on the path this
+   *  runner took before {@link extendObservationWindow} existed. */
+  let extraHoldSecs = 0;
   try {
     await sim.send({ command: "connect" });
     // Post-boot stdin method, made event-driven: a fixed bootWaitSecs sleep
@@ -420,6 +429,21 @@ async function runScenario<D>(
     // cannot assert on.
     if (unsupported === undefined) {
       await sleep(holdSecs * 1000);
+      const warn = (m: string): void => {
+        process.stderr.write(`[runner] ${m}\n`);
+      };
+      extraHoldSecs = await extendObservationWindow(
+        spec,
+        { cpId: options.cpId, connector, records, driveState },
+        sim,
+        parseLog,
+        resolvedMaxExtraHoldSecs((m) => warn(`WARN: ${m}`)),
+        sleep,
+        (cap) => warn(capReachedMessage(spec.templateId, cap)),
+      );
+      if (extraHoldSecs > 0) {
+        warn(heldMessage(spec.templateId, holdSecs, extraHoldSecs));
+      }
     }
   } finally {
     await sim.stop();
@@ -480,7 +504,7 @@ async function runScenario<D>(
     `[runner] RESULT: ${spec.templateId} ${verdictForRecorder(rec)} (${rec.total} checks, ${rec.failed} failed, ${rec.skipped} skipped)\n`,
   );
 
-  return { kind: "checked", rec };
+  return { kind: "checked", rec, extraHoldSecs };
 }
 
 // ---------------------------------------------------------------------------
@@ -593,6 +617,14 @@ interface ScenarioOutcome extends RetryOutcome {
    *  whether or not it did. Both directions are reported: a declared FAIL is
    *  excused, a declared PASS fails the sweep. */
   expected?: ExpectedFailureEntry;
+  /**
+   * Seconds the observation window ran past `holdSecs` before the scenario
+   * was assertable, or gave up. Reported because it is the only way the next
+   * measurement can tell a window that was too short from one that is now
+   * merely slower: a row that extends and then passes was a false FAIL under
+   * the fixed window. Absent on the branches that never started a container.
+   */
+  extraHoldSecs?: number;
 }
 
 /** {@link standingOf} for a sweep outcome. The single-scenario path in `cli()`
@@ -757,6 +789,7 @@ async function runOneForSweep<D>(
       checks: run.rec.total,
       failed: run.rec.failed,
       skipped: run.rec.skipped,
+      extraHoldSecs: run.extraHoldSecs,
     };
   } catch (err) {
     const message =
@@ -876,16 +909,24 @@ function hostLoad(): string {
   return `Host load ${one.toFixed(2)} over ${cores} core(s)${note}.`;
 }
 
-/** Renders + writes results/summary.md. Same columns as upstream plus
- *  `skipped`; when any outcome carries an `isolatedRetry`
- *  (--retry-failed-isolated ran), an extra "isolated retry" column and a
- *  flake-count note are added. */
+/**
+ * Renders + writes results/summary.md. Same columns as upstream plus
+ * `skipped`, then one conditional column per thing the run actually did:
+ * "isolated retry" when --retry-failed-isolated ran, "held past floor" when a
+ * scenario outlived its holdSecs.
+ *
+ * THIS TABLE IS READ OUTSIDE THIS RUNTIME: `tools/flake-report.ts` mines it
+ * across archived CI artifacts, by header NAME, so appending a column is free
+ * and renaming or reordering one is not. That file's header carries the rest,
+ * including why no machine-readable twin is emitted beside it.
+ */
 async function writeSummary(
   groupName: string,
   outcomes: ScenarioOutcome[],
   parts: StandingPartition,
 ): Promise<string> {
   const anyRetried = outcomes.some((o) => o.isolatedRetry !== undefined);
+  const anyHeld = outcomes.some((o) => (o.extraHoldSecs ?? 0) > 0);
 
   const rows = outcomes.map((o) => {
     const checks = o.checks === null ? "-" : String(o.checks);
@@ -899,20 +940,27 @@ async function writeSummary(
     const verdict =
       (o.reason ? `${o.verdict} (${o.reason})` : o.verdict) +
       (note ? ` — ${note}.` : "");
-    const base = `| ${o.templateId} | ${o.cpId} | ${verdict} | ${checks} | ${failed} | ${skipped} |`;
-    if (!anyRetried) return base;
-    if (!o.isolatedRetry) return `${base} - |`;
-    const flake = !isFailure(o.isolatedRetry.verdict);
-    const label = `${o.isolatedRetry.verdict}${flake ? " (flake)" : " (confirmed)"}`;
-    return `${base} ${label} |`;
+    let row = `| ${o.templateId} | ${o.cpId} | ${verdict} | ${checks} | ${failed} | ${skipped} |`;
+    if (anyRetried) {
+      if (!o.isolatedRetry) row += " - |";
+      else {
+        const flake = !isFailure(o.isolatedRetry.verdict);
+        row += ` ${o.isolatedRetry.verdict}${flake ? " (flake)" : " (confirmed)"} |`;
+      }
+    }
+    // A COLUMN AND NOT A NOTE: a number left in the prose underneath is one
+    // no archived sweep can ever be joined back to its own scenario row.
+    // Appended, never inserted, and conditional like the one above -- the
+    // corpus is already two table shapes and its reader already sniffs.
+    if (anyHeld) row += ` ${o.extraHoldSecs ? `+${o.extraHoldSecs}s` : "-"} |`;
+    return row;
   });
 
-  const header = anyRetried
-    ? "| scenario | cp | verdict | checks | failed | skipped | isolated retry |"
-    : "| scenario | cp | verdict | checks | failed | skipped |";
-  const separator = anyRetried
-    ? "| --- | --- | --- | --- | --- | --- | --- |"
-    : "| --- | --- | --- | --- | --- | --- |";
+  const columns = ["scenario", "cp", "verdict", "checks", "failed", "skipped"];
+  if (anyRetried) columns.push("isolated retry");
+  if (anyHeld) columns.push("held past floor");
+  const header = `| ${columns.join(" | ")} |`;
+  const separator = `| ${columns.map(() => "---").join(" | ")} |`;
 
   const notes: string[] = [];
   const partialCount = outcomes.filter((o) => o.verdict === "PARTIAL").length;
@@ -968,6 +1016,18 @@ async function writeSummary(
       ),
     );
   }
+  if (anyHeld) {
+    const extended = outcomes.filter((o) => (o.extraHoldSecs ?? 0) > 0);
+    notes.push(
+      "",
+      `${extended.length} scenario(s) held past holdSecs — see the last ` +
+        "column. Their assertions were still short when the fixed window " +
+        "would have closed, so it was extended. A row that PASSED there was " +
+        "a FAIL under the fixed window, a false finding this run did not " +
+        "report; one that failed anyway spent the extra seconds proving it.",
+    );
+  }
+
   if (anyRetried) {
     const flakeCount = parts.flakes.length;
     const confirmedCount = outcomes.filter(
@@ -1224,6 +1284,10 @@ async function printUsage(): Promise<void> {
       "Environment: CSMS_DRIVER (module specifier of the driver to load), " +
       "OCPP_TCK_RESULTS_DIR (default ./results), OCPP_TCK_DRIVERS_DIR " +
       "(default ./drivers, used only to list candidates in errors), " +
+      "OCPP_TCK_MAX_EXTRA_HOLD_SECS (default 30; seconds a scenario's " +
+      "observation window may run past its holdSecs while its assertions are " +
+      "still short -- 0 restores a fixed window, which is what to set when " +
+      "measuring a sweep's own timing), " +
       "OCPP_CP_IDS (comma-separated charge point ids; the " +
       "parallel lane count derives from it -- one station means sequential), " +
       "OCPP_STATIONS (ocpp_id=station_id[,...] override when the stations were " +

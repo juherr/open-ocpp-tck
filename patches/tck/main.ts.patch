@@ -129,9 +129,16 @@
  import {
    AUTHLIST_RESERVATION_SPECS,
    AUTHORIZE_SPECS,
-@@ -43,13 +106,25 @@
+@@ -42,14 +105,32 @@
+   REMOTETRIGGER_SMARTCHARGING_SPECS,
  } from "./specs/index";
  import type { ScenarioSpec } from "./spec-types";
++import {
++  capReachedMessage,
++  extendObservationWindow,
++  heldMessage,
++  resolvedMaxExtraHoldSecs,
++} from "./hold";
  import { sleep } from "./util";
 +import { WaitTimeoutError } from "./wait";
  
@@ -160,7 +167,7 @@
  // ---------------------------------------------------------------------------
  // Runner core
  // ---------------------------------------------------------------------------
-@@ -60,95 +135,234 @@
+@@ -60,95 +141,237 @@
    timeoutSecs?: number;
  }
  
@@ -235,12 +242,12 @@
 +  templateId: string,
 +): Promise<ExpectedFailureEntry | undefined> {
 +  return expectedFailureFor(await expectedFailureTable(), templateId);
-+}
-+
+ }
+ 
 +/** Result of one scenario execution -- either it produced checks, or the
 + *  driver declared the scenario undrivable partway through drive(). */
 +type ScenarioRun =
-+  | { kind: "checked"; rec: AssertRecorder }
++  | { kind: "checked"; rec: AssertRecorder; extraHoldSecs: number }
 +  | { kind: "not-applicable"; reason: string };
 +
 +/**
@@ -274,8 +281,8 @@
 +async function driverModule(): Promise<CsmsDriverModule> {
 +  driverModulePromise ??= loadDriverModule();
 +  return driverModulePromise;
- }
- 
++}
++
 +async function driver(): Promise<CsmsDriverParts> {
 +  driverPartsPromise ??= (async () => {
 +    const module = await driverModule();
@@ -421,6 +428,9 @@
    let driveState!: D;
 +  /** Set only when drive() reported an operation the CSMS cannot do. */
 +  let unsupported: string | undefined;
++  /** Seconds the observation window ran past `holdSecs`; 0 on the path this
++   *  runner took before {@link extendObservationWindow} existed. */
++  let extraHoldSecs = 0;
    try {
      await sim.send({ command: "connect" });
 -    // Post-boot stdin method, made event-driven: the bash feeder (and Task
@@ -456,7 +466,7 @@
          30_000,
        );
      } catch (err) {
-@@ -176,13 +390,25 @@
+@@ -176,13 +399,25 @@
  
      if (spec.drive) {
        process.stderr.write(`[runner] running drive() for ${spec.templateId}\n`);
@@ -489,7 +499,7 @@
      } else {
        process.stderr.write(
          `[runner] no drive() defined (CP-only scenario) -- nothing to do while it runs\n`,
-@@ -190,15 +416,18 @@
+@@ -190,15 +425,33 @@
        driveState = undefined as D;
      }
  
@@ -498,6 +508,21 @@
 +    // cannot assert on.
 +    if (unsupported === undefined) {
 +      await sleep(holdSecs * 1000);
++      const warn = (m: string): void => {
++        process.stderr.write(`[runner] ${m}\n`);
++      };
++      extraHoldSecs = await extendObservationWindow(
++        spec,
++        { cpId: options.cpId, connector, records, driveState },
++        sim,
++        parseLog,
++        resolvedMaxExtraHoldSecs((m) => warn(`WARN: ${m}`)),
++        sleep,
++        (cap) => warn(capReachedMessage(spec.templateId, cap)),
++      );
++      if (extraHoldSecs > 0) {
++        warn(heldMessage(spec.templateId, holdSecs, extraHoldSecs));
++      }
 +    }
    } finally {
      await sim.stop();
@@ -511,7 +536,7 @@
    // it a FAIL in a swept scenario is un-post-mortem-able: the sim container
    // is already stopped+removed by the time assert() reports, so this
    // capture is the only surviving record of what was (or wasn't) on the
-@@ -218,6 +447,10 @@
+@@ -218,6 +471,10 @@
      );
    }
  
@@ -522,7 +547,7 @@
    const frames = parseLog(lines.join("\n"));
    const rec = new AssertRecorder();
  
-@@ -228,34 +461,50 @@
+@@ -228,34 +485,50 @@
      frames,
      lines,
      rec,
@@ -549,7 +574,7 @@
    );
  
 -  return rec;
-+  return { kind: "checked", rec };
++  return { kind: "checked", rec, extraHoldSecs };
  }
  
  // ---------------------------------------------------------------------------
@@ -584,7 +609,7 @@
  // ---------------------------------------------------------------------------
  
  // eslint-disable-next-line @typescript-eslint/no-explicit-any
-@@ -265,20 +514,21 @@
+@@ -265,20 +538,21 @@
    "remotetrigger-smartcharging": REMOTETRIGGER_SMARTCHARGING_SPECS,
    firmware: FIRMWARE_SPECS,
    authorize: AUTHORIZE_SPECS,
@@ -612,7 +637,7 @@
  // eslint-disable-next-line @typescript-eslint/no-explicit-any
  const SPECS_BY_TEMPLATE_ID = new Map<string, ScenarioSpec<any>>(
    Object.values(GROUPS)
-@@ -286,66 +536,227 @@
+@@ -286,66 +560,236 @@
      .map((spec) => [spec.templateId, spec]),
  );
  
@@ -700,6 +725,14 @@
 +   *  whether or not it did. Both directions are reported: a declared FAIL is
 +   *  excused, a declared PASS fails the sweep. */
 +  expected?: ExpectedFailureEntry;
++  /**
++   * Seconds the observation window ran past `holdSecs` before the scenario
++   * was assertable, or gave up. Reported because it is the only way the next
++   * measurement can tell a window that was too short from one that is now
++   * merely slower: a row that extends and then passes was a false FAIL under
++   * the fixed window. Absent on the branches that never started a container.
++   */
++  extraHoldSecs?: number;
 +}
 +
 +/** {@link standingOf} for a sweep outcome. The single-scenario path in `cli()`
@@ -795,7 +828,7 @@
 + * Narrowing `expected` here also removes the `?.` chains the call sites needed:
 + * they could not see that a standing of `expected-fail` implies an entry, so a
 + * broken invariant would have rendered the string "undefined" into a report.
-  */
++ */
 +function declarationNote(outcome: ScenarioOutcome): string | undefined {
 +  const { expected, verdict } = outcome;
 +  const retryVerdict = outcome.isolatedRetry?.verdict;
@@ -832,7 +865,7 @@
 + *
 + * The scope table is consulted FIRST -- a NOT_APPLICABLE scenario never
 + * starts a container.
-+ */
+  */
  async function runOneForSweep<D>(
    spec: ScenarioSpec<D>,
    cpId: string,
@@ -876,10 +909,11 @@
 +      checks: run.rec.total,
 +      failed: run.rec.failed,
 +      skipped: run.rec.skipped,
++      extraHoldSecs: run.extraHoldSecs,
      };
    } catch (err) {
      const message =
-@@ -353,64 +764,44 @@
+@@ -353,64 +797,44 @@
      process.stderr.write(
        `[runner] ERROR: ${spec.templateId} on ${cpId} threw before completing: ${message}\n`,
      );
@@ -965,7 +999,7 @@
    );
  
    for (const outcome of toRetry) {
-@@ -432,13 +823,14 @@
+@@ -432,13 +856,14 @@
        verdict: retryOutcome.verdict,
        checks: retryOutcome.checks,
        failed: retryOutcome.failed,
@@ -982,7 +1016,7 @@
            : " -- CONFIRMED (fails isolated too, not a parallel-lane artifact)\n"),
      );
    }
-@@ -451,59 +843,149 @@
+@@ -451,59 +876,176 @@
    return new Date().toISOString().replace(/\.\d{3}Z$/, "Z");
  }
  
@@ -1024,21 +1058,34 @@
 +  return `Host load ${one.toFixed(2)} over ${cores} core(s)${note}.`;
 +}
 +
-+/** Renders + writes results/summary.md. Same columns as upstream plus
-+ *  `skipped`; when any outcome carries an `isolatedRetry`
-+ *  (--retry-failed-isolated ran), an extra "isolated retry" column and a
-+ *  flake-count note are added. */
++/**
++ * Renders + writes results/summary.md. Same columns as upstream plus
++ * `skipped`, then one conditional column per thing the run actually did:
++ * "isolated retry" when --retry-failed-isolated ran, "held past floor" when a
++ * scenario outlived its holdSecs.
++ *
++ * THIS TABLE IS READ OUTSIDE THIS RUNTIME: `tools/flake-report.ts` mines it
++ * across archived CI artifacts, by header NAME, so appending a column is free
++ * and renaming or reordering one is not. That file's header carries the rest,
++ * including why no machine-readable twin is emitted beside it.
++ */
  async function writeSummary(
    groupName: string,
    outcomes: ScenarioOutcome[],
 +  parts: StandingPartition,
  ): Promise<string> {
    const anyRetried = outcomes.some((o) => o.isolatedRetry !== undefined);
++  const anyHeld = outcomes.some((o) => (o.extraHoldSecs ?? 0) > 0);
  
    const rows = outcomes.map((o) => {
      const checks = o.checks === null ? "-" : String(o.checks);
      const failed = o.failed === null ? "-" : String(o.failed);
 -    const base = `| ${o.templateId} | ${o.cpId} | ${o.verdict} | ${checks} | ${failed} |`;
+-    if (!anyRetried) return base;
+-    if (!o.isolatedRetry) return `${base} - |`;
+-    const flake = o.isolatedRetry.verdict === "PASS";
+-    const label = `${o.isolatedRetry.verdict}${flake ? " (flake)" : " (confirmed)"}`;
+-    return `${base} ${label} |`;
 +    const skipped = o.skipped === null ? "-" : String(o.skipped);
 +    // The declaration is rendered INTO the verdict cell rather than into a
 +    // column of its own, so that a reader scanning for red sees, in the same
@@ -1048,25 +1095,33 @@
 +    const verdict =
 +      (o.reason ? `${o.verdict} (${o.reason})` : o.verdict) +
 +      (note ? ` — ${note}.` : "");
-+    const base = `| ${o.templateId} | ${o.cpId} | ${verdict} | ${checks} | ${failed} | ${skipped} |`;
-     if (!anyRetried) return base;
-     if (!o.isolatedRetry) return `${base} - |`;
--    const flake = o.isolatedRetry.verdict === "PASS";
-+    const flake = !isFailure(o.isolatedRetry.verdict);
-     const label = `${o.isolatedRetry.verdict}${flake ? " (flake)" : " (confirmed)"}`;
-     return `${base} ${label} |`;
++    let row = `| ${o.templateId} | ${o.cpId} | ${verdict} | ${checks} | ${failed} | ${skipped} |`;
++    if (anyRetried) {
++      if (!o.isolatedRetry) row += " - |";
++      else {
++        const flake = !isFailure(o.isolatedRetry.verdict);
++        row += ` ${o.isolatedRetry.verdict}${flake ? " (flake)" : " (confirmed)"} |`;
++      }
++    }
++    // A COLUMN AND NOT A NOTE: a number left in the prose underneath is one
++    // no archived sweep can ever be joined back to its own scenario row.
++    // Appended, never inserted, and conditional like the one above -- the
++    // corpus is already two table shapes and its reader already sniffs.
++    if (anyHeld) row += ` ${o.extraHoldSecs ? `+${o.extraHoldSecs}s` : "-"} |`;
++    return row;
    });
  
-   const header = anyRetried
+-  const header = anyRetried
 -    ? "| scenario | cp | verdict | checks | failed | isolated retry |"
 -    : "| scenario | cp | verdict | checks | failed |";
-+    ? "| scenario | cp | verdict | checks | failed | skipped | isolated retry |"
-+    : "| scenario | cp | verdict | checks | failed | skipped |";
-   const separator = anyRetried
+-  const separator = anyRetried
 -    ? "| --- | --- | --- | --- | --- | --- |"
 -    : "| --- | --- | --- | --- | --- |";
-+    ? "| --- | --- | --- | --- | --- | --- | --- |"
-+    : "| --- | --- | --- | --- | --- | --- |";
++  const columns = ["scenario", "cp", "verdict", "checks", "failed", "skipped"];
++  if (anyRetried) columns.push("isolated retry");
++  if (anyHeld) columns.push("held past floor");
++  const header = `| ${columns.join(" | ")} |`;
++  const separator = `| ${columns.map(() => "---").join(" | ")} |`;
  
    const notes: string[] = [];
 -  if (anyRetried) {
@@ -1126,6 +1181,18 @@
 +      ),
 +    );
 +  }
++  if (anyHeld) {
++    const extended = outcomes.filter((o) => (o.extraHoldSecs ?? 0) > 0);
++    notes.push(
++      "",
++      `${extended.length} scenario(s) held past holdSecs — see the last ` +
++        "column. Their assertions were still short when the fixed window " +
++        "would have closed, so it was extended. A row that PASSED there was " +
++        "a FAIL under the fixed window, a false finding this run did not " +
++        "report; one that failed anyway spent the extra seconds proving it.",
++    );
++  }
++
 +  if (anyRetried) {
 +    const flakeCount = parts.flakes.length;
      const confirmedCount = outcomes.filter(
@@ -1155,7 +1222,7 @@
        "",
        header,
        separator,
-@@ -518,54 +1000,55 @@
+@@ -518,54 +1060,55 @@
  }
  
  /** Sequential or parallel group sweep. Writes results/summary.md and exits
@@ -1237,7 +1304,7 @@
      );
    } else {
      for (let i = 0; i < specs.length; i++) {
-@@ -574,11 +1057,11 @@
+@@ -574,11 +1117,11 @@
    }
  
    if (retryFailedIsolated) {
@@ -1251,7 +1318,7 @@
            "(a sequential sweep is already isolated).\n",
        );
      }
-@@ -588,45 +1071,87 @@
+@@ -588,45 +1131,87 @@
    for (const o of outcomes) {
      const retrySuffix = o.isolatedRetry
        ? ` [isolated retry: ${o.isolatedRetry.verdict}${
@@ -1361,7 +1428,7 @@
  }
  
  // ---------------------------------------------------------------------------
-@@ -642,6 +1167,8 @@
+@@ -642,6 +1227,8 @@
    cpId: string;
    connector?: number;
    timeoutSecs?: number;
@@ -1370,7 +1437,7 @@
  }
  
  function requireValue(argv: string[], index: number, flag: string): string {
-@@ -663,37 +1190,80 @@
+@@ -663,37 +1250,84 @@
    return n;
  }
  
@@ -1419,6 +1486,10 @@
 +      "Environment: CSMS_DRIVER (module specifier of the driver to load), " +
 +      "OCPP_TCK_RESULTS_DIR (default ./results), OCPP_TCK_DRIVERS_DIR " +
 +      "(default ./drivers, used only to list candidates in errors), " +
++      "OCPP_TCK_MAX_EXTRA_HOLD_SECS (default 30; seconds a scenario's " +
++      "observation window may run past its holdSecs while its assertions are " +
++      "still short -- 0 restores a fixed window, which is what to set when " +
++      "measuring a sweep's own timing), " +
 +      "OCPP_CP_IDS (comma-separated charge point ids; the " +
 +      "parallel lane count derives from it -- one station means sequential), " +
 +      "OCPP_STATIONS (ocpp_id=station_id[,...] override when the stations were " +
@@ -1468,7 +1539,7 @@
  
    if (argv[0] === "run-all") {
      group = "all";
-@@ -708,18 +1278,27 @@
+@@ -708,18 +1342,27 @@
          case "--retry-failed-isolated":
            retryFailedIsolated = true;
            break;
@@ -1499,7 +1570,7 @@
      process.exit(1);
    }
  
-@@ -749,9 +1328,11 @@
+@@ -749,9 +1392,11 @@
        case "--retry-failed-isolated":
          retryFailedIsolated = true;
          break;
@@ -1512,7 +1583,7 @@
          process.exit(1);
      }
    }
-@@ -764,35 +1345,495 @@
+@@ -764,35 +1409,495 @@
      cpId,
      connector,
      timeoutSecs,
@@ -2024,7 +2095,7 @@
    }
  
    const spec = SPECS_BY_TEMPLATE_ID.get(args.templateId);
-@@ -800,18 +1841,109 @@
+@@ -800,18 +1905,109 @@
      process.stderr.write(
        `Unknown template id: ${args.templateId} (known: ${[...SPECS_BY_TEMPLATE_ID.keys()].join(", ")})\n`,
      );
