@@ -139,6 +139,13 @@ interface RunOptions {
   cpId: string;
   connector?: number;
   timeoutSecs?: number;
+  /**
+   * Distinguishes a re-run's wire log from the sweep's, as a filename suffix.
+   *
+   * Unset for the sweep itself, so `results/<template-id>.log` keeps meaning
+   * what it has always meant: what happened in the run being reported.
+   */
+  attempt?: string;
 }
 
 /** 0 FAIL + >=1 SKIPPED is PARTIAL; anything with a FAIL is FAIL. */
@@ -457,15 +464,19 @@ async function runScenario<D>(
   // capture is the only surviving record of what was (or wasn't) on the
   // wire. Best-effort: a write failure must not turn a finished scenario
   // run into an error.
+  //
+  // ONE FILE PER ATTEMPT. `--retry-failed-isolated` re-runs a failing scenario
+  // through this same function, and while both attempts wrote here the retry
+  // replaced the log of the attempt it was adjudicating -- so the evidence for
+  // every flake this project has ever recorded was destroyed by the mechanism
+  // that recorded it. The sweep keeps the bare name; a re-run says which it is.
+  const logName = `${spec.templateId}${options.attempt ?? ""}.log`;
   try {
     mkdirSync(RESULTS_DIR, { recursive: true });
-    await Bun.write(
-      `${RESULTS_DIR}${spec.templateId}.log`,
-      lines.join("\n") + "\n",
-    );
+    await Bun.write(`${RESULTS_DIR}${logName}`, lines.join("\n") + "\n");
   } catch (err) {
     process.stderr.write(
-      `[runner] WARN: could not write results/${spec.templateId}.log: ${
+      `[runner] WARN: could not write results/${logName}: ${
         err instanceof Error ? err.message : String(err)
       }\n`,
     );
@@ -755,6 +766,7 @@ function declarationNote(outcome: ScenarioOutcome): string | undefined {
 async function runOneForSweep<D>(
   spec: ScenarioSpec<D>,
   cpId: string,
+  attempt?: string,
 ): Promise<ScenarioOutcome> {
   // What every branch below shares, stated once. `expected` is read BEFORE the
   // run and carried even by the branches that never start a container: a
@@ -779,7 +791,7 @@ async function runOneForSweep<D>(
   }
 
   try {
-    const run = await runScenario(spec, { cpId });
+    const run = await runScenario(spec, { cpId, attempt });
     if (run.kind === "not-applicable") {
       return { ...common, verdict: "NOT APPLICABLE", reason: run.reason };
     }
@@ -851,7 +863,7 @@ async function retryFailedOutcomesIsolated(
     process.stderr.write(
       `[runner] isolated retry: ${outcome.templateId} on ${outcome.cpId} (parallel verdict was ${outcome.verdict})\n`,
     );
-    const retryOutcome = await runOneForSweep(spec, outcome.cpId);
+    const retryOutcome = await runOneForSweep(spec, outcome.cpId, ".retry");
     outcome.isolatedRetry = {
       verdict: retryOutcome.verdict,
       checks: retryOutcome.checks,

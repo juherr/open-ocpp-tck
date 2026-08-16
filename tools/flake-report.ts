@@ -42,6 +42,14 @@
  *     tool treats each run directory's name as an opaque label, prints it, and
  *     leaves grouping to whoever knows what the labels mean. `--json` emits
  *     every observation individually for exactly that.
+ *   - In every artifact archived before this was written, a flake's wire log
+ *     is the RETRY's: both attempts wrote `results/<template-id>.log` and the
+ *     re-run replaced the attempt it was adjudicating. So the rows this report
+ *     is most confident about are exactly the ones whose evidence is gone.
+ *     Runs from here on keep both -- `<template-id>.log` for the sweep,
+ *     `<template-id>.retry.log` for the re-run -- and a red sweep also carries
+ *     the CSMS's own `csms-<driver>.log`. Neither is read here; they are what
+ *     makes a row in this table answerable once it is found.
  *
  * NO SILENT CAPS: a row this parser cannot read is reported as unparsed, by
  * file. A report that quietly dropped what it could not understand would read

@@ -167,8 +167,17 @@
  // ---------------------------------------------------------------------------
  // Runner core
  // ---------------------------------------------------------------------------
-@@ -60,95 +141,237 @@
+@@ -58,97 +139,246 @@
+   cpId: string;
+   connector?: number;
    timeoutSecs?: number;
++  /**
++   * Distinguishes a re-run's wire log from the sweep's, as a filename suffix.
++   *
++   * Unset for the sweep itself, so `results/<template-id>.log` keeps meaning
++   * what it has always meant: what happened in the run being reported.
++   */
++  attempt?: string;
  }
  
 +/** 0 FAIL + >=1 SKIPPED is PARTIAL; anything with a FAIL is FAIL. */
@@ -242,8 +251,8 @@
 +  templateId: string,
 +): Promise<ExpectedFailureEntry | undefined> {
 +  return expectedFailureFor(await expectedFailureTable(), templateId);
- }
- 
++}
++
 +/** Result of one scenario execution -- either it produced checks, or the
 + *  driver declared the scenario undrivable partway through drive(). */
 +type ScenarioRun =
@@ -281,8 +290,8 @@
 +async function driverModule(): Promise<CsmsDriverModule> {
 +  driverModulePromise ??= loadDriverModule();
 +  return driverModulePromise;
-+}
-+
+ }
+ 
 +async function driver(): Promise<CsmsDriverParts> {
 +  driverPartsPromise ??= (async () => {
 +    const module = await driverModule();
@@ -466,7 +475,7 @@
          30_000,
        );
      } catch (err) {
-@@ -176,13 +399,25 @@
+@@ -176,13 +406,25 @@
  
      if (spec.drive) {
        process.stderr.write(`[runner] running drive() for ${spec.templateId}\n`);
@@ -499,7 +508,7 @@
      } else {
        process.stderr.write(
          `[runner] no drive() defined (CP-only scenario) -- nothing to do while it runs\n`,
-@@ -190,15 +425,33 @@
+@@ -190,32 +432,58 @@
        driveState = undefined as D;
      }
  
@@ -536,18 +545,37 @@
    // it a FAIL in a swept scenario is un-post-mortem-able: the sim container
    // is already stopped+removed by the time assert() reports, so this
    // capture is the only surviving record of what was (or wasn't) on the
-@@ -218,6 +471,10 @@
+   // wire. Best-effort: a write failure must not turn a finished scenario
+   // run into an error.
++  //
++  // ONE FILE PER ATTEMPT. `--retry-failed-isolated` re-runs a failing scenario
++  // through this same function, and while both attempts wrote here the retry
++  // replaced the log of the attempt it was adjudicating -- so the evidence for
++  // every flake this project has ever recorded was destroyed by the mechanism
++  // that recorded it. The sweep keeps the bare name; a re-run says which it is.
++  const logName = `${spec.templateId}${options.attempt ?? ""}.log`;
+   try {
+     mkdirSync(RESULTS_DIR, { recursive: true });
+-    await Bun.write(
+-      `${RESULTS_DIR}${spec.templateId}.log`,
+-      lines.join("\n") + "\n",
+-    );
++    await Bun.write(`${RESULTS_DIR}${logName}`, lines.join("\n") + "\n");
+   } catch (err) {
+     process.stderr.write(
+-      `[runner] WARN: could not write results/${spec.templateId}.log: ${
++      `[runner] WARN: could not write results/${logName}: ${
+         err instanceof Error ? err.message : String(err)
+       }\n`,
      );
-   }
- 
-+  if (unsupported !== undefined) {
-+    return { kind: "not-applicable", reason: unsupported };
 +  }
 +
-   const frames = parseLog(lines.join("\n"));
-   const rec = new AssertRecorder();
++  if (unsupported !== undefined) {
++    return { kind: "not-applicable", reason: unsupported };
+   }
  
-@@ -228,34 +485,50 @@
+   const frames = parseLog(lines.join("\n"));
+@@ -228,34 +496,50 @@
      frames,
      lines,
      rec,
@@ -609,7 +637,7 @@
  // ---------------------------------------------------------------------------
  
  // eslint-disable-next-line @typescript-eslint/no-explicit-any
-@@ -265,20 +538,21 @@
+@@ -265,20 +549,21 @@
    "remotetrigger-smartcharging": REMOTETRIGGER_SMARTCHARGING_SPECS,
    firmware: FIRMWARE_SPECS,
    authorize: AUTHORIZE_SPECS,
@@ -637,7 +665,7 @@
  // eslint-disable-next-line @typescript-eslint/no-explicit-any
  const SPECS_BY_TEMPLATE_ID = new Map<string, ScenarioSpec<any>>(
    Object.values(GROUPS)
-@@ -286,66 +560,236 @@
+@@ -286,66 +571,237 @@
      .map((spec) => [spec.templateId, spec]),
  );
  
@@ -869,6 +897,7 @@
  async function runOneForSweep<D>(
    spec: ScenarioSpec<D>,
    cpId: string,
++  attempt?: string,
  ): Promise<ScenarioOutcome> {
 +  // What every branch below shares, stated once. `expected` is read BEFORE the
 +  // run and carried even by the branches that never start a container: a
@@ -894,7 +923,7 @@
 +
    try {
 -    const rec = await runScenario(spec, { cpId });
-+    const run = await runScenario(spec, { cpId });
++    const run = await runScenario(spec, { cpId, attempt });
 +    if (run.kind === "not-applicable") {
 +      return { ...common, verdict: "NOT APPLICABLE", reason: run.reason };
 +    }
@@ -913,7 +942,7 @@
      };
    } catch (err) {
      const message =
-@@ -353,64 +797,44 @@
+@@ -353,64 +809,44 @@
      process.stderr.write(
        `[runner] ERROR: ${spec.templateId} on ${cpId} threw before completing: ${message}\n`,
      );
@@ -999,7 +1028,13 @@
    );
  
    for (const outcome of toRetry) {
-@@ -432,13 +856,14 @@
+@@ -427,18 +863,19 @@
+     process.stderr.write(
+       `[runner] isolated retry: ${outcome.templateId} on ${outcome.cpId} (parallel verdict was ${outcome.verdict})\n`,
+     );
+-    const retryOutcome = await runOneForSweep(spec, outcome.cpId);
++    const retryOutcome = await runOneForSweep(spec, outcome.cpId, ".retry");
+     outcome.isolatedRetry = {
        verdict: retryOutcome.verdict,
        checks: retryOutcome.checks,
        failed: retryOutcome.failed,
@@ -1016,7 +1051,7 @@
            : " -- CONFIRMED (fails isolated too, not a parallel-lane artifact)\n"),
      );
    }
-@@ -451,59 +876,176 @@
+@@ -451,59 +888,176 @@
    return new Date().toISOString().replace(/\.\d{3}Z$/, "Z");
  }
  
@@ -1222,7 +1257,7 @@
        "",
        header,
        separator,
-@@ -518,54 +1060,55 @@
+@@ -518,54 +1072,55 @@
  }
  
  /** Sequential or parallel group sweep. Writes results/summary.md and exits
@@ -1304,7 +1339,7 @@
      );
    } else {
      for (let i = 0; i < specs.length; i++) {
-@@ -574,11 +1117,11 @@
+@@ -574,11 +1129,11 @@
    }
  
    if (retryFailedIsolated) {
@@ -1318,7 +1353,7 @@
            "(a sequential sweep is already isolated).\n",
        );
      }
-@@ -588,45 +1131,87 @@
+@@ -588,45 +1143,87 @@
    for (const o of outcomes) {
      const retrySuffix = o.isolatedRetry
        ? ` [isolated retry: ${o.isolatedRetry.verdict}${
@@ -1428,7 +1463,7 @@
  }
  
  // ---------------------------------------------------------------------------
-@@ -642,6 +1227,8 @@
+@@ -642,6 +1239,8 @@
    cpId: string;
    connector?: number;
    timeoutSecs?: number;
@@ -1437,11 +1472,25 @@
  }
  
  function requireValue(argv: string[], index: number, flag: string): string {
-@@ -663,37 +1250,84 @@
+@@ -663,37 +1262,84 @@
    return n;
  }
  
 -function printUsage(): void {
+-  process.stderr.write(
+-    "Usage (paths shown from the repo root; from scripts/steve-verify " +
+-      "use the shorter `bun runner/main.ts …`):\n" +
+-      "       bun scripts/steve-verify/runner/main.ts run <template-id> " +
+-      "[--cp CERTCP1] [--timeout N] [--connector N]\n" +
+-      "       bun scripts/steve-verify/runner/main.ts run --group " +
+-      `${Object.keys(GROUPS).join("|")} [--parallel] [--retry-failed-isolated]\n` +
+-      "       bun scripts/steve-verify/runner/main.ts run-all " +
+-      "[--group <name>] [--parallel] [--retry-failed-isolated]\n" +
+-      "\n" +
+-      "--retry-failed-isolated: after a --parallel sweep, re-run any " +
+-      "non-PASS scenario once more, sequentially and isolated, and report " +
+-      "both verdicts (parallel-fail -> isolated-pass = flake; still fails " +
+-      "isolated = real fail). No effect without --parallel.\n",
 +const VERBS = [
 +  "run",
 +  "run-all",
@@ -1452,35 +1501,25 @@
 +] as const;
 +
 +async function printUsage(): Promise<void> {
-   process.stderr.write(
--    "Usage (paths shown from the repo root; from scripts/steve-verify " +
--      "use the shorter `bun runner/main.ts …`):\n" +
--      "       bun scripts/steve-verify/runner/main.ts run <template-id> " +
--      "[--cp CERTCP1] [--timeout N] [--connector N]\n" +
--      "       bun scripts/steve-verify/runner/main.ts run --group " +
++  process.stderr.write(
 +    "Usage: ocpp-tck run <template-id> [--cp CP1] [--timeout N] " +
 +      "[--connector N] [--results-dir DIR]\n" +
 +      "       ocpp-tck run --group " +
-       `${Object.keys(GROUPS).join("|")} [--parallel] [--retry-failed-isolated]\n` +
--      "       bun scripts/steve-verify/runner/main.ts run-all " +
--      "[--group <name>] [--parallel] [--retry-failed-isolated]\n" +
++      `${Object.keys(GROUPS).join("|")} [--parallel] [--retry-failed-isolated]\n` +
 +      "       ocpp-tck run-all [--group <name>] [--parallel] " +
 +      "[--retry-failed-isolated] [--results-dir DIR]\n" +
 +      "       ocpp-tck list-scenarios [--group <name>] [--json]\n" +
 +      "       ocpp-tck check-driver [--driver SPEC] [--json]\n" +
 +      "       ocpp-tck print-sim-image\n" +
 +      "       ocpp-tck driver <verb> [args...]\n" +
-       "\n" +
--      "--retry-failed-isolated: after a --parallel sweep, re-run any " +
--      "non-PASS scenario once more, sequentially and isolated, and report " +
++      "\n" +
 +      "check-driver is fully offline: it reads the driver MODULE (never " +
 +      "create()), so it needs no CSMS, no docker, no network and no " +
 +      "credentials.\n" +
 +      "\n" +
 +      "--retry-failed-isolated: after a parallel sweep, re-run any " +
 +      "FAIL/ERROR scenario once more, sequentially and isolated, and report " +
-       "both verdicts (parallel-fail -> isolated-pass = flake; still fails " +
--      "isolated = real fail). No effect without --parallel.\n",
++      "both verdicts (parallel-fail -> isolated-pass = flake; still fails " +
 +      "isolated = real fail). No effect without parallel lanes.\n" +
 +      "\n" +
 +      "Environment: CSMS_DRIVER (module specifier of the driver to load), " +
@@ -1539,7 +1578,7 @@
  
    if (argv[0] === "run-all") {
      group = "all";
-@@ -708,18 +1342,27 @@
+@@ -708,18 +1354,27 @@
          case "--retry-failed-isolated":
            retryFailedIsolated = true;
            break;
@@ -1570,7 +1609,7 @@
      process.exit(1);
    }
  
-@@ -749,9 +1392,11 @@
+@@ -749,9 +1404,11 @@
        case "--retry-failed-isolated":
          retryFailedIsolated = true;
          break;
@@ -1583,7 +1622,7 @@
          process.exit(1);
      }
    }
-@@ -764,35 +1409,495 @@
+@@ -764,35 +1421,495 @@
      cpId,
      connector,
      timeoutSecs,
@@ -2095,7 +2134,7 @@
    }
  
    const spec = SPECS_BY_TEMPLATE_ID.get(args.templateId);
-@@ -800,18 +1905,109 @@
+@@ -800,18 +1917,109 @@
      process.stderr.write(
        `Unknown template id: ${args.templateId} (known: ${[...SPECS_BY_TEMPLATE_ID.keys()].join(", ")})\n`,
      );

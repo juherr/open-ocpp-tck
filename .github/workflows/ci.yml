@@ -282,6 +282,29 @@ jobs:
       - name: Conformance sweep
         run: bun run e2e
 
+      # The CSMS's OWN log, which no run of this project has ever captured.
+      # `results/` is the charge-point side of the wire, so a CSMS answering
+      # `CALLERROR -- InternalError` tells us an exception was raised and never
+      # which one: the stack trace behind it lives here and nowhere else. That
+      # gap is what left a full investigation of a reproducible flake unable to
+      # say whether the cause was the CSMS, the container's resources, or this
+      # suite (see the issue this step closes).
+      #
+      # failure() and not always(): on a green sweep this is megabytes nobody
+      # reads, and the artifact is downloaded in bulk when mining the archive.
+      # Into results/ so the existing upload carries it -- a second
+      # upload-artifact step would be a second retention policy to keep in step.
+      - name: Capture the CSMS log when the sweep is red
+        if: failure()
+        run: |
+          # mkdir -p: a sweep that died before writing its first scenario log
+          # leaves no results/ at all, and the redirect below would then fail
+          # for a reason that has nothing to do with the CSMS.
+          mkdir -p results
+          docker compose -f drivers/${{ matrix.driver }}/compose.yaml logs \
+            --no-color --timestamps > results/csms-${{ matrix.driver }}.log
+          wc -l results/csms-${{ matrix.driver }}.log
+
       # always(): the wire logs are worth most precisely when the sweep failed.
       - name: Upload results
         if: always()
