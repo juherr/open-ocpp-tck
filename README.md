@@ -76,7 +76,7 @@ single container pair.
 walkthrough for the other one.
 
 ```sh
-bun add github:juherr/open-ocpp-tck#v0.2.0
+bun add github:juherr/open-ocpp-tck#v0.2.1
 
 export CSMS_DRIVER=open-ocpp-tck/drivers/steve
 export STEVE_URL=http://localhost:8180/steve/manager
