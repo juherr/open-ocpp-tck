@@ -105,6 +105,7 @@ import {
   REMOTETRIGGER_SMARTCHARGING_SPECS,
 } from "./specs/index";
 import type { ScenarioSpec } from "./spec-types";
+import { extendObservationWindow, maxExtraHoldSecs } from "./hold";
 import { sleep } from "./util";
 import { WaitTimeoutError } from "./wait";
 
@@ -176,7 +177,7 @@ async function expectedFailureEntryFor(
 /** Result of one scenario execution -- either it produced checks, or the
  *  driver declared the scenario undrivable partway through drive(). */
 type ScenarioRun =
-  | { kind: "checked"; rec: AssertRecorder }
+  | { kind: "checked"; rec: AssertRecorder; extraHoldSecs: number }
   | { kind: "not-applicable"; reason: string };
 
 /**
@@ -344,6 +345,9 @@ async function runScenario<D>(
   let driveState!: D;
   /** Set only when drive() reported an operation the CSMS cannot do. */
   let unsupported: string | undefined;
+  /** Seconds the observation window ran past `holdSecs`; 0 on the path this
+   *  runner took before {@link extendObservationWindow} existed. */
+  let extraHoldSecs = 0;
   try {
     await sim.send({ command: "connect" });
     // Post-boot stdin method, made event-driven: a fixed bootWaitSecs sleep
@@ -420,6 +424,30 @@ async function runScenario<D>(
     // cannot assert on.
     if (unsupported === undefined) {
       await sleep(holdSecs * 1000);
+      extraHoldSecs = await extendObservationWindow(
+        spec,
+        { cpId: options.cpId, connector, records, driveState },
+        sim,
+        parseLog,
+        maxExtraHoldSecs(process.env, (message) =>
+          process.stderr.write(`[runner] WARN: ${message}\n`),
+        ),
+        sleep,
+        (cap) =>
+          process.stderr.write(
+            `[runner] observation window for ${spec.templateId} reached its ` +
+              `+${cap}s cap with assertions still short -- reporting what is ` +
+              "on the wire. If this is a real finding the cap cost nothing; " +
+              "if it is not, the cap is the number to raise " +
+              "(OCPP_TCK_MAX_EXTRA_HOLD_SECS).\n",
+          ),
+      );
+      if (extraHoldSecs > 0) {
+        process.stderr.write(
+          `[runner] held ${spec.templateId} for ${holdSecs}+${extraHoldSecs}s ` +
+            "-- assertions were still short at the floor\n",
+        );
+      }
     }
   } finally {
     await sim.stop();
@@ -480,7 +508,7 @@ async function runScenario<D>(
     `[runner] RESULT: ${spec.templateId} ${verdictForRecorder(rec)} (${rec.total} checks, ${rec.failed} failed, ${rec.skipped} skipped)\n`,
   );
 
-  return { kind: "checked", rec };
+  return { kind: "checked", rec, extraHoldSecs };
 }
 
 // ---------------------------------------------------------------------------
@@ -593,6 +621,14 @@ interface ScenarioOutcome extends RetryOutcome {
    *  whether or not it did. Both directions are reported: a declared FAIL is
    *  excused, a declared PASS fails the sweep. */
   expected?: ExpectedFailureEntry;
+  /**
+   * Seconds the observation window ran past `holdSecs` before the scenario
+   * was assertable, or gave up. Reported because it is the only way the next
+   * measurement can tell a window that was too short from one that is now
+   * merely slower: a row that extends and then passes was a false FAIL under
+   * the fixed window. Absent on the branches that never started a container.
+   */
+  extraHoldSecs?: number;
 }
 
 /** {@link standingOf} for a sweep outcome. The single-scenario path in `cli()`
@@ -757,6 +793,7 @@ async function runOneForSweep<D>(
       checks: run.rec.total,
       failed: run.rec.failed,
       skipped: run.rec.skipped,
+      extraHoldSecs: run.extraHoldSecs,
     };
   } catch (err) {
     const message =
@@ -968,6 +1005,24 @@ async function writeSummary(
       ),
     );
   }
+  // A NOTE AND NOT A COLUMN, deliberately. The table's shape is what every
+  // archived sweep is read back through, and adding a column to it would
+  // reformat the corpus mid-history for a number most rows carry as zero.
+  const extended = outcomes.filter((o) => (o.extraHoldSecs ?? 0) > 0);
+  if (extended.length > 0) {
+    notes.push(
+      "",
+      `${extended.length} scenario(s) held past holdSecs: their assertions ` +
+        "were still short when the fixed window would have closed, so the " +
+        "window was extended. A row here that PASSED was a FAIL under the " +
+        "fixed window — a false finding this run did not report. One that " +
+        "failed anyway spent the extra seconds proving it.",
+      ...extended.map(
+        (o) => `- \`${o.templateId}\` — +${o.extraHoldSecs}s, ${o.verdict}`,
+      ),
+    );
+  }
+
   if (anyRetried) {
     const flakeCount = parts.flakes.length;
     const confirmedCount = outcomes.filter(
