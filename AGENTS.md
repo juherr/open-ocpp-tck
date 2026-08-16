@@ -174,10 +174,12 @@ its header is now a false claim about what the build checks.
   Changing what a scenario measures is legitimate and moves the two committed
   artifacts above — say why in the pull request. (`tests/spec-invariants.sh`)
 - **The documented install command installs the contract the documents
-  describe.** Every tracked `*.md` citing `github:<slug>#<ref>` cites the same
-  ref, that ref is a tag that exists, and `tck/driver.ts` at it matches the
-  tree byte for byte. The ref and the slug are read from the files, never
-  spelled in the guard. Accept the price it comes with: after a change to
+  describe.** Every tracked `*.md` citing a `github:<owner>/<repo>#<ref>`
+  install command names this repository and the same ref, that ref is a tag
+  that exists, and `tck/driver.ts` at it matches the tree byte for byte. The
+  ref and the slug are read from the files, never spelled in the guard —
+  and the slug is checked, not merely filtered by, or the one page naming a
+  different repository would be the one page invisible to the guard. Accept the price it comes with: after a change to
   `tck/driver.ts` this is red — on the branch and on `main` — until the tag is
   cut and both pages cite it. That is the release procedure, and the red is the
   reminder. The header says why `tck/driver.ts` alone.
