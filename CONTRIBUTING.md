@@ -212,8 +212,13 @@ Three rules, and they are the difference between a reviewed list and a mute:
 - `finding` says where to go and read about it. `check-driver` rejects an empty
   one, because a known-red nobody can look up is a claim nobody can review.
 - **Never add an entry to quiet a flake.** There is no "expected flaky" status,
-  deliberately: a scenario that sometimes passes has a timing bug, and it will
-  be reported as an `UNEXPECTED PASS` the first time it does. Fix the scenario.
+  deliberately: the row could never be satisfied — a run that does not fail is
+  an `UNEXPECTED PASS`, and a run that does is adjudicated a flake by the
+  isolated retry, which is an `UNEXPECTED PASS` too. Note the cause is not
+  always the scenario: an intermittent CSMS defect looks identical from here,
+  and re-tuning a scenario's timing against one was tried and measured to
+  change nothing. Either way, diagnose it and write it down in your driver
+  README's gap table rather than declaring it.
 
 `check-driver` also rejects an id that is stale, or that your scope table calls
 `NOT_APPLICABLE` — a scenario that never starts can neither fail as declared nor

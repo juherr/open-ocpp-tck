@@ -1,13 +1,11 @@
 # SteVe driver
 
-The reference target: `bun run e2e` runs the full suite against it, and every
-scenario is `DRIVABLE`. Where `drivers/citrineos/README.md` is mostly a list of
-what its CSMS cannot do, this page has one row — which is the point of keeping
-both.
+The reference target: the scenarios were written against it, and every one of
+them is `DRIVABLE`.
 
 ## Gaps
 
-One row per source fact, the same shape as the CitrineOS page.
+One row per source fact, the same shape as `drivers/citrineos/README.md`.
 
 | Gap | Effect | Source |
 |---|---|---|
@@ -15,16 +13,20 @@ One row per source fact, the same shape as the CitrineOS page.
 
 ### Why this is not an `expectedFailures` entry
 
-An expected-failure entry describes what a CSMS **answers**, deterministically —
-`tck/expected.ts` exists so a known finding stops being news. This is a race
-that most runs win. Declaring it would make every run that does *not* deadlock
-an `unexpected-pass`, which **fails the sweep** by design (`tck/standing.ts`),
-turning an intermittent CSMS defect into a guaranteed red build.
+The rule is CONTRIBUTING.md's — never declare a flake, there is deliberately no
+"expected flaky" status — so this only records how it lands here, which is worse
+than it first looks.
 
-The isolated retry already models this correctly: a parallel FAIL that passes
-sequentially is contention, not a finding. Nothing in the suite needs to change,
-and this row exists so that "nothing changed" is a recorded decision rather than
-an omission.
+Declaring the row would fail the sweep on **every** run, not merely on the
+majority that win the race. A run that does *not* deadlock is an
+`unexpected-pass`. And a run that *does* is adjudicated a flake by
+`--retry-failed-isolated` — a sequential re-run has nothing to contend with —
+so `effectivelyFailed` is false and it is an `unexpected-pass` too. There is no
+outcome under which the entry would be satisfied.
+
+The isolated retry already models this correctly. Nothing in the suite needs to
+change, and this row exists so that "nothing changed" is a recorded decision
+rather than an omission.
 
 ### How it was found
 

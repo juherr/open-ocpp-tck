@@ -498,13 +498,24 @@
      } else {
        process.stderr.write(
          `[runner] no drive() defined (CP-only scenario) -- nothing to do while it runs\n`,
-@@ -190,34 +423,45 @@
+@@ -190,34 +423,56 @@
        driveState = undefined as D;
      }
  
 -    await sleep(holdSecs * 1000);
 +    // No point holding the wire open for a scenario we already know we
 +    // cannot assert on.
++    //
++    // TRIED AND REJECTED, here because here is where it gets re-proposed:
++    // making this window adaptive -- sleep holdSecs as a floor, then keep the
++    // wire open while the spec's own assert() still fails, up to a cap. It was
++    // built, guarded and shipped, and then measured: every scenario it
++    // extended reached the cap and failed anyway, with the same check counts
++    // as the run before it. The flakes it targeted are a MariaDB deadlock
++    // inside one CSMS (steve-community/steve#2107), and no wait improves an
++    // answer that has already arrived and is wrong. Recoverable from git if a
++    // genuine late-frame case ever turns up; the reusable half was asking the
++    // spec's assertions whether the scenario was done, not the poll loop.
 +    if (unsupported === undefined) {
 +      await sleep(holdSecs * 1000);
 +    }
@@ -552,7 +563,7 @@
    const frames = parseLog(lines.join("\n"));
    const rec = new AssertRecorder();
  
-@@ -228,34 +472,50 @@
+@@ -228,34 +483,50 @@
      frames,
      lines,
      rec,
@@ -614,7 +625,7 @@
  // ---------------------------------------------------------------------------
  
  // eslint-disable-next-line @typescript-eslint/no-explicit-any
-@@ -265,20 +525,21 @@
+@@ -265,20 +536,21 @@
    "remotetrigger-smartcharging": REMOTETRIGGER_SMARTCHARGING_SPECS,
    firmware: FIRMWARE_SPECS,
    authorize: AUTHORIZE_SPECS,
@@ -642,7 +653,7 @@
  // eslint-disable-next-line @typescript-eslint/no-explicit-any
  const SPECS_BY_TEMPLATE_ID = new Map<string, ScenarioSpec<any>>(
    Object.values(GROUPS)
-@@ -286,66 +547,228 @@
+@@ -286,66 +558,228 @@
      .map((spec) => [spec.templateId, spec]),
  );
  
@@ -910,7 +921,7 @@
      };
    } catch (err) {
      const message =
-@@ -353,64 +776,44 @@
+@@ -353,64 +787,47 @@
      process.stderr.write(
        `[runner] ERROR: ${spec.templateId} on ${cpId} threw before completing: ${message}\n`,
      );
@@ -954,12 +965,15 @@
 - * that disappears with no contention. This function does not fix that
 - * timing race -- it gives the sweep a way to distinguish a flake from a
 - * real failure without giving up --parallel's wall-clock win.
-+ * Parallel lanes are not fully isolated from each other: host CPU/docker
-+ * contention can push a CSMS-initiated async push past a scenario's fixed
-+ * holdSecs wire-log window, producing a false FAIL that disappears with no
-+ * contention. This function does not fix that timing race -- it gives the
-+ * sweep a way to distinguish a flake from a real failure without giving up
-+ * --parallel's wall-clock win.
++ * Parallel lanes are not fully isolated from each other, and a FAIL in a lane
++ * that passes on its own is the shape that produces. It was long assumed to be
++ * a timing race -- contention pushing a CSMS-initiated push past the fixed
++ * holdSecs window -- and widening the window was tried on that reading and
++ * measured: it changed nothing. The flakes on record are a MariaDB deadlock
++ * inside one CSMS (steve-community/steve#2107): concurrency-dependent, but an
++ * answer that arrives, wrong. So this function does not fix the cause and is
++ * not meant to; it gives the sweep a way to tell a flake from a real failure
++ * without giving up --parallel's wall-clock win.
   *
 - * Task 2 note: the default driver is now SteveApiOps (steve-api.ts),
 - * which holds no cookie/CSRF state at all (stateless Basic auth per
@@ -996,7 +1010,7 @@
    );
  
    for (const outcome of toRetry) {
-@@ -427,18 +830,19 @@
+@@ -427,18 +844,19 @@
      process.stderr.write(
        `[runner] isolated retry: ${outcome.templateId} on ${outcome.cpId} (parallel verdict was ${outcome.verdict})\n`,
      );
@@ -1019,7 +1033,7 @@
            : " -- CONFIRMED (fails isolated too, not a parallel-lane artifact)\n"),
      );
    }
-@@ -451,59 +855,156 @@
+@@ -451,59 +869,153 @@
    return new Date().toISOString().replace(/\.\d{3}Z$/, "Z");
  }
  
@@ -1082,11 +1096,6 @@
      const checks = o.checks === null ? "-" : String(o.checks);
      const failed = o.failed === null ? "-" : String(o.failed);
 -    const base = `| ${o.templateId} | ${o.cpId} | ${o.verdict} | ${checks} | ${failed} |`;
--    if (!anyRetried) return base;
--    if (!o.isolatedRetry) return `${base} - |`;
--    const flake = o.isolatedRetry.verdict === "PASS";
--    const label = `${o.isolatedRetry.verdict}${flake ? " (flake)" : " (confirmed)"}`;
--    return `${base} ${label} |`;
 +    const skipped = o.skipped === null ? "-" : String(o.skipped);
 +    // The declaration is rendered INTO the verdict cell rather than into a
 +    // column of its own, so that a reader scanning for red sees, in the same
@@ -1096,15 +1105,13 @@
 +    const verdict =
 +      (o.reason ? `${o.verdict} (${o.reason})` : o.verdict) +
 +      (note ? ` — ${note}.` : "");
-+    let row = `| ${o.templateId} | ${o.cpId} | ${verdict} | ${checks} | ${failed} | ${skipped} |`;
-+    if (anyRetried) {
-+      if (!o.isolatedRetry) row += " - |";
-+      else {
-+        const flake = !isFailure(o.isolatedRetry.verdict);
-+        row += ` ${o.isolatedRetry.verdict}${flake ? " (flake)" : " (confirmed)"} |`;
-+      }
-+    }
-+    return row;
++    const base = `| ${o.templateId} | ${o.cpId} | ${verdict} | ${checks} | ${failed} | ${skipped} |`;
+     if (!anyRetried) return base;
+     if (!o.isolatedRetry) return `${base} - |`;
+-    const flake = o.isolatedRetry.verdict === "PASS";
++    const flake = !isFailure(o.isolatedRetry.verdict);
+     const label = `${o.isolatedRetry.verdict}${flake ? " (flake)" : " (confirmed)"}`;
+     return `${base} ${label} |`;
    });
  
 -  const header = anyRetried
@@ -1205,7 +1212,7 @@
        "",
        header,
        separator,
-@@ -518,54 +1019,55 @@
+@@ -518,54 +1030,55 @@
  }
  
  /** Sequential or parallel group sweep. Writes results/summary.md and exits
@@ -1287,7 +1294,7 @@
      );
    } else {
      for (let i = 0; i < specs.length; i++) {
-@@ -574,11 +1076,11 @@
+@@ -574,11 +1087,11 @@
    }
  
    if (retryFailedIsolated) {
@@ -1301,7 +1308,7 @@
            "(a sequential sweep is already isolated).\n",
        );
      }
-@@ -588,45 +1090,87 @@
+@@ -588,45 +1101,87 @@
    for (const o of outcomes) {
      const retrySuffix = o.isolatedRetry
        ? ` [isolated retry: ${o.isolatedRetry.verdict}${
@@ -1411,7 +1418,7 @@
  }
  
  // ---------------------------------------------------------------------------
-@@ -642,6 +1186,8 @@
+@@ -642,6 +1197,8 @@
    cpId: string;
    connector?: number;
    timeoutSecs?: number;
@@ -1420,7 +1427,7 @@
  }
  
  function requireValue(argv: string[], index: number, flag: string): string {
-@@ -663,37 +1209,80 @@
+@@ -663,37 +1220,80 @@
    return n;
  }
  
@@ -1447,23 +1454,25 @@
        `${Object.keys(GROUPS).join("|")} [--parallel] [--retry-failed-isolated]\n` +
 -      "       bun scripts/steve-verify/runner/main.ts run-all " +
 -      "[--group <name>] [--parallel] [--retry-failed-isolated]\n" +
+-      "\n" +
+-      "--retry-failed-isolated: after a --parallel sweep, re-run any " +
+-      "non-PASS scenario once more, sequentially and isolated, and report " +
+-      "both verdicts (parallel-fail -> isolated-pass = flake; still fails " +
+-      "isolated = real fail). No effect without --parallel.\n",
 +      "       ocpp-tck run-all [--group <name>] [--parallel] " +
 +      "[--retry-failed-isolated] [--results-dir DIR]\n" +
 +      "       ocpp-tck list-scenarios [--group <name>] [--json]\n" +
 +      "       ocpp-tck check-driver [--driver SPEC] [--json]\n" +
 +      "       ocpp-tck print-sim-image\n" +
 +      "       ocpp-tck driver <verb> [args...]\n" +
-       "\n" +
--      "--retry-failed-isolated: after a --parallel sweep, re-run any " +
--      "non-PASS scenario once more, sequentially and isolated, and report " +
++      "\n" +
 +      "check-driver is fully offline: it reads the driver MODULE (never " +
 +      "create()), so it needs no CSMS, no docker, no network and no " +
 +      "credentials.\n" +
 +      "\n" +
 +      "--retry-failed-isolated: after a parallel sweep, re-run any " +
 +      "FAIL/ERROR scenario once more, sequentially and isolated, and report " +
-       "both verdicts (parallel-fail -> isolated-pass = flake; still fails " +
--      "isolated = real fail). No effect without --parallel.\n",
++      "both verdicts (parallel-fail -> isolated-pass = flake; still fails " +
 +      "isolated = real fail). No effect without parallel lanes.\n" +
 +      "\n" +
 +      "Environment: CSMS_DRIVER (module specifier of the driver to load), " +
@@ -1518,7 +1527,7 @@
  
    if (argv[0] === "run-all") {
      group = "all";
-@@ -708,18 +1297,27 @@
+@@ -708,18 +1308,27 @@
          case "--retry-failed-isolated":
            retryFailedIsolated = true;
            break;
@@ -1549,7 +1558,7 @@
      process.exit(1);
    }
  
-@@ -749,9 +1347,11 @@
+@@ -749,9 +1358,11 @@
        case "--retry-failed-isolated":
          retryFailedIsolated = true;
          break;
@@ -1562,7 +1571,7 @@
          process.exit(1);
      }
    }
-@@ -764,35 +1364,495 @@
+@@ -764,35 +1375,495 @@
      cpId,
      connector,
      timeoutSecs,
@@ -1591,7 +1600,7 @@
 +  }
 +  return [...seen].map(([templateId, group]) => ({ templateId, group }));
 +}
- 
++
 +function listScenarios(argv: string[]): number {
 +  let group: string | undefined;
 +  let asJson = false;
@@ -1734,7 +1743,7 @@
 +      );
 +    }
 +  }
-+
+ 
 +  // Everything about the expected-failure list that is knowable offline. What
 +  // is NOT knowable here is whether those scenarios still fail -- only a sweep
 +  // answers that, by reporting an UNEXPECTED PASS.
@@ -2074,7 +2083,7 @@
    }
  
    const spec = SPECS_BY_TEMPLATE_ID.get(args.templateId);
-@@ -800,18 +1860,109 @@
+@@ -800,18 +1871,109 @@
      process.stderr.write(
        `Unknown template id: ${args.templateId} (known: ${[...SPECS_BY_TEMPLATE_ID.keys()].join(", ")})\n`,
      );

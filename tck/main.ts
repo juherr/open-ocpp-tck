@@ -425,6 +425,17 @@ async function runScenario<D>(
 
     // No point holding the wire open for a scenario we already know we
     // cannot assert on.
+    //
+    // TRIED AND REJECTED, here because here is where it gets re-proposed:
+    // making this window adaptive -- sleep holdSecs as a floor, then keep the
+    // wire open while the spec's own assert() still fails, up to a cap. It was
+    // built, guarded and shipped, and then measured: every scenario it
+    // extended reached the cap and failed anyway, with the same check counts
+    // as the run before it. The flakes it targeted are a MariaDB deadlock
+    // inside one CSMS (steve-community/steve#2107), and no wait improves an
+    // answer that has already arrived and is wrong. Recoverable from git if a
+    // genuine late-frame case ever turns up; the reusable half was asking the
+    // spec's assertions whether the scenario was done, not the poll loop.
     if (unsupported === undefined) {
       await sleep(holdSecs * 1000);
     }
@@ -786,12 +797,15 @@ async function runOneForSweep<D>(
  * no concurrent lane -- and records the second verdict on the SAME outcome
  * object as `isolatedRetry`, mutating `outcomes` in place.
  *
- * Parallel lanes are not fully isolated from each other: host CPU/docker
- * contention can push a CSMS-initiated async push past a scenario's fixed
- * holdSecs wire-log window, producing a false FAIL that disappears with no
- * contention. This function does not fix that timing race -- it gives the
- * sweep a way to distinguish a flake from a real failure without giving up
- * --parallel's wall-clock win.
+ * Parallel lanes are not fully isolated from each other, and a FAIL in a lane
+ * that passes on its own is the shape that produces. It was long assumed to be
+ * a timing race -- contention pushing a CSMS-initiated push past the fixed
+ * holdSecs window -- and widening the window was tried on that reading and
+ * measured: it changed nothing. The flakes on record are a MariaDB deadlock
+ * inside one CSMS (steve-community/steve#2107): concurrency-dependent, but an
+ * answer that arrives, wrong. So this function does not fix the cause and is
+ * not meant to; it gives the sweep a way to tell a flake from a real failure
+ * without giving up --parallel's wall-clock win.
  *
  * PARTIAL and NOT APPLICABLE are never retried: neither is a failure.
  *
@@ -917,15 +931,12 @@ async function writeSummary(
     const verdict =
       (o.reason ? `${o.verdict} (${o.reason})` : o.verdict) +
       (note ? ` — ${note}.` : "");
-    let row = `| ${o.templateId} | ${o.cpId} | ${verdict} | ${checks} | ${failed} | ${skipped} |`;
-    if (anyRetried) {
-      if (!o.isolatedRetry) row += " - |";
-      else {
-        const flake = !isFailure(o.isolatedRetry.verdict);
-        row += ` ${o.isolatedRetry.verdict}${flake ? " (flake)" : " (confirmed)"} |`;
-      }
-    }
-    return row;
+    const base = `| ${o.templateId} | ${o.cpId} | ${verdict} | ${checks} | ${failed} | ${skipped} |`;
+    if (!anyRetried) return base;
+    if (!o.isolatedRetry) return `${base} - |`;
+    const flake = !isFailure(o.isolatedRetry.verdict);
+    const label = `${o.isolatedRetry.verdict}${flake ? " (flake)" : " (confirmed)"}`;
+    return `${base} ${label} |`;
   });
 
   const columns = ["scenario", "cp", "verdict", "checks", "failed", "skipped"];
