@@ -145,7 +145,7 @@ re-sync, and your driver can live in a completely different repository.
 
 | Command | Needs | What it does |
 |---|---|---|
-| `ocpp-tck run <template-id>` | docker + CSMS | One scenario |
+| `ocpp-tck run <template-id>` | docker + CSMS | One scenario, plus its `results/<template-id>.log` and `.jsonl` wire trace |
 | `ocpp-tck run-all [--group N] [--parallel]` | docker + CSMS | A sweep, plus `results/summary.md` |
 | `ocpp-tck check-driver [--driver SPEC]` | nothing | Offline conformance of a driver against this core |
 | `ocpp-tck list-scenarios [--json]` | nothing | The 47 registered scenarios |
@@ -154,8 +154,8 @@ re-sync, and your driver can live in a completely different repository.
 | `ocpp-tck driver <verb>` | driver-defined | A bootstrap verb your driver contributes |
 
 Working in a clone, `bun run verify` runs everything CI checks before it starts
-a container — typecheck, declarations, both driver scopes and the three guards
-— in one command with one exit code. It runs every step even after one fails,
+a container — typecheck, declarations, every driver scope check and every
+offline guard — in one command with one exit code. It runs every step even after one fails,
 because a rename usually breaks several at once. Shellcheck joins that list
 only where it is installed, and is skipped with a notice where it is not; CI
 always has it and always enforces it.
@@ -237,6 +237,7 @@ the kind of breakage the mechanism exists to catch.
 | `SIM_IMAGE` | pinned digest | Simulator image override. |
 | `SIM_NETWORK`, `SIM_WS_APPEND_CP_ID`, `SIM_WS_BASIC_USER`, `SIM_WS_BASIC_PASS` | driver-supplied | Transport. |
 | `SIM_OCPP_VERSION` | `OCPP-1.6J` | Protocol the charge point speaks, spelled as the simulator's CLI spells it. An unaccepted value is refused before a container starts. |
+| `SIM_TRACE` | on | `0` switches off the JSONL wire trace written beside each scenario's log — for a docker that refuses the bind mount it needs. |
 
 An explicit `SIM_*` value always beats the driver's default: an operator
 chasing a handshake problem must not have their override silently replaced.

@@ -42,7 +42,7 @@
  * nothing keeps the original rule exactly.
  */
 
-import { mkdirSync } from "node:fs";
+import { mkdirSync, rmSync } from "node:fs";
 import { cpus, loadavg } from "node:os";
 import { resolve } from "node:path";
 import { AssertRecorder } from "./assert";
@@ -124,6 +124,49 @@ function resultsDir(argvDir?: string, env: CsmsEnv = process.env): string {
 
 /** Set once by the CLI, so the run functions below stay argument-clean. */
 let RESULTS_DIR = resultsDir();
+
+/**
+ * Host path of the simulator's JSONL wire trace for one attempt, readied for a
+ * container to append to -- or undefined, meaning run without one.
+ *
+ * ONE FILE PER ATTEMPT, `results/<template-id><attempt>.jsonl`, the same rule
+ * and for the same reason as the `.log` beside it: a retry that reuses the name
+ * destroys the evidence of the attempt it is adjudicating.
+ *
+ * THE STALE FILE IS REMOVED HERE, and that is not tidiness: `--trace-output`
+ * APPENDS, so without this a second run of one scenario produces a single file
+ * holding two runs, and nothing in it says where one ends. The directory is
+ * created for the same reason -- docker would otherwise create the bind-mount
+ * source itself, owned by root on a Linux host.
+ *
+ * BEST EFFORT, DEGRADING TO NO TRACE. A results directory this process cannot
+ * write is a real situation (a read-only mount, a path handed in by a wrapper),
+ * and it must not turn into a container that fails to start: the trace is
+ * evidence about a run, not the run.
+ *
+ * `SIM_TRACE=0` switches it off -- the escape hatch for a docker that refuses
+ * bind mounts (rootless, SELinux relabelling) rather than a preference. The path
+ * itself follows `--results-dir` / `OCPP_TCK_RESULTS_DIR`, so it needs no
+ * variable of its own.
+ */
+function prepareTracePath(
+  traceName: string,
+  env: CsmsEnv = process.env,
+): string | undefined {
+  if (env.SIM_TRACE === "0") return undefined;
+  const path = `${RESULTS_DIR}${traceName}`;
+  try {
+    mkdirSync(RESULTS_DIR, { recursive: true });
+    rmSync(path, { force: true });
+  } catch (err) {
+    process.stderr.write(
+      `[runner] WARN: could not ready ${traceName} for the wire trace, ` +
+        `running without one: ${err instanceof Error ? err.message : String(err)}\n`,
+    );
+    return undefined;
+  }
+  return path;
+}
 
 // ---------------------------------------------------------------------------
 // Runner core
@@ -328,12 +371,19 @@ async function runScenario<D>(
   const connector = options.connector ?? spec.connector ?? 1;
   const bootWaitSecs = spec.bootWaitSecs ?? 4;
   const holdSecs = options.timeoutSecs ?? spec.holdSecs ?? 20;
+  /** Stem of every file this attempt writes into the results directory --
+   *  see the `ONE FILE PER ATTEMPT` note further down, which is why the two
+   *  artifacts share one expression rather than each spelling the rule. */
+  const artifactStem = `${spec.templateId}${options.attempt ?? ""}`;
 
   const parts = await driver();
-  const simCfg = mergeSimTransport(
-    defaultSimConfig(),
-    await parts.simTransport?.(options.cpId),
-  );
+  const simCfg = {
+    ...mergeSimTransport(
+      defaultSimConfig(),
+      await parts.simTransport?.(options.cpId),
+    ),
+    tracePath: prepareTracePath(`${artifactStem}.jsonl`),
+  };
   const csms = parts.operations;
   const records = withCapabilityStubs(parts);
 
@@ -457,7 +507,7 @@ async function runScenario<D>(
   // replaced the log of the attempt it was adjudicating -- so the evidence for
   // every flake this project has ever recorded was destroyed by the mechanism
   // that recorded it. The sweep keeps the bare name; a re-run says which it is.
-  const logName = `${spec.templateId}${options.attempt ?? ""}.log`;
+  const logName = `${artifactStem}.log`;
   try {
     mkdirSync(RESULTS_DIR, { recursive: true });
     await Bun.write(`${RESULTS_DIR}${logName}`, lines.join("\n") + "\n");
@@ -1259,7 +1309,8 @@ async function printUsage(): Promise<void> {
       "OCPP_STATIONS (ocpp_id=station_id[,...] override when the stations were " +
       "created by hand), SIM_WS_URL, SIM_IMAGE, SIM_NETWORK, " +
       "SIM_WS_APPEND_CP_ID, SIM_WS_BASIC_USER/SIM_WS_BASIC_PASS, " +
-      "SIM_OCPP_VERSION (default OCPP-1.6J).\n",
+      "SIM_OCPP_VERSION (default OCPP-1.6J), SIM_TRACE=0 (no JSONL wire " +
+      "trace beside the log).\n",
   );
 
   // The driver's own environment, if one is selected and declares it. Best

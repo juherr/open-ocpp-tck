@@ -61,8 +61,9 @@
 + * nothing keeps the original rule exactly.
   */
  
- import { mkdirSync } from "node:fs";
+-import { mkdirSync } from "node:fs";
 -import { fileURLToPath } from "node:url";
++import { mkdirSync, rmSync } from "node:fs";
 +import { cpus, loadavg } from "node:os";
 +import { resolve } from "node:path";
  import { AssertRecorder } from "./assert";
@@ -129,7 +130,7 @@
  import {
    AUTHLIST_RESERVATION_SPECS,
    AUTHORIZE_SPECS,
-@@ -43,13 +106,25 @@
+@@ -43,13 +106,68 @@
  } from "./specs/index";
  import type { ScenarioSpec } from "./spec-types";
  import { sleep } from "./util";
@@ -157,10 +158,53 @@
 +/** Set once by the CLI, so the run functions below stay argument-clean. */
 +let RESULTS_DIR = resultsDir();
 +
++/**
++ * Host path of the simulator's JSONL wire trace for one attempt, readied for a
++ * container to append to -- or undefined, meaning run without one.
++ *
++ * ONE FILE PER ATTEMPT, `results/<template-id><attempt>.jsonl`, the same rule
++ * and for the same reason as the `.log` beside it: a retry that reuses the name
++ * destroys the evidence of the attempt it is adjudicating.
++ *
++ * THE STALE FILE IS REMOVED HERE, and that is not tidiness: `--trace-output`
++ * APPENDS, so without this a second run of one scenario produces a single file
++ * holding two runs, and nothing in it says where one ends. The directory is
++ * created for the same reason -- docker would otherwise create the bind-mount
++ * source itself, owned by root on a Linux host.
++ *
++ * BEST EFFORT, DEGRADING TO NO TRACE. A results directory this process cannot
++ * write is a real situation (a read-only mount, a path handed in by a wrapper),
++ * and it must not turn into a container that fails to start: the trace is
++ * evidence about a run, not the run.
++ *
++ * `SIM_TRACE=0` switches it off -- the escape hatch for a docker that refuses
++ * bind mounts (rootless, SELinux relabelling) rather than a preference. The path
++ * itself follows `--results-dir` / `OCPP_TCK_RESULTS_DIR`, so it needs no
++ * variable of its own.
++ */
++function prepareTracePath(
++  traceName: string,
++  env: CsmsEnv = process.env,
++): string | undefined {
++  if (env.SIM_TRACE === "0") return undefined;
++  const path = `${RESULTS_DIR}${traceName}`;
++  try {
++    mkdirSync(RESULTS_DIR, { recursive: true });
++    rmSync(path, { force: true });
++  } catch (err) {
++    process.stderr.write(
++      `[runner] WARN: could not ready ${traceName} for the wire trace, ` +
++        `running without one: ${err instanceof Error ? err.message : String(err)}\n`,
++    );
++    return undefined;
++  }
++  return path;
++}
++
  // ---------------------------------------------------------------------------
  // Runner core
  // ---------------------------------------------------------------------------
-@@ -58,97 +133,243 @@
+@@ -58,97 +176,250 @@
    cpId: string;
    connector?: number;
    timeoutSecs?: number;
@@ -395,6 +439,10 @@
    const connector = options.connector ?? spec.connector ?? 1;
    const bootWaitSecs = spec.bootWaitSecs ?? 4;
    const holdSecs = options.timeoutSecs ?? spec.holdSecs ?? 20;
++  /** Stem of every file this attempt writes into the results directory --
++   *  see the `ONE FILE PER ATTEMPT` note further down, which is why the two
++   *  artifacts share one expression rather than each spelling the rule. */
++  const artifactStem = `${spec.templateId}${options.attempt ?? ""}`;
  
 -  const simCfg = defaultSimConfig(REPO_ROOT);
 -  // A fresh driver instance per runScenario() call (one per parallel lane)
@@ -406,10 +454,13 @@
 -  const db = createDb();
 -  const steve = createSteveOps();
 +  const parts = await driver();
-+  const simCfg = mergeSimTransport(
-+    defaultSimConfig(),
-+    await parts.simTransport?.(options.cpId),
-+  );
++  const simCfg = {
++    ...mergeSimTransport(
++      defaultSimConfig(),
++      await parts.simTransport?.(options.cpId),
++    ),
++    tracePath: prepareTracePath(`${artifactStem}.jsonl`),
++  };
 +  const csms = parts.operations;
 +  const records = withCapabilityStubs(parts);
  
@@ -465,7 +516,7 @@
          30_000,
        );
      } catch (err) {
-@@ -176,13 +397,25 @@
+@@ -176,13 +447,25 @@
  
      if (spec.drive) {
        process.stderr.write(`[runner] running drive() for ${spec.templateId}\n`);
@@ -498,7 +549,7 @@
      } else {
        process.stderr.write(
          `[runner] no drive() defined (CP-only scenario) -- nothing to do while it runs\n`,
-@@ -190,34 +423,56 @@
+@@ -190,34 +473,56 @@
        driveState = undefined as D;
      }
  
@@ -539,7 +590,7 @@
 +  // replaced the log of the attempt it was adjudicating -- so the evidence for
 +  // every flake this project has ever recorded was destroyed by the mechanism
 +  // that recorded it. The sweep keeps the bare name; a re-run says which it is.
-+  const logName = `${spec.templateId}${options.attempt ?? ""}.log`;
++  const logName = `${artifactStem}.log`;
    try {
      mkdirSync(RESULTS_DIR, { recursive: true });
 -    await Bun.write(
@@ -563,7 +614,7 @@
    const frames = parseLog(lines.join("\n"));
    const rec = new AssertRecorder();
  
-@@ -228,34 +483,50 @@
+@@ -228,34 +533,50 @@
      frames,
      lines,
      rec,
@@ -625,7 +676,7 @@
  // ---------------------------------------------------------------------------
  
  // eslint-disable-next-line @typescript-eslint/no-explicit-any
-@@ -265,20 +536,21 @@
+@@ -265,20 +586,21 @@
    "remotetrigger-smartcharging": REMOTETRIGGER_SMARTCHARGING_SPECS,
    firmware: FIRMWARE_SPECS,
    authorize: AUTHORIZE_SPECS,
@@ -653,7 +704,7 @@
  // eslint-disable-next-line @typescript-eslint/no-explicit-any
  const SPECS_BY_TEMPLATE_ID = new Map<string, ScenarioSpec<any>>(
    Object.values(GROUPS)
-@@ -286,66 +558,228 @@
+@@ -286,66 +608,228 @@
      .map((spec) => [spec.templateId, spec]),
  );
  
@@ -836,7 +887,7 @@
 + * Narrowing `expected` here also removes the `?.` chains the call sites needed:
 + * they could not see that a standing of `expected-fail` implies an entry, so a
 + * broken invariant would have rendered the string "undefined" into a report.
-+ */
+  */
 +function declarationNote(outcome: ScenarioOutcome): string | undefined {
 +  const { expected, verdict } = outcome;
 +  const retryVerdict = outcome.isolatedRetry?.verdict;
@@ -873,7 +924,7 @@
 + *
 + * The scope table is consulted FIRST -- a NOT_APPLICABLE scenario never
 + * starts a container.
-  */
++ */
  async function runOneForSweep<D>(
    spec: ScenarioSpec<D>,
    cpId: string,
@@ -921,7 +972,7 @@
      };
    } catch (err) {
      const message =
-@@ -353,64 +787,47 @@
+@@ -353,64 +837,47 @@
      process.stderr.write(
        `[runner] ERROR: ${spec.templateId} on ${cpId} threw before completing: ${message}\n`,
      );
@@ -1010,7 +1061,7 @@
    );
  
    for (const outcome of toRetry) {
-@@ -427,18 +844,19 @@
+@@ -427,18 +894,19 @@
      process.stderr.write(
        `[runner] isolated retry: ${outcome.templateId} on ${outcome.cpId} (parallel verdict was ${outcome.verdict})\n`,
      );
@@ -1033,7 +1084,7 @@
            : " -- CONFIRMED (fails isolated too, not a parallel-lane artifact)\n"),
      );
    }
-@@ -451,59 +869,153 @@
+@@ -451,59 +919,153 @@
    return new Date().toISOString().replace(/\.\d{3}Z$/, "Z");
  }
  
@@ -1126,10 +1177,6 @@
 +  const separator = `| ${columns.map(() => "---").join(" | ")} |`;
  
    const notes: string[] = [];
--  if (anyRetried) {
--    const flakeCount = outcomes.filter(
--      (o) => o.isolatedRetry?.verdict === "PASS",
--    ).length;
 +  const partialCount = outcomes.filter((o) => o.verdict === "PARTIAL").length;
 +  const naCount = outcomes.filter(
 +    (o) => o.verdict === "NOT APPLICABLE",
@@ -1183,7 +1230,10 @@
 +      ),
 +    );
 +  }
-+  if (anyRetried) {
+   if (anyRetried) {
+-    const flakeCount = outcomes.filter(
+-      (o) => o.isolatedRetry?.verdict === "PASS",
+-    ).length;
 +    const flakeCount = parts.flakes.length;
      const confirmedCount = outcomes.filter(
 -      (o) =>
@@ -1212,7 +1262,7 @@
        "",
        header,
        separator,
-@@ -518,54 +1030,55 @@
+@@ -518,54 +1080,55 @@
  }
  
  /** Sequential or parallel group sweep. Writes results/summary.md and exits
@@ -1294,7 +1344,7 @@
      );
    } else {
      for (let i = 0; i < specs.length; i++) {
-@@ -574,11 +1087,11 @@
+@@ -574,11 +1137,11 @@
    }
  
    if (retryFailedIsolated) {
@@ -1308,7 +1358,7 @@
            "(a sequential sweep is already isolated).\n",
        );
      }
-@@ -588,45 +1101,87 @@
+@@ -588,45 +1151,87 @@
    for (const o of outcomes) {
      const retrySuffix = o.isolatedRetry
        ? ` [isolated retry: ${o.isolatedRetry.verdict}${
@@ -1418,7 +1468,7 @@
  }
  
  // ---------------------------------------------------------------------------
-@@ -642,6 +1197,8 @@
+@@ -642,6 +1247,8 @@
    cpId: string;
    connector?: number;
    timeoutSecs?: number;
@@ -1427,11 +1477,25 @@
  }
  
  function requireValue(argv: string[], index: number, flag: string): string {
-@@ -663,37 +1220,81 @@
+@@ -663,37 +1270,82 @@
    return n;
  }
  
 -function printUsage(): void {
+-  process.stderr.write(
+-    "Usage (paths shown from the repo root; from scripts/steve-verify " +
+-      "use the shorter `bun runner/main.ts …`):\n" +
+-      "       bun scripts/steve-verify/runner/main.ts run <template-id> " +
+-      "[--cp CERTCP1] [--timeout N] [--connector N]\n" +
+-      "       bun scripts/steve-verify/runner/main.ts run --group " +
+-      `${Object.keys(GROUPS).join("|")} [--parallel] [--retry-failed-isolated]\n` +
+-      "       bun scripts/steve-verify/runner/main.ts run-all " +
+-      "[--group <name>] [--parallel] [--retry-failed-isolated]\n" +
+-      "\n" +
+-      "--retry-failed-isolated: after a --parallel sweep, re-run any " +
+-      "non-PASS scenario once more, sequentially and isolated, and report " +
+-      "both verdicts (parallel-fail -> isolated-pass = flake; still fails " +
+-      "isolated = real fail). No effect without --parallel.\n",
 +const VERBS = [
 +  "run",
 +  "run-all",
@@ -1442,35 +1506,25 @@
 +] as const;
 +
 +async function printUsage(): Promise<void> {
-   process.stderr.write(
--    "Usage (paths shown from the repo root; from scripts/steve-verify " +
--      "use the shorter `bun runner/main.ts …`):\n" +
--      "       bun scripts/steve-verify/runner/main.ts run <template-id> " +
--      "[--cp CERTCP1] [--timeout N] [--connector N]\n" +
--      "       bun scripts/steve-verify/runner/main.ts run --group " +
++  process.stderr.write(
 +    "Usage: ocpp-tck run <template-id> [--cp CP1] [--timeout N] " +
 +      "[--connector N] [--results-dir DIR]\n" +
 +      "       ocpp-tck run --group " +
-       `${Object.keys(GROUPS).join("|")} [--parallel] [--retry-failed-isolated]\n` +
--      "       bun scripts/steve-verify/runner/main.ts run-all " +
--      "[--group <name>] [--parallel] [--retry-failed-isolated]\n" +
++      `${Object.keys(GROUPS).join("|")} [--parallel] [--retry-failed-isolated]\n` +
 +      "       ocpp-tck run-all [--group <name>] [--parallel] " +
 +      "[--retry-failed-isolated] [--results-dir DIR]\n" +
 +      "       ocpp-tck list-scenarios [--group <name>] [--json]\n" +
 +      "       ocpp-tck check-driver [--driver SPEC] [--json]\n" +
 +      "       ocpp-tck print-sim-image\n" +
 +      "       ocpp-tck driver <verb> [args...]\n" +
-       "\n" +
--      "--retry-failed-isolated: after a --parallel sweep, re-run any " +
--      "non-PASS scenario once more, sequentially and isolated, and report " +
++      "\n" +
 +      "check-driver is fully offline: it reads the driver MODULE (never " +
 +      "create()), so it needs no CSMS, no docker, no network and no " +
 +      "credentials.\n" +
 +      "\n" +
 +      "--retry-failed-isolated: after a parallel sweep, re-run any " +
 +      "FAIL/ERROR scenario once more, sequentially and isolated, and report " +
-       "both verdicts (parallel-fail -> isolated-pass = flake; still fails " +
--      "isolated = real fail). No effect without --parallel.\n",
++      "both verdicts (parallel-fail -> isolated-pass = flake; still fails " +
 +      "isolated = real fail). No effect without parallel lanes.\n" +
 +      "\n" +
 +      "Environment: CSMS_DRIVER (module specifier of the driver to load), " +
@@ -1481,7 +1535,8 @@
 +      "OCPP_STATIONS (ocpp_id=station_id[,...] override when the stations were " +
 +      "created by hand), SIM_WS_URL, SIM_IMAGE, SIM_NETWORK, " +
 +      "SIM_WS_APPEND_CP_ID, SIM_WS_BASIC_USER/SIM_WS_BASIC_PASS, " +
-+      "SIM_OCPP_VERSION (default OCPP-1.6J).\n",
++      "SIM_OCPP_VERSION (default OCPP-1.6J), SIM_TRACE=0 (no JSONL wire " +
++      "trace beside the log).\n",
    );
 -}
  
@@ -1526,7 +1581,7 @@
  
    if (argv[0] === "run-all") {
      group = "all";
-@@ -708,18 +1309,27 @@
+@@ -708,18 +1360,27 @@
          case "--retry-failed-isolated":
            retryFailedIsolated = true;
            break;
@@ -1557,7 +1612,7 @@
      process.exit(1);
    }
  
-@@ -749,9 +1359,11 @@
+@@ -749,9 +1410,11 @@
        case "--retry-failed-isolated":
          retryFailedIsolated = true;
          break;
@@ -1570,7 +1625,7 @@
          process.exit(1);
      }
    }
-@@ -764,35 +1376,495 @@
+@@ -764,35 +1427,495 @@
      cpId,
      connector,
      timeoutSecs,
@@ -2082,7 +2137,7 @@
    }
  
    const spec = SPECS_BY_TEMPLATE_ID.get(args.templateId);
-@@ -800,18 +1872,109 @@
+@@ -800,18 +1923,109 @@
      process.stderr.write(
        `Unknown template id: ${args.templateId} (known: ${[...SPECS_BY_TEMPLATE_ID.keys()].join(", ")})\n`,
      );

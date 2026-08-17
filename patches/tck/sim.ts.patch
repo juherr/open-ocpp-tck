@@ -1,6 +1,6 @@
 --- /tmp/ocpp-upstream/scripts/steve-verify/runner/sim.ts	2026-07-31 20:05:48
 +++ tck/sim.ts	2026-07-31 20:10:22
-@@ -1,15 +1,52 @@
+@@ -1,15 +1,67 @@
 +// Derived from shiv3/ocpp-cp-simulator scripts/steve-verify/runner/sim.ts @ 604054adb0d7d7129a26a5f1ad2d5fdc290d1ca1 (Apache-2.0). Modified: the hardcoded docker argv is now built from SimConfig; the `-v <repoRoot>:/app -w /app` bind mount and `repoRoot` are gone (the published image ships the CLI sources); the image is pinned by digest; `--network` left the default path; outgoing WS Basic auth and an optional cpId-in-path WS URL were added; every trace of the command redacts the password. The line pump, waitForLine, stop(), container cleanup and signal handlers are byte-for-byte upstream.
 +
  /**
@@ -31,8 +31,23 @@
 + * runs the very same embedded sources in true JSON Lines mode.
   */
  
++import { basename, dirname } from "node:path";
++
  const STOP_GRACE_MS = 10_000;
  
++/**
++ * Where {@link SimConfig.tracePath}'s directory is mounted in the container.
++ *
++ * A directory rather than the file: docker creates a missing bind-mount source
++ * as a DIRECTORY, so mounting the trace file itself turns a first run -- the
++ * one where the file cannot exist yet -- into a container writing to a path
++ * that is a directory. The runner's own results directory is what gets mounted,
++ * which means the container can write beside our logs; accepted, because it is
++ * our artifact directory and the alternative puts a scenario's trace somewhere
++ * other than next to the log it belongs to.
++ */
++const TRACE_MOUNT = "/trace";
++
 +/**
 + * Default simulator image, PINNED BY DIGEST (repo convention: never
 + * `latest`, never a bare tag). This is the multi-arch index digest of
@@ -60,7 +75,7 @@
  // ---------------------------------------------------------------------------
  // Signal-safe cleanup -- a bare try/finally around a run does NOT survive
  // Ctrl-C (SIGINT) or a `docker stop`/CI-cancel-driven SIGTERM arriving while
-@@ -45,32 +82,191 @@
+@@ -45,32 +97,215 @@
    process.on("SIGTERM", onSignal);
  }
  
@@ -133,6 +148,21 @@
 +   *  {@link https://github.com/juherr/open-ocpp-tck/issues/57 transport
 +   *  defaults}, see the note beside `SimTransportDefaults` in driver.ts. */
 +  ocppVersion: SimOcppVersion;
++  /**
++   * HOST path of the JSONL wire trace this container appends to, or undefined
++   * for no trace at all -- in which case the argv carries neither a mount nor
++   * the flag.
++   *
++   * A host path, not the container's, because the mount is this function's
++   * business: the file has to outlive `docker rm -f` (see {@link SimProcess} and
++   * `stop()`), and a `--trace-output` pointing anywhere else writes into a
++   * container that is deleted seconds later. That is exactly how the format was
++   * unreachable through this runner until now.
++   *
++   * Set per scenario by the runner. `startSim` itself leaves it undefined, so a
++   * library caller gets today's argv unless it asks for a trace.
++   */
++  tracePath?: string;
 +  /** Extra CLI flags appended verbatim, whitespace-split from
 +   *  `SIM_EXTRA_ARGS` (e.g. `--connectors 2`). The LAST WORD on any flag this
 +   *  module also passes -- see {@link buildDockerArgs}. */
@@ -197,8 +227,8 @@
 +    ocppVersion: resolveOcppVersion(env.SIM_OCPP_VERSION),
 +    extraArgs: splitArgs(env.SIM_EXTRA_ARGS),
    };
- }
- 
++}
++
 +/** The WebSocket URL this charge point dials, honouring
 + *  {@link SimConfig.appendCpIdToWsPath}. Exported for the scope/driver
 + *  modules and tests. */
@@ -221,6 +251,9 @@
 +): string[] {
 +  const args = ["run", "-i", "--rm", "--name", container];
 +  if (cfg.network) args.push("--network", cfg.network);
++  if (cfg.tracePath) {
++    args.push("-v", `${dirname(cfg.tracePath)}:${TRACE_MOUNT}`);
++  }
 +  if (cfg.entrypoint) args.push("--entrypoint", cfg.entrypoint);
 +  args.push(cfg.image, ...cfg.command);
 +  args.push("--ws-url", resolveWsUrl(cpId, cfg));
@@ -240,6 +273,12 @@
 +  if (!namesFlag(cfg.extraArgs, "--ocpp-version")) {
 +    args.push("--ocpp-version", cfg.ocppVersion);
 +  }
++  // Same rule for the same reason: an operator who spells their own
++  // --trace-output gets theirs and only theirs. The mount still follows
++  // tracePath, which is the only path this function knows exists on the host.
++  if (cfg.tracePath && !namesFlag(cfg.extraArgs, "--trace-output")) {
++    args.push("--trace-output", `${TRACE_MOUNT}/${basename(cfg.tracePath)}`);
++  }
 +  // Only when BOTH halves are configured -- a lone username would make the
 +  // CLI dial with an empty password rather than no auth at all.
 +  if (cfg.basicAuthUser && cfg.basicAuthPass) {
@@ -248,8 +287,8 @@
 +  }
 +  args.push(...cfg.extraArgs);
 +  return args;
-+}
-+
+ }
+ 
 +/**
 + * Human-readable rendering of {@link buildDockerArgs} with the Basic auth
 + * password replaced. Everything that logs the command -- stderr traces,
@@ -266,7 +305,7 @@
  export interface SimProcess {
    readonly cpId: string;
    readonly container: string;
-@@ -88,10 +284,186 @@
+@@ -88,10 +323,186 @@
    stop(): Promise<void>;
  }
  
@@ -280,8 +319,8 @@
  function containerName(cpId: string, templateId: string): string {
 -  return `simts-${cpId.toLowerCase()}-${templateId}`.slice(0, 63);
 +  return `${stationPrefix(cpId)}${templateId}`.slice(0, 63);
-+}
-+
+ }
+ 
 +/**
 + * How a template id opens: its certification namespace -- `cert16-`,
 + * `cert201-`, whatever the next protocol version is called. NO VERSION LITERAL,
@@ -399,8 +438,8 @@
 +  }
 +
 +  return { shared: [...shared].sort(), others: [...others].sort() };
- }
- 
++}
++
 +/**
 + * Refuses to start when another sweep is already driving one of OUR charge
 + * points, and says so when one is driving different ones.
@@ -454,7 +493,7 @@
  async function runDocker(args: string[]): Promise<void> {
    const proc = Bun.spawn(["docker", ...args], {
      stdout: "ignore",
-@@ -147,32 +519,15 @@
+@@ -147,32 +558,15 @@
    // run with the same name (mirrors lib.sh's sim_start).
    await runDocker(["rm", "-f", container]).catch(() => {});
  

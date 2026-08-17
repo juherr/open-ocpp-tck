@@ -64,6 +64,21 @@ export interface SimConfig {
      *  {@link https://github.com/juherr/open-ocpp-tck/issues/57 transport
      *  defaults}, see the note beside `SimTransportDefaults` in driver.ts. */
     ocppVersion: SimOcppVersion;
+    /**
+     * HOST path of the JSONL wire trace this container appends to, or undefined
+     * for no trace at all -- in which case the argv carries neither a mount nor
+     * the flag.
+     *
+     * A host path, not the container's, because the mount is this function's
+     * business: the file has to outlive `docker rm -f` (see {@link SimProcess} and
+     * `stop()`), and a `--trace-output` pointing anywhere else writes into a
+     * container that is deleted seconds later. That is exactly how the format was
+     * unreachable through this runner until now.
+     *
+     * Set per scenario by the runner. `startSim` itself leaves it undefined, so a
+     * library caller gets today's argv unless it asks for a trace.
+     */
+    tracePath?: string;
     /** Extra CLI flags appended verbatim, whitespace-split from
      *  `SIM_EXTRA_ARGS` (e.g. `--connectors 2`). The LAST WORD on any flag this
      *  module also passes -- see {@link buildDockerArgs}. */

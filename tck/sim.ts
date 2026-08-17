@@ -21,7 +21,22 @@
  * runs the very same embedded sources in true JSON Lines mode.
  */
 
+import { basename, dirname } from "node:path";
+
 const STOP_GRACE_MS = 10_000;
+
+/**
+ * Where {@link SimConfig.tracePath}'s directory is mounted in the container.
+ *
+ * A directory rather than the file: docker creates a missing bind-mount source
+ * as a DIRECTORY, so mounting the trace file itself turns a first run -- the
+ * one where the file cannot exist yet -- into a container writing to a path
+ * that is a directory. The runner's own results directory is what gets mounted,
+ * which means the container can write beside our logs; accepted, because it is
+ * our artifact directory and the alternative puts a scenario's trace somewhere
+ * other than next to the log it belongs to.
+ */
+const TRACE_MOUNT = "/trace";
 
 /**
  * Default simulator image, PINNED BY DIGEST (repo convention: never
@@ -143,6 +158,21 @@ export interface SimConfig {
    *  {@link https://github.com/juherr/open-ocpp-tck/issues/57 transport
    *  defaults}, see the note beside `SimTransportDefaults` in driver.ts. */
   ocppVersion: SimOcppVersion;
+  /**
+   * HOST path of the JSONL wire trace this container appends to, or undefined
+   * for no trace at all -- in which case the argv carries neither a mount nor
+   * the flag.
+   *
+   * A host path, not the container's, because the mount is this function's
+   * business: the file has to outlive `docker rm -f` (see {@link SimProcess} and
+   * `stop()`), and a `--trace-output` pointing anywhere else writes into a
+   * container that is deleted seconds later. That is exactly how the format was
+   * unreachable through this runner until now.
+   *
+   * Set per scenario by the runner. `startSim` itself leaves it undefined, so a
+   * library caller gets today's argv unless it asks for a trace.
+   */
+  tracePath?: string;
   /** Extra CLI flags appended verbatim, whitespace-split from
    *  `SIM_EXTRA_ARGS` (e.g. `--connectors 2`). The LAST WORD on any flag this
    *  module also passes -- see {@link buildDockerArgs}. */
@@ -225,6 +255,9 @@ export function buildDockerArgs(
 ): string[] {
   const args = ["run", "-i", "--rm", "--name", container];
   if (cfg.network) args.push("--network", cfg.network);
+  if (cfg.tracePath) {
+    args.push("-v", `${dirname(cfg.tracePath)}:${TRACE_MOUNT}`);
+  }
   if (cfg.entrypoint) args.push("--entrypoint", cfg.entrypoint);
   args.push(cfg.image, ...cfg.command);
   args.push("--ws-url", resolveWsUrl(cpId, cfg));
@@ -243,6 +276,12 @@ export function buildDockerArgs(
   // could notice changing under a digest bump. Ours is simply not emitted.
   if (!namesFlag(cfg.extraArgs, "--ocpp-version")) {
     args.push("--ocpp-version", cfg.ocppVersion);
+  }
+  // Same rule for the same reason: an operator who spells their own
+  // --trace-output gets theirs and only theirs. The mount still follows
+  // tracePath, which is the only path this function knows exists on the host.
+  if (cfg.tracePath && !namesFlag(cfg.extraArgs, "--trace-output")) {
+    args.push("--trace-output", `${TRACE_MOUNT}/${basename(cfg.tracePath)}`);
   }
   // Only when BOTH halves are configured -- a lone username would make the
   // CLI dial with an empty password rather than no auth at all.
