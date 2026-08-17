@@ -100,13 +100,6 @@ jobs:
       - name: An unfiltered GetConfiguration is a shape, not a spelling
         run: bun tests/get-configuration-filter.ts
 
-      # In-process again, and this one needs a clock rather than a CSMS: the
-      # window closes on a fake wire advanced by a fake sleep, where a live
-      # run would need a CSMS engineered to answer late by a chosen number
-      # of seconds.
-      - name: The observation window closes when it should
-        run: bun tests/observation-window.ts
-
       - name: Core names no CSMS
         run: bash tests/generic-core.sh
 

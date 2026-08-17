@@ -49,7 +49,14 @@
  *     Runs from here on keep both -- `<template-id>.log` for the sweep,
  *     `<template-id>.retry.log` for the re-run -- and a red sweep also carries
  *     the CSMS's own `csms-<driver>.log`. Neither is read here; they are what
- *     makes a row in this table answerable once it is found.
+ *     makes a row in this table answerable once it is found, and they are what
+ *     root-caused the SteVe deadlock behind most of this corpus's flakes.
+ *   - A `held past floor` column exists in exactly two archived runs -- the
+ *     CI runs on `main` between the observation-window extension landing and
+ *     its removal, once measurement showed it addressed nothing. A closed set
+ *     that cannot grow, and none of them are in the corpus this was written
+ *     against. The parse is kept anyway: reading a column by name costs
+ *     nothing whether or not it is there. Expect `extraHoldSecs` to be null.
  *
  * NO SILENT CAPS: a row this parser cannot read is reported as unparsed, by
  * file. A report that quietly dropped what it could not understand would read
@@ -123,9 +130,10 @@ interface Observation {
    *  failed in its lane. `null` everywhere else -- including a run that used
    *  the flag and where this row simply did not fail. */
   retryVerdict: Verdict | null;
-  /** Seconds this scenario's observation window ran past its holdSecs. `null`
-   *  on every run archived before the runner grew that column, which is most
-   *  of the corpus -- so it reads as "not recorded", never as zero. */
+  /** Seconds this scenario's observation window ran past its holdSecs, for
+   *  the two runs that ever recorded it -- see the `held past floor` note in
+   *  the header. `null` everywhere else, and it reads as "not recorded" rather
+   *  than as zero. */
   extraHoldSecs: number | null;
 }
 
@@ -159,11 +167,12 @@ function parseSummary(runLabel: string, text: string): ParsedRun | null {
   const headerIdx = lines.findIndex((l) => l.startsWith("| scenario |"));
   if (headerIdx === -1) return null;
   // BY NAME, NOT BY POSITION. `writeSummary` appends a column per thing a run
-  // actually did -- "isolated retry" when it retried, "held past floor" when a
-  // window outlived its holdSecs -- so the corpus is already several table
-  // shapes and will grow more. Reading `cells[7]` would make every one of
-  // those a silent misparse of the column that moved into it; reading the
-  // header makes an unknown shape a row this file reports as unparsed.
+  // actually did, so the corpus is several table shapes already and a column
+  // may be added or retired without this file changing. Reading `cells[7]`
+  // would make every one of those a silent misparse of whichever column moved
+  // into that slot; reading the header makes an unknown shape a row this file
+  // reports as unparsed. Which columns exist today is the header note's job,
+  // not this comment's -- a list here is a list that goes stale.
   const columns = lines[headerIdx].split("|").map((c) => c.trim());
   const at = (name: string): number => columns.indexOf(name);
   const [verdictAt, templateAt, cpAt, retryAt, heldAt] = [

@@ -48,7 +48,7 @@ different surfaces, and each answers a question the other cannot:
 
 | Driver | Transport | What it answers | Result |
 |---|---|---|---|
-| [`drivers/steve`](drivers/steve) | HTML manager UI + WebAPI + MariaDB | *Has the harness lost a capability?* SteVe is the CSMS the scenarios were originally written against, so a scope row that had to be demoted would mean the core dropped something. | All 47 `DRIVABLE` |
+| [`drivers/steve`](drivers/steve/README.md) | HTML manager UI + WebAPI + MariaDB | *Has the harness lost a capability?* SteVe is the CSMS the scenarios were originally written against, so a scope row that had to be demoted would mean the core dropped something. | All 47 `DRIVABLE` |
 | [`drivers/citrineos`](drivers/citrineos/README.md) | JSON REST API + GraphQL | *Is the contract actually CSMS-neutral?* [CitrineOS](https://github.com/citrineos/citrineos-core) (LF Energy / S44) had no part in writing the scenarios and has a smaller OCPP 1.6 surface. | 31 `PASS`, 5 `PARTIAL`, 4 `FAIL`, 7 `NOT APPLICABLE` |
 
 An abstraction with one implementation is neutral by assertion, so the second

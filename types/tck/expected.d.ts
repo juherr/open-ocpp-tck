@@ -38,10 +38,20 @@
  *    the row of the driver README's gap table that carries the evidence. A
  *    known-red with nowhere to read about it is a claim nobody can review, and
  *    it is the shape this list rots into if the field is optional.
- *  - NEVER add a row to quiet a flake. A scenario that sometimes passes has a
- *    timing bug, and the fix is the scenario. There is deliberately no
- *    "expected flaky" status here: it would re-create the job-level mute one
- *    scenario at a time.
+ *  - NEVER add a row to quiet a flake. There is deliberately no "expected
+ *    flaky" status here: it would re-create the job-level mute one scenario at
+ *    a time, and the row could never be satisfied anyway -- a run that does not
+ *    fail is an unexpected pass, and a run that does is adjudicated a flake by
+ *    the isolated retry, which is an unexpected pass too.
+ *  - A FLAKE IS NOT ALWAYS THE SCENARIO'S BUG, which this list said until a
+ *    measurement said otherwise. It can be an intermittent defect in the CSMS:
+ *    the worked example is a MariaDB deadlock under concurrent lanes, where
+ *    re-tuning the scenario's timing was tried, shipped and measured to change
+ *    nothing (drivers/steve/README.md's gap row, steve-community/steve#2107).
+ *    The handling is the same either way -- do not declare it, let the isolated
+ *    retry adjudicate it, and write the finding down in the driver README's gap
+ *    table -- but "fix the scenario" is advice that sends the next reader after
+ *    the wrong thing for weeks.
  */
 import type { ScopeTable } from "./scope";
 export interface ExpectedFailureEntry {
