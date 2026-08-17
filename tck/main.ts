@@ -42,7 +42,7 @@
  * nothing keeps the original rule exactly.
  */
 
-import { mkdirSync, rmSync } from "node:fs";
+import { mkdirSync, rmSync, statSync } from "node:fs";
 import { cpus, loadavg } from "node:os";
 import { resolve } from "node:path";
 import { AssertRecorder } from "./assert";
@@ -149,6 +149,29 @@ let RESULTS_DIR = resultsDir();
  * itself follows `--results-dir` / `OCPP_TCK_RESULTS_DIR`, so it needs no
  * variable of its own.
  */
+/**
+ * Refuses an unusable simulator environment before any scenario runs.
+ *
+ * WHY IT IS HERE AND NOT LEFT TO THE FIRST SCENARIO. `defaultSimConfig()`
+ * refuses a `SIM_OCPP_VERSION` the image's CLI cannot take, and it is called
+ * per scenario -- so reaching that refusal through a sweep turns one typo into
+ * a table of ERROR rows carrying NO reason, plus, for every declared
+ * expected-failure scenario, the "DECLARED, BUT ERRORED" escalation, whose
+ * whole message is that the declaration is probably fine and the crash is the
+ * new thing. Measured on this branch before this call existed:
+ * `run --group firmware` with `SIM_OCPP_VERSION=OCPP-2.0` produced four
+ * reasonless ERROR rows, three of them escalated, and the sentence naming the
+ * bad value appeared in no summary at all. The operator is sent to audit their
+ * expected-failure list over one environment variable.
+ *
+ * CALLED ONCE PER PROCESS, FROM THE ENTRY POINTS, the same placement and for
+ * the same class of reason as `assertNoForeignSweep`: a preflight that runs
+ * after the run has started is a diagnosis nobody reads.
+ */
+function assertSimEnvUsable(): void {
+  defaultSimConfig();
+}
+
 function prepareTracePath(
   traceName: string,
   env: CsmsEnv = process.env,
@@ -517,6 +540,33 @@ async function runScenario<D>(
         err instanceof Error ? err.message : String(err)
       }\n`,
     );
+  }
+
+  // THE ONE FAILURE MODE THE MOUNT HAS THAT NOTHING ELSE REPORTS. The trace is
+  // written by the container into a bind mount, so it can go missing for
+  // reasons no error surfaces here: this runner itself running in a container
+  // with a mounted docker socket, where `-v <our path>` names a path on the
+  // DOCKER HOST that has nothing to do with our results directory; a docker
+  // that silently declines the mount; or a simulator digest that stops
+  // honouring --trace-output. In each case the sweep goes green and the
+  // evidence simply is not there, which is the failure shape this repository
+  // keeps naming. So say it once, per scenario, where it happens.
+  if (simCfg.tracePath !== undefined) {
+    let bytes = -1;
+    try {
+      bytes = statSync(simCfg.tracePath).size;
+    } catch {
+      // Absent -- reported below like an empty one.
+    }
+    if (bytes <= 0) {
+      process.stderr.write(
+        `[runner] WARN: no wire trace at ${simCfg.tracePath} (${
+          bytes === 0 ? "empty" : "absent"
+        }) -- the container was asked for one. If this runner is itself ` +
+          "containerised, the bind mount names a path on the docker host, not " +
+          "this one; SIM_TRACE=0 turns the request off.\n",
+      );
+    }
   }
 
   if (unsupported !== undefined) {
@@ -1095,7 +1145,10 @@ async function runGroupSweep(
   }
 
   const stations = resolveStations();
-  // Before `driver provision` state or prepareStation() touches anything.
+  // Both before `driver provision` state or prepareStation() touches anything,
+  // and before the first container: an environment this runner cannot use is
+  // one refusal here, or one unexplained ERROR row per scenario later.
+  assertSimEnvUsable();
   await assertNoForeignSweep(stations);
   // Lane count IS the station count: one lane per station, never more. A
   // single resolved station therefore forces sequential execution however
@@ -1941,6 +1994,7 @@ export async function cli(argv: string[]): Promise<number> {
     return exitForSingleRun(spec.templateId, "NOT APPLICABLE", expected);
   }
 
+  assertSimEnvUsable();
   await assertNoForeignSweep([args.cpId]);
 
   const options: RunOptions = {
