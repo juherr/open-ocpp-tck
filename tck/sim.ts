@@ -210,31 +210,134 @@ export interface SimProcess {
   stop(): Promise<void>;
 }
 
-function containerName(cpId: string, templateId: string): string {
-  return `simts-${cpId.toLowerCase()}-${templateId}`.slice(0, 63);
+/** The prefix every simulator container driving `cpId` carries, whatever
+ *  scenario it is running. The one declaration of that shape: the name is built
+ *  from it and {@link classifyForeignSims} reads it back. */
+function stationPrefix(cpId: string): string {
+  return `simts-${cpId.toLowerCase()}-`;
 }
 
-/** `simts-<cp-id>-<template-id>`; the cp-id half is what a second sweep
- *  collides on. */
-const SIM_NAME = /^simts-(.+?)-cert16-/;
+function containerName(cpId: string, templateId: string): string {
+  return `${stationPrefix(cpId)}${templateId}`.slice(0, 63);
+}
 
 /**
- * Simulator containers this process did not start, by the charge point they
- * are driving. Empty on an idle daemon.
+ * How a template id opens: its certification namespace -- `cert16-`,
+ * `cert201-`, whatever the next protocol version is called. NO VERSION LITERAL,
+ * because the guards below used to carry `cert16-` and went blind to everything
+ * else without saying so.
+ *
+ * One declaration, two positions, and built rather than written twice on
+ * purpose: the two readings below must agree, and a namespace narrowed in one
+ * place and not the other is the same silent half-coverage in a new shape.
  */
-async function foreignSimStations(): Promise<Set<string>> {
+const TEMPLATE_NAMESPACE = String.raw`cert\d+-`;
+
+/** The template-id half of `simts-<cp-id>-<template-id>`, read where the name
+ *  has already been attributed to a charge point. */
+const TEMPLATE_HEAD = new RegExp(`^${TEMPLATE_NAMESPACE}`);
+
+/** `simts-<cp-id>-<template-id>`. USED ONLY TO NAME a station that is not on
+ *  our roster; see {@link classifyForeignSims} for why the refusal itself does
+ *  not parse. */
+const SIM_NAME = new RegExp(`^simts-(.+?)-${TEMPLATE_NAMESPACE}`);
+
+/** Simulator container names this process did not start. Empty on an idle
+ *  daemon. */
+async function foreignSimContainers(): Promise<string[]> {
   const proc = Bun.spawn(
     ["docker", "ps", "--filter", "name=simts-", "--format", "{{.Names}}"],
     { stdout: "pipe", stderr: "ignore" },
   );
   const out = await new Response(proc.stdout).text();
   await proc.exited;
-  const stations = new Set<string>();
-  for (const name of out.split("\n")) {
-    const match = SIM_NAME.exec(name.trim());
-    if (match) stations.add(match[1]);
+  return out
+    .split("\n")
+    .map((name) => name.trim())
+    .filter((name) => name !== "");
+}
+
+/** What {@link assertNoForeignSweep} decides, split from how it learns the
+ *  container names so the rule can be checked without a docker daemon. */
+export interface ForeignSweep {
+  /** OUR charge point ids that a container we did not start is already
+   *  driving. Non-empty means refuse. */
+  readonly shared: string[];
+  /** The other sweeps' stations, for the note: the charge point id where the
+   *  container name yields one, the container name itself where it does not. */
+  readonly others: string[];
+}
+
+/**
+ * Which of `cpIds` a foreign container is driving, and what else is running.
+ *
+ * THE REFUSAL DOES NOT PARSE THE CONTAINER NAME. It asks, of each id we are
+ * about to drive, whether some foreign container's name starts with that id's
+ * prefix -- so it carries no scenario namespace, and a `cert201-` container (or
+ * a `cert21-` one, or a namespace nobody has proposed yet) is caught by the
+ * same expression that catches `cert16-`. It was `/^simts-(.+?)-cert16-/`, and
+ * the moment a 2.0.1 scenario existed half the suite would have lost the
+ * protection silently.
+ *
+ * It also settles the ambiguity that regex could not: `cpId` comes from
+ * `OCPP_CP_IDS`, so it may itself contain a hyphen, and no lazy or greedy
+ * quantifier can say which hyphen of `simts-cp-1-cert16-tc001` ends the station.
+ * Comparing against the roster asks the question the other way round: a
+ * container belongs to `cpId` when its name is that station's prefix followed by
+ * something that opens like a template id. Both halves are needed --
+ * `simts-cp-` alone also prefixes station `cp-1`'s containers, so without the
+ * second half a sweep on `cp` would refuse to start because a different sweep
+ * is driving `cp-1`.
+ *
+ * WHERE A HYPHEN LEAVES TWO READINGS, IT ERRS TOWARDS REFUSING. A charge point
+ * id containing `cert16-` makes `simts-cp-cert16-x-cert201-y` readable as
+ * station `cp` or as station `cp-cert16-x`, and nothing in the name says which.
+ * A spurious refusal costs a wait and names what it saw; a missed one costs the
+ * sweep that attributes another sweep's rows to the CSMS under test.
+ *
+ * WHY NOT A DOCKER LABEL, which is the other shape proposed and removes the
+ * class of bug rather than the instance: a label only exists on containers
+ * started by code that carries it. Several checkouts of this repository drive
+ * one daemon here, so a label-only guard is blind to every container started by
+ * a checkout that predates the label -- silently, in exactly the situation this
+ * guard exists for. The container name is the only identifier every sweep,
+ * including the ones already running, agrees on.
+ */
+export function classifyForeignSims(
+  containers: readonly string[],
+  cpIds: readonly string[],
+): ForeignSweep {
+  const shared = new Set<string>();
+  const attributed = new Set<string>();
+  for (const cpId of cpIds) {
+    const prefix = stationPrefix(cpId);
+    // Both sides lowered: `containerName` lowers the id it builds with, and
+    // docker itself accepts an upper-case name from whatever started the
+    // other sweep.
+    const mine = containers.filter((name) => {
+      const lowered = name.toLowerCase();
+      return (
+        lowered.startsWith(prefix) &&
+        TEMPLATE_HEAD.test(lowered.slice(prefix.length))
+      );
+    });
+    if (mine.length === 0) continue;
+    shared.add(cpId);
+    for (const name of mine) attributed.add(name);
   }
-  return stations;
+
+  const others = new Set<string>();
+  for (const name of containers) {
+    if (attributed.has(name)) continue;
+    // A name that does not parse is REPORTED, not skipped: `containerName`
+    // caps at 63 characters, so a long enough charge point id truncates the
+    // delimiter away, and an unattributable container is exactly the thing
+    // worth putting in front of whoever is about to start a sweep.
+    const match = SIM_NAME.exec(name);
+    others.add(match ? match[1] : name);
+  }
+
+  return { shared: [...shared].sort(), others: [...others].sort() };
 }
 
 /**
@@ -267,10 +370,9 @@ async function foreignSimStations(): Promise<Set<string>> {
 export async function assertNoForeignSweep(
   cpIds: readonly string[],
 ): Promise<void> {
-  const foreign = await foreignSimStations();
-  if (foreign.size === 0) return;
-  const mine = new Set(cpIds.map((id) => id.toLowerCase()));
-  const shared = [...foreign].filter((id) => mine.has(id)).sort();
+  const containers = await foreignSimContainers();
+  if (containers.length === 0) return;
+  const { shared, others } = classifyForeignSims(containers, cpIds);
   if (shared.length > 0) {
     throw new Error(
       `another sweep is already driving ${shared.join(", ")}: simulator ` +
@@ -281,10 +383,10 @@ export async function assertNoForeignSweep(
     );
   }
   process.stderr.write(
-    `[runner] NOTE: ${foreign.size} simulator container(s) from another sweep ` +
-      `are running (${[...foreign].sort().join(", ")}), none on this roster. ` +
-      "Fine if they drive their own CSMS; a shared one still interleaves in " +
-      "the database.\n",
+    `[runner] NOTE: ${containers.length} simulator container(s) from another ` +
+      `sweep are running (${others.join(", ")}), none on this roster. Fine if ` +
+      "they drive their own CSMS; a shared one still interleaves in the " +
+      "database.\n",
   );
 }
 

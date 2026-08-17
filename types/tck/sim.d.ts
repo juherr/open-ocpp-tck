@@ -82,6 +82,52 @@ export interface SimProcess {
      *  process. Idempotent, never throws. */
     stop(): Promise<void>;
 }
+/** What {@link assertNoForeignSweep} decides, split from how it learns the
+ *  container names so the rule can be checked without a docker daemon. */
+export interface ForeignSweep {
+    /** OUR charge point ids that a container we did not start is already
+     *  driving. Non-empty means refuse. */
+    readonly shared: string[];
+    /** The other sweeps' stations, for the note: the charge point id where the
+     *  container name yields one, the container name itself where it does not. */
+    readonly others: string[];
+}
+/**
+ * Which of `cpIds` a foreign container is driving, and what else is running.
+ *
+ * THE REFUSAL DOES NOT PARSE THE CONTAINER NAME. It asks, of each id we are
+ * about to drive, whether some foreign container's name starts with that id's
+ * prefix -- so it carries no scenario namespace, and a `cert201-` container (or
+ * a `cert21-` one, or a namespace nobody has proposed yet) is caught by the
+ * same expression that catches `cert16-`. It was `/^simts-(.+?)-cert16-/`, and
+ * the moment a 2.0.1 scenario existed half the suite would have lost the
+ * protection silently.
+ *
+ * It also settles the ambiguity that regex could not: `cpId` comes from
+ * `OCPP_CP_IDS`, so it may itself contain a hyphen, and no lazy or greedy
+ * quantifier can say which hyphen of `simts-cp-1-cert16-tc001` ends the station.
+ * Comparing against the roster asks the question the other way round: a
+ * container belongs to `cpId` when its name is that station's prefix followed by
+ * something that opens like a template id. Both halves are needed --
+ * `simts-cp-` alone also prefixes station `cp-1`'s containers, so without the
+ * second half a sweep on `cp` would refuse to start because a different sweep
+ * is driving `cp-1`.
+ *
+ * WHERE A HYPHEN LEAVES TWO READINGS, IT ERRS TOWARDS REFUSING. A charge point
+ * id containing `cert16-` makes `simts-cp-cert16-x-cert201-y` readable as
+ * station `cp` or as station `cp-cert16-x`, and nothing in the name says which.
+ * A spurious refusal costs a wait and names what it saw; a missed one costs the
+ * sweep that attributes another sweep's rows to the CSMS under test.
+ *
+ * WHY NOT A DOCKER LABEL, which is the other shape proposed and removes the
+ * class of bug rather than the instance: a label only exists on containers
+ * started by code that carries it. Several checkouts of this repository drive
+ * one daemon here, so a label-only guard is blind to every container started by
+ * a checkout that predates the label -- silently, in exactly the situation this
+ * guard exists for. The container name is the only identifier every sweep,
+ * including the ones already running, agrees on.
+ */
+export declare function classifyForeignSims(containers: readonly string[], cpIds: readonly string[]): ForeignSweep;
 /**
  * Refuses to start when another sweep is already driving one of OUR charge
  * points, and says so when one is driving different ones.
