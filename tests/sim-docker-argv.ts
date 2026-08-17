@@ -169,7 +169,10 @@ for (const extra of [
   "--ocpp-version=OCPP-2.1",
   "--connectors 2 --ocpp-version OCPP-2.1",
 ]) {
-  const args = argsFor({ SIM_EXTRA_ARGS: extra, SIM_OCPP_VERSION: "OCPP-1.6J" });
+  const args = argsFor({
+    SIM_EXTRA_ARGS: extra,
+    SIM_OCPP_VERSION: "OCPP-1.6J",
+  });
   if (countOf(args, "--ocpp-version") !== 1) {
     fail(
       `SIM_EXTRA_ARGS='${extra}' is the only --ocpp-version on the argv`,
@@ -226,33 +229,37 @@ if (!buildDockerArgs(CP, CONTAINER, explicit).includes("OCPP-2.0.1")) {
     ...defaultSimConfig({}),
     tracePath: "/tmp/results/cert16-tc001-cold-boot.jsonl",
   };
-  expectArgs("the argv with a trace path", buildDockerArgs(CP, CONTAINER, traced), [
-    "run",
-    "-i",
-    "--rm",
-    "--name",
-    CONTAINER,
-    // Before the image, because docker's own options must be, and a `-v`
-    // pushed after it becomes an argument to the CLI instead.
-    "-v",
-    "/tmp/results:/trace",
-    "--entrypoint",
-    "bun",
-    DEFAULT_SIM_IMAGE,
-    "src/cli/main.ts",
-    "--ws-url",
-    "ws://localhost:8080/ocpp/CP1",
-    "--cp-id",
-    CP,
-    "--json",
-    "--ocpp-version",
-    DEFAULT_SIM_OCPP_VERSION,
-    // The file the mount makes reachable from the host. A path outside it
-    // would be written inside the container and removed with it, which is
-    // how this format was unusable through the runner before.
-    "--trace-output",
-    "/trace/cert16-tc001-cold-boot.jsonl",
-  ]);
+  expectArgs(
+    "the argv with a trace path",
+    buildDockerArgs(CP, CONTAINER, traced),
+    [
+      "run",
+      "-i",
+      "--rm",
+      "--name",
+      CONTAINER,
+      // Before the image, because docker's own options must be, and a `-v`
+      // pushed after it becomes an argument to the CLI instead.
+      "-v",
+      "/tmp/results:/trace",
+      "--entrypoint",
+      "bun",
+      DEFAULT_SIM_IMAGE,
+      "src/cli/main.ts",
+      "--ws-url",
+      "ws://localhost:8080/ocpp/CP1",
+      "--cp-id",
+      CP,
+      "--json",
+      "--ocpp-version",
+      DEFAULT_SIM_OCPP_VERSION,
+      // The file the mount makes reachable from the host. A path outside it
+      // would be written inside the container and removed with it, which is
+      // how this format was unusable through the runner before.
+      "--trace-output",
+      "/trace/cert16-tc001-cold-boot.jsonl",
+    ],
+  );
 }
 
 {
