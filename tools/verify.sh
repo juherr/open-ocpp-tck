@@ -58,6 +58,15 @@ run "a CALLERROR fails, a truncated log does not" bun tests/assert-answered.ts
 # TC_019_1 used to reject -- an omitted member -- cannot be produced by any run
 # this repository can perform, only by handing the helper the frames.
 run "an unfiltered GetConfiguration is a shape, not a spelling" bun tests/get-configuration-filter.ts
+# And in-process because the foreign-sweep refusal reads `docker ps`, so
+# checking it from a shell would mean starting a container per row on the very
+# daemon it protects.
+run "the foreign-sweep refusal sees every namespace" bun tests/foreign-sweep-scope.ts
+# And in-process because buildDockerArgs is pure and its one caller spawns
+# docker in the next statement, so the argv a scenario would run is not
+# printable from a shell -- nor is a resolution from an environment that is not
+# this process's.
+run "the simulator argv says what the run was asked to do" bun tests/sim-docker-argv.ts
 run "core is CSMS-neutral" bash tests/generic-core.sh
 # The other layering boundary the repository declares in prose: AGENTS.md and
 # everything it governs must not depend on the harness file.

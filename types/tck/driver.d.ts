@@ -314,17 +314,34 @@ export interface CsmsCapabilities {
     readonly reservations: boolean;
     readonly chargingProfiles: boolean;
 }
-/** Transport defaults a driver contributes for the simulator container. An
- *  explicit `SIM_*` value in the environment always wins: an operator's
- *  override is the last word, a driver only states what it knows about its own
- *  CSMS. */
+/**
+ * Transport defaults a driver contributes for the simulator container. An
+ * explicit `SIM_*` value in the environment always wins: an operator's override
+ * is the last word, a driver only states what it knows about its own CSMS.
+ *
+ * EVERY FIELD HERE IS ONE THE RUNNER MERGES. `extraArgs` used to sit in this
+ * list and nothing read it, so a driver stating it was ignored in silence; it
+ * was removed rather than wired up, because simulator flags are not a fact
+ * about a CSMS. A field added here without a matching arm in the runner's
+ * merge is that bug again.
+ *
+ * THE OCPP VERSION DOES NOT BELONG HERE, and this was measured rather than
+ * argued: one CitrineOS serves 1.6 and 2.0.1 concurrently on a single websocket
+ * endpoint, one server profile advertising `ocpp2.1`, `ocpp2.0.1` and `ocpp1.6`,
+ * with two stations connected at once and each call routed on its negotiated
+ * subprotocol
+ * ({@link https://github.com/juherr/open-ocpp-tck/issues/57#issuecomment-5315202272 the evidence}).
+ * So a driver's transport has nothing to say about the version: it is a
+ * property of the scenario, and it lives on `SimConfig`. Re-proposing it here
+ * needs a CSMS that serves versions on separate endpoints, which is not a thing
+ * this repository has.
+ */
 export interface SimTransportDefaults {
     wsUrl?: string;
     appendCpIdToWsPath?: boolean;
     basicAuthUser?: string;
     basicAuthPass?: string;
     network?: string;
-    extraArgs?: string[];
 }
 /**
  * An extra CLI verb a driver contributes, reachable as

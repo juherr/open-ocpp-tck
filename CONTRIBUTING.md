@@ -16,7 +16,7 @@ driving it, and the core never learns which CSMS it is testing.
 ```sh
 mkdir acme-ocpp-tck && cd acme-ocpp-tck
 bun init -y
-bun add github:juherr/open-ocpp-tck#v0.2.1
+bun add github:juherr/open-ocpp-tck#v0.3.0
 bun add -d @types/bun typescript
 ```
 

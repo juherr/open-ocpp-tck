@@ -100,6 +100,19 @@ jobs:
       - name: An unfiltered GetConfiguration is a shape, not a spelling
         run: bun tests/get-configuration-filter.ts
 
+      # In-process because the refusal it guards reads `docker ps`: a shell
+      # version would start a container per row on the daemon this repository's
+      # own sweeps share, to check the rule that keeps two sweeps apart.
+      - name: The foreign-sweep refusal sees every namespace
+        run: bun tests/foreign-sweep-scope.ts
+
+      # In-process because `buildDockerArgs` is pure and its only caller spawns
+      # docker in the next statement: the argv a scenario would run is not
+      # printable from a shell, and neither is a resolution from an environment
+      # that is not this process's.
+      - name: The simulator argv says what the run was asked to do
+        run: bun tests/sim-docker-argv.ts
+
       - name: Core names no CSMS
         run: bash tests/generic-core.sh
 

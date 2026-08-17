@@ -13,6 +13,21 @@
  * file, nothing can ever make the two agree again.
  */
 export declare const DEFAULT_SIM_IMAGE = "ghcr.io/shiv3/ocpp-cp-simulator@sha256:ac35788f136c27db9371051b446af2b49270f1fc007d2172556fb761c7b01026";
+/**
+ * The OCPP versions the pinned image's CLI accepts, spelled as it spells them.
+ *
+ * TYPED ON WHAT THE CLI TAKES, NOT ON WHAT THIS SUITE TESTS. The list is read
+ * off `--help` at {@link DEFAULT_SIM_IMAGE} (issue #57), and it is wider than
+ * the versions any scenario here drives -- narrowing it to those would make the
+ * type a statement about our scenarios wearing the shape of a statement about
+ * the simulator, and the first `OCPP-1.6S` question would be a type error
+ * instead of an experiment.
+ */
+export declare const SIM_OCPP_VERSIONS: readonly ["OCPP-1.2", "OCPP-1.5", "OCPP-1.6J", "OCPP-1.6S", "OCPP-2.0.1", "OCPP-2.1"];
+export type SimOcppVersion = (typeof SIM_OCPP_VERSIONS)[number];
+/** What the CLI itself defaults to when `--ocpp-version` is absent, so the 47
+ *  `cert16-` scenarios keep running exactly what they have always run. */
+export declare const DEFAULT_SIM_OCPP_VERSION: SimOcppVersion;
 export interface SimConfig {
     /** Simulator container image. Pinned by digest by default
      *  ({@link DEFAULT_SIM_IMAGE}); `SIM_IMAGE` overrides. */
@@ -44,11 +59,58 @@ export interface SimConfig {
     entrypoint?: string;
     /** Argv handed to {@link entrypoint} ahead of the connection flags. */
     command: string[];
-    /** Extra CLI flags appended verbatim, whitespace-split from
-     *  `SIM_EXTRA_ARGS` (e.g. `--connectors 2`). */
+    /** OCPP version the charge point speaks (`SIM_OCPP_VERSION`). A PROPERTY OF
+     *  THE SCENARIO, not of the CSMS -- and deliberately not on the driver's
+     *  {@link https://github.com/juherr/open-ocpp-tck/issues/57 transport
+     *  defaults}, see the note beside `SimTransportDefaults` in driver.ts. */
+    ocppVersion: SimOcppVersion;
+    /**
+     * HOST path of the JSONL wire trace this container appends to, or undefined
+     * for no trace at all -- in which case the argv carries neither a mount nor
+     * the flag.
+     *
+     * A host path, not the container's, because the mount is this function's
+     * business: the file has to outlive `docker rm -f` (see {@link SimProcess} and
+     * `stop()`), and a `--trace-output` pointing anywhere else writes into a
+     * container that is deleted seconds later. That is exactly how the format was
+     * unreachable through this runner until now.
+     *
+     * Set per scenario by the runner. `startSim` itself leaves it undefined, so a
+     * library caller gets today's argv unless it asks for a trace.
+     */
+    tracePath?: string;
+    /**
+     * Extra CLI flags appended verbatim, whitespace-split from `SIM_EXTRA_ARGS`
+     * (e.g. `--connectors 2`).
+     *
+     * THE LAST WORD ON THE TWO FLAGS THIS MODULE PASSES AS A PREFERENCE --
+     * `--ocpp-version` and `--trace-output`, see {@link buildDockerArgs}. It is
+     * NOT the last word on the connection flags: `--ws-url`, `--cp-id` and
+     * `--json` are how this runner finds, names and parses the charge point at
+     * all, and a scenario whose container answered on another id would report
+     * another station's wire. Overriding those is `SIM_WS_URL` and
+     * `OCPP_CP_IDS`, which change the run rather than one container's argv.
+     */
     extraArgs: string[];
 }
 export declare function defaultSimConfig(env?: NodeJS.ProcessEnv): SimConfig;
+/**
+ * Whether a run should ask its container for a wire trace at all --
+ * `SIM_TRACE=0` is the one thing that says no.
+ *
+ * HERE BECAUSE THIS MODULE OWNS THE `SIM_*` NAMESPACE. Every other variable in
+ * it resolves in {@link defaultSimConfig}, and a reader auditing which of them
+ * exist reads this file; one resolved in the runner instead is one they would
+ * not find. It is also what puts the off switch under the same offline guard as
+ * its neighbours, which a `process.env` read inside the runner cannot be.
+ *
+ * NOT A `SimConfig` FIELD, and that was tried: the config already carries
+ * {@link SimConfig.tracePath}, whose absence IS "no trace", so a boolean beside
+ * it is a second source of the same truth that can contradict it -- and the
+ * path is one file per scenario attempt, which this module has no way to name.
+ * The caller asks this, then decides the path.
+ */
+export declare function traceRequested(env?: NodeJS.ProcessEnv): boolean;
 /** The WebSocket URL this charge point dials, honouring
  *  {@link SimConfig.appendCpIdToWsPath}. Exported for the scope/driver
  *  modules and tests. */
@@ -82,6 +144,52 @@ export interface SimProcess {
      *  process. Idempotent, never throws. */
     stop(): Promise<void>;
 }
+/** What {@link assertNoForeignSweep} decides, split from how it learns the
+ *  container names so the rule can be checked without a docker daemon. */
+export interface ForeignSweep {
+    /** OUR charge point ids that a container we did not start is already
+     *  driving. Non-empty means refuse. */
+    readonly shared: string[];
+    /** The other sweeps' stations, for the note: the charge point id where the
+     *  container name yields one, the container name itself where it does not. */
+    readonly others: string[];
+}
+/**
+ * Which of `cpIds` a foreign container is driving, and what else is running.
+ *
+ * THE REFUSAL DOES NOT PARSE THE CONTAINER NAME. It asks, of each id we are
+ * about to drive, whether some foreign container's name starts with that id's
+ * prefix -- so it carries no scenario namespace, and a `cert201-` container (or
+ * a `cert21-` one, or a namespace nobody has proposed yet) is caught by the
+ * same expression that catches `cert16-`. It was `/^simts-(.+?)-cert16-/`, and
+ * the moment a 2.0.1 scenario existed half the suite would have lost the
+ * protection silently.
+ *
+ * It also settles the ambiguity that regex could not: `cpId` comes from
+ * `OCPP_CP_IDS`, so it may itself contain a hyphen, and no lazy or greedy
+ * quantifier can say which hyphen of `simts-cp-1-cert16-tc001` ends the station.
+ * Comparing against the roster asks the question the other way round: a
+ * container belongs to `cpId` when its name is that station's prefix followed by
+ * something that opens like a template id. Both halves are needed --
+ * `simts-cp-` alone also prefixes station `cp-1`'s containers, so without the
+ * second half a sweep on `cp` would refuse to start because a different sweep
+ * is driving `cp-1`.
+ *
+ * WHERE A HYPHEN LEAVES TWO READINGS, IT ERRS TOWARDS REFUSING. A charge point
+ * id containing `cert16-` makes `simts-cp-cert16-x-cert201-y` readable as
+ * station `cp` or as station `cp-cert16-x`, and nothing in the name says which.
+ * A spurious refusal costs a wait and names what it saw; a missed one costs the
+ * sweep that attributes another sweep's rows to the CSMS under test.
+ *
+ * WHY NOT A DOCKER LABEL, which is the other shape proposed and removes the
+ * class of bug rather than the instance: a label only exists on containers
+ * started by code that carries it. Several checkouts of this repository drive
+ * one daemon here, so a label-only guard is blind to every container started by
+ * a checkout that predates the label -- silently, in exactly the situation this
+ * guard exists for. The container name is the only identifier every sweep,
+ * including the ones already running, agrees on.
+ */
+export declare function classifyForeignSims(containers: readonly string[], cpIds: readonly string[]): ForeignSweep;
 /**
  * Refuses to start when another sweep is already driving one of OUR charge
  * points, and says so when one is driving different ones.
