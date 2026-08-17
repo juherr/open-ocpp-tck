@@ -495,11 +495,18 @@ export async function assertNoForeignSweep(
         "isolated -- a separate CSMS and a different OCPP_CP_IDS.",
     );
   }
+  // "NOT ATTRIBUTABLE TO THIS ROSTER" rather than "none on this roster", which
+  // is a stronger claim than the parse can support: an entry printed as a full
+  // `simts-…` container name is one no station id explains, and it may still be
+  // driving one of ours under a name this runner did not build -- a
+  // hand-launched debug container is exactly that shape. Read those against
+  // your own ids.
   process.stderr.write(
     `[runner] NOTE: ${containers.length} simulator container(s) from another ` +
-      `sweep are running (${others.join(", ")}), none on this roster. Fine if ` +
-      "they drive their own CSMS; a shared one still interleaves in the " +
-      "database.\n",
+      `sweep are running (${others.join(", ")}); none is attributable to this ` +
+      "roster. Fine if they drive their own CSMS; a shared one still " +
+      "interleaves in the database. An entry printed as a full container name " +
+      "is one this runner could not attribute to a station at all.\n",
   );
 }
 
