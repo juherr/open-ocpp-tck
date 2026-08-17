@@ -236,6 +236,7 @@ the kind of breakage the mechanism exists to catch.
 | `SIM_WS_URL` | driver-supplied | CSMS OCPP endpoint. |
 | `SIM_IMAGE` | pinned digest | Simulator image override. |
 | `SIM_NETWORK`, `SIM_WS_APPEND_CP_ID`, `SIM_WS_BASIC_USER`, `SIM_WS_BASIC_PASS` | driver-supplied | Transport. |
+| `SIM_OCPP_VERSION` | `OCPP-1.6J` | Protocol the charge point speaks, spelled as the simulator's CLI spells it. An unaccepted value is refused before a container starts. |
 
 An explicit `SIM_*` value always beats the driver's default: an operator
 chasing a handshake problem must not have their override silently replaced.

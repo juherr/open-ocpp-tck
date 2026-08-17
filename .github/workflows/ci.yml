@@ -106,6 +106,13 @@ jobs:
       - name: The foreign-sweep refusal sees every namespace
         run: bun tests/foreign-sweep-scope.ts
 
+      # In-process because `buildDockerArgs` is pure and its only caller spawns
+      # docker in the next statement: the argv a scenario would run is not
+      # printable from a shell, and neither is a resolution from an environment
+      # that is not this process's.
+      - name: The simulator argv says what the run was asked to do
+        run: bun tests/sim-docker-argv.ts
+
       - name: Core names no CSMS
         run: bash tests/generic-core.sh
 

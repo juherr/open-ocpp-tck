@@ -60,9 +60,35 @@
  // ---------------------------------------------------------------------------
  // Signal-safe cleanup -- a bare try/finally around a run does NOT survive
  // Ctrl-C (SIGINT) or a `docker stop`/CI-cancel-driven SIGTERM arriving while
-@@ -46,31 +83,116 @@
+@@ -45,32 +82,191 @@
+   process.on("SIGTERM", onSignal);
  }
  
++/**
++ * The OCPP versions the pinned image's CLI accepts, spelled as it spells them.
++ *
++ * TYPED ON WHAT THE CLI TAKES, NOT ON WHAT THIS SUITE TESTS. The list is read
++ * off `--help` at {@link DEFAULT_SIM_IMAGE} (issue #57), and it is wider than
++ * the versions any scenario here drives -- narrowing it to those would make the
++ * type a statement about our scenarios wearing the shape of a statement about
++ * the simulator, and the first `OCPP-1.6S` question would be a type error
++ * instead of an experiment.
++ */
++export const SIM_OCPP_VERSIONS = [
++  "OCPP-1.2",
++  "OCPP-1.5",
++  "OCPP-1.6J",
++  "OCPP-1.6S",
++  "OCPP-2.0.1",
++  "OCPP-2.1",
++] as const;
++
++export type SimOcppVersion = (typeof SIM_OCPP_VERSIONS)[number];
++
++/** What the CLI itself defaults to when `--ocpp-version` is absent, so the 47
++ *  `cert16-` scenarios keep running exactly what they have always run. */
++export const DEFAULT_SIM_OCPP_VERSION: SimOcppVersion = "OCPP-1.6J";
++
  export interface SimConfig {
 -  /** docker network the sim container joins (must be SteVe's network so it
 -   *  can resolve the `app` hostname in wsUrl). */
@@ -102,14 +128,48 @@
 +  entrypoint?: string;
 +  /** Argv handed to {@link entrypoint} ahead of the connection flags. */
 +  command: string[];
++  /** OCPP version the charge point speaks (`SIM_OCPP_VERSION`). A PROPERTY OF
++   *  THE SCENARIO, not of the CSMS -- and deliberately not on the driver's
++   *  {@link https://github.com/juherr/open-ocpp-tck/issues/57 transport
++   *  defaults}, see the note beside `SimTransportDefaults` in driver.ts. */
++  ocppVersion: SimOcppVersion;
 +  /** Extra CLI flags appended verbatim, whitespace-split from
-+   *  `SIM_EXTRA_ARGS` (e.g. `--connectors 2`). */
++   *  `SIM_EXTRA_ARGS` (e.g. `--connectors 2`). The LAST WORD on any flag this
++   *  module also passes -- see {@link buildDockerArgs}. */
 +  extraArgs: string[];
  }
  
 +function splitArgs(raw: string | undefined): string[] {
 +  if (!raw) return [];
 +  return raw.split(/\s+/).filter((token) => token !== "");
++}
++
++/** Whether `extraArgs` already carries `flag`, in either spelling the CLI's
++ *  parser accepts. What makes {@link SimConfig.extraArgs} the last word without
++ *  depending on how upstream resolves a repeated option. */
++function namesFlag(extraArgs: readonly string[], flag: string): boolean {
++  return extraArgs.some(
++    (token) => token === flag || token.startsWith(`${flag}=`),
++  );
++}
++
++/**
++ * `SIM_OCPP_VERSION` as one of the values the CLI takes.
++ *
++ * REFUSED RATHER THAN PASSED THROUGH. A typo -- `OCPP-2.0` for `OCPP-2.0.1`,
++ * `2.0.1` for `OCPP-2.0.1` -- reaches the CLI inside a container whose stdout
++ * this runner parses for OCPP frames, so what the operator would see is a
++ * scenario that boots nothing and a timeout, several minutes from the mistake.
++ * Refusing here says the wrong word back to them, with the accepted list.
++ */
++function resolveOcppVersion(raw: string | undefined): SimOcppVersion {
++  if (!raw) return DEFAULT_SIM_OCPP_VERSION;
++  const known = SIM_OCPP_VERSIONS.find((version) => version === raw);
++  if (known) return known;
++  throw new Error(
++    `SIM_OCPP_VERSION=${raw} is not a version this simulator image accepts. ` +
++      `Spell it exactly as its CLI does: ${SIM_OCPP_VERSIONS.join(", ")}.`,
++  );
 +}
 +
  export function defaultSimConfig(
@@ -134,6 +194,7 @@
 +      env.SIM_COMMAND !== undefined
 +        ? splitArgs(env.SIM_COMMAND)
 +        : [...DEFAULT_SIM_COMMAND],
++    ocppVersion: resolveOcppVersion(env.SIM_OCPP_VERSION),
 +    extraArgs: splitArgs(env.SIM_EXTRA_ARGS),
    };
  }
@@ -165,6 +226,20 @@
 +  args.push("--ws-url", resolveWsUrl(cpId, cfg));
 +  args.push("--cp-id", cpId);
 +  args.push("--json");
++  // EMITTED EVEN WHEN IT IS THE CLI'S OWN DEFAULT, because this argv is the
++  // only place a run says which protocol it spoke: it goes to stderr and into
++  // results/*.log through renderDockerArgs. A 1.6 scenario driven on 2.0.1
++  // passes six of its seven checks -- measured, issue #57 -- so "which version
++  // was that run?" has to be answerable from the evidence rather than from
++  // whichever environment the operator had exported.
++  //
++  // SIM_EXTRA_ARGS STAYS THE ESCAPE HATCH AND WINS. Not by appending both and
++  // letting the CLI's parser pick the last one: that would make the outcome a
++  // property of upstream's argument handling, which nothing here pins, tests or
++  // could notice changing under a digest bump. Ours is simply not emitted.
++  if (!namesFlag(cfg.extraArgs, "--ocpp-version")) {
++    args.push("--ocpp-version", cfg.ocppVersion);
++  }
 +  // Only when BOTH halves are configured -- a lone username would make the
 +  // CLI dial with an empty password rather than no auth at all.
 +  if (cfg.basicAuthUser && cfg.basicAuthPass) {
@@ -191,7 +266,7 @@
  export interface SimProcess {
    readonly cpId: string;
    readonly container: string;
-@@ -88,10 +210,186 @@
+@@ -88,10 +284,186 @@
    stop(): Promise<void>;
  }
  
@@ -205,8 +280,8 @@
  function containerName(cpId: string, templateId: string): string {
 -  return `simts-${cpId.toLowerCase()}-${templateId}`.slice(0, 63);
 +  return `${stationPrefix(cpId)}${templateId}`.slice(0, 63);
- }
- 
++}
++
 +/**
 + * How a template id opens: its certification namespace -- `cert16-`,
 + * `cert201-`, whatever the next protocol version is called. NO VERSION LITERAL,
@@ -324,8 +399,8 @@
 +  }
 +
 +  return { shared: [...shared].sort(), others: [...others].sort() };
-+}
-+
+ }
+ 
 +/**
 + * Refuses to start when another sweep is already driving one of OUR charge
 + * points, and says so when one is driving different ones.
@@ -379,7 +454,7 @@
  async function runDocker(args: string[]): Promise<void> {
    const proc = Bun.spawn(["docker", ...args], {
      stdout: "ignore",
-@@ -147,32 +445,15 @@
+@@ -147,32 +519,15 @@
    // run with the same name (mirrors lib.sh's sim_start).
    await runDocker(["rm", "-f", container]).catch(() => {});
  

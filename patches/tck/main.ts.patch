@@ -1427,7 +1427,7 @@
  }
  
  function requireValue(argv: string[], index: number, flag: string): string {
-@@ -663,37 +1220,80 @@
+@@ -663,37 +1220,81 @@
    return n;
  }
  
@@ -1454,25 +1454,23 @@
        `${Object.keys(GROUPS).join("|")} [--parallel] [--retry-failed-isolated]\n` +
 -      "       bun scripts/steve-verify/runner/main.ts run-all " +
 -      "[--group <name>] [--parallel] [--retry-failed-isolated]\n" +
--      "\n" +
--      "--retry-failed-isolated: after a --parallel sweep, re-run any " +
--      "non-PASS scenario once more, sequentially and isolated, and report " +
--      "both verdicts (parallel-fail -> isolated-pass = flake; still fails " +
--      "isolated = real fail). No effect without --parallel.\n",
 +      "       ocpp-tck run-all [--group <name>] [--parallel] " +
 +      "[--retry-failed-isolated] [--results-dir DIR]\n" +
 +      "       ocpp-tck list-scenarios [--group <name>] [--json]\n" +
 +      "       ocpp-tck check-driver [--driver SPEC] [--json]\n" +
 +      "       ocpp-tck print-sim-image\n" +
 +      "       ocpp-tck driver <verb> [args...]\n" +
-+      "\n" +
+       "\n" +
+-      "--retry-failed-isolated: after a --parallel sweep, re-run any " +
+-      "non-PASS scenario once more, sequentially and isolated, and report " +
 +      "check-driver is fully offline: it reads the driver MODULE (never " +
 +      "create()), so it needs no CSMS, no docker, no network and no " +
 +      "credentials.\n" +
 +      "\n" +
 +      "--retry-failed-isolated: after a parallel sweep, re-run any " +
 +      "FAIL/ERROR scenario once more, sequentially and isolated, and report " +
-+      "both verdicts (parallel-fail -> isolated-pass = flake; still fails " +
+       "both verdicts (parallel-fail -> isolated-pass = flake; still fails " +
+-      "isolated = real fail). No effect without --parallel.\n",
 +      "isolated = real fail). No effect without parallel lanes.\n" +
 +      "\n" +
 +      "Environment: CSMS_DRIVER (module specifier of the driver to load), " +
@@ -1482,7 +1480,8 @@
 +      "parallel lane count derives from it -- one station means sequential), " +
 +      "OCPP_STATIONS (ocpp_id=station_id[,...] override when the stations were " +
 +      "created by hand), SIM_WS_URL, SIM_IMAGE, SIM_NETWORK, " +
-+      "SIM_WS_APPEND_CP_ID, SIM_WS_BASIC_USER/SIM_WS_BASIC_PASS.\n",
++      "SIM_WS_APPEND_CP_ID, SIM_WS_BASIC_USER/SIM_WS_BASIC_PASS, " +
++      "SIM_OCPP_VERSION (default OCPP-1.6J).\n",
    );
 -}
  
@@ -1527,7 +1526,7 @@
  
    if (argv[0] === "run-all") {
      group = "all";
-@@ -708,18 +1308,27 @@
+@@ -708,18 +1309,27 @@
          case "--retry-failed-isolated":
            retryFailedIsolated = true;
            break;
@@ -1558,7 +1557,7 @@
      process.exit(1);
    }
  
-@@ -749,9 +1358,11 @@
+@@ -749,9 +1359,11 @@
        case "--retry-failed-isolated":
          retryFailedIsolated = true;
          break;
@@ -1571,7 +1570,7 @@
          process.exit(1);
      }
    }
-@@ -764,35 +1375,495 @@
+@@ -764,35 +1376,495 @@
      cpId,
      connector,
      timeoutSecs,
@@ -1600,7 +1599,7 @@
 +  }
 +  return [...seen].map(([templateId, group]) => ({ templateId, group }));
 +}
-+
+ 
 +function listScenarios(argv: string[]): number {
 +  let group: string | undefined;
 +  let asJson = false;
@@ -1743,7 +1742,7 @@
 +      );
 +    }
 +  }
- 
++
 +  // Everything about the expected-failure list that is knowable offline. What
 +  // is NOT knowable here is whether those scenarios still fail -- only a sweep
 +  // answers that, by reporting an UNEXPECTED PASS.
@@ -2083,7 +2082,7 @@
    }
  
    const spec = SPECS_BY_TEMPLATE_ID.get(args.templateId);
-@@ -800,18 +1871,109 @@
+@@ -800,18 +1872,109 @@
      process.stderr.write(
        `Unknown template id: ${args.templateId} (known: ${[...SPECS_BY_TEMPLATE_ID.keys()].join(", ")})\n`,
      );

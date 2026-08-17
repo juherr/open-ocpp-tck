@@ -13,6 +13,21 @@
  * file, nothing can ever make the two agree again.
  */
 export declare const DEFAULT_SIM_IMAGE = "ghcr.io/shiv3/ocpp-cp-simulator@sha256:ac35788f136c27db9371051b446af2b49270f1fc007d2172556fb761c7b01026";
+/**
+ * The OCPP versions the pinned image's CLI accepts, spelled as it spells them.
+ *
+ * TYPED ON WHAT THE CLI TAKES, NOT ON WHAT THIS SUITE TESTS. The list is read
+ * off `--help` at {@link DEFAULT_SIM_IMAGE} (issue #57), and it is wider than
+ * the versions any scenario here drives -- narrowing it to those would make the
+ * type a statement about our scenarios wearing the shape of a statement about
+ * the simulator, and the first `OCPP-1.6S` question would be a type error
+ * instead of an experiment.
+ */
+export declare const SIM_OCPP_VERSIONS: readonly ["OCPP-1.2", "OCPP-1.5", "OCPP-1.6J", "OCPP-1.6S", "OCPP-2.0.1", "OCPP-2.1"];
+export type SimOcppVersion = (typeof SIM_OCPP_VERSIONS)[number];
+/** What the CLI itself defaults to when `--ocpp-version` is absent, so the 47
+ *  `cert16-` scenarios keep running exactly what they have always run. */
+export declare const DEFAULT_SIM_OCPP_VERSION: SimOcppVersion;
 export interface SimConfig {
     /** Simulator container image. Pinned by digest by default
      *  ({@link DEFAULT_SIM_IMAGE}); `SIM_IMAGE` overrides. */
@@ -44,8 +59,14 @@ export interface SimConfig {
     entrypoint?: string;
     /** Argv handed to {@link entrypoint} ahead of the connection flags. */
     command: string[];
+    /** OCPP version the charge point speaks (`SIM_OCPP_VERSION`). A PROPERTY OF
+     *  THE SCENARIO, not of the CSMS -- and deliberately not on the driver's
+     *  {@link https://github.com/juherr/open-ocpp-tck/issues/57 transport
+     *  defaults}, see the note beside `SimTransportDefaults` in driver.ts. */
+    ocppVersion: SimOcppVersion;
     /** Extra CLI flags appended verbatim, whitespace-split from
-     *  `SIM_EXTRA_ARGS` (e.g. `--connectors 2`). */
+     *  `SIM_EXTRA_ARGS` (e.g. `--connectors 2`). The LAST WORD on any flag this
+     *  module also passes -- see {@link buildDockerArgs}. */
     extraArgs: string[];
 }
 export declare function defaultSimConfig(env?: NodeJS.ProcessEnv): SimConfig;

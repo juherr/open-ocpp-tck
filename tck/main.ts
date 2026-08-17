@@ -1258,7 +1258,8 @@ async function printUsage(): Promise<void> {
       "parallel lane count derives from it -- one station means sequential), " +
       "OCPP_STATIONS (ocpp_id=station_id[,...] override when the stations were " +
       "created by hand), SIM_WS_URL, SIM_IMAGE, SIM_NETWORK, " +
-      "SIM_WS_APPEND_CP_ID, SIM_WS_BASIC_USER/SIM_WS_BASIC_PASS.\n",
+      "SIM_WS_APPEND_CP_ID, SIM_WS_BASIC_USER/SIM_WS_BASIC_PASS, " +
+      "SIM_OCPP_VERSION (default OCPP-1.6J).\n",
   );
 
   // The driver's own environment, if one is selected and declares it. Best
