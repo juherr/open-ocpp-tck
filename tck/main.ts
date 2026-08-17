@@ -85,6 +85,7 @@ import { parseLog } from "./ocpp";
 import {
   DEFAULT_SIM_IMAGE,
   defaultSimConfig,
+  traceRequested,
   startSim,
   type SimConfig,
   assertNoForeignSweep,
@@ -116,6 +117,12 @@ import { WaitTimeoutError } from "./wait";
  * shared by every consumer in the workspace, and erased by the next
  * `bun install` -- a run's evidence must not live there. `--results-dir` beats
  * `OCPP_TCK_RESULTS_DIR` beats `./results`.
+ *
+ * IT IS ALSO WHAT GETS BIND-MOUNTED into each simulator container, read-write,
+ * because that is where the wire trace has to land to outlive the container
+ * (see `SimConfig.tracePath`). So this setting grants a directory to the image,
+ * and `--results-dir .` grants the checkout. `SIM_TRACE=0` is the way to point
+ * it anywhere without granting anything.
  */
 function resultsDir(argvDir?: string, env: CsmsEnv = process.env): string {
   const chosen = argvDir?.trim() || env.OCPP_TCK_RESULTS_DIR?.trim() || "results";
@@ -124,6 +131,43 @@ function resultsDir(argvDir?: string, env: CsmsEnv = process.env): string {
 
 /** Set once by the CLI, so the run functions below stay argument-clean. */
 let RESULTS_DIR = resultsDir();
+
+/** Whether the missing-trace warning below has already been said. Once per
+ *  process: every cause it names -- a containerised runner, a docker declining
+ *  the mount, a digest that stopped honouring --trace-output -- holds for the
+ *  whole sweep, so per-scenario it would be 47 copies of one fact. */
+let warnedNoTrace = false;
+
+/**
+ * Every refusal that must happen before a run starts, in one call.
+ *
+ * ONE FUNCTION AND NOT TWO CALLS AT EACH ENTRY POINT, because that is what
+ * they were: `assertNoForeignSweep` was already spelled at both, and a second
+ * preflight beside it is a pairing kept in step by hand at every site. A third
+ * entry point can now forget one thing rather than either of two.
+ *
+ * WHY THE ENVIRONMENT CHECK IS HERE AND NOT LEFT TO THE FIRST SCENARIO. `defaultSimConfig()`
+ * refuses a `SIM_OCPP_VERSION` the image's CLI cannot take, and it is called
+ * per scenario -- so reaching that refusal through a sweep turns one typo into
+ * a table of ERROR rows carrying NO reason, plus, for every declared
+ * expected-failure scenario, the "DECLARED, BUT ERRORED" escalation, whose
+ * whole message is that the declaration is probably fine and the crash is the
+ * new thing. Measured on this branch before this call existed:
+ * `run --group firmware` with `SIM_OCPP_VERSION=OCPP-2.0` produced four
+ * reasonless ERROR rows, three of them escalated, and the sentence naming the
+ * bad value appeared in no summary at all. The operator is sent to audit their
+ * expected-failure list over one environment variable.
+ *
+ * CALLED ONCE PER PROCESS, FROM THE ENTRY POINTS, which is also why
+ * `assertNoForeignSweep` is here: it reads the daemon before `prepareStation()`
+ * writes to the CSMS, and a preflight that runs after the run has started is a
+ * diagnosis nobody reads.
+ */
+async function preflight(cpIds: readonly string[]): Promise<void> {
+  // defaultSimConfig() is called for its refusal, not its result.
+  defaultSimConfig();
+  await assertNoForeignSweep(cpIds);
+}
 
 /**
  * Host path of the simulator's JSONL wire trace for one attempt, readied for a
@@ -144,39 +188,13 @@ let RESULTS_DIR = resultsDir();
  * and it must not turn into a container that fails to start: the trace is
  * evidence about a run, not the run.
  *
- * `SIM_TRACE=0` switches it off -- the escape hatch for a docker that refuses
- * bind mounts (rootless, SELinux relabelling) rather than a preference. The path
- * itself follows `--results-dir` / `OCPP_TCK_RESULTS_DIR`, so it needs no
- * variable of its own.
+ * WHETHER a trace is wanted at all is `traceRequested()`, resolved in the
+ * module that owns the `SIM_*` namespace; this function only decides WHERE and
+ * readies it. The path follows `--results-dir` / `OCPP_TCK_RESULTS_DIR`, so it
+ * needs no variable of its own.
  */
-/**
- * Refuses an unusable simulator environment before any scenario runs.
- *
- * WHY IT IS HERE AND NOT LEFT TO THE FIRST SCENARIO. `defaultSimConfig()`
- * refuses a `SIM_OCPP_VERSION` the image's CLI cannot take, and it is called
- * per scenario -- so reaching that refusal through a sweep turns one typo into
- * a table of ERROR rows carrying NO reason, plus, for every declared
- * expected-failure scenario, the "DECLARED, BUT ERRORED" escalation, whose
- * whole message is that the declaration is probably fine and the crash is the
- * new thing. Measured on this branch before this call existed:
- * `run --group firmware` with `SIM_OCPP_VERSION=OCPP-2.0` produced four
- * reasonless ERROR rows, three of them escalated, and the sentence naming the
- * bad value appeared in no summary at all. The operator is sent to audit their
- * expected-failure list over one environment variable.
- *
- * CALLED ONCE PER PROCESS, FROM THE ENTRY POINTS, the same placement and for
- * the same class of reason as `assertNoForeignSweep`: a preflight that runs
- * after the run has started is a diagnosis nobody reads.
- */
-function assertSimEnvUsable(): void {
-  defaultSimConfig();
-}
-
-function prepareTracePath(
-  traceName: string,
-  env: CsmsEnv = process.env,
-): string | undefined {
-  if (env.SIM_TRACE === "0") return undefined;
+function prepareTracePath(traceName: string): string | undefined {
+  if (!traceRequested()) return undefined;
   const path = `${RESULTS_DIR}${traceName}`;
   try {
     mkdirSync(RESULTS_DIR, { recursive: true });
@@ -550,21 +568,19 @@ async function runScenario<D>(
   // that silently declines the mount; or a simulator digest that stops
   // honouring --trace-output. In each case the sweep goes green and the
   // evidence simply is not there, which is the failure shape this repository
-  // keeps naming. So say it once, per scenario, where it happens.
-  if (simCfg.tracePath !== undefined) {
-    let bytes = -1;
-    try {
-      bytes = statSync(simCfg.tracePath).size;
-    } catch {
-      // Absent -- reported below like an empty one.
-    }
-    if (bytes <= 0) {
+  // keeps naming. So say it -- once, since every cause of it is a property of
+  // the environment rather than of the scenario that happened to notice.
+  if (simCfg.tracePath !== undefined && !warnedNoTrace) {
+    const size = statSync(simCfg.tracePath, { throwIfNoEntry: false })?.size;
+    if (!size) {
+      warnedNoTrace = true;
       process.stderr.write(
         `[runner] WARN: no wire trace at ${simCfg.tracePath} (${
-          bytes === 0 ? "empty" : "absent"
+          size === undefined ? "absent" : "empty"
         }) -- the container was asked for one. If this runner is itself ` +
           "containerised, the bind mount names a path on the docker host, not " +
-          "this one; SIM_TRACE=0 turns the request off.\n",
+          "this one; SIM_TRACE=0 turns the request off. Said once per run: " +
+          "every cause of it holds for the whole sweep.\n",
       );
     }
   }
@@ -1145,11 +1161,7 @@ async function runGroupSweep(
   }
 
   const stations = resolveStations();
-  // Both before `driver provision` state or prepareStation() touches anything,
-  // and before the first container: an environment this runner cannot use is
-  // one refusal here, or one unexplained ERROR row per scenario later.
-  assertSimEnvUsable();
-  await assertNoForeignSweep(stations);
+  await preflight(stations);
   // Lane count IS the station count: one lane per station, never more. A
   // single resolved station therefore forces sequential execution however
   // --parallel was passed.
@@ -1994,8 +2006,7 @@ export async function cli(argv: string[]): Promise<number> {
     return exitForSingleRun(spec.templateId, "NOT APPLICABLE", expected);
   }
 
-  assertSimEnvUsable();
-  await assertNoForeignSweep([args.cpId]);
+  await preflight([args.cpId]);
 
   const options: RunOptions = {
     cpId: args.cpId,

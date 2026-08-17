@@ -160,8 +160,12 @@ const cases: Case[] = [
     others: ["nycp1"],
   },
   {
+    // ONE ROW FOR ONE BRANCH, and it has two origins worth naming:
     // `containerName` caps the name at 63 characters, so a long enough charge
-    // point id truncates the template id -- and with it the delimiter -- away.
+    // point id truncates the template id -- and with it the delimiter -- away;
+    // and a container named by something that is not this harness at all still
+    // matches `docker ps --filter name=simts-`. The rule cannot tell them
+    // apart, so a row each would be one branch printing two FAILs to triage.
     // Unattributable is not "ignore": whoever is about to start a sweep is the
     // person who can recognise the name.
     name: "a name carrying no template id is reported by its container name",
@@ -169,16 +173,6 @@ const cases: Case[] = [
     cpIds: ["certcp1"],
     shared: [],
     others: ["simts-a-very-long-station-id-with-no-scenario-left"],
-  },
-  {
-    // Same rule, the other way it happens: a container named by something that
-    // is not this harness at all but still matches `docker ps --filter
-    // name=simts-`.
-    name: "a foreign naming convention is reported, not silently skipped",
-    containers: ["simts-something-else-entirely"],
-    cpIds: ["certcp1"],
-    shared: [],
-    others: ["simts-something-else-entirely"],
   },
   {
     // One station, two containers of its own: reported once, refused once.

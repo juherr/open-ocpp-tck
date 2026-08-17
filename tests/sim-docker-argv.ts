@@ -4,21 +4,26 @@
  * tests/sim-docker-argv.ts -- what the operator asked for is what the container
  * gets.
  *
- * PROPERTY, in four parts:
+ * PROPERTY, in five parts:
  *   1. an empty environment produces the argv this runner has always produced,
  *      plus an explicit `--ocpp-version OCPP-1.6J` -- the CLI's own default, so
  *      the 47 `cert16-` scenarios drive exactly what they drove before;
  *   2. `SIM_OCPP_VERSION` resolves onto {@link SimConfig.ocppVersion} and
  *      reaches the argv, and a value the CLI does not accept is REFUSED by name
  *      with the list of the ones it does;
- *   3. `SIM_EXTRA_ARGS` is the last word on a flag this module also passes: when
- *      it names one, ours is not emitted, so which value applies is not a
- *      question about upstream's argument parser;
+ *   3. `SIM_EXTRA_ARGS` is the last word on the two flags this module passes as
+ *      a preference -- `--ocpp-version` and `--trace-output`: when it names
+ *      one, ours is not emitted, so which value applies is not a question
+ *      about upstream's argument parser. A flag it does not name is untouched;
+ *      the connection flags are not negotiable at all;
  *   4. a trace path produces a bind mount of its DIRECTORY before the image and
  *      a `--trace-output` UNDER that mount, or neither of the two. Half the
  *      pair is worse than none: a flag without a mount writes the trace inside
  *      a container that `stop()` then removes, which is how the format was
- *      unreachable through this runner in the first place.
+ *      unreachable through this runner in the first place;
+ *   5. `SIM_TRACE=0`, and only that value, says no to a trace at all. It
+ *      resolves in `tck/sim.ts` with the rest of the `SIM_*` namespace, which
+ *      is what puts it under this guard instead of under none.
  *
  * WHY THIS IS TYPESCRIPT AND NOT A SHELL GUARD. `buildDockerArgs` is pure and
  * nothing prints its result without starting a container: the one caller that
@@ -42,10 +47,10 @@
 import {
   buildDockerArgs,
   DEFAULT_SIM_IMAGE,
-  DEFAULT_SIM_OCPP_VERSION,
   defaultSimConfig,
   SIM_OCPP_VERSIONS,
   type SimConfig,
+  traceRequested,
 } from "../tck/sim";
 
 let failures = 0;
@@ -65,7 +70,9 @@ function expectArgs(
   }
   fail(
     what,
-    `expected ${JSON.stringify(want)}\n  got      ${JSON.stringify(got)}`,
+    `expected ${JSON.stringify(want)}\n  got      ${JSON.stringify(got)}\n` +
+      "  (this row pins the argv WHOLE and IN ORDER, so it also goes red on a " +
+      "changed default -- read the diff above before reading the summary below)",
   );
 }
 
@@ -95,17 +102,12 @@ expectArgs("the default argv", argsFor({}), [
   CP,
   "--json",
   "--ocpp-version",
-  DEFAULT_SIM_OCPP_VERSION,
+  // Spelled, not `DEFAULT_SIM_OCPP_VERSION`: the constant compared against
+  // itself pins nothing, and what this row is for is that the 47 `cert16-`
+  // scenarios still drive what they were written against -- the image's own
+  // default when the flag is absent.
+  "OCPP-1.6J",
 ]);
-
-if (DEFAULT_SIM_OCPP_VERSION !== "OCPP-1.6J") {
-  fail(
-    "the default version is the CLI's own default",
-    `every cert16- scenario drives ${DEFAULT_SIM_OCPP_VERSION} now; the ` +
-      "image defaults to OCPP-1.6J when the flag is absent, and 47 scenarios " +
-      "were written against it",
-  );
-}
 
 // ---------------------------------------------------------------------------
 // 2. SIM_OCPP_VERSION: resolved, carried, and refused when it is not a version.
@@ -211,15 +213,6 @@ for (const extra of [
   }
 }
 
-// The type is what the CLI accepts, so a SimConfig built by hand cannot omit it.
-const explicit: SimConfig = {
-  ...defaultSimConfig({}),
-  ocppVersion: "OCPP-2.0.1",
-};
-if (!buildDockerArgs(CP, CONTAINER, explicit).includes("OCPP-2.0.1")) {
-  fail("an explicit SimConfig reaches the argv", "the field was ignored");
-}
-
 // ---------------------------------------------------------------------------
 // 4. A trace path is a MOUNT plus a flag under it, or neither.
 // ---------------------------------------------------------------------------
@@ -252,7 +245,7 @@ if (!buildDockerArgs(CP, CONTAINER, explicit).includes("OCPP-2.0.1")) {
       CP,
       "--json",
       "--ocpp-version",
-      DEFAULT_SIM_OCPP_VERSION,
+      "OCPP-1.6J",
       // The file the mount makes reachable from the host. A path outside it
       // would be written inside the container and removed with it, which is
       // how this format was unusable through the runner before.
@@ -295,6 +288,27 @@ if (!buildDockerArgs(CP, CONTAINER, explicit).includes("OCPP-2.0.1")) {
     fail(
       "the mount survives an operator's own --trace-output",
       "without it their path resolves inside a container that is then removed",
+    );
+  }
+}
+
+// ---------------------------------------------------------------------------
+// 5. SIM_TRACE=0, the one thing that says no to a trace.
+// ---------------------------------------------------------------------------
+
+for (const [value, wanted] of [
+  [undefined, true],
+  ["0", false],
+  ["1", true],
+  ["", true],
+] as const) {
+  const env = value === undefined ? {} : { SIM_TRACE: value };
+  if (traceRequested(env) !== wanted) {
+    fail(
+      `SIM_TRACE=${value === undefined ? "<unset>" : value} means ${
+        wanted ? "trace" : "no trace"
+      }`,
+      `traceRequested returned ${traceRequested(env)}`,
     );
   }
 }

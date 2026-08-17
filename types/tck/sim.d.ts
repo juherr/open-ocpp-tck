@@ -79,12 +79,38 @@ export interface SimConfig {
      * library caller gets today's argv unless it asks for a trace.
      */
     tracePath?: string;
-    /** Extra CLI flags appended verbatim, whitespace-split from
-     *  `SIM_EXTRA_ARGS` (e.g. `--connectors 2`). The LAST WORD on any flag this
-     *  module also passes -- see {@link buildDockerArgs}. */
+    /**
+     * Extra CLI flags appended verbatim, whitespace-split from `SIM_EXTRA_ARGS`
+     * (e.g. `--connectors 2`).
+     *
+     * THE LAST WORD ON THE TWO FLAGS THIS MODULE PASSES AS A PREFERENCE --
+     * `--ocpp-version` and `--trace-output`, see {@link buildDockerArgs}. It is
+     * NOT the last word on the connection flags: `--ws-url`, `--cp-id` and
+     * `--json` are how this runner finds, names and parses the charge point at
+     * all, and a scenario whose container answered on another id would report
+     * another station's wire. Overriding those is `SIM_WS_URL` and
+     * `OCPP_CP_IDS`, which change the run rather than one container's argv.
+     */
     extraArgs: string[];
 }
 export declare function defaultSimConfig(env?: NodeJS.ProcessEnv): SimConfig;
+/**
+ * Whether a run should ask its container for a wire trace at all --
+ * `SIM_TRACE=0` is the one thing that says no.
+ *
+ * HERE BECAUSE THIS MODULE OWNS THE `SIM_*` NAMESPACE. Every other variable in
+ * it resolves in {@link defaultSimConfig}, and a reader auditing which of them
+ * exist reads this file; one resolved in the runner instead is one they would
+ * not find. It is also what puts the off switch under the same offline guard as
+ * its neighbours, which a `process.env` read inside the runner cannot be.
+ *
+ * NOT A `SimConfig` FIELD, and that was tried: the config already carries
+ * {@link SimConfig.tracePath}, whose absence IS "no trace", so a boolean beside
+ * it is a second source of the same truth that can contradict it -- and the
+ * path is one file per scenario attempt, which this module has no way to name.
+ * The caller asks this, then decides the path.
+ */
+export declare function traceRequested(env?: NodeJS.ProcessEnv): boolean;
 /** The WebSocket URL this charge point dials, honouring
  *  {@link SimConfig.appendCpIdToWsPath}. Exported for the scope/driver
  *  modules and tests. */

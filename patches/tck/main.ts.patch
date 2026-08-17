@@ -1,6 +1,6 @@
 --- /tmp/ocpp-upstream/scripts/steve-verify/runner/main.ts	2026-07-31 20:05:48
 +++ tck/main.ts	2026-07-31 20:12:10
-@@ -1,39 +1,102 @@
+@@ -1,39 +1,103 @@
  #!/usr/bin/env bun
 +// Derived from shiv3/ocpp-cp-simulator scripts/steve-verify/runner/main.ts @ 604054adb0d7d7129a26a5f1ad2d5fdc290d1ca1 (Apache-2.0). Modified: the STEVE_DRIVER=api|ui selection is replaced by a CSMS driver loaded through ./driver-registry; a per-driver scope table (./scope) is consulted BEFORE any container starts and yields the NOT APPLICABLE verdict; UnsupportedOperationError (./driver) thrown out of drive() degrades to NOT APPLICABLE with a stderr WARNING; the PARTIAL verdict and the `skipped` summary column were added; the exit code is non-zero only for FAIL/ERROR; parallel lanes derive from the resolved station list instead of the fixed CERTCP1..3 trio; the SteVe capability probe is dropped.
 +
@@ -115,6 +115,7 @@
 -import type { SteveOps, SteveTx } from "./steve";
 +  DEFAULT_SIM_IMAGE,
 +  defaultSimConfig,
++  traceRequested,
 +  startSim,
 +  type SimConfig,
 +  assertNoForeignSweep,
@@ -130,7 +131,7 @@
  import {
    AUTHLIST_RESERVATION_SPECS,
    AUTHORIZE_SPECS,
-@@ -43,13 +106,91 @@
+@@ -43,13 +107,108 @@
  } from "./specs/index";
  import type { ScenarioSpec } from "./spec-types";
  import { sleep } from "./util";
@@ -149,6 +150,12 @@
 + * shared by every consumer in the workspace, and erased by the next
 + * `bun install` -- a run's evidence must not live there. `--results-dir` beats
 + * `OCPP_TCK_RESULTS_DIR` beats `./results`.
++ *
++ * IT IS ALSO WHAT GETS BIND-MOUNTED into each simulator container, read-write,
++ * because that is where the wire trace has to land to outlive the container
++ * (see `SimConfig.tracePath`). So this setting grants a directory to the image,
++ * and `--results-dir .` grants the checkout. `SIM_TRACE=0` is the way to point
++ * it anywhere without granting anything.
 + */
 +function resultsDir(argvDir?: string, env: CsmsEnv = process.env): string {
 +  const chosen = argvDir?.trim() || env.OCPP_TCK_RESULTS_DIR?.trim() || "results";
@@ -157,6 +164,43 @@
  
 +/** Set once by the CLI, so the run functions below stay argument-clean. */
 +let RESULTS_DIR = resultsDir();
++
++/** Whether the missing-trace warning below has already been said. Once per
++ *  process: every cause it names -- a containerised runner, a docker declining
++ *  the mount, a digest that stopped honouring --trace-output -- holds for the
++ *  whole sweep, so per-scenario it would be 47 copies of one fact. */
++let warnedNoTrace = false;
++
++/**
++ * Every refusal that must happen before a run starts, in one call.
++ *
++ * ONE FUNCTION AND NOT TWO CALLS AT EACH ENTRY POINT, because that is what
++ * they were: `assertNoForeignSweep` was already spelled at both, and a second
++ * preflight beside it is a pairing kept in step by hand at every site. A third
++ * entry point can now forget one thing rather than either of two.
++ *
++ * WHY THE ENVIRONMENT CHECK IS HERE AND NOT LEFT TO THE FIRST SCENARIO. `defaultSimConfig()`
++ * refuses a `SIM_OCPP_VERSION` the image's CLI cannot take, and it is called
++ * per scenario -- so reaching that refusal through a sweep turns one typo into
++ * a table of ERROR rows carrying NO reason, plus, for every declared
++ * expected-failure scenario, the "DECLARED, BUT ERRORED" escalation, whose
++ * whole message is that the declaration is probably fine and the crash is the
++ * new thing. Measured on this branch before this call existed:
++ * `run --group firmware` with `SIM_OCPP_VERSION=OCPP-2.0` produced four
++ * reasonless ERROR rows, three of them escalated, and the sentence naming the
++ * bad value appeared in no summary at all. The operator is sent to audit their
++ * expected-failure list over one environment variable.
++ *
++ * CALLED ONCE PER PROCESS, FROM THE ENTRY POINTS, which is also why
++ * `assertNoForeignSweep` is here: it reads the daemon before `prepareStation()`
++ * writes to the CSMS, and a preflight that runs after the run has started is a
++ * diagnosis nobody reads.
++ */
++async function preflight(cpIds: readonly string[]): Promise<void> {
++  // defaultSimConfig() is called for its refusal, not its result.
++  defaultSimConfig();
++  await assertNoForeignSweep(cpIds);
++}
 +
 +/**
 + * Host path of the simulator's JSONL wire trace for one attempt, readied for a
@@ -177,39 +221,13 @@
 + * and it must not turn into a container that fails to start: the trace is
 + * evidence about a run, not the run.
 + *
-+ * `SIM_TRACE=0` switches it off -- the escape hatch for a docker that refuses
-+ * bind mounts (rootless, SELinux relabelling) rather than a preference. The path
-+ * itself follows `--results-dir` / `OCPP_TCK_RESULTS_DIR`, so it needs no
-+ * variable of its own.
++ * WHETHER a trace is wanted at all is `traceRequested()`, resolved in the
++ * module that owns the `SIM_*` namespace; this function only decides WHERE and
++ * readies it. The path follows `--results-dir` / `OCPP_TCK_RESULTS_DIR`, so it
++ * needs no variable of its own.
 + */
-+/**
-+ * Refuses an unusable simulator environment before any scenario runs.
-+ *
-+ * WHY IT IS HERE AND NOT LEFT TO THE FIRST SCENARIO. `defaultSimConfig()`
-+ * refuses a `SIM_OCPP_VERSION` the image's CLI cannot take, and it is called
-+ * per scenario -- so reaching that refusal through a sweep turns one typo into
-+ * a table of ERROR rows carrying NO reason, plus, for every declared
-+ * expected-failure scenario, the "DECLARED, BUT ERRORED" escalation, whose
-+ * whole message is that the declaration is probably fine and the crash is the
-+ * new thing. Measured on this branch before this call existed:
-+ * `run --group firmware` with `SIM_OCPP_VERSION=OCPP-2.0` produced four
-+ * reasonless ERROR rows, three of them escalated, and the sentence naming the
-+ * bad value appeared in no summary at all. The operator is sent to audit their
-+ * expected-failure list over one environment variable.
-+ *
-+ * CALLED ONCE PER PROCESS, FROM THE ENTRY POINTS, the same placement and for
-+ * the same class of reason as `assertNoForeignSweep`: a preflight that runs
-+ * after the run has started is a diagnosis nobody reads.
-+ */
-+function assertSimEnvUsable(): void {
-+  defaultSimConfig();
-+}
-+
-+function prepareTracePath(
-+  traceName: string,
-+  env: CsmsEnv = process.env,
-+): string | undefined {
-+  if (env.SIM_TRACE === "0") return undefined;
++function prepareTracePath(traceName: string): string | undefined {
++  if (!traceRequested()) return undefined;
 +  const path = `${RESULTS_DIR}${traceName}`;
 +  try {
 +    mkdirSync(RESULTS_DIR, { recursive: true });
@@ -227,7 +245,7 @@
  // ---------------------------------------------------------------------------
  // Runner core
  // ---------------------------------------------------------------------------
-@@ -58,97 +199,250 @@
+@@ -58,97 +217,250 @@
    cpId: string;
    connector?: number;
    timeoutSecs?: number;
@@ -539,7 +557,7 @@
          30_000,
        );
      } catch (err) {
-@@ -176,13 +470,25 @@
+@@ -176,13 +488,25 @@
  
      if (spec.drive) {
        process.stderr.write(`[runner] running drive() for ${spec.templateId}\n`);
@@ -572,7 +590,7 @@
      } else {
        process.stderr.write(
          `[runner] no drive() defined (CP-only scenario) -- nothing to do while it runs\n`,
-@@ -190,34 +496,83 @@
+@@ -190,34 +514,81 @@
        driveState = undefined as D;
      }
  
@@ -638,21 +656,19 @@
 +  // that silently declines the mount; or a simulator digest that stops
 +  // honouring --trace-output. In each case the sweep goes green and the
 +  // evidence simply is not there, which is the failure shape this repository
-+  // keeps naming. So say it once, per scenario, where it happens.
-+  if (simCfg.tracePath !== undefined) {
-+    let bytes = -1;
-+    try {
-+      bytes = statSync(simCfg.tracePath).size;
-+    } catch {
-+      // Absent -- reported below like an empty one.
-+    }
-+    if (bytes <= 0) {
++  // keeps naming. So say it -- once, since every cause of it is a property of
++  // the environment rather than of the scenario that happened to notice.
++  if (simCfg.tracePath !== undefined && !warnedNoTrace) {
++    const size = statSync(simCfg.tracePath, { throwIfNoEntry: false })?.size;
++    if (!size) {
++      warnedNoTrace = true;
 +      process.stderr.write(
 +        `[runner] WARN: no wire trace at ${simCfg.tracePath} (${
-+          bytes === 0 ? "empty" : "absent"
++          size === undefined ? "absent" : "empty"
 +        }) -- the container was asked for one. If this runner is itself ` +
 +          "containerised, the bind mount names a path on the docker host, not " +
-+          "this one; SIM_TRACE=0 turns the request off.\n",
++          "this one; SIM_TRACE=0 turns the request off. Said once per run: " +
++          "every cause of it holds for the whole sweep.\n",
 +      );
 +    }
 +  }
@@ -664,7 +680,7 @@
    const frames = parseLog(lines.join("\n"));
    const rec = new AssertRecorder();
  
-@@ -228,34 +583,50 @@
+@@ -228,34 +599,50 @@
      frames,
      lines,
      rec,
@@ -726,7 +742,7 @@
  // ---------------------------------------------------------------------------
  
  // eslint-disable-next-line @typescript-eslint/no-explicit-any
-@@ -265,20 +636,21 @@
+@@ -265,20 +652,21 @@
    "remotetrigger-smartcharging": REMOTETRIGGER_SMARTCHARGING_SPECS,
    firmware: FIRMWARE_SPECS,
    authorize: AUTHORIZE_SPECS,
@@ -754,7 +770,7 @@
  // eslint-disable-next-line @typescript-eslint/no-explicit-any
  const SPECS_BY_TEMPLATE_ID = new Map<string, ScenarioSpec<any>>(
    Object.values(GROUPS)
-@@ -286,66 +658,228 @@
+@@ -286,66 +674,228 @@
      .map((spec) => [spec.templateId, spec]),
  );
  
@@ -1022,7 +1038,7 @@
      };
    } catch (err) {
      const message =
-@@ -353,64 +887,47 @@
+@@ -353,64 +903,47 @@
      process.stderr.write(
        `[runner] ERROR: ${spec.templateId} on ${cpId} threw before completing: ${message}\n`,
      );
@@ -1111,7 +1127,7 @@
    );
  
    for (const outcome of toRetry) {
-@@ -427,18 +944,19 @@
+@@ -427,18 +960,19 @@
      process.stderr.write(
        `[runner] isolated retry: ${outcome.templateId} on ${outcome.cpId} (parallel verdict was ${outcome.verdict})\n`,
      );
@@ -1134,7 +1150,7 @@
            : " -- CONFIRMED (fails isolated too, not a parallel-lane artifact)\n"),
      );
    }
-@@ -451,59 +969,153 @@
+@@ -451,59 +985,153 @@
    return new Date().toISOString().replace(/\.\d{3}Z$/, "Z");
  }
  
@@ -1312,7 +1328,7 @@
        "",
        header,
        separator,
-@@ -518,54 +1130,58 @@
+@@ -518,54 +1146,54 @@
  }
  
  /** Sequential or parallel group sweep. Writes results/summary.md and exits
@@ -1335,11 +1351,7 @@
    }
  
 +  const stations = resolveStations();
-+  // Both before `driver provision` state or prepareStation() touches anything,
-+  // and before the first container: an environment this runner cannot use is
-+  // one refusal here, or one unexplained ERROR row per scenario later.
-+  assertSimEnvUsable();
-+  await assertNoForeignSweep(stations);
++  await preflight(stations);
 +  // Lane count IS the station count: one lane per station, never more. A
 +  // single resolved station therefore forces sequential execution however
 +  // --parallel was passed.
@@ -1397,7 +1409,7 @@
      );
    } else {
      for (let i = 0; i < specs.length; i++) {
-@@ -574,11 +1190,11 @@
+@@ -574,11 +1202,11 @@
    }
  
    if (retryFailedIsolated) {
@@ -1411,7 +1423,7 @@
            "(a sequential sweep is already isolated).\n",
        );
      }
-@@ -588,45 +1204,87 @@
+@@ -588,45 +1216,87 @@
    for (const o of outcomes) {
      const retrySuffix = o.isolatedRetry
        ? ` [isolated retry: ${o.isolatedRetry.verdict}${
@@ -1521,7 +1533,7 @@
  }
  
  // ---------------------------------------------------------------------------
-@@ -642,6 +1300,8 @@
+@@ -642,6 +1312,8 @@
    cpId: string;
    connector?: number;
    timeoutSecs?: number;
@@ -1530,7 +1542,7 @@
  }
  
  function requireValue(argv: string[], index: number, flag: string): string {
-@@ -663,37 +1323,82 @@
+@@ -663,37 +1335,82 @@
    return n;
  }
  
@@ -1630,7 +1642,7 @@
  
    if (argv[0] === "run-all") {
      group = "all";
-@@ -708,18 +1413,27 @@
+@@ -708,18 +1425,27 @@
          case "--retry-failed-isolated":
            retryFailedIsolated = true;
            break;
@@ -1661,7 +1673,7 @@
      process.exit(1);
    }
  
-@@ -749,9 +1463,11 @@
+@@ -749,9 +1475,11 @@
        case "--retry-failed-isolated":
          retryFailedIsolated = true;
          break;
@@ -1674,7 +1686,7 @@
          process.exit(1);
      }
    }
-@@ -764,35 +1480,495 @@
+@@ -764,35 +1492,495 @@
      cpId,
      connector,
      timeoutSecs,
@@ -1814,7 +1826,7 @@
 +          "was renamed.",
 +      );
 +    }
-+
+ 
 +    const buckets: ScopeStatus[] = [
 +      "DRIVABLE",
 +      "CONDITIONAL",
@@ -2062,7 +2074,7 @@
 +      run: () => parts.prepareStation!(cpId),
 +    });
 +  }
- 
++
 +  process.stdout.write(
 +    `selftest: ${module.displayName} against ${cpId}\n`,
 +  );
@@ -2186,7 +2198,7 @@
    }
  
    const spec = SPECS_BY_TEMPLATE_ID.get(args.templateId);
-@@ -800,18 +1976,110 @@
+@@ -800,18 +1988,109 @@
      process.stderr.write(
        `Unknown template id: ${args.templateId} (known: ${[...SPECS_BY_TEMPLATE_ID.keys()].join(", ")})\n`,
      );
@@ -2217,8 +2229,7 @@
 +    return exitForSingleRun(spec.templateId, "NOT APPLICABLE", expected);
 +  }
 +
-+  assertSimEnvUsable();
-+  await assertNoForeignSweep([args.cpId]);
++  await preflight([args.cpId]);
 +
 +  const options: RunOptions = {
 +    cpId: args.cpId,
