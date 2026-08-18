@@ -20,8 +20,11 @@ Ask before running anything that reaches a server or leaves state behind:
 - `ocpp-tck driver provision | verify | teardown | selftest` — talk to a CSMS,
   and the first and third of those write fixtures.
 - `docker compose -f drivers/*/compose.yaml` — brings a CSMS up.
-- `bash tools/vendor-diff.sh` — the one guard-adjacent script that uses the
-  network.
+- `bash tools/vendor-diff.sh`, `bash tools/trace-conformance.sh` — the two
+  guard-adjacent scripts that use the network. Both only read: they clone an
+  upstream into a temp dir and compare. `trace-conformance.sh` also takes a
+  directory of archived traces, which `gh run download` puts somewhere
+  harmless.
 
 ## Two habits this repo rewards
 

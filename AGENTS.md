@@ -57,6 +57,7 @@ bun tests/get-configuration-filter.ts
 bun tests/foreign-sweep-scope.ts
 bun tests/csms-readiness-gate.ts
 bun tests/sim-docker-argv.ts
+bun tests/trace-format.ts
 bun tests/trace-frames.ts
 bun tests/steve-ui-session-race.ts
 bun tests/citrineos-transport-classification.ts
@@ -74,6 +75,7 @@ bash tests/cert201-declares-its-version.sh
 bash tests/cert201-scope-rows.sh       # both read tck/specs/ASSERT-INVENTORY.txt,
                                        # so a NEW scenario reaches them only once
                                        # spec-invariants.sh has regenerated it
+bash tests/trace-format-standalone.sh
 ```
 
 then `bun run verify` once before committing.
@@ -380,6 +382,18 @@ timeout as the only rejection, which is what tells the rows from a pump that
 rejects everything. Its budgets are seconds, not `startSim`'s, so a row that
 fails by falling through to its timeout fails while someone is still
 watching.
+`trace-format.ts`: the same argument one layer down, on the library rather
+than on this suite's policy over it. Its sharpest row is the one no producer
+here can make either way — a `messageId` reused across two exchanges, which is
+where the format's correlation rule stops agreeing with a reader that forgot
+its last clause, and where every trace with unique ids agrees with both.
+
+That last guard has a limit worth stating, because it is the kind that gets
+assumed away: it cannot tell you `trace-format/validate.ts` still matches the
+schema it transcribes. The schema is not vendored here — `VENDOR.md` is
+single-upstream by construction — so only `tools/trace-conformance.sh` can say
+that, and it needs the network. Run it after changing `validate.ts` or
+`consumer-view.ts`; a green `bun run verify` does not cover them.
 
 Two guards build a fixture instead of reading the tree, and they are the two
 that test the scripts under `tools/` which *write*.
@@ -451,6 +465,17 @@ its header is now a false claim about what the build checks.
   declaration build includes the module. A standalone consumer example also
   exercises the package export without constructing a scenario.
   (`tests/csms-driver-boundary.sh`, `examples/csms-driver-smoke.ts`)
+- **`trace-format/` depends on nothing in this repository.** Every import and
+  re-export specifier under it is relative-and-inward or a `node:` built-in: a
+  specifier that climbs out ties a library destined for the
+  `open-ocpp-trace` organisation back to this repository, and a bare one gives
+  it a runtime dependency, in a package that has none. Both compile, typecheck
+  and pass every other guard here, and nobody finds out until the day the
+  directory is supposed to move. The split it protects is the one worth
+  remembering: `trace-format/` reads the FORMAT, `tck/trace.ts` is this
+  suite's policy over what it found — which of the library's facts are worth
+  refusing a run over, and how a record becomes one of `ocpp.ts`'s frames.
+  (`tests/trace-format-standalone.sh`)
 - **Every OCA obligation has a check, and every answered-check has an
   obligation.** `tck/specs/OCA-OBLIGATIONS.txt` is the table; adding an
   `assertAllAnswered` without a row, or a row without the check, fails.
