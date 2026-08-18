@@ -39,7 +39,7 @@ FILE authlist-reservation.ts
     assertEq(·, ·, "CERT-RES01", "DB: id_tag is CERT-RES01")
     assertNonEmpty(·, ·, "DB: transaction is closed (stop_timestamp set)")
   SPEC cert16-tc048-1-reserve-now-faulted connector=1 bootWaitSecs=4 holdSecs=12
-    assertLineMatches(·, ·, /Sent: \[2,.*"StatusNotification".*"errorCode":"InternalError".*"status":"Faulted"/, "connector forced Faulted before ReserveNow")
+    assertCallPayload(·, ·, "sent", "StatusNotification", {errorCode:"InternalError",status:"Faulted"}, "connector forced Faulted before ReserveNow")
     assertResponseStatus(·, ·, "ReserveNow", "Faulted", "ReserveNow rejected as Faulted")
     assertLineAfter(·, ·, /Received: \[2,.*"ReserveNow"/, /Sent: \[2,.*"StatusNotification".*"status":"Available"/, "reset to Available follows the ReserveNow exchange")
   SPEC cert16-tc048-2-reserve-now-occupied connector=1 bootWaitSecs=4 holdSecs=12
@@ -104,6 +104,23 @@ FILE core.ts
       IF
         OR
           AND
+        ·.pass(·)
+        RETURN
+    ·.fail(·, ·)
+  HELPER assertConfigurationKeyListed
+    IF
+      ·.fail(·, "no Received CALL found for action=GetConfiguration")
+      RETURN
+    FOROF
+      IF
+      IF
+      IF
+        OR
+      RETURN
+        TERNARY
+      IF
+      IF
+        OR
         ·.pass(·)
         RETURN
     ·.fail(·, ·)
@@ -209,19 +226,19 @@ FILE core.ts
     assertNonEmpty(·, ·, "DB: transaction is closed (stop_timestamp set)")
   SPEC cert16-tc019-get-configuration-all connector=1 bootWaitSecs=4 holdSecs=12
     assertGetConfigurationUnfiltered(·, ·, "GetConfiguration(no filter).req received")
-    assertLineMatches(·, ·, /Sent: \[3,.*"configurationKey":\[{"key"/, "CALLRESULT returns a configurationKey list")
+    assertConfigurationKeyListed(·, ·, null, "CALLRESULT returns a configurationKey list")
     assertLineMatches(·, ·, /"HeartbeatInterval"/, "response includes HeartbeatInterval")
     assertLineMatches(·, ·, /"SupportedFeatureProfiles"/, "response includes SupportedFeatureProfiles")
   SPEC cert16-tc019-get-configuration-key connector=1 bootWaitSecs=4 holdSecs=12
     assertLineMatches(·, ·, /Received: \[2,.*"GetConfiguration".*"key":\["HeartbeatInterval"\]/, "GetConfiguration(HeartbeatInterval).req received")
-    assertLineMatches(·, ·, /Sent: \[3,.*"configurationKey":\[{"key":"HeartbeatInterval"/, "CALLRESULT returns the HeartbeatInterval key")
+    assertConfigurationKeyListed(·, ·, "HeartbeatInterval", "CALLRESULT returns the HeartbeatInterval key")
   SPEC cert16-tc021-change-configuration connector=1 bootWaitSecs=4 holdSecs=12
     assertReceived(·, ·, "ChangeConfiguration", "ChangeConfiguration.req received")
     assertEq(·, ·, "MeterValueSampleInterval", "ChangeConfiguration.req asks for MeterValueSampleInterval")
     assertEq(·, ·, "10", "ChangeConfiguration.req carries value 10")
     assertResponseStatus(·, ·, "ChangeConfiguration", "Accepted", "ChangeConfiguration accepted")
   SPEC cert16-tc024-lock-failure connector=1 bootWaitSecs=4 holdSecs=12
-    assertLineMatches(·, ·, /Sent: \[2,.*"StatusNotification".*"errorCode":"ConnectorLockFailure".*"status":"Faulted"/, "StatusNotification(Faulted, ConnectorLockFailure) sent")
+    assertCallPayload(·, ·, "sent", "StatusNotification", {errorCode:"ConnectorLockFailure",status:"Faulted"}, "StatusNotification(Faulted, ConnectorLockFailure) sent")
     assertNoLineMatches(·, ·, /Sent: \[2,.*"StartTransaction"/, "no StartTransaction sent (lock failure prevents charging)")
     assertLineMatches(·, ·, /Sent: \[2,.*"StatusNotification".*"status":"Available"/, "final StatusNotification(Available) sent after plug-out")
     assertAllAnswered(·, ·, "StatusNotification")
@@ -232,7 +249,7 @@ FILE core.ts
     assertReceived(·, ·, "ClearCache", "ClearCache.req received")
     assertResponseStatus(·, ·, "ClearCache", "Accepted", "ClearCache accepted")
   SPEC cert16-tc064-data-transfer connector=1 bootWaitSecs=4 holdSecs=10
-    assertLineMatches(·, ·, /Sent: \[2,.*"DataTransfer".*"vendorId":"com\.example\.cert16".*"messageId":"certTest".*"data":"hello-csms"/, "DataTransfer.req sent with expected vendorId/messageId/data")
+    assertCallPayload(·, ·, "sent", "DataTransfer", {vendorId:"com.example.cert16",messageId:"certTest",data:"hello-csms"}, "DataTransfer.req sent with expected vendorId/messageId/data")
     IF
       ·.fail(·, "no Sent CALL found for action=DataTransfer")
       RETURN
@@ -291,6 +308,18 @@ FILE firmware.ts
 FILE index.ts
 
 FILE remotetrigger-smartcharging.ts
+  HELPER assertCompositeSchedulePeriodLimit
+    IF
+      ·.fail(·, "no Received CALL found for action=GetCompositeSchedule")
+      RETURN
+    FOROF
+      IF
+      IF
+      IF
+      IF
+        ·.pass(·)
+        RETURN
+    ·.fail(·, ·)
   SPEC cert16-tc010-remote-start connector=1 bootWaitSecs=4 holdSecs=25
     assertReceived(·, ·, "RemoteStartTransaction", "RemoteStartTransaction.req received")
     assertResponseStatus(·, ·, "RemoteStartTransaction", "Accepted", "RemoteStartTransaction accepted")
@@ -388,7 +417,7 @@ FILE remotetrigger-smartcharging.ts
   SPEC cert16-tc066-get-composite-schedule connector=1 bootWaitSecs=4 holdSecs=15
     assertResponseStatus(·, ·, "SetChargingProfile", "Accepted", "SetChargingProfile accepted")
     assertResponseStatus(·, ·, "GetCompositeSchedule", "Accepted", "GetCompositeSchedule accepted")
-    assertLineMatches(·, ·, /Sent: \[3,.*"chargingSchedule".*"limit":11000/, "returned schedule reflects the applied profile's period (limit 11000)")
+    assertCompositeSchedulePeriodLimit(·, ·, 11000, "returned schedule reflects the applied profile's period (limit 11000)")
   SPEC cert16-tc067-clear-charging-profile connector=1 bootWaitSecs=4 holdSecs=15
     assertResponseStatus(·, ·, "SetChargingProfile", "Accepted", "SetChargingProfile accepted")
     assertResponseStatus(·, ·, "ClearChargingProfile", "Accepted", "ClearChargingProfile accepted")

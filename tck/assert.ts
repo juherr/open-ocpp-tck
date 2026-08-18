@@ -1,4 +1,4 @@
-// Derived from shiv3/ocpp-cp-simulator src/cp/application/verification/assert.ts (re-exported upstream as scripts/steve-verify/runner/assert.ts) @ 604054adb0d7d7129a26a5f1ad2d5fdc290d1ca1 (Apache-2.0). Modified: added the UNVERIFIABLE_PREFIX sentinel, a third SKIPPED check outcome, and the AssertRecorder.skipped counter; assertEq/assertNonEmpty short-circuit to SKIPPED when a value carries the sentinel; added assertAllAnswered and AnsweredOptions, which have no upstream counterpart. Everything else is unchanged.
+// Derived from shiv3/ocpp-cp-simulator src/cp/application/verification/assert.ts (re-exported upstream as scripts/steve-verify/runner/assert.ts) @ 604054adb0d7d7129a26a5f1ad2d5fdc290d1ca1 (Apache-2.0). Modified: added the UNVERIFIABLE_PREFIX and UNEXERCISED_PREFIX sentinels; added a third SKIPPED check outcome -- the CheckStatus type, AssertRecorder.skip, and the skipped and unexercised counters; assertEq/assertNonEmpty short-circuit to SKIPPED when a value carries the UNVERIFIABLE sentinel; added assertCallPayload, assertAllAnswered, AnsweredOptions, tallyAnswers, AnswerTally and AnswerError, which have no upstream counterpart. Everything else is unchanged.
 
 /**
  * assert.ts -- typed assertion DSL for scenario specs, mirroring lib.sh's
@@ -8,6 +8,7 @@
  */
 
 import {
+  findAllCalls,
   findCall,
   findResponseFor,
   type CallFrame,
@@ -186,6 +187,77 @@ export function assertNotSent(
   }
 }
 
+/**
+ * Asserts that SOME CALL for `action`+`direction` carries every member of
+ * `expected`, compared by value.
+ *
+ * This is the frame-level replacement for a regex that matched several payload
+ * members in one pattern. Written as text, `"errorCode":"X".*"status":"Y"`
+ * asserts a conformance property AND the order in which the producer's
+ * `JSON.stringify` happened to emit two members -- an order nothing declares
+ * and nothing checks, which a bump of the pinned simulator digest can change
+ * (issue #44). Both sites this replaced carried a comment saying they matched
+ * the members "independently rather than assuming an order", which the regex
+ * did not do.
+ *
+ * ANY matching CALL is enough, matching the any-line semantics of the
+ * assertLineMatches calls this replaced: a scenario whose connector also
+ * reports other states is not failed for them. A malformed payload is not a
+ * witness -- an OCPP-J CALL carries a JSON object, and reading a member off
+ * `null`, an array or a scalar yields undefined, which is the shape an absent
+ * member has.
+ *
+ * SCALARS ONLY, enforced by the type rather than by prose. Deep-comparing an
+ * object member would need a structural comparison, and the obvious one --
+ * `JSON.stringify(a) === JSON.stringify(b)` -- is itself member-order
+ * dependent, which would put this helper back where the regexes were. A member
+ * whose value is an object or an array wants a check written out in the
+ * scenario -- `assertConfigurationKeyListed` (specs/core.ts) is the worked
+ * example, and the rejected-refactor note beside {@link assertIdTagInfoStatus}
+ * says why it is not a fourth helper here.
+ */
+export function assertCallPayload(
+  rec: AssertRecorder,
+  frames: readonly Frame[],
+  direction: Direction,
+  action: string,
+  expected: Readonly<Record<string, string | number | boolean | null>>,
+  description: string,
+): void {
+  const calls = findAllCalls(frames, direction, action);
+  if (calls.length === 0) {
+    rec.fail(description, `no ${direction} CALL found for action=${action}`);
+    return;
+  }
+  const seen: string[] = [];
+  for (const call of calls) {
+    const payload = call.payload;
+    if (
+      typeof payload !== "object" ||
+      payload === null ||
+      Array.isArray(payload)
+    ) {
+      seen.push(`malformed payload ${JSON.stringify(payload)}`);
+      continue;
+    }
+    const members = payload as Record<string, unknown>;
+    const wrong = Object.keys(expected).filter(
+      (key) => !Object.is(members[key], expected[key]),
+    );
+    if (wrong.length === 0) {
+      rec.pass(description);
+      return;
+    }
+    seen.push(
+      wrong.map((key) => `${key}=${JSON.stringify(members[key])}`).join(", "),
+    );
+  }
+  rec.fail(
+    description,
+    `no ${direction} ${action} carried ${JSON.stringify(expected)}: ${seen.join("; ")}`,
+  );
+}
+
 export interface ResponseStatusOptions {
   /** Which side sent the CALL being answered (default "received": a
    *  CSMS-initiated op like RemoteStartTransaction). Pass "sent" for a
@@ -302,6 +374,41 @@ export function assertIdTagInfoStatus(
     );
   }
 }
+
+/**
+ * REJECTED REFACTOR, noted here because this is where it will be proposed
+ * again -- and it was written, measured and reverted rather than merely
+ * considered. A third sibling of {@link assertResponseStatus} and
+ * {@link assertIdTagInfoStatus} -- `assertResponsePayload(rec, frames, action,
+ * predicate, description)`, same correlation, the check on the answering
+ * CALLRESULT's payload supplied by the caller -- is the obvious way to
+ * de-duplicate `assertConfigurationKeyListed` (specs/core.ts) and
+ * `assertCompositeSchedulePeriodLimit`
+ * (specs/remotetrigger-smartcharging.ts), which each repeat this file's
+ * find-then-correlate-then-report spine.
+ *
+ * It costs more than it saves, and the cost is in a different file.
+ * tools/extract-assert-inventory.ts renders every non-literal argument as `·`,
+ * so a predicate passed as an argument disappears: those two helpers rendered
+ * as a single `assertResponsePayload(·, ·, "GetConfiguration", ·, ·)` line,
+ * and relaxing what the predicate accepts would then move nothing in
+ * ASSERT-INVENTORY.txt. Spelled out in the scenario file instead, the same
+ * logic renders as IF / RETURN / ·.fail control flow and any relaxation shows
+ * up in the diff -- which is the entire job of that artifact. The extractor's
+ * own header names this limit ("a non-literal argument is `·`... no spec does
+ * this today"); the fix is to keep it true, not to be the first exception.
+ *
+ * THE WEAKER SHAPE IS ALSO REJECTED, and it is the one to re-propose next: a
+ * value-returning `correlatedResult(rec, frames, action, description)` that
+ * fails-and-returns-undefined on the three plumbing branches, leaving each
+ * scenario's own distinguishing check written out. That one keeps the artifact
+ * honest -- the branches it absorbs are the ones every caller shares, and the
+ * ones that differ stay visible. It is declined here for scope, not for
+ * principle: this pull request already moves those two helpers twice, and a
+ * third pass would put a pure refactor in the same ASSERT-INVENTORY.txt diff
+ * as six checks that genuinely changed, which is precisely what makes such a
+ * diff unreadable. Worth doing in a commit whose only job is that refactor.
+ */
 
 export interface AnsweredOptions {
   /** Which side sent the CALLs being answered (default "sent": the charge

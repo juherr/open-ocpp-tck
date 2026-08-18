@@ -1,14 +1,15 @@
 --- a/scripts/steve-verify/runner/specs/authlist-reservation.ts (upstream @ 604054adb0d7d7129a26a5f1ad2d5fdc290d1ca1)
 +++ b/scripts/ocpp-verify/tck/specs/authlist-reservation.ts
-@@ -9,6 +9,7 @@
+@@ -9,6 +9,8 @@
   */
  
  import {
 +  assertAllAnswered,
++  assertCallPayload,
    assertEq,
    assertLineAfter,
    assertLineMatches,
-@@ -19,17 +20,13 @@
+@@ -19,17 +21,13 @@
    assertSent,
  } from "../assert";
  import type { ScenarioSpec } from "../spec-types";
@@ -29,7 +30,7 @@
    );
  }
  
-@@ -45,12 +42,10 @@
+@@ -45,12 +43,10 @@
    connector: 1,
    bootWaitSecs: 4,
    holdSecs: 12,
@@ -44,7 +45,7 @@
      } catch (err) {
        warnOpFailed("GetLocalListVersion", err);
      }
-@@ -96,12 +91,10 @@
+@@ -96,12 +92,10 @@
    // SendLocalList run against the same cpId (even earlier in the same
    // group sweep) leaves nothing behind here. Do not "fix" this by
    // resetting/isolating state -- there's no cross-run state to reset.
@@ -59,7 +60,7 @@
      } catch (err) {
        warnOpFailed("GetLocalListVersion", err);
      }
-@@ -132,14 +125,14 @@
+@@ -132,14 +126,14 @@
    connector: 1,
    bootWaitSecs: 4,
    holdSecs: 12,
@@ -80,7 +81,7 @@
        });
      } catch (err) {
        warnOpFailed("SendLocalList", err);
-@@ -167,14 +160,14 @@
+@@ -167,14 +161,14 @@
    connector: 1,
    bootWaitSecs: 4,
    holdSecs: 12,
@@ -101,7 +102,7 @@
        });
      } catch (err) {
        warnOpFailed("SendLocalList", err);
-@@ -202,14 +195,14 @@
+@@ -202,14 +196,14 @@
    connector: 1,
    bootWaitSecs: 4,
    holdSecs: 12,
@@ -122,7 +123,7 @@
        });
      } catch (err) {
        warnOpFailed("SendLocalList", err);
-@@ -247,25 +240,25 @@
+@@ -247,25 +241,25 @@
    connector: 1,
    bootWaitSecs: 4,
    holdSecs: 18,
@@ -159,7 +160,7 @@
        });
      } catch (err) {
        warnOpFailed("SendLocalList (Differential)", err);
-@@ -321,20 +314,20 @@
+@@ -321,20 +315,20 @@
    bootWaitSecs: 4,
    // settle(2) + delay-arrival(2) + bounded meter block(30) + tail.
    holdSecs: 45,
@@ -186,7 +187,7 @@
      assertReceived(rec, frames, "ReserveNow", "ReserveNow.req received");
      assertResponseStatus(
        rec,
-@@ -363,8 +356,16 @@
+@@ -363,8 +357,16 @@
        "StartTransaction sent with the scenario's hardcoded idTag CERT-RES01 (not the ReserveNow idTag)",
      );
      assertSent(rec, frames, "StopTransaction", "StopTransaction sent");
@@ -204,7 +205,7 @@
      if (!txPk) {
        rec.fail(
          `DB: transaction row exists for ${cpId}`,
-@@ -375,13 +376,13 @@
+@@ -375,13 +377,13 @@
      rec.pass(`DB: transaction row exists for ${cpId} (pk=${txPk})`);
      assertEq(
        rec,
@@ -220,7 +221,7 @@
        "DB: transaction is closed (stop_timestamp set)",
      );
    },
-@@ -398,14 +399,14 @@
+@@ -398,27 +400,29 @@
    connector: 1,
    bootWaitSecs: 4,
    holdSecs: 12,
@@ -240,7 +241,28 @@
        });
      } catch (err) {
        warnOpFailed("ReserveNow", err);
-@@ -454,14 +455,14 @@
+     }
+   },
+   assert({ frames, lines, rec }) {
+-    // Field order on the wire is errorCode before status (confirmed live on
+-    // TC_024's identical StatusNotification node type), so match them
+-    // independently rather than assuming an order.
+-    assertLineMatches(
++    // Same correction as TC_024's identical StatusNotification node type: the
++    // comment here claimed the two members were matched independently, and the
++    // regex chained them with `.*`, which is an order (issue #44).
++    assertCallPayload(
+       rec,
+-      lines,
+-      /Sent: \[2,.*"StatusNotification".*"errorCode":"InternalError".*"status":"Faulted"/,
++      frames,
++      "sent",
++      "StatusNotification",
++      { errorCode: "InternalError", status: "Faulted" },
+       "connector forced Faulted before ReserveNow",
+     );
+     assertResponseStatus(
+@@ -454,14 +458,14 @@
    connector: 1,
    bootWaitSecs: 4,
    holdSecs: 12,
@@ -260,7 +282,7 @@
        });
      } catch (err) {
        warnOpFailed("ReserveNow", err);
-@@ -489,6 +490,8 @@
+@@ -489,6 +493,8 @@
        /Sent: \[2,.*"StatusNotification".*"status":"Available"/,
        "plug-out and reset to Available follow the ReserveNow exchange",
      );
@@ -269,7 +291,7 @@
    },
  };
  
-@@ -503,14 +506,14 @@
+@@ -503,14 +509,14 @@
    connector: 1,
    bootWaitSecs: 4,
    holdSecs: 12,
@@ -289,7 +311,7 @@
        });
      } catch (err) {
        warnOpFailed("ReserveNow", err);
-@@ -538,6 +541,8 @@
+@@ -538,6 +544,8 @@
        /Sent: \[2,.*"StatusNotification".*"status":"Available"/,
        "reset to Available follows the ReserveNow exchange",
      );
@@ -298,7 +320,7 @@
    },
  };
  
-@@ -552,14 +557,14 @@
+@@ -552,14 +560,14 @@
    connector: 1,
    bootWaitSecs: 4,
    holdSecs: 12,
@@ -318,7 +340,7 @@
        });
      } catch (err) {
        warnOpFailed("ReserveNow", err);
-@@ -593,27 +598,27 @@
+@@ -593,27 +601,27 @@
      connector: 1,
      bootWaitSecs: 4,
      holdSecs: 20,
@@ -355,7 +377,7 @@
          {
            timeoutMs: 15_000,
            intervalMs: 1_000,
-@@ -622,17 +627,14 @@
+@@ -622,17 +630,14 @@
        );
  
        try {
@@ -375,7 +397,7 @@
        assertResponseStatus(
          rec,
          frames,
-@@ -665,6 +667,9 @@
+@@ -665,6 +670,9 @@
          /Sent: \[2,.*"StatusNotification".*"status":"Available"/,
          "StatusNotification(Available) sent after CancelReservation (#186)",
        );
@@ -385,7 +407,7 @@
  
        if (!driveState.reservationPk) {
          rec.fail(
-@@ -675,7 +680,7 @@
+@@ -675,7 +683,7 @@
        }
        assertEq(
          rec,
@@ -394,7 +416,7 @@
          "CANCELLED",
          `DB: reservation ${driveState.reservationPk} is CANCELLED`,
        );
-@@ -693,30 +698,16 @@
+@@ -693,30 +701,16 @@
    connector: 1,
    bootWaitSecs: 4,
    holdSecs: 12,
@@ -433,7 +455,7 @@
        });
      } catch (err) {
        warnOpFailed("CancelReservation", err);
-@@ -736,6 +727,8 @@
+@@ -736,6 +730,8 @@
        "Rejected",
        "CancelReservation rejected (nonexistent reservationId)",
      );
