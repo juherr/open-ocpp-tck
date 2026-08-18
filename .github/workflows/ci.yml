@@ -123,6 +123,12 @@ jobs:
       - name: Core names no CSMS
         run: bash tests/generic-core.sh
 
+      # The e2e job's red-row trigger, held to what it claims from this job --
+      # which is the point of it having become a file. As a `grep` in that
+      # job's YAML it was reachable only by running a sweep and reading the log.
+      - name: A red row is red whatever its namespace
+        run: bash tests/summary-red-rows.sh
+
       # The other layering boundary: nothing outside the harness layer may
       # cite the harness overlay.
       - name: Harness layering holds
@@ -323,21 +329,33 @@ jobs:
           # leaves no results/ at all, and the redirect below would then fail
           # for a reason that has nothing to do with the CSMS.
           mkdir -p results
-          # `if` and not `&&`: the default shell is `bash -e`, where a bare
-          # compound that ends non-zero would abort the step on the ordinary
-          # no-match case.
-          if grep -qE '^\| cert16-[^|]*\|[^|]*\| *(FAIL|ERROR) ' results/summary.md 2>/dev/null; then
-            red=1
-          else
-            red=0
-          fi
-          if [ "$red" = 0 ] && [ "${{ job.status }}" = success ]; then
+          # THE READING LIVES IN tools/summary-red-rows.ts, not here. It used to
+          # be a `grep` on this line, bound to the `cert16-` namespace and to
+          # the verdict being the third column, and a line of YAML is a line no
+          # test can reach: the only way to learn what it matched was to run a
+          # sweep. tests/summary-red-rows.sh now holds it to both.
+          #
+          # `|| status=$?` and not a bare call: the default shell is `bash -e`,
+          # where "no red row" -- a non-zero status by design, so this reads the
+          # way the `grep -q` it replaces did -- would abort the step.
+          status=0
+          bun tools/summary-red-rows.ts results/summary.md || status=$?
+          if [ "$status" -eq 1 ] && [ "${{ job.status }}" = success ]; then
             echo "no red row and the job is green -- nothing worth capturing"
             exit 0
           fi
           docker compose -f drivers/${{ matrix.driver }}/compose.yaml logs \
             --no-color --timestamps > results/csms-${{ matrix.driver }}.log
           wc -l results/csms-${{ matrix.driver }}.log
+          # Status 2 is a summary the repository could not read, which captures
+          # above (a log nobody needed costs a file; a log nobody took costs the
+          # investigation) and is worth a red of its OWN only when the job is
+          # otherwise green. A failed sweep has already reported, and the
+          # commonest way to reach 2 is that it died before writing a table at
+          # all -- which the `mkdir -p` above exists for and is not a defect.
+          if [ "$status" -gt 1 ] && [ "${{ job.status }}" = success ]; then
+            exit 1
+          fi
 
       # always(): the wire logs are worth most precisely when the sweep failed.
       - name: Upload results

@@ -73,6 +73,9 @@ run "the simulator argv says what the run was asked to do" bun tests/sim-docker-
 # those branches is handing the mapper its records.
 run "the wire trace reads as the frames the log would have given" bun tests/trace-frames.ts
 run "core is CSMS-neutral" bash tests/generic-core.sh
+# The one reading in this repository that lives in the workflow rather than in
+# a file the gate can run -- so it is a file now, and this is what runs it.
+run "a red row is red whatever its namespace" bash tests/summary-red-rows.sh
 # The other layering boundary the repository declares in prose: AGENTS.md and
 # everything it governs must not depend on the harness file.
 run "harness layering holds" bash tests/harness-layer.sh
