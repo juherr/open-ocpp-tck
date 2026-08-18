@@ -41,6 +41,11 @@ commit it derives from and what was changed at the fork:
   tck/specs/firmware.ts FORKED     CSMS operations expressed as typed OCPP
   tck/assert.ts     FORKED     per-check SKIPPED degradation
                                (UNVERIFIABLE_PREFIX sentinel)
+  tck/ocpp.ts       PATCHED    findResponseFor correlates by the
+                               open-ocpp-trace rule -- most recent preceding
+                               CALL, opposite direction, not already answered
+                               -- instead of the first matching response
+                               after the call
   tck/sim.ts        FORKED     config-driven docker argv, published image
                                pinned by digest, no repo bind-mount,
                                outgoing WS Basic auth, secret redaction,

@@ -79,20 +79,34 @@ export declare function findAllCalls(frames: readonly Frame[], direction: Direct
 /**
  * Finds the CALLRESULT/CALLERROR that answers `call`, correlated strictly
  * by OCPP-J `uniqueId` and reply direction (a response to a sent CALL must
- * be received, and vice versa) -- never by adjacency in the log. Returns
- * the FIRST such response in log order (an OCPP peer should never send two
- * responses to the same uniqueId, but this is deterministic either way).
+ * be received, and vice versa) -- never by adjacency in the log.
  *
- * uniqueId-uniqueness assumption: this correlation is only sound if
- * `uniqueId`s are effectively unique for the span of the log being
- * searched. In practice they are -- both the CP (OCPPWebSocket) and SteVe
- * generate UUIDs per outstanding request -- but a long-running or reused
- * log CAN contain the same uniqueId string twice by coincidence (or, in a
- * test fixture, deliberately). Guard against that: a response can only
- * ever be for the CALL that precedes it on the wire, so this only searches
- * frames STRICTLY AFTER `call`'s own position in `frames` -- an earlier
- * frame sharing the same uniqueId (e.g. a stale response left over from a
- * prior exchange that happened to reuse the id) is never matched, even
- * though it satisfies direction+uniqueId.
+ * THIS IS THE open-ocpp-trace CORRELATION RULE, stated from the call's side.
+ * The format's `conformance/README.md` defines it from the response's: a
+ * response correlates with "the most recent preceding CALL in the trace" that
+ * has the same `messageId`, travels in the opposite direction, and "is not
+ * already correlated with an earlier response". The three clauses are why this
+ * computes the whole pairing rather than scanning forward for a match: the
+ * answer to "which response is this call's" depends on which calls the OTHER
+ * responses have already claimed, so it is not a local question.
+ *
+ * THE THIRD CLAUSE IS THE ONE THAT MATTERS, and it is invisible almost always.
+ * uniqueIds are effectively unique in practice -- both the CP
+ * (OCPPWebSocket) and every CSMS here generate one per outstanding request --
+ * and while they are, a forward scan for the first match returns exactly what
+ * this returns. The two only diverge on a REUSED id, where a forward scan maps
+ * two calls onto the same response and the rule pairs them one to one, most
+ * recent first. So the cheap implementation passes every trace anyone is
+ * likely to hand it, and is wrong about the one it is not.
+ *
+ * The suite reads the same wire two ways -- the JSONL trace and the simulator
+ * log -- and `trace-format/consumer-view.ts` derives the format's view from
+ * the first. Correlating differently here would mean the conformance run
+ * proves the library agrees with the specification while the assertions
+ * quietly do not, which is the divergence a single reading exists to make
+ * impossible.
+ *
+ * A `call` that is not in `frames` has no position, so the rule has nothing to
+ * anchor on and this returns undefined rather than guessing from index 0.
  */
 export declare function findResponseFor(frames: readonly Frame[], call: CallFrame): ResponseFrame | undefined;
