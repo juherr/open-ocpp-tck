@@ -27,12 +27,14 @@
  *
  * WHY TYPESCRIPT, for a question a `grep` used to answer. The vocabulary in
  * part 3 belongs to the runner that wrote the table, and this file holds no copy
- * of it: renaming a verdict in `tck/standing.ts` fails the typecheck there, on
- * `VERDICTS` itself, and then travels here through the import. Spelled out in
- * awk it would be a third copy linked to nothing, and the disagreement would
- * surface only inside the e2e job -- the reachable-only-by-sweeping property
- * this file was extracted to remove, reintroduced one layer down. bun is
- * installed in that job before this runs, so the move costs nothing there.
+ * of it. Measured: renaming a verdict in `VERDICTS` fails the typecheck in the
+ * places that SPELL the old one -- `isFailure`, the runner -- and reaches this
+ * file silently through the import, which is the correct direction, because
+ * matching the new name is what it should do. Spelled out in awk it would be a
+ * third copy linked to nothing, and the disagreement would surface only inside
+ * the e2e job -- the reachable-only-by-sweeping property this file was extracted
+ * to remove, reintroduced one layer down. bun is installed in that job before
+ * this runs, so the move costs nothing there.
  *
  * TWO REFACTORS CONSIDERED AND NOT TAKEN, noted where they would be re-proposed:
  *
@@ -75,10 +77,23 @@ function refuse(message: string): never {
   process.exit(2);
 }
 
-/** The leading verdict of a cell whose tail may carry a NOT APPLICABLE reason
- *  or an expected-failure note, both free prose. */
+/**
+ * The leading verdict of a cell whose tail may carry a NOT APPLICABLE reason or
+ * an expected-failure note, both free prose.
+ *
+ * A BARE `startsWith` IS NOT ENOUGH, and this is the one place in the file
+ * where being too permissive is the dangerous direction: `FAILURE` opens with
+ * `FAIL`, so a cell spelling a word this repository does not use would have
+ * been read as a failing verdict, and `PASSING` as a passing one -- a made-up
+ * answer where part 3 promises a refusal. The tail has to start a new word:
+ * ` (expected)`, ` — note.`, or nothing at all.
+ */
 function leadingVerdict(cell: string): Verdict | null {
-  return VERDICTS.find((v) => cell.startsWith(v)) ?? null;
+  return (
+    VERDICTS.find(
+      (v) => cell.startsWith(v) && !/[\w-]/.test(cell.charAt(v.length)),
+    ) ?? null
+  );
 }
 
 const path = process.argv[2];
@@ -111,8 +126,22 @@ const columns = cellsOf(lines[headerAt]);
 const verdictAt = columns.indexOf("verdict");
 if (verdictAt === -1) refuse("the summary table has no `verdict` column.");
 
+// The line after the header is skipped below as the `| --- | --- |` rule, so
+// it has to BE one. Assumed rather than checked, a table without it loses its
+// first data row to that slice -- silently, and the first row is as likely to
+// be the red one as any other.
+const rule = cellsOf(lines[headerAt + 1] ?? "");
+if (
+  rule.length !== columns.length ||
+  !rule.slice(1, -1).every((cell) => /^:?-{3,}:?$/.test(cell))
+) {
+  refuse(
+    "the row under the header is not a `| --- | --- |` rule:\n  " +
+      `${lines[headerAt + 1] ?? "<end of file>"}`,
+  );
+}
+
 const red: string[] = [];
-// +2 skips the `| --- | --- |` rule, which is a row only in Markdown's sense.
 for (const line of lines.slice(headerAt + 2)) {
   if (!line.startsWith("|")) continue;
   const cells = cellsOf(line);

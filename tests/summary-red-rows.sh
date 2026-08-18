@@ -7,8 +7,10 @@
 #      template id opens `cert16-`, `cert201-` or something nobody has proposed.
 #   2. THE VERDICT COLUMN IS FOUND BY NAME. Inserting a column before it, or
 #      appending one after it, does not move the answer.
-#   3. AN UNREADABLE TABLE IS REFUSED. No header, no `verdict` column, a ragged
-#      row, or a verdict cell spelling no verdict: exit 2, never exit 1.
+#   3. AN UNREADABLE TABLE IS REFUSED. No header, no `verdict` column, no
+#      `| --- |` rule under it, a ragged row, or a verdict cell spelling no
+#      verdict -- including one that merely OPENS with one, `FAILURE` for
+#      `FAIL`: exit 2, never exit 1.
 #
 # WHY THIS EXISTS. The reading was a `grep -qE '^\| cert16-…'` inside
 # .github/workflows/ci.yml, and it carried both bindings at once: a red
@@ -24,8 +26,10 @@
 # reading survives the table growing a column and the suite growing a namespace.
 # The verdict vocabulary is not on that list on purpose: the tool imports
 # `VERDICTS` from `tck/standing.ts` instead of copying it, so a renamed verdict
-# fails the typecheck at that array and then reaches the tool through the
-# import -- neither a fixture here nor a spelling in the tool to go stale.
+# reaches it through the import and there is no fixture here, and no spelling in
+# the tool, that could go stale against the runner. What the fixtures below DO
+# pin about verdicts is the matching rule, which is this file's business and not
+# `standing.ts`'s: a cell has to spell one, not merely open with one.
 #
 # Offline: writes fabricated summaries into a temp dir and runs one tool.
 set -uo pipefail
@@ -118,7 +122,7 @@ EOF
 
 # ------------------------------------------------------------------ part 3
 #
-# Five shapes, five refusals. Each would otherwise be answered "no red row",
+# Eight shapes, eight refusals. Each would otherwise be answered "no red row",
 # which is the one wrong answer: it is indistinguishable from a clean sweep.
 expect 2 no-header <<'EOF'
 | cert16-tc001-cold-boot | CERTCP1 | FAIL | 5 | 1 | 0 |
@@ -140,6 +144,30 @@ expect 2 unknown-verdict <<'EOF'
 | scenario | cp | verdict | checks | failed | skipped |
 | --- | --- | --- | --- | --- | --- |
 | cert16-tc001-cold-boot | CERTCP1 | INCONCLUSIVE | 5 | 0 | 0 |
+EOF
+
+# A word that merely OPENS with a verdict is not that verdict. Both directions
+# are here because they fail opposite ways: `PASSING` read as PASS hides a row,
+# `FAILURE` read as FAIL invents one -- and the second is the shape that would
+# have made this tool answer a question nobody asked it.
+expect 2 verdict-is-a-longer-word <<'EOF'
+| scenario | cp | verdict | checks | failed | skipped |
+| --- | --- | --- | --- | --- | --- |
+| cert16-tc001-cold-boot | CERTCP1 | PASSING | 5 | 0 | 0 |
+EOF
+
+expect 2 failure-is-not-fail <<'EOF'
+| scenario | cp | verdict | checks | failed | skipped |
+| --- | --- | --- | --- | --- | --- |
+| cert16-tc001-cold-boot | CERTCP1 | FAILURE | 5 | 1 | 0 |
+EOF
+
+# No `| --- |` rule under the header. The first data row is what the slice past
+# it would eat, so the fixture puts the red row there: answered rather than
+# refused, this table reports a clean sweep.
+expect 2 no-separator-rule <<'EOF'
+| scenario | cp | verdict | checks | failed | skipped |
+| cert16-tc001-cold-boot | CERTCP1 | FAIL | 5 | 1 | 0 |
 EOF
 
 # The sweep that died before writing a table -- the case with the most to say
