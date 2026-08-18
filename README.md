@@ -237,7 +237,7 @@ the kind of breakage the mechanism exists to catch.
 | `SIM_IMAGE` | pinned digest | Simulator image override. |
 | `SIM_NETWORK`, `SIM_WS_APPEND_CP_ID`, `SIM_WS_BASIC_USER`, `SIM_WS_BASIC_PASS` | driver-supplied | Transport. |
 | `SIM_OCPP_VERSION` | `OCPP-1.6J` | Protocol the charge point speaks, spelled as the simulator's CLI spells it. An unaccepted value is refused before a container starts. |
-| `SIM_TRACE` | on | `0` switches off the JSONL wire trace written beside each scenario's log — for a docker that refuses the bind mount it needs. |
+| `SIM_TRACE` | on | `0` switches off the JSONL wire trace written beside each scenario's log — for a docker that refuses the bind mount it needs. The trace is what the assertions read; without one they read the log, which the runner parses itself, and the verdicts are the same. |
 
 An explicit `SIM_*` value always beats the driver's default: an operator
 chasing a handshake problem must not have their override silently replaced.

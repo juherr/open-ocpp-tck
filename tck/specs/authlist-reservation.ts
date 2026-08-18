@@ -10,6 +10,7 @@
 
 import {
   assertAllAnswered,
+  assertCallPayload,
   assertEq,
   assertLineAfter,
   assertLineMatches,
@@ -413,13 +414,15 @@ export const tc0481ReserveNowFaultedSpec: ScenarioSpec<void> = {
     }
   },
   assert({ frames, lines, rec }) {
-    // Field order on the wire is errorCode before status (confirmed live on
-    // TC_024's identical StatusNotification node type), so match them
-    // independently rather than assuming an order.
-    assertLineMatches(
+    // Same correction as TC_024's identical StatusNotification node type: the
+    // comment here claimed the two members were matched independently, and the
+    // regex chained them with `.*`, which is an order (issue #44).
+    assertCallPayload(
       rec,
-      lines,
-      /Sent: \[2,.*"StatusNotification".*"errorCode":"InternalError".*"status":"Faulted"/,
+      frames,
+      "sent",
+      "StatusNotification",
+      { errorCode: "InternalError", status: "Faulted" },
       "connector forced Faulted before ReserveNow",
     );
     assertResponseStatus(

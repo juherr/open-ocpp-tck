@@ -49,8 +49,69 @@ import type { ScenarioSpec } from "../spec-types";
  * by construction. This helper stays in specs/ for the same reason -- "`key`
  * absent means return everything" is GetConfiguration semantics, not assertion
  * machinery.
+ *
+ * THAT SURVEY'S PREMISE MOVED, and the conclusion only half survived -- issue
+ * #44. "Every `Sent:` regex matches our own simulator and cannot vary" is
+ * false: it matches a PINNED DIGEST, and six of those regexes pinned member
+ * order, so bumping the digest could turn them red for a reason no CSMS
+ * caused. Two of the six even carried a comment saying they matched their
+ * members "independently rather than assuming an order", which `.*` between
+ * two members is not. All six are converted, so the caller count is no longer
+ * two.
+ *
+ * What survives is WHERE the knowledge lives, and it survives whole. assert.ts
+ * gained exactly one shape that carries no message knowledge --
+ * `assertCallPayload`, a flat scalar subset of a CALL payload, which serves
+ * three of the six. The other three are about what a `configurationKey` list
+ * or a `chargingSchedule` looks like, so they stayed in this directory:
+ * `assertConfigurationKeyListed` below, and
+ * `assertCompositeSchedulePeriodLimit` in specs/remotetrigger-smartcharging.ts.
+ * A primitive that knew what a `configurationKey` list is would still be the
+ * wrong thing to build -- and the version of it that knew nothing, taking a
+ * predicate, was written and reverted for a second reason recorded beside
+ * `assertIdTagInfoStatus` in assert.ts.
  */
 export declare function assertGetConfigurationUnfiltered(rec: AssertRecorder, frames: readonly Frame[], description: string): void;
+/**
+ * The CALLRESULT answering the received GetConfiguration returns a
+ * `configurationKey` list -- and, when `key` is a string rather than null,
+ * one carrying that key.
+ *
+ * Replaces `/Sent: \[3,.*"configurationKey":\[{"key"/` and its
+ * `:"HeartbeatInterval"` variant. Both were wrong twice over, and only the
+ * first way is issue #44's: `\[{"key"` requires `key` to be the FIRST member
+ * the charge point serialised in the FIRST entry, which no part of OCPP 1.6
+ * says and nothing here declares. The second is that a text match over the
+ * run's lines identifies the response as "some sent CALLRESULT mentioning
+ * configurationKey" -- any CALLRESULT, to any request. Correlating from the
+ * GetConfiguration that provoked it is what the check always meant.
+ *
+ * `key: null` is "a non-empty list", which is TC_019_1's obligation: it asked
+ * for every key, so what matters is that a list came back at all. A literal
+ * rather than an omitted argument so that ASSERT-INVENTORY.txt renders it --
+ * a non-literal argument renders as `·`, and the difference between the two
+ * scenarios' checks would then be invisible in the artifact that exists to
+ * show it.
+ *
+ * An entry without a string `key` is not a configurationKey entry: OCPP 1.6
+ * makes `key` required in `KeyValue`, and accepting anything else would let a
+ * malformed response satisfy a conformance check.
+ *
+ * ANY received GetConfiguration whose answer satisfies it is enough, and that
+ * is not a detail. The regexes this replaced matched any LINE, and the check
+ * standing beside it in TC_019_1 -- assertGetConfigurationUnfiltered above --
+ * accepts any request. Correlating from only the FIRST GetConfiguration would
+ * make the two neighbours talk about different requests the moment a CSMS
+ * sends one of its own, and would narrow what the scenario measures in the
+ * failing direction, silently. Converting a regex must not do that.
+ *
+ * SPELLED OUT rather than handed to a predicate-taking helper in assert.ts --
+ * see the rejected-refactor note beside `assertIdTagInfoStatus` there. In
+ * short: an argument the extractor cannot render is an argument
+ * ASSERT-INVENTORY.txt cannot pin, and what this helper accepts is exactly
+ * what that artifact exists to show.
+ */
+export declare function assertConfigurationKeyListed(rec: AssertRecorder, frames: readonly Frame[], key: string | null, description: string): void;
 export declare const tc001ColdBootSpec: ScenarioSpec<void>;
 export declare const tc003ChargingPluginFirstSpec: ScenarioSpec<void>;
 export declare const tc004ChargingIdFirstSpec: ScenarioSpec<void>;

@@ -22,9 +22,83 @@ import {
   assertReceived,
   assertResponseStatus,
   assertSent,
+  type AssertRecorder,
 } from "../assert";
+import { findAllCalls, findResponseFor, type Frame } from "../ocpp";
 import type { ScenarioSpec } from "../spec-types";
 import { sleep } from "../util";
+
+/**
+ * The CALLRESULT answering the received GetCompositeSchedule returns a
+ * chargingSchedule with a period at `limit`.
+ *
+ * Replaces `/Sent: \[3,.*"chargingSchedule".*"limit":11000/`, which asserted
+ * that the two strings appeared in that order in one line of the run's log --
+ * a member order nothing declares, over a CALLRESULT identified only by
+ * "some sent CALLRESULT mentioning chargingSchedule" (issue #44). What the
+ * check means is a property of the schedule the charge point returned for the
+ * request that asked for it, so it reads the correlated response's periods.
+ *
+ * ANY received GetCompositeSchedule whose answer carries the limit satisfies
+ * it, which is what the regex did -- it matched any line. Correlating from
+ * only the FIRST request would narrow what the scenario measures, in the
+ * failing direction and silently, which a conversion must not do.
+ *
+ * The limit is the caller's literal so ASSERT-INVENTORY.txt renders it: it is
+ * the value the applied profile is supposed to have produced, which is the
+ * whole point of the check. The rest is spelled out here for the same reason,
+ * rather than passed as a predicate to a helper in assert.ts -- see the
+ * rejected-refactor note beside `assertIdTagInfoStatus` there.
+ */
+function assertCompositeSchedulePeriodLimit(
+  rec: AssertRecorder,
+  frames: readonly Frame[],
+  limit: number,
+  description: string,
+): void {
+  const calls = findAllCalls(frames, "received", "GetCompositeSchedule");
+  if (calls.length === 0) {
+    rec.fail(
+      description,
+      "no Received CALL found for action=GetCompositeSchedule",
+    );
+    return;
+  }
+  const seen: string[] = [];
+  for (const call of calls) {
+    const response = findResponseFor(frames, call);
+    if (!response) {
+      seen.push(`uniqueId=${call.uniqueId} unanswered`);
+      continue;
+    }
+    if (response.kind === "callerror") {
+      seen.push(`CALLERROR ${response.errorCode}: ${response.errorDescription}`);
+      continue;
+    }
+    const schedule = (response.payload as { chargingSchedule?: unknown } | null)
+      ?.chargingSchedule;
+    const periods = (schedule as { chargingSchedulePeriod?: unknown } | null)
+      ?.chargingSchedulePeriod;
+    if (!Array.isArray(periods)) {
+      seen.push(
+        `no chargingSchedulePeriod list: ${JSON.stringify(response.payload)}`,
+      );
+      continue;
+    }
+    const limits = periods.map(
+      (period) => (period as { limit?: unknown } | null)?.limit,
+    );
+    if (limits.includes(limit)) {
+      rec.pass(description);
+      return;
+    }
+    seen.push(`limits=${JSON.stringify(limits)}`);
+  }
+  rec.fail(
+    description,
+    `no GetCompositeSchedule.conf carried limit ${limit}: ${seen.join("; ")}`,
+  );
+}
 
 function warnOpFailed(op: string, err: unknown): void {
   process.stderr.write(
@@ -887,7 +961,7 @@ export const tc066GetCompositeScheduleSpec: ScenarioSpec<void> = {
       warnOpFailed("GetCompositeSchedule", err);
     }
   },
-  assert({ frames, lines, rec }) {
+  assert({ frames, rec }) {
     assertResponseStatus(
       rec,
       frames,
@@ -902,10 +976,10 @@ export const tc066GetCompositeScheduleSpec: ScenarioSpec<void> = {
       "Accepted",
       "GetCompositeSchedule accepted",
     );
-    assertLineMatches(
+    assertCompositeSchedulePeriodLimit(
       rec,
-      lines,
-      /Sent: \[3,.*"chargingSchedule".*"limit":11000/,
+      frames,
+      11000,
       "returned schedule reflects the applied profile's period (limit 11000)",
     );
   },

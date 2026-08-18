@@ -113,6 +113,13 @@ jobs:
       - name: The simulator argv says what the run was asked to do
         run: bun tests/sim-docker-argv.ts
 
+      # In-process because every refusal it pins needs a trace no run produces:
+      # across 94 archived scenarios and 1576 records not one record is missing
+      # a member, and both bundled drivers ride the same producer, so the only
+      # way into those branches is handing the mapper its records.
+      - name: The wire trace reads as the frames the log would have given
+        run: bun tests/trace-frames.ts
+
       - name: Core names no CSMS
         run: bash tests/generic-core.sh
 

@@ -10,6 +10,7 @@
 
 import {
   assertAllAnswered,
+  assertCallPayload,
   assertEq,
   assertIdTagInfoStatus,
   assertLineAfter,
@@ -65,6 +66,27 @@ import { sleep } from "../util";
  * by construction. This helper stays in specs/ for the same reason -- "`key`
  * absent means return everything" is GetConfiguration semantics, not assertion
  * machinery.
+ *
+ * THAT SURVEY'S PREMISE MOVED, and the conclusion only half survived -- issue
+ * #44. "Every `Sent:` regex matches our own simulator and cannot vary" is
+ * false: it matches a PINNED DIGEST, and six of those regexes pinned member
+ * order, so bumping the digest could turn them red for a reason no CSMS
+ * caused. Two of the six even carried a comment saying they matched their
+ * members "independently rather than assuming an order", which `.*` between
+ * two members is not. All six are converted, so the caller count is no longer
+ * two.
+ *
+ * What survives is WHERE the knowledge lives, and it survives whole. assert.ts
+ * gained exactly one shape that carries no message knowledge --
+ * `assertCallPayload`, a flat scalar subset of a CALL payload, which serves
+ * three of the six. The other three are about what a `configurationKey` list
+ * or a `chargingSchedule` looks like, so they stayed in this directory:
+ * `assertConfigurationKeyListed` below, and
+ * `assertCompositeSchedulePeriodLimit` in specs/remotetrigger-smartcharging.ts.
+ * A primitive that knew what a `configurationKey` list is would still be the
+ * wrong thing to build -- and the version of it that knew nothing, taking a
+ * predicate, was written and reverted for a second reason recorded beside
+ * `assertIdTagInfoStatus` in assert.ts.
  */
 export function assertGetConfigurationUnfiltered(
   rec: AssertRecorder,
@@ -97,6 +119,93 @@ export function assertGetConfigurationUnfiltered(
   rec.fail(
     description,
     `no received GetConfiguration asked for every key: ${seen.join("; ")}`,
+  );
+}
+
+/**
+ * The CALLRESULT answering the received GetConfiguration returns a
+ * `configurationKey` list -- and, when `key` is a string rather than null,
+ * one carrying that key.
+ *
+ * Replaces `/Sent: \[3,.*"configurationKey":\[{"key"/` and its
+ * `:"HeartbeatInterval"` variant. Both were wrong twice over, and only the
+ * first way is issue #44's: `\[{"key"` requires `key` to be the FIRST member
+ * the charge point serialised in the FIRST entry, which no part of OCPP 1.6
+ * says and nothing here declares. The second is that a text match over the
+ * run's lines identifies the response as "some sent CALLRESULT mentioning
+ * configurationKey" -- any CALLRESULT, to any request. Correlating from the
+ * GetConfiguration that provoked it is what the check always meant.
+ *
+ * `key: null` is "a non-empty list", which is TC_019_1's obligation: it asked
+ * for every key, so what matters is that a list came back at all. A literal
+ * rather than an omitted argument so that ASSERT-INVENTORY.txt renders it --
+ * a non-literal argument renders as `·`, and the difference between the two
+ * scenarios' checks would then be invisible in the artifact that exists to
+ * show it.
+ *
+ * An entry without a string `key` is not a configurationKey entry: OCPP 1.6
+ * makes `key` required in `KeyValue`, and accepting anything else would let a
+ * malformed response satisfy a conformance check.
+ *
+ * ANY received GetConfiguration whose answer satisfies it is enough, and that
+ * is not a detail. The regexes this replaced matched any LINE, and the check
+ * standing beside it in TC_019_1 -- assertGetConfigurationUnfiltered above --
+ * accepts any request. Correlating from only the FIRST GetConfiguration would
+ * make the two neighbours talk about different requests the moment a CSMS
+ * sends one of its own, and would narrow what the scenario measures in the
+ * failing direction, silently. Converting a regex must not do that.
+ *
+ * SPELLED OUT rather than handed to a predicate-taking helper in assert.ts --
+ * see the rejected-refactor note beside `assertIdTagInfoStatus` there. In
+ * short: an argument the extractor cannot render is an argument
+ * ASSERT-INVENTORY.txt cannot pin, and what this helper accepts is exactly
+ * what that artifact exists to show.
+ */
+export function assertConfigurationKeyListed(
+  rec: AssertRecorder,
+  frames: readonly Frame[],
+  key: string | null,
+  description: string,
+): void {
+  const calls = findAllCalls(frames, "received", "GetConfiguration");
+  if (calls.length === 0) {
+    rec.fail(description, "no Received CALL found for action=GetConfiguration");
+    return;
+  }
+  const seen: string[] = [];
+  for (const call of calls) {
+    const response = findResponseFor(frames, call);
+    if (!response) {
+      seen.push(`uniqueId=${call.uniqueId} unanswered`);
+      continue;
+    }
+    if (response.kind === "callerror") {
+      seen.push(`CALLERROR ${response.errorCode}: ${response.errorDescription}`);
+      continue;
+    }
+    const list = (response.payload as { configurationKey?: unknown } | null)
+      ?.configurationKey;
+    if (!Array.isArray(list) || list.length === 0) {
+      seen.push(`no configurationKey list: ${JSON.stringify(response.payload)}`);
+      continue;
+    }
+    const keys = list.flatMap((entry) => {
+      const name = (entry as { key?: unknown } | null)?.key;
+      return typeof name === "string" ? [name] : [];
+    });
+    if (keys.length !== list.length) {
+      seen.push(`configurationKey entry without a string key: ${JSON.stringify(list)}`);
+      continue;
+    }
+    if (key === null || keys.includes(key)) {
+      rec.pass(description);
+      return;
+    }
+    seen.push(`keys=${keys.join(",")}`);
+  }
+  rec.fail(
+    description,
+    `no GetConfiguration.conf carried ${key === null ? "a configurationKey list" : key}: ${seen.join("; ")}`,
   );
 }
 
@@ -665,10 +774,10 @@ export const tc019GetConfigurationAllSpec: ScenarioSpec<void> = {
       frames,
       "GetConfiguration(no filter).req received",
     );
-    assertLineMatches(
+    assertConfigurationKeyListed(
       rec,
-      lines,
-      /Sent: \[3,.*"configurationKey":\[{"key"/,
+      frames,
+      null,
       "CALLRESULT returns a configurationKey list",
     );
     assertLineMatches(
@@ -707,17 +816,17 @@ export const tc019GetConfigurationKeySpec: ScenarioSpec<void> = {
       );
     }
   },
-  assert({ lines, rec }) {
+  assert({ frames, lines, rec }) {
     assertLineMatches(
       rec,
       lines,
       /Received: \[2,.*"GetConfiguration".*"key":\["HeartbeatInterval"\]/,
       "GetConfiguration(HeartbeatInterval).req received",
     );
-    assertLineMatches(
+    assertConfigurationKeyListed(
       rec,
-      lines,
-      /Sent: \[3,.*"configurationKey":\[{"key":"HeartbeatInterval"/,
+      frames,
+      "HeartbeatInterval",
       "CALLRESULT returns the HeartbeatInterval key",
     );
   },
@@ -806,12 +915,18 @@ export const tc024LockFailureSpec: ScenarioSpec<void> = {
   bootWaitSecs: 4,
   holdSecs: 12,
   assert({ frames, lines, rec }) {
-    // Field order on the wire is errorCode before status (confirmed live),
-    // so match them independently rather than assuming an order.
-    assertLineMatches(
+    // The comment that stood here said the two members were matched
+    // "independently rather than assuming an order", and named the order it
+    // had confirmed live -- errorCode before status. The regex under it did
+    // assume that order: `.*` between two members IS an order, and "confirmed
+    // live" confirmed one run of one pinned digest (issue #44). Compared as
+    // values, there is no order to confirm.
+    assertCallPayload(
       rec,
-      lines,
-      /Sent: \[2,.*"StatusNotification".*"errorCode":"ConnectorLockFailure".*"status":"Faulted"/,
+      frames,
+      "sent",
+      "StatusNotification",
+      { errorCode: "ConnectorLockFailure", status: "Faulted" },
       "StatusNotification(Faulted, ConnectorLockFailure) sent",
     );
     assertNoLineMatches(
@@ -913,11 +1028,19 @@ export const tc064DataTransferSpec: ScenarioSpec<void> = {
   connector: 1,
   bootWaitSecs: 4,
   holdSecs: 10,
-  assert({ frames, lines, rec }) {
-    assertLineMatches(
+  assert({ frames, rec }) {
+    // Three members chained with `.*` -- the widest member-order assumption in
+    // the suite, and the one with the most ways to break silently. See #44.
+    assertCallPayload(
       rec,
-      lines,
-      /Sent: \[2,.*"DataTransfer".*"vendorId":"com\.example\.cert16".*"messageId":"certTest".*"data":"hello-csms"/,
+      frames,
+      "sent",
+      "DataTransfer",
+      {
+        vendorId: "com.example.cert16",
+        messageId: "certTest",
+        data: "hello-csms",
+      },
       "DataTransfer.req sent with expected vendorId/messageId/data",
     );
 

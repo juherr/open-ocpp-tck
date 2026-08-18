@@ -67,6 +67,11 @@ run "the foreign-sweep refusal sees every namespace" bun tests/foreign-sweep-sco
 # printable from a shell -- nor is a resolution from an environment that is not
 # this process's.
 run "the simulator argv says what the run was asked to do" bun tests/sim-docker-argv.ts
+# And in-process for the same reason the three above are: every refusal
+# tck/trace.ts makes needs a trace no run here produces -- 94 archived
+# scenarios, 1576 records, not one missing a member -- so the only way into
+# those branches is handing the mapper its records.
+run "the wire trace reads as the frames the log would have given" bun tests/trace-frames.ts
 run "core is CSMS-neutral" bash tests/generic-core.sh
 # The other layering boundary the repository declares in prose: AGENTS.md and
 # everything it governs must not depend on the harness file.

@@ -1,14 +1,15 @@
 --- a/scripts/steve-verify/runner/specs/core.ts (upstream @ 604054adb0d7d7129a26a5f1ad2d5fdc290d1ca1)
 +++ b/scripts/ocpp-verify/tck/specs/core.ts
-@@ -9,6 +9,7 @@
+@@ -9,6 +9,8 @@
   */
  
  import {
 +  assertAllAnswered,
++  assertCallPayload,
    assertEq,
    assertIdTagInfoStatus,
    assertLineAfter,
-@@ -19,11 +20,86 @@
+@@ -19,11 +21,194 @@
    assertReceived,
    assertResponseStatus,
    assertSent,
@@ -58,6 +59,27 @@
 + * by construction. This helper stays in specs/ for the same reason -- "`key`
 + * absent means return everything" is GetConfiguration semantics, not assertion
 + * machinery.
++ *
++ * THAT SURVEY'S PREMISE MOVED, and the conclusion only half survived -- issue
++ * #44. "Every `Sent:` regex matches our own simulator and cannot vary" is
++ * false: it matches a PINNED DIGEST, and six of those regexes pinned member
++ * order, so bumping the digest could turn them red for a reason no CSMS
++ * caused. Two of the six even carried a comment saying they matched their
++ * members "independently rather than assuming an order", which `.*` between
++ * two members is not. All six are converted, so the caller count is no longer
++ * two.
++ *
++ * What survives is WHERE the knowledge lives, and it survives whole. assert.ts
++ * gained exactly one shape that carries no message knowledge --
++ * `assertCallPayload`, a flat scalar subset of a CALL payload, which serves
++ * three of the six. The other three are about what a `configurationKey` list
++ * or a `chargingSchedule` looks like, so they stayed in this directory:
++ * `assertConfigurationKeyListed` below, and
++ * `assertCompositeSchedulePeriodLimit` in specs/remotetrigger-smartcharging.ts.
++ * A primitive that knew what a `configurationKey` list is would still be the
++ * wrong thing to build -- and the version of it that knew nothing, taking a
++ * predicate, was written and reverted for a second reason recorded beside
++ * `assertIdTagInfoStatus` in assert.ts.
 + */
 +export function assertGetConfigurationUnfiltered(
 +  rec: AssertRecorder,
@@ -93,10 +115,97 @@
 +  );
 +}
 +
++/**
++ * The CALLRESULT answering the received GetConfiguration returns a
++ * `configurationKey` list -- and, when `key` is a string rather than null,
++ * one carrying that key.
++ *
++ * Replaces `/Sent: \[3,.*"configurationKey":\[{"key"/` and its
++ * `:"HeartbeatInterval"` variant. Both were wrong twice over, and only the
++ * first way is issue #44's: `\[{"key"` requires `key` to be the FIRST member
++ * the charge point serialised in the FIRST entry, which no part of OCPP 1.6
++ * says and nothing here declares. The second is that a text match over the
++ * run's lines identifies the response as "some sent CALLRESULT mentioning
++ * configurationKey" -- any CALLRESULT, to any request. Correlating from the
++ * GetConfiguration that provoked it is what the check always meant.
++ *
++ * `key: null` is "a non-empty list", which is TC_019_1's obligation: it asked
++ * for every key, so what matters is that a list came back at all. A literal
++ * rather than an omitted argument so that ASSERT-INVENTORY.txt renders it --
++ * a non-literal argument renders as `·`, and the difference between the two
++ * scenarios' checks would then be invisible in the artifact that exists to
++ * show it.
++ *
++ * An entry without a string `key` is not a configurationKey entry: OCPP 1.6
++ * makes `key` required in `KeyValue`, and accepting anything else would let a
++ * malformed response satisfy a conformance check.
++ *
++ * ANY received GetConfiguration whose answer satisfies it is enough, and that
++ * is not a detail. The regexes this replaced matched any LINE, and the check
++ * standing beside it in TC_019_1 -- assertGetConfigurationUnfiltered above --
++ * accepts any request. Correlating from only the FIRST GetConfiguration would
++ * make the two neighbours talk about different requests the moment a CSMS
++ * sends one of its own, and would narrow what the scenario measures in the
++ * failing direction, silently. Converting a regex must not do that.
++ *
++ * SPELLED OUT rather than handed to a predicate-taking helper in assert.ts --
++ * see the rejected-refactor note beside `assertIdTagInfoStatus` there. In
++ * short: an argument the extractor cannot render is an argument
++ * ASSERT-INVENTORY.txt cannot pin, and what this helper accepts is exactly
++ * what that artifact exists to show.
++ */
++export function assertConfigurationKeyListed(
++  rec: AssertRecorder,
++  frames: readonly Frame[],
++  key: string | null,
++  description: string,
++): void {
++  const calls = findAllCalls(frames, "received", "GetConfiguration");
++  if (calls.length === 0) {
++    rec.fail(description, "no Received CALL found for action=GetConfiguration");
++    return;
++  }
++  const seen: string[] = [];
++  for (const call of calls) {
++    const response = findResponseFor(frames, call);
++    if (!response) {
++      seen.push(`uniqueId=${call.uniqueId} unanswered`);
++      continue;
++    }
++    if (response.kind === "callerror") {
++      seen.push(`CALLERROR ${response.errorCode}: ${response.errorDescription}`);
++      continue;
++    }
++    const list = (response.payload as { configurationKey?: unknown } | null)
++      ?.configurationKey;
++    if (!Array.isArray(list) || list.length === 0) {
++      seen.push(`no configurationKey list: ${JSON.stringify(response.payload)}`);
++      continue;
++    }
++    const keys = list.flatMap((entry) => {
++      const name = (entry as { key?: unknown } | null)?.key;
++      return typeof name === "string" ? [name] : [];
++    });
++    if (keys.length !== list.length) {
++      seen.push(`configurationKey entry without a string key: ${JSON.stringify(list)}`);
++      continue;
++    }
++    if (key === null || keys.includes(key)) {
++      rec.pass(description);
++      return;
++    }
++    seen.push(`keys=${keys.join(",")}`);
++  }
++  rec.fail(
++    description,
++    `no GetConfiguration.conf carried ${key === null ? "a configurationKey list" : key}: ${seen.join("; ")}`,
++  );
++}
++
  // ---------------------------------------------------------------------------
  // TC_001 Cold Boot -- CP-only, no CSMS-side operator action.
  // ---------------------------------------------------------------------------
-@@ -45,6 +121,14 @@
+@@ -45,6 +230,14 @@
        "BootNotification accepted",
        { direction: "sent" },
      );
@@ -111,7 +220,7 @@
  
      const sentAvailableOnConnector1 = frames.some(
        (f) =>
-@@ -96,7 +180,7 @@
+@@ -96,7 +289,7 @@
    bootWaitSecs: 4,
    // delay-connect(2s) + delay-idtag(2s) + bounded meter block(30s) + tail.
    holdSecs: 45,
@@ -120,7 +229,7 @@
      assertLineOrder(
        rec,
        lines,
-@@ -115,7 +199,7 @@
+@@ -115,7 +308,7 @@
        frames,
        "StartTransaction",
        "Accepted",
@@ -129,7 +238,7 @@
      );
      assertSent(rec, frames, "MeterValues", "MeterValues sent while charging");
      assertLineOrder(
-@@ -132,8 +216,13 @@
+@@ -132,8 +325,13 @@
        /Sent: \[2,.*"StatusNotification".*"status":"Available"/,
        "final StatusNotification(Available) sent",
      );
@@ -144,7 +253,7 @@
      if (!txPk) {
        rec.fail(
          `DB: transaction row exists for ${cpId}`,
-@@ -142,10 +231,10 @@
+@@ -142,10 +340,10 @@
        return;
      }
      rec.pass(`DB: transaction row exists for ${cpId} (pk=${txPk})`);
@@ -157,7 +266,7 @@
        "DB: transaction is closed (stop_timestamp set)",
      );
    },
-@@ -163,7 +252,7 @@
+@@ -163,7 +361,7 @@
    bootWaitSecs: 4,
    // delay-idtag(2s) + bounded meter block(30s) + tail.
    holdSecs: 40,
@@ -166,7 +275,7 @@
      assertLineMatches(
        rec,
        lines,
-@@ -175,7 +264,7 @@
+@@ -175,7 +373,7 @@
        frames,
        "StartTransaction",
        "Accepted",
@@ -175,7 +284,7 @@
      );
      assertSent(rec, frames, "MeterValues", "MeterValues sent while charging");
      assertLineOrder(
-@@ -191,8 +280,13 @@
+@@ -191,8 +389,13 @@
        /Sent: \[2,.*"StatusNotification".*"status":"Available"/,
        "final StatusNotification(Available) sent",
      );
@@ -190,7 +299,7 @@
      if (!txPk) {
        rec.fail(
          `DB: transaction row exists for ${cpId}`,
-@@ -201,10 +295,10 @@
+@@ -201,10 +404,10 @@
        return;
      }
      rec.pass(`DB: transaction row exists for ${cpId} (pk=${txPk})`);
@@ -203,7 +312,7 @@
        "DB: transaction is closed (stop_timestamp set)",
      );
    },
-@@ -222,7 +316,7 @@
+@@ -222,7 +425,7 @@
    bootWaitSecs: 4,
    // bounded meter block(15s) + tail.
    holdSecs: 25,
@@ -212,7 +321,7 @@
      assertLineMatches(
        rec,
        lines,
-@@ -236,8 +330,11 @@
+@@ -236,8 +439,11 @@
        /Sent: \[2,.*"StopTransaction".*"reason":"EVDisconnected"/,
        "StopTransaction sent with reason EVDisconnected",
      );
@@ -225,7 +334,7 @@
      if (!txPk) {
        rec.fail(
          `DB: transaction row exists for ${cpId}`,
-@@ -246,10 +343,10 @@
+@@ -246,10 +452,10 @@
        return;
      }
      rec.pass(`DB: transaction row exists for ${cpId} (pk=${txPk})`);
@@ -238,7 +347,7 @@
        "EVDisconnected",
        "DB: stop_reason is EVDisconnected",
      );
-@@ -267,20 +364,17 @@
+@@ -267,20 +473,17 @@
    connector: 1,
    bootWaitSecs: 4,
    holdSecs: 25,
@@ -263,7 +372,7 @@
      assertLineMatches(
        rec,
        lines,
-@@ -319,8 +413,15 @@
+@@ -319,8 +522,15 @@
          `expected >=2 BootNotification.req sends (initial + post-reboot), got ${bootCount}`,
        );
      }
@@ -280,7 +389,7 @@
      if (!txPk) {
        rec.fail(
          `DB: transaction row exists for ${cpId}`,
-@@ -330,7 +431,7 @@
+@@ -330,7 +540,7 @@
      }
      assertEq(
        rec,
@@ -289,7 +398,7 @@
        "HardReset",
        "DB: stop_reason is HardReset",
      );
-@@ -355,20 +456,17 @@
+@@ -355,20 +565,17 @@
    connector: 1,
    bootWaitSecs: 4,
    holdSecs: 25,
@@ -314,7 +423,7 @@
      assertLineMatches(
        rec,
        lines,
-@@ -392,8 +490,12 @@
+@@ -392,8 +599,12 @@
        /Sent: \[2,.*"BootNotification"/,
        "CP sends a fresh BootNotification after Soft Reset (reboot on the same socket)",
      );
@@ -328,7 +437,7 @@
      if (!txPk) {
        rec.fail(
          `DB: transaction row exists for ${cpId}`,
-@@ -403,7 +505,7 @@
+@@ -403,7 +614,7 @@
      }
      assertEq(
        rec,
@@ -337,7 +446,7 @@
        "SoftReset",
        "DB: stop_reason is SoftReset",
      );
-@@ -421,7 +523,7 @@
+@@ -421,7 +632,7 @@
    connector: 1,
    bootWaitSecs: 4,
    holdSecs: 35,
@@ -346,7 +455,7 @@
      // Timing: delay(2s) -> plug-in -> preparing -> tx-start -> charging ->
      // meter-auto(maxTime 15s, BLOCKS) -> unlock pre-arm (instant) ->
      // delay(10s window) -> tx-stop. The pre-arm window for
-@@ -430,17 +532,14 @@
+@@ -430,17 +641,14 @@
      // rationale, see .superpowers/sdd/steve-verify-results-g1.md).
      await sleep(20_000);
      try {
@@ -367,7 +476,7 @@
      assertReceived(
        rec,
        frames,
-@@ -461,7 +560,7 @@
+@@ -461,7 +669,7 @@
        "StopTransaction sent (session completes normally)",
      );
  
@@ -376,7 +485,7 @@
      if (!txPk) {
        rec.fail(
          `DB: transaction row exists for ${cpId}`,
-@@ -471,7 +570,7 @@
+@@ -471,7 +679,7 @@
      }
      assertNonEmpty(
        rec,
@@ -385,7 +494,7 @@
        "DB: transaction is closed (stop_timestamp set)",
      );
    },
-@@ -488,21 +587,18 @@
+@@ -488,21 +696,18 @@
    connector: 1,
    bootWaitSecs: 4,
    holdSecs: 35,
@@ -411,7 +520,7 @@
      assertReceived(
        rec,
        frames,
-@@ -522,8 +618,11 @@
+@@ -522,8 +727,11 @@
        "StopTransaction",
        "StopTransaction sent (session completes normally despite unlock failure)",
      );
@@ -424,7 +533,7 @@
      if (!txPk) {
        rec.fail(
          `DB: transaction row exists for ${cpId}`,
-@@ -533,7 +632,7 @@
+@@ -533,7 +741,7 @@
      }
      assertNonEmpty(
        rec,
@@ -433,7 +542,7 @@
        "DB: transaction is closed (stop_timestamp set)",
      );
    },
-@@ -550,23 +649,20 @@
+@@ -550,29 +758,26 @@
    connector: 1,
    bootWaitSecs: 4,
    holdSecs: 12,
@@ -462,8 +571,17 @@
 +      frames,
        "GetConfiguration(no filter).req received",
      );
+-    assertLineMatches(
++    assertConfigurationKeyListed(
+       rec,
+-      lines,
+-      /Sent: \[3,.*"configurationKey":\[{"key"/,
++      frames,
++      null,
+       "CALLRESULT returns a configurationKey list",
+     );
      assertLineMatches(
-@@ -601,16 +697,13 @@
+@@ -601,30 +806,27 @@
    connector: 1,
    bootWaitSecs: 4,
    holdSecs: 12,
@@ -483,7 +601,25 @@
        );
      }
    },
-@@ -641,29 +734,56 @@
+-  assert({ lines, rec }) {
++  assert({ frames, lines, rec }) {
+     assertLineMatches(
+       rec,
+       lines,
+       /Received: \[2,.*"GetConfiguration".*"key":\["HeartbeatInterval"\]/,
+       "GetConfiguration(HeartbeatInterval).req received",
+     );
+-    assertLineMatches(
++    assertConfigurationKeyListed(
+       rec,
+-      lines,
+-      /Sent: \[3,.*"configurationKey":\[{"key":"HeartbeatInterval"/,
++      frames,
++      "HeartbeatInterval",
+       "CALLRESULT returns the HeartbeatInterval key",
+     );
+   },
+@@ -641,29 +843,56 @@
    connector: 1,
    bootWaitSecs: 4,
    holdSecs: 12,
@@ -552,16 +688,33 @@
      assertResponseStatus(
        rec,
        frames,
-@@ -685,7 +805,7 @@
+@@ -685,13 +914,19 @@
    connector: 1,
    bootWaitSecs: 4,
    holdSecs: 12,
 -  assert({ lines, rec }) {
+-    // Field order on the wire is errorCode before status (confirmed live),
+-    // so match them independently rather than assuming an order.
+-    assertLineMatches(
 +  assert({ frames, lines, rec }) {
-     // Field order on the wire is errorCode before status (confirmed live),
-     // so match them independently rather than assuming an order.
-     assertLineMatches(
-@@ -706,6 +826,9 @@
++    // The comment that stood here said the two members were matched
++    // "independently rather than assuming an order", and named the order it
++    // had confirmed live -- errorCode before status. The regex under it did
++    // assume that order: `.*` between two members IS an order, and "confirmed
++    // live" confirmed one run of one pinned digest (issue #44). Compared as
++    // values, there is no order to confirm.
++    assertCallPayload(
+       rec,
+-      lines,
+-      /Sent: \[2,.*"StatusNotification".*"errorCode":"ConnectorLockFailure".*"status":"Faulted"/,
++      frames,
++      "sent",
++      "StatusNotification",
++      { errorCode: "ConnectorLockFailure", status: "Faulted" },
+       "StatusNotification(Faulted, ConnectorLockFailure) sent",
+     );
+     assertNoLineMatches(
+@@ -706,6 +941,9 @@
        /Sent: \[2,.*"StatusNotification".*"status":"Available"/,
        "final StatusNotification(Available) sent after plug-out",
      );
@@ -571,7 +724,7 @@
    },
  };
  
-@@ -720,16 +843,13 @@
+@@ -720,16 +958,13 @@
    connector: 1,
    bootWaitSecs: 4,
    holdSecs: 10,
@@ -591,7 +744,7 @@
        );
      }
    },
-@@ -760,15 +880,13 @@
+@@ -760,15 +995,13 @@
    connector: 1,
    bootWaitSecs: 4,
    holdSecs: 15,
@@ -610,7 +763,7 @@
        );
      }
    },
-@@ -791,7 +909,7 @@
+@@ -791,20 +1024,44 @@
  export const tc064DataTransferSpec: ScenarioSpec<void> = {
    templateId: "cert16-tc064-data-transfer",
    description:
@@ -619,7 +772,23 @@
    connector: 1,
    bootWaitSecs: 4,
    holdSecs: 10,
-@@ -803,8 +921,24 @@
+-  assert({ frames, lines, rec }) {
+-    assertLineMatches(
++  assert({ frames, rec }) {
++    // Three members chained with `.*` -- the widest member-order assumption in
++    // the suite, and the one with the most ways to break silently. See #44.
++    assertCallPayload(
+       rec,
+-      lines,
+-      /Sent: \[2,.*"DataTransfer".*"vendorId":"com\.example\.cert16".*"messageId":"certTest".*"data":"hello-csms"/,
++      frames,
++      "sent",
++      "DataTransfer",
++      {
++        vendorId: "com.example.cert16",
++        messageId: "certTest",
++        data: "hello-csms",
++      },
        "DataTransfer.req sent with expected vendorId/messageId/data",
      );
  
