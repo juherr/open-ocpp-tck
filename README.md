@@ -17,6 +17,10 @@ the one that applies: it is the Central System that must answer. This is not a
 certification tool and passing it is not certification — but the reference is
 where a disagreement about what a scenario *should* assert gets settled.
 
+The `cert16-` prefix is a protocol version, not decoration — there is no
+`cert201-` scenario yet, and which OCPP 2.0.1 cases may become one is a written
+rule, [`OCA-201-SELECTION.md`](OCA-201-SELECTION.md).
+
 [sim]: https://github.com/shiv3/ocpp-cp-simulator
 [octt]: https://openchargealliance.org/certificationocpp/certification-ocpp-1-6/
 
