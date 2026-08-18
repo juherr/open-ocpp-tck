@@ -22,7 +22,7 @@ error.
 ## The gate
 
 `bun run verify` is every check CI runs before it starts a container —
-typecheck, committed declarations, three driver scope checks, six in-process
+typecheck, committed declarations, three driver scope checks, seven in-process
 guards and nine shell guards — with one exit code, and every step runs even
 after one fails, where CI enumerates them and stops at the first.
 
@@ -48,6 +48,7 @@ bun tests/assert-answered.ts
 bun tests/get-configuration-filter.ts
 bun tests/foreign-sweep-scope.ts
 bun tests/sim-docker-argv.ts
+bun tests/trace-frames.ts
 ```
 
 then `bun run verify` once before committing.
@@ -94,7 +95,7 @@ There is no unit-test framework and no `*.test.ts`. `tests/` holds offline
 guards, each with a header stating the property it protects. `bun run test`
 chains them — note `bun test` is Bun's own runner and finds nothing here.
 
-Shell is the default, and the six TypeScript ones are TypeScript because
+Shell is the default, and the seven TypeScript ones are TypeScript because
 what they assert is unreachable through the CLI. `driver-env-scope.ts`: a
 driver's declarations follow the env they are *resolved* with, where the CLI
 can only ever pass `process.env`. `expected-failure-standing.ts`: the rule that
@@ -116,7 +117,11 @@ exported without the daemon in it, the same split `tck/standing.ts` is.
 `sim-docker-argv.ts`: `buildDockerArgs` is pure and its one caller spawns
 docker in the next statement, so the argv a scenario would run is not printable
 from a shell — and `defaultSimConfig` resolving the env it is *handed* is the
-same unreachable half as `driver-env-scope.ts`'s.
+same unreachable half as `driver-env-scope.ts`'s. `trace-frames.ts`: every
+refusal `tck/trace.ts` makes needs a trace this repository cannot produce —
+across 94 archived scenarios and 1576 records not one record is missing a
+member, and both bundled drivers ride the same producer — so, like
+`assert-answered.ts`, the way in is handing the mapper its records.
 
 One guard builds a fixture instead of reading the tree.
 `tests/repin-refusals.sh` exercises `tools/repin-vendored.sh` in a throwaway

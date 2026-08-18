@@ -42,7 +42,7 @@
  * nothing keeps the original rule exactly.
  */
 
-import { mkdirSync, rmSync, statSync } from "node:fs";
+import { mkdirSync, rmSync } from "node:fs";
 import { cpus, loadavg } from "node:os";
 import { resolve } from "node:path";
 import { AssertRecorder } from "./assert";
@@ -82,6 +82,7 @@ import {
   unsupportedReservations,
 } from "./capabilities";
 import { parseLog } from "./ocpp";
+import { readTrace } from "./trace";
 import {
   DEFAULT_SIM_IMAGE,
   defaultSimConfig,
@@ -137,6 +138,7 @@ let RESULTS_DIR = resultsDir();
  *  the mount, a digest that stopped honouring --trace-output -- holds for the
  *  whole sweep, so per-scenario it would be 47 copies of one fact. */
 let warnedNoTrace = false;
+
 
 /**
  * Every refusal that must happen before a run starts, in one call.
@@ -459,6 +461,17 @@ async function runScenario<D>(
       // always timed out: 30s burned per scenario, and the event-driven gate
       // silently degraded back into the fixed sleep it exists to replace.
       // Match both keys without constraining their order.
+      //
+      // REJECTED, and it will be re-proposed because the assertions below now
+      // read trace records and this is the last frame pattern left in this
+      // file: gate on the trace instead. It cannot work. This is a LIVE wait on
+      // a stream that is still arriving, and the trace is a file the CONTAINER
+      // appends to -- serving this wait from it means polling a file for a
+      // record that may never come, i.e. reimplementing waitForLine's timeout
+      // around a worse source. The frames this gate waits on are stdout's,
+      // which we are already reading line by line. Nothing about the coupling
+      // issue #44 is about applies here either: no member order is pinned,
+      // which is exactly what the lookaheads above are for.
       await sim.waitForLine(
         /Received: \[3,(?=[^\]]*"status":"Accepted")(?=[^\]]*"currentTime")/,
         30_000,
@@ -560,39 +573,78 @@ async function runScenario<D>(
     );
   }
 
-  // THE ONE FAILURE MODE THE MOUNT HAS THAT NOTHING ELSE REPORTS. The trace is
-  // written by the container into a bind mount, so it can go missing for
-  // reasons no error surfaces here: this runner itself running in a container
-  // with a mounted docker socket, where `-v <our path>` names a path on the
-  // DOCKER HOST that has nothing to do with our results directory; a docker
-  // that silently declines the mount; or a simulator digest that stops
-  // honouring --trace-output. In each case the sweep goes green and the
-  // evidence simply is not there, which is the failure shape this repository
-  // keeps naming. So say it -- once, since every cause of it is a property of
-  // the environment rather than of the scenario that happened to notice.
-  if (simCfg.tracePath !== undefined && !warnedNoTrace) {
-    const size = statSync(simCfg.tracePath, { throwIfNoEntry: false })?.size;
-    if (!size) {
-      warnedNoTrace = true;
-      process.stderr.write(
-        `[runner] WARN: no wire trace at ${simCfg.tracePath} (${
-          size === undefined ? "absent" : "empty"
-        }) -- the container was asked for one. If this runner is itself ` +
-          "containerised, the bind mount names a path on the docker host, not " +
-          "this one; SIM_TRACE=0 turns the request off. Said once per run: " +
-          "every cause of it holds for the whole sweep.\n",
-      );
-    }
+  // WHAT THE MOUNT CAN DO THAT NOTHING ELSE REPORTS. The trace is written by
+  // the container into a bind mount, so it can go missing for reasons no error
+  // surfaces here: this runner itself running in a container with a mounted
+  // docker socket, where `-v <our path>` names a path on the DOCKER HOST that
+  // has nothing to do with our results directory; a docker that silently
+  // declines the mount; or a simulator digest that stopped honouring
+  // --trace-output. `unreadable` is a fourth and newer cause -- the mount
+  // worked and the records are ones this build does not map -- and it is worth
+  // telling apart from the other three, because it is the one that says the
+  // pinned image moved rather than the environment. In every case the sweep
+  // goes green and the evidence simply is not there, which is the failure
+  // shape this repository keeps naming. So say it -- once, since every cause
+  // is a property of the environment or of the image, never of the scenario
+  // that happened to notice.
+  //
+  // BEFORE THE not-applicable RETURN, deliberately. A scenario the driver
+  // declares unsupported still ran a container that was asked for a trace, so
+  // it is still a witness that the mount is broken -- and a sweep whose
+  // scenarios are ALL not-applicable would otherwise report nothing at all
+  // about it. That is why the read happens here rather than beside the frames.
+  const trace =
+    simCfg.tracePath !== undefined
+      ? readTrace(simCfg.tracePath)
+      : { refusal: "absent" as const };
+  if (simCfg.tracePath !== undefined && trace.refusal && !warnedNoTrace) {
+    warnedNoTrace = true;
+    process.stderr.write(
+      `[runner] WARN: no usable wire trace at ${simCfg.tracePath} (${trace.refusal}) ` +
+        "-- the container was asked for one, and the assertions read the " +
+        "simulator log instead, which this runner parses itself. If the trace " +
+        "is absent or empty and this runner is containerised, the bind mount " +
+        "names a path on the docker host, not this one; SIM_TRACE=0 turns the " +
+        "request off. If it is unreadable, the image emits records " +
+        "tck/trace.ts does not map. Said once per run: every cause holds for " +
+        "the whole sweep.\n",
+    );
   }
 
   if (unsupported !== undefined) {
     return { kind: "not-applicable", reason: unsupported };
   }
 
-  const frames = parseLog(lines.join("\n"));
+  // WHICH SUBSTRATE THE VERDICT IS BUILT ON.
+  //
+  // The frames come from the container's JSONL wire trace when there is one,
+  // and from parsing its log lines when there is not. The trace is what the
+  // pinned image DOCUMENTS (`--trace-output`, the open-ocpp-trace format);
+  // ocpp.ts's line grammar is a format upstream never promised anybody, which
+  // is why that file is vendored `upstream-verbatim` -- it tracks something
+  // that can move under a digest bump.
+  //
+  // parseLog IS THE FLOOR, not a second opinion. `SIM_TRACE=0`, a docker that
+  // declines the mount, a runner that is itself containerised, an older
+  // `SIM_IMAGE`: each leaves a run with no trace, and each must still produce
+  // the verdict it produces today. That is safe rather than merely convenient
+  // because the two read the same bytes with the SAME parser: tck/trace.ts
+  // hands `raw` to ocpp.ts's parseFrameMessage, so agreement is a property of
+  // the code and not a measurement anyone has to repeat.
+  //
+  // The trace also refuses a whole file rather than yield a partial one, for
+  // the same reason: a wire with a hole in it is worse than one this runner
+  // reads a second way.
+  const frames = trace.frames ?? parseLog(lines.join("\n"));
+
   const rec = new AssertRecorder();
 
-  process.stderr.write(`[runner] running assert() for ${spec.templateId}\n`);
+  // Which substrate answered, per scenario: "the trace said so" and "the log
+  // said so" are not interchangeable claims, and a red row is read from here.
+  process.stderr.write(
+    `[runner] running assert() for ${spec.templateId} on ${frames.length} frames ` +
+      `from the ${trace.frames ? "wire trace" : "simulator log"}\n`,
+  );
   await spec.assert({
     cpId: options.cpId,
     connector,
@@ -1375,7 +1427,7 @@ async function printUsage(): Promise<void> {
       "created by hand), SIM_WS_URL, SIM_IMAGE, SIM_NETWORK, " +
       "SIM_WS_APPEND_CP_ID, SIM_WS_BASIC_USER/SIM_WS_BASIC_PASS, " +
       "SIM_OCPP_VERSION (default OCPP-1.6J), SIM_TRACE=0 (no JSONL wire " +
-      "trace beside the log).\n",
+      "trace beside the log -- the assertions then read the log instead).\n",
   );
 
   // The driver's own environment, if one is selected and declares it. Best
