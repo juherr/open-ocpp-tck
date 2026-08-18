@@ -582,7 +582,11 @@ async function runScenario<D>(
   // --trace-output. `unreadable` is a fourth and newer cause -- the mount
   // worked and the records are ones this build does not map -- and it is worth
   // telling apart from the other three, because it is the one that says the
-  // pinned image moved rather than the environment. In every case the sweep
+  // pinned image moved rather than the environment. `payload-only` is a fifth
+  // and says the opposite of all of them: nothing is broken at all. `raw` is
+  // optional in the format, the image started emitting records without it, and
+  // this runner needs wire bytes. Sending someone to hunt a mount bug for that
+  // is the reason it is not spelled `unreadable`. In every case the sweep
   // goes green and the evidence simply is not there, which is the failure
   // shape this repository keeps naming. So say it -- once, since every cause
   // is a property of the environment or of the image, never of the scenario
@@ -606,8 +610,10 @@ async function runScenario<D>(
         "is absent or empty and this runner is containerised, the bind mount " +
         "names a path on the docker host, not this one; SIM_TRACE=0 turns the " +
         "request off. If it is unreadable, the image emits records " +
-        "tck/trace.ts does not map. Said once per run: every cause holds for " +
-        "the whole sweep.\n",
+        "tck/trace.ts does not map. If it is payload-only, the records are " +
+        "CONFORMANT and carry no `raw`, which the format allows and this " +
+        "runner cannot judge on -- nothing is misconfigured. Said once per " +
+        "run: every cause holds for the whole sweep.\n",
     );
   }
 

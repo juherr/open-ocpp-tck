@@ -113,6 +113,12 @@ jobs:
       - name: The simulator argv says what the run was asked to do
         run: bun tests/sim-docker-argv.ts
 
+      # Before trace-frames: the library reads the FORMAT, and tck/trace.ts is
+      # this suite's policy over what it found. A failure in the first explains
+      # a failure in the second, so it should be the one you read first.
+      - name: The trace reader implements the format
+        run: bun tests/trace-format.ts
+
       # In-process because every refusal it pins needs a trace no run produces:
       # across 94 archived scenarios and 1576 records not one record is missing
       # a member, and both bundled drivers ride the same producer, so the only
@@ -128,6 +134,13 @@ jobs:
       # job's YAML it was reachable only by running a sweep and reading the log.
       - name: A red row is red whatever its namespace
         run: bash tests/summary-red-rows.sh
+
+      # The boundary that makes trace-format/ extractable: one import of
+      # ../tck/ would turn a library destined for another repository back into
+      # an internal module, and nothing else here would notice.
+      - name: The trace reader depends on nothing here
+        run: bash tests/trace-format-standalone.sh
+
 
       # The other layering boundary: nothing outside the harness layer may
       # cite the harness overlay.
