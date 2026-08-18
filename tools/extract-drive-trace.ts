@@ -137,6 +137,24 @@ function groupNameOf(exportName: string): string {
  *  in. Selected by SHAPE rather than by name, so the `_SPECS` convention is
  *  only ever used to label a group, never to decide whether it is one. */
 function discoverGroups(): Array<[string, SpecLike[]]> {
+  // An exported ARRAY that is not an array of specs is REFUSED, not filtered
+  // out. index.ts is a barrel of spec groups and nothing else, so an array
+  // there is a group; one whose members lost their templateId is a group that
+  // was RESHAPED, and skipping it would keep its scenarios out of the artifact
+  // with the diff staying empty -- this file's original bug, arriving by
+  // another door. Non-arrays are not candidates and are simply not groups.
+  const reshaped = Object.entries(specs).filter(
+    ([, value]) => Array.isArray(value) && !isSpecArray(value),
+  );
+  if (reshaped.length > 0) {
+    throw new Error(
+      `tck/specs/index exports ${reshaped.map(([name]) => name).join(", ")} as ` +
+        `an array whose members do not all carry a string templateId. Teach ` +
+        `this extractor the new shape; skipping it would leave those scenarios ` +
+        `unpinned with nothing to show for it.`,
+    );
+  }
+
   const found = Object.entries(specs)
     .filter(([, value]) => isSpecArray(value))
     .map(([name, value]) => [groupNameOf(name), value] as [string, SpecLike[]]);
