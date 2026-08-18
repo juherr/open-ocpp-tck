@@ -695,6 +695,16 @@ async function runScenario<D>(
 // The divergence is cheap to carry because it is recorded: this file is
 // upstream-patched, so the delta lives in patches/tck/main.ts.patch and any
 // re-sync has to look at it. That is what the vendoring machinery is FOR.
+//
+// NOT BUILT, here because here is where it gets re-proposed: a second
+// selection dimension beside --group -- by domain, or by the certification
+// profile a scenario's case belongs to. The gap is real and issue #34 owns
+// it. What it must NOT become is one axis per protocol version: the newer
+// protocol's profiles are a ready-made taxonomy, and building a selector for
+// them alone would give this runner two ways to select the same thing, one of
+// them shipped before there were two values to test it with.
+// OCA-201-SELECTION.md records that decision and why the version namespace a
+// templateId opens with is enough until #34 lands.
 // ---------------------------------------------------------------------------
 
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
