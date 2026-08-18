@@ -17,35 +17,36 @@
  */
 import type { ExpectedFailureEntry } from "./expected";
 
-/** Verdict for one scenario. PASS/FAIL/ERROR keep their upstream meaning.
- *
- *  The distinction that matters below is FAIL vs ERROR: FAIL is an assertion
- *  that ran and disagreed with the CSMS, ERROR is the scenario never getting
- *  that far. */
-export type Verdict = "PASS" | "PARTIAL" | "FAIL" | "ERROR" | "NOT APPLICABLE";
-
 /**
- * The same five, enumerable -- for the readers that have to recognise a verdict
- * in text rather than receive one. `results/summary.md` renders the verdict into
- * a cell that may carry free prose after it, so every tool that mines that table
- * needs the list to match a prefix against.
+ * Every verdict, once -- as the list, because the readers that have to
+ * RECOGNISE a verdict in text rather than receive one cannot iterate a type.
+ * `results/summary.md` renders the verdict into a cell that may carry free
+ * prose after it, so every tool mining that table needs something to match
+ * against.
  *
- * Here rather than in each of them, for the reason this file gives about every
- * other rule it holds: written twice they would drift, and a tool that disagreed
- * with the sweep which wrote the table is the worst place for it. Annotating it
- * `readonly Verdict[]` is what makes that mechanical -- measured, not supposed:
- * renaming `FAIL` in the union above fails the typecheck ON THIS LITERAL, so the
- * list cannot fall out of step with the type, and every consumer then follows
- * the rename by holding no copy of its own. A list spelled out in a shell script
- * or an awk program has neither half of that.
+ * THE LIST IS THE SOURCE AND THE TYPE IS DERIVED, not the other way round. The
+ * first shape declared the union and annotated a `readonly Verdict[]` beside
+ * it, which looks like it ties the two together and checks only one direction:
+ * every element had to BE a verdict, and nothing required every verdict to be
+ * an element. Measured -- deleting `"PARTIAL"` from the array type-checked
+ * clean, and the tools scanning a summary cell would then have refused every
+ * PARTIAL row as unreadable, which is a green build turning a whole verdict
+ * into an error nobody asked for. Derived, that state cannot be written down.
  */
-export const VERDICTS: readonly Verdict[] = [
+export const VERDICTS = [
   "PASS",
   "PARTIAL",
   "FAIL",
   "ERROR",
   "NOT APPLICABLE",
-];
+] as const;
+
+/** Verdict for one scenario. PASS/FAIL/ERROR keep their upstream meaning.
+ *
+ *  The distinction that matters below is FAIL vs ERROR: FAIL is an assertion
+ *  that ran and disagreed with the CSMS, ERROR is the scenario never getting
+ *  that far. */
+export type Verdict = (typeof VERDICTS)[number];
 
 /** The two verdicts that count as a failure. Whether one ends the process
  *  non-zero is {@link standingOf}'s answer, not this one's. */
