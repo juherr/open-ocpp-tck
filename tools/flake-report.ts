@@ -94,25 +94,18 @@
 
 import { readdirSync, readFileSync, statSync } from "node:fs";
 import { join } from "node:path";
-import {
-  effectivelyFailed,
-  isFailure,
-  type Verdict,
-} from "../tck/standing";
-
 // The verdict vocabulary and the flake rule come from the runner that wrote
 // these tables, never from a second copy here. `tck/standing.ts` says why in
 // its own words -- "ONE definition, deliberately ... written twice they would
 // drift, and the drift would be silent in the worst possible place" -- and a
 // flake record that disagreed with the sweep that produced it is exactly that
 // place. `tools/answered-report.ts` already imports from `../tck/`.
-const VERDICTS: readonly Verdict[] = [
-  "NOT APPLICABLE",
-  "PARTIAL",
-  "PASS",
-  "FAIL",
-  "ERROR",
-];
+import {
+  effectivelyFailed,
+  isFailure,
+  VERDICTS,
+  type Verdict,
+} from "../tck/standing";
 
 /** One scenario row of one run. */
 interface Observation {

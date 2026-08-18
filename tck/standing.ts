@@ -24,6 +24,29 @@ import type { ExpectedFailureEntry } from "./expected";
  *  that far. */
 export type Verdict = "PASS" | "PARTIAL" | "FAIL" | "ERROR" | "NOT APPLICABLE";
 
+/**
+ * The same five, enumerable -- for the readers that have to recognise a verdict
+ * in text rather than receive one. `results/summary.md` renders the verdict into
+ * a cell that may carry free prose after it, so every tool that mines that table
+ * needs the list to match a prefix against.
+ *
+ * Here rather than in each of them, for the reason this file gives about every
+ * other rule it holds: written twice they would drift, and a tool that disagreed
+ * with the sweep which wrote the table is the worst place for it. Annotating it
+ * `readonly Verdict[]` is what makes that mechanical -- measured, not supposed:
+ * renaming `FAIL` in the union above fails the typecheck ON THIS LITERAL, so the
+ * list cannot fall out of step with the type, and every consumer then follows
+ * the rename by holding no copy of its own. A list spelled out in a shell script
+ * or an awk program has neither half of that.
+ */
+export const VERDICTS: readonly Verdict[] = [
+  "PASS",
+  "PARTIAL",
+  "FAIL",
+  "ERROR",
+  "NOT APPLICABLE",
+];
+
 /** The two verdicts that count as a failure. Whether one ends the process
  *  non-zero is {@link standingOf}'s answer, not this one's. */
 export function isFailure(verdict: Verdict): boolean {
