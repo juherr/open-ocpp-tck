@@ -24,8 +24,8 @@ error.
 ## The gate
 
 `bun run verify` is every check CI runs before it starts a container —
-typecheck, committed declarations, three driver scope checks, ten in-process
-guards and thirteen shell guards — with one exit code, and every step runs even
+typecheck, committed declarations, three driver scope checks, eleven in-process
+guards and fourteen shell guards — with one exit code, and every step runs even
 after one fails, where CI enumerates them and stops at the first.
 
 There is a third copy of that list — `bun run test`, the guards without the
@@ -50,10 +50,12 @@ bun tests/assert-answered.ts
 bun tests/get-configuration-filter.ts
 bun tests/foreign-sweep-scope.ts
 bun tests/sim-docker-argv.ts
+bun tests/trace-format.ts
 bun tests/trace-frames.ts
 bun tests/steve-ui-session-race.ts
 bun tests/citrineos-transport-classification.ts
 bun tests/citrineos-device-model-fixture.ts
+bash tests/trace-format-standalone.sh
 ```
 
 then `bun run verify` once before committing.
@@ -103,7 +105,7 @@ There is no unit-test framework and no `*.test.ts`. `tests/` holds offline
 guards, each with a header stating the property it protects. `bun run test`
 chains them — note `bun test` is Bun's own runner and finds nothing here.
 
-Shell is the default, and the ten TypeScript ones are TypeScript because
+Shell is the default, and the eleven TypeScript ones are TypeScript because
 what they assert is unreachable through the CLI. `driver-env-scope.ts`: a
 driver's declarations follow the env they are *resolved* with, where the CLI
 can only ever pass `process.env`. `expected-failure-standing.ts`: the rule that
@@ -154,6 +156,18 @@ with the same empty `StatusNotificationResponse`. There is no wire assertion
 that could tell them apart, and the live measurement that can is four lines in
 a CSMS log rather than a verdict. So the seam again: the provisioner takes its
 `fetch`, and the guard answers from a store.
+`trace-format.ts`: the same argument one layer down, on the library rather
+than on this suite's policy over it. Its sharpest row is the one no producer
+here can make either way — a `messageId` reused across two exchanges, which is
+where the format's correlation rule stops agreeing with a reader that forgot
+its last clause, and where every trace with unique ids agrees with both.
+
+That last guard has a limit worth stating, because it is the kind that gets
+assumed away: it cannot tell you `trace-format/validate.ts` still matches the
+schema it transcribes. The schema is not vendored here — `VENDOR.md` is
+single-upstream by construction — so only `tools/trace-conformance.sh` can say
+that, and it needs the network. Run it after changing `validate.ts` or
+`consumer-view.ts`; a green `bun run verify` does not cover them.
 
 Two guards build a fixture instead of reading the tree, and they are the two
 that test the scripts under `tools/` which *write*.
@@ -220,6 +234,17 @@ its header is now a false claim about what the build checks.
   drivers to scan are derived from `drivers/*`; the names each one owns are a
   table in the guard, and a driver missing from it is reported rather than
   skipped. (`tests/generic-core.sh`)
+- **`trace-format/` depends on nothing in this repository.** Every import and
+  re-export specifier under it is relative-and-inward or a `node:` built-in: a
+  specifier that climbs out ties a library destined for the
+  `open-ocpp-trace` organisation back to this repository, and a bare one gives
+  it a runtime dependency, in a package that has none. Both compile, typecheck
+  and pass every other guard here, and nobody finds out until the day the
+  directory is supposed to move. The split it protects is the one worth
+  remembering: `trace-format/` reads the FORMAT, `tck/trace.ts` is this
+  suite's policy over what it found — which of the library's facts are worth
+  refusing a run over, and how a record becomes one of `ocpp.ts`'s frames.
+  (`tests/trace-format-standalone.sh`)
 - **Every OCA obligation has a check, and every answered-check has an
   obligation.** `tck/specs/OCA-OBLIGATIONS.txt` is the table; adding an
   `assertAllAnswered` without a row, or a row without the check, fails.

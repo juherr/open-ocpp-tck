@@ -16,11 +16,29 @@
  *
  *  - a VERSIONED, DOCUMENTED output of the pinned image, where the log line is
  *    a format upstream never promised anybody. `ocpp.ts` is vendored
- *    `upstream-verbatim` precisely because it tracks that unpromised format;
+ *    precisely because it tracks that unpromised format;
  *  - `action` on responses. A CALLRESULT's wire frame does not carry one, so a
  *    check about "the GetConfiguration.conf" had to be written as a regex over
  *    the response's TEXT -- which is how three of this suite's member-order
  *    couplings got written (see issue #44).
+ *
+ * WHAT IS HERE AND WHAT IS IN `trace-format/`. Reading the FORMAT -- the
+ * schema's members, its two conditionals, `raw` against the members beside it,
+ * the normative consumer view -- is not specific to this suite and lives in
+ * `trace-format/`, which is destined for the format's own organisation and
+ * depends on nothing here. What is left in this file is the two things that
+ * ARE specific to this suite: which of the library's facts are worth refusing
+ * a run over, and how a record becomes one of `ocpp.ts`'s frames.
+ *
+ * That split has a sharp edge worth stating. The library reports a `raw` that
+ * disagrees with its envelope on EVERY member; this file refuses on three of
+ * them -- `messageType`, `messageId`, `action` -- and lets the rest through.
+ * That is deliberate and it is the same rule as before the split: a
+ * disagreement on a member an assertion SELECTS by silently answers the wrong
+ * question, where a disagreement on one that is only ever REPORTED (an error
+ * description, say) shows up in the failure detail a human is already reading.
+ * Refusing a whole run's evidence is worth it for the first and not the
+ * second. Detection is complete; the policy is scoped.
  *
  * THE PARSER IS `ocpp.ts`'s, NOT A SECOND ONE. Every record carries `raw`, the
  * OCPP-J array as it went over the wire, which is exactly what
@@ -35,19 +53,6 @@
  * `parseFrameMessage` refuses one. One parser makes it a property of the code.
  * (Measured anyway, once, on PR #64's CI artifacts: 94 scenarios, 1576
  * records, frame-for-frame identical to `parseLog` on the same runs' logs.)
- *
- * WHAT THE RECORD STILL DECIDES, and what it does not. `direction` comes from
- * the record -- the log line's `Sent:`/`Received:` is the only other source and
- * it is the thing being replaced. Everything else is read from `raw`, and the
- * record's own copy is used to CHECK it: a record whose envelope disagrees with
- * its bytes is refused.
- *
- * That check is scoped, deliberately, to the three members an assertion SELECTS
- * frames by -- `messageType`, `messageId` and `action`. A disagreement there
- * silently answers the wrong question; a disagreement in a member that is only
- * ever REPORTED (an error description, say) shows up in the failure detail a
- * human is already reading. Refusing on the first is worth a whole run's
- * evidence; refusing on the second is not.
  *
  * WHAT NO CONSUMER CAN VERIFY, so it is written down here rather than assumed.
  * `direction` is absolute (`cp-to-csms` / `csms-to-cp`), not observer-relative
@@ -76,18 +81,14 @@
 
 import { readFileSync } from "node:fs";
 
+import {
+  readTraceText,
+  validateRecords,
+  type Diagnostic,
+  type TraceDirection,
+  type TraceRecord,
+} from "../trace-format";
 import { parseFrameMessage, type Direction, type Frame } from "./ocpp";
-
-/**
- * The `schemaVersion` major this module knows how to read.
- *
- * Checked as a MAJOR rather than as an exact string: the format versions
- * in-band and has already moved 1.0 -> 1.1 under us by adding fields, which is
- * the change a consumer reading named members is meant to survive. A major
- * bump is the one that may move what a name means, and there this module has
- * to stop rather than map a field that is no longer the field it wants.
- */
-const SCHEMA_MAJOR = "1";
 
 /** How `ocpp.ts`'s {@link parseFrameMessage} expects each direction spelled. */
 const DIRECTION_PREFIX: Record<Direction, string> = {
@@ -95,23 +96,41 @@ const DIRECTION_PREFIX: Record<Direction, string> = {
   received: "Received:",
 };
 
-/** `messageType` against the `Frame` kind `raw`'s type id must produce. */
-const KIND_OF_MESSAGE_TYPE: Record<string, Frame["kind"]> = {
-  CALL: "call",
-  CALLRESULT: "callresult",
-  CALLERROR: "callerror",
-};
+/** The record members an assertion SELECTS frames by -- see this file's header. */
+const SELECTING_MEMBERS = ["messageType", "messageId", "action"];
 
-/** The record members this module reads. Everything else is ignored. */
-interface TraceRecord {
-  schemaVersion?: unknown;
-  direction?: unknown;
-  messageType?: unknown;
-  messageId?: unknown;
-  action?: unknown;
-  raw?: unknown;
-  timestamp?: unknown;
-}
+/**
+ * Why a set of records produced no frames.
+ *
+ * `payload-only` is separated from `unreadable` because the two are different
+ * news. A trace this module calls `unreadable` is one something is wrong with:
+ * a record off the schema, a `raw` that contradicts its envelope, bytes that
+ * are not an OCPP-J frame. A `payload-only` trace is CORRECT -- `raw` is
+ * optional in the schema and a producer that sets `payload` instead is
+ * conformant -- and this runner still cannot judge on it, because its
+ * assertions read frames that `parseFrameMessage` produced from bytes and
+ * there are no bytes. Telling a user their conformant trace is "unreadable"
+ * sends them to look for a bug that is not there.
+ *
+ * That distinction is the one the format itself does not yet draw: its
+ * conformance rules say a consumer must accept any record that validates,
+ * which leaves no word for a record that validates and is unusable for what
+ * the consumer is FOR. This is that word, spelled locally.
+ */
+export type MappingRefusal = "unreadable" | "payload-only";
+
+/** Why a trace produced no frames -- see {@link readTrace}. */
+export type TraceRefusal = "absent" | "empty" | MappingRefusal;
+
+/** Frames, or the reason there are none. */
+export type FrameMapping =
+  | { frames: Frame[]; refusal?: undefined }
+  | { frames?: undefined; refusal: MappingRefusal };
+
+/** A trace read: frames, or the reason there are none. */
+export type TraceRead =
+  | { frames: Frame[]; refusal?: undefined }
+  | { frames?: undefined; refusal: TraceRefusal };
 
 /**
  * Maps one whole trace, in file order, or refuses it.
@@ -125,87 +144,104 @@ interface TraceRecord {
  * reason, as `classifyForeignSims` in `tck/sim.ts`: the rule is what can be
  * wrong, so the rule is reachable without the I/O around it.
  */
-export function recordsToFrames(
-  records: readonly unknown[],
-): Frame[] | undefined {
+export function recordsToFrames(records: readonly unknown[]): FrameMapping {
+  const { records: validated, diagnostics } = validateRecords(records);
+  return framesFrom(validated, diagnostics);
+}
+
+/**
+ * The policy, applied to what the library found. The one place a diagnostic
+ * becomes a verdict about the run, so both entry points share it rather than
+ * each deciding for itself.
+ */
+function framesFrom(
+  validated: readonly (TraceRecord | undefined)[],
+  diagnostics: readonly Diagnostic[],
+): FrameMapping {
+  // A record the library could not read at all is off the schema, and a
+  // diagnostic this suite refuses over is a fact about the file rather than
+  // about one record. Either way the whole file goes back.
+  if (validated.some((record) => record === undefined)) {
+    return { refusal: "unreadable" };
+  }
+  if (diagnostics.some(refusesOver)) return { refusal: "unreadable" };
+
   const frames: Frame[] = [];
-  for (const record of records) {
+  for (const record of validated as readonly TraceRecord[]) {
+    // Schema-valid and unusable here, which is not the same as wrong.
+    if (record.raw === undefined) return { refusal: "payload-only" };
+
     const frame = recordToFrame(record);
-    if (!frame) return undefined;
+    if (!frame) return { refusal: "unreadable" };
     frames.push(frame);
   }
-  return frames;
+  return { frames };
 }
 
-function recordToFrame(record: unknown): Frame | undefined {
-  if (typeof record !== "object" || record === null || Array.isArray(record)) {
-    return undefined;
+/**
+ * Which of the library's facts cost a whole run's evidence.
+ *
+ * Everything the library reports about a SCHEMA-VALID record is a judgement
+ * call here, and this function is the whole of it:
+ *
+ *  - an unreadable `schemaVersion` major may move what a member NAME means, so
+ *    every frame after it is a guess;
+ *  - a `raw` that contradicts its envelope on a member assertions select by
+ *    answers the wrong question silently -- and on any other member it does
+ *    not, so it is left to show up in the failure detail;
+ *  - a `raw` that is not a JSON array at all cannot become a frame, and saying
+ *    so here rather than letting `parseFrameMessage` return null costs
+ *    nothing and reads better.
+ *
+ * A code this suite has no opinion about is NOT refused. That is the safe
+ * default in the direction that matters: a new diagnostic in the library turns
+ * into a report, never into a silently red sweep.
+ */
+function refusesOver(diagnostic: Diagnostic): boolean {
+  switch (diagnostic.code) {
+    case "unsupported-schema-major":
+    case "raw-not-json":
+    case "raw-not-array":
+      return true;
+    case "raw-envelope-mismatch":
+      return SELECTING_MEMBERS.includes(diagnostic.member ?? "");
+    default:
+      return false;
   }
-  const rec = record as TraceRecord;
+}
 
-  if (typeof rec.schemaVersion !== "string") return undefined;
-  if (rec.schemaVersion.split(".")[0] !== SCHEMA_MAJOR) return undefined;
+function recordToFrame(record: TraceRecord): Frame | undefined {
+  const direction = directionOf(record.direction);
 
-  const direction = directionOf(rec.direction);
-  if (!direction) return undefined;
-
-  // `raw` is the bytes; `timestamp` is the only member of a Frame that is not
-  // in them. Neither has a defensible default, and the schema makes both
-  // optional.
-  //
-  // The `raw` line is a TYPE NARROWING and nothing more -- parseFrameMessage
-  // takes a string, and it is what actually decides whether these bytes are a
-  // frame. Deleting this line leaves tests/trace-frames.ts green, which is the
-  // mutation run saying so rather than a gap: a non-string `raw` reaches
-  // parseFrameMessage as `Sent: undefined` or `Sent: [object Object]` and is
-  // refused there. Do not read it as a second, independent guard.
-  if (typeof rec.raw !== "string") return undefined;
-  if (typeof rec.timestamp !== "string") return undefined;
+  // `messageId` is OPTIONAL in the schema, so the library is right to pass a
+  // record without one -- and this suite cannot use it. An empty uniqueId
+  // would make `findResponseFor` answer every id-less CALL with every id-less
+  // response, which is a wrong verdict where refusing is a missing one.
+  if (record.messageId === undefined) return undefined;
 
   const frame = parseFrameMessage(
-    `${DIRECTION_PREFIX[direction]} ${rec.raw}`,
-    rec.timestamp,
-    rec.raw,
+    `${DIRECTION_PREFIX[direction]} ${record.raw}`,
+    record.timestamp,
+    record.raw,
   );
-  if (!frame) return undefined;
-
-  // The envelope must agree with the bytes on the three members a check
-  // SELECTS by. `messageId` first: the schema makes it optional, and a record
-  // that omits it would otherwise pass this silently, leaving `findResponseFor`
-  // correlating on an id nothing declared.
-  if (frame.uniqueId !== rec.messageId) return undefined;
-  if (KIND_OF_MESSAGE_TYPE[String(rec.messageType)] !== frame.kind) {
-    return undefined;
-  }
-  if (frame.kind === "call" && frame.action !== rec.action) return undefined;
-
-  return frame;
+  return frame ?? undefined;
 }
 
-function directionOf(value: unknown): Direction | undefined {
-  if (value === "cp-to-csms") return "sent";
-  if (value === "csms-to-cp") return "received";
-  return undefined;
+function directionOf(value: TraceDirection): Direction {
+  return value === "cp-to-csms" ? "sent" : "received";
 }
-
-/** Why a trace produced no frames -- see {@link readTrace}. */
-export type TraceRefusal = "absent" | "empty" | "unreadable";
-
-/** A trace read: frames, or the reason there are none. */
-export type TraceRead =
-  | { frames: Frame[]; refusal?: undefined }
-  | { frames?: undefined; refusal: TraceRefusal };
 
 /**
  * Reads a JSONL trace file into frames, or says why it could not.
  *
- * THE REASON IS PART OF THE ANSWER. The three refusals are three different
- * facts about the run -- the container never wrote the file, wrote an empty
- * one, or wrote records this build does not understand -- and the caller has a
- * different thing to say about each. Collapsing them to `undefined` and
- * letting the runner re-`stat` the path to work out which is a second, later
- * observation of a file the container may still be touching, so the branch
- * taken and the branch reported could disagree. One read, one answer.
+ * THE REASON IS PART OF THE ANSWER. The refusals are different facts about the
+ * run -- the container never wrote the file, wrote an empty one, wrote records
+ * this build does not understand, or wrote conformant records with no wire
+ * bytes in them -- and the caller has a different thing to say about each.
+ * Collapsing them to `undefined` and letting the runner re-`stat` the path to
+ * work out which is a second, later observation of a file the container may
+ * still be touching, so the branch taken and the branch reported could
+ * disagree. One read, one answer.
  *
  * AN EMPTY TRACE IS A REFUSAL, NOT "ZERO FRAMES". The file is created by the
  * container, so it exists and is empty in exactly the situations the runner
@@ -214,8 +250,9 @@ export type TraceRead =
  * and fail every check in the scenario for a reason that has nothing to do
  * with the CSMS; refusing hands them the log, which is where the frames are.
  *
- * Blank lines are skipped rather than refused: a trailing newline is a
- * property of appending to a file, not a malformed record.
+ * Blank lines are skipped rather than refused -- see `trace-format/jsonl.ts`:
+ * a trailing newline is a property of appending to a file, not a malformed
+ * record.
  */
 export function readTrace(path: string): TraceRead {
   let text: string;
@@ -225,17 +262,8 @@ export function readTrace(path: string): TraceRead {
     return { refusal: "absent" };
   }
 
-  const records: unknown[] = [];
-  for (const line of text.split("\n")) {
-    if (line.trim() === "") continue;
-    try {
-      records.push(JSON.parse(line));
-    } catch {
-      return { refusal: "unreadable" };
-    }
-  }
+  const { records, diagnostics } = readTraceText(text);
   if (records.length === 0) return { refusal: "empty" };
 
-  const frames = recordsToFrames(records);
-  return frames ? { frames } : { refusal: "unreadable" };
+  return framesFrom(records, diagnostics);
 }
