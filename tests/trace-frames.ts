@@ -14,7 +14,12 @@
  *  1. A well-formed trace maps IN FILE ORDER onto the frames ocpp.ts defines,
  *     with `cp-to-csms` -> "sent" and `csms-to-cp` -> "received", and the
  *     result correlates: findResponseFor pairs a CALLRESULT to its CALL, which
- *     is the only thing every assertion in the suite is built on.
+ *     is the only thing every assertion in the suite is built on. And it pairs
+ *     them the way the FORMAT says to: `findResponseFor` and the library's
+ *     `consumerView` must agree frame for frame, or the conformance run would
+ *     prove the library right about a specification the assertions do not
+ *     follow. They diverge only on a reused `messageId`, so that is the case
+ *     the row below builds -- with unique ids a wrong implementation passes.
  *  2. A CALLERROR carries its code, description and details onto errorCode /
  *     errorDescription / errorDetails.
  *  3. A `schemaVersion` whose MAJOR is not 1 refuses. The library only REPORTS
@@ -74,7 +79,17 @@ import { mkdtempSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 
-import { findCall, findResponseFor } from "../tck/ocpp";
+import {
+  findCall,
+  findResponseFor,
+  type CallFrame,
+  type Frame,
+} from "../tck/ocpp";
+import {
+  consumerView,
+  validateRecords,
+  type TraceRecord,
+} from "../trace-format";
 import {
   readTrace,
   recordsToFrames,
@@ -153,6 +168,12 @@ const fail = (what: string, detail: string): void => {
   process.stderr.write(`FAIL: ${what}\n  ${detail}\n`);
 };
 
+/** Where `call`'s answer sits in `frames`, or -1 for "it has none". */
+function indexOfAnswer(frames: readonly Frame[], call: CallFrame): number {
+  const answer = findResponseFor(frames, call);
+  return answer === undefined ? -1 : frames.indexOf(answer);
+}
+
 // --------------------------------------------------------------------------
 // 1 + 2. What a well-formed trace maps to.
 // --------------------------------------------------------------------------
@@ -201,6 +222,99 @@ if (!frames) {
       "mapped frames correlate by uniqueId",
       `findResponseFor returned ${answer ? answer.kind : "nothing"}`,
     );
+  }
+}
+
+// --------------------------------------------------------------------------
+// 1, continued. The mapped frames correlate the way the FORMAT correlates.
+//
+// Two exchanges reuse one messageId. The normative rule pairs them one to one,
+// most recent call first: response 2 answers call 1, response 3 answers call
+// 0. An implementation that scans forward for the first matching response --
+// which is what this repository did until the format's rule was adopted --
+// hands BOTH calls response 2 and leaves call 0 looking unanswered. Every
+// trace with unique ids agrees with both, so this is the only shape that can
+// tell them apart.
+// --------------------------------------------------------------------------
+
+{
+  const reused = [
+    CALL,
+    tweak(CALL, { timestamp: "2026-08-17T19:53:03.000Z" }),
+    CALLRESULT,
+    tweak(CALLRESULT, { timestamp: "2026-08-17T19:53:03.010Z" }),
+  ];
+  const mapped = recordsToFrames(reused).frames;
+  if (!mapped) {
+    fail("a reused messageId still maps", "recordsToFrames refused it");
+  } else {
+    const calls = mapped.filter((f): f is CallFrame => f.kind === "call");
+    const paired = calls.map((call) => indexOfAnswer(mapped, call));
+    if (paired[0] !== 3 || paired[1] !== 2) {
+      fail(
+        "findResponseFor pairs a reused messageId one to one",
+        `expected call 0 -> frame 3 and call 1 -> frame 2, got ${JSON.stringify(paired)}`,
+      );
+    }
+
+    // And the same pairing the library derives, which is the agreement that
+    // makes tools/trace-conformance.sh a statement about this suite and not
+    // just about trace-format/.
+    const { records } = validateRecords(reused);
+    const view = consumerView(records.filter((r): r is TraceRecord => r !== undefined));
+    const fromView = view.records
+      .map((entry) => entry.correlatesWith)
+      .map((at, i) => (at === undefined ? undefined : [at, i]))
+      .filter((pair): pair is number[] => pair !== undefined);
+    const fromFrames = paired.map((response, call) => [call, response]);
+    if (JSON.stringify(fromView.map(([c, r]) => [c, r]).sort()) !==
+        JSON.stringify(fromFrames.sort())) {
+      fail(
+        "findResponseFor agrees with the format's consumer view",
+        `view says ${JSON.stringify(fromView)}, frames say ${JSON.stringify(fromFrames)}`,
+      );
+    }
+  }
+}
+
+// The OPPOSITE-DIRECTION clause, which needs its own shape to bite. The block
+// above cannot test it: with every CALL travelling one way and every response
+// the other, dropping the clause changes nothing and the guard stays green --
+// measured, on the mutation that was supposed to prove it. So: the CSMS opens
+// a call reusing the id of one the charge point already has outstanding, and
+// the nearer of the two candidates is the WRONG-direction one. The response
+// answers the charge point's call at index 0; a reader that only looks for
+// "most recent, same id" answers the CSMS's at index 1.
+{
+  const incoming = tweak(CALL, {
+    direction: "csms-to-cp",
+    action: "TriggerMessage",
+    payload: {},
+    raw: '[2,"07b4312a-594f-4aee-ab01-a015ade45000","TriggerMessage",{}]',
+    timestamp: "2026-08-17T19:53:02.690Z",
+  });
+  const mapped = recordsToFrames([CALL, incoming, CALLRESULT]).frames;
+  if (!mapped) {
+    fail("a same-id call in each direction still maps", "recordsToFrames refused it");
+  } else {
+    const outgoing = mapped[0];
+    const arriving = mapped[1];
+    if (outgoing.kind !== "call" || arriving.kind !== "call") {
+      fail("the fixture is two calls and a response", "it is not");
+    } else {
+      if (indexOfAnswer(mapped, outgoing) !== 2) {
+        fail(
+          "a response answers the call travelling the OTHER way",
+          "the cp-to-csms CALL was not answered by the csms-to-cp CALLRESULT",
+        );
+      }
+      if (findResponseFor(mapped, arriving) !== undefined) {
+        fail(
+          "a response does not answer a call travelling its own way",
+          "the csms-to-cp CALL was given a csms-to-cp CALLRESULT as its answer",
+        );
+      }
+    }
   }
 }
 
