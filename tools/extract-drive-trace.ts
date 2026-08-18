@@ -14,6 +14,13 @@
  * network, no docker, no CSMS. Static analysis would not do: several specs
  * build their operation list through helpers and awaits.
  *
+ * WHICH SCENARIOS IT COVERS is derived from `tck/specs/index`, not listed --
+ * see GROUP_ORDER for what the list it replaced got wrong. A SEPARATE GUARD
+ * asserting "every spec group appears in the artifact" was considered here and
+ * is not written: index.ts is also where tck/main.ts:108 gets its registry, so
+ * a group this file cannot see is a group the runner cannot run, and the guard
+ * would compare the derivation against itself.
+ *
  * What is recorded, and why it is recorded THAT way
  * ------------------------------------------------
  * The whole point of this artifact is to survive the very refactor it guards.
@@ -56,22 +63,118 @@
  *    scenario whose control flow depends on a REAL answer traces only the
  *    branch the placeholder selects.
  */
-import {
-  CORE_SPECS,
-  AUTHLIST_RESERVATION_SPECS,
-  REMOTETRIGGER_SMARTCHARGING_SPECS,
-  FIRMWARE_SPECS,
-  AUTHORIZE_SPECS,
-} from "../tck/specs/index";
+import * as specs from "../tck/specs/index";
 
-// Fixed group order, so the artifact never reorders on its own.
-const GROUPS: Array<[string, unknown[]]> = [
-  ["core", CORE_SPECS],
-  ["authlist-reservation", AUTHLIST_RESERVATION_SPECS],
-  ["remotetrigger-smartcharging", REMOTETRIGGER_SMARTCHARGING_SPECS],
-  ["firmware", FIRMWARE_SPECS],
-  ["authorize", AUTHORIZE_SPECS],
+interface SpecLike {
+  templateId: string;
+  connector?: number;
+  drive?: (ctx: Record<string, unknown>) => Promise<unknown>;
+}
+
+function isSpecArray(value: unknown): value is SpecLike[] {
+  return (
+    Array.isArray(value) &&
+    value.every(
+      (item) =>
+        typeof item === "object" &&
+        item !== null &&
+        typeof (item as { templateId?: unknown }).templateId === "string",
+    )
+  );
+}
+
+/**
+ * Declared ORDER, not declared MEMBERSHIP.
+ *
+ * The list this replaces named the five groups AND their arrays, so a sixth
+ * spec group was invisible: its scenarios never reached the artifact,
+ * tests/spec-invariants.sh diffed a short file against an equally short one,
+ * and the drive sequences this whole file exists to pin were quietly not being
+ * pinned. Membership now comes from `tck/specs/index`, which is where
+ * tck/main.ts:108 gets it too -- so the extractor cannot be the one place that
+ * disagrees with the runner about which scenarios exist.
+ *
+ * The reason for keeping an order list is NOT the one the old comment gave --
+ * "so the artifact never reorders on its own" does not discriminate, since a
+ * sorted read does not reorder on its own either, and the twin
+ * (extract-assert-inventory.ts) keeps no such list. The real reason is narrower
+ * and is about the reader: dropping it re-sorts DRIVE-TRACE.txt into export
+ * order in one commit, and a full-file diff in an artifact whose entire
+ * contract is "a diff means a scenario changed" costs a review the very signal
+ * the artifact is for. That is a one-time cost, which is what makes it worth
+ * five lines and not more.
+ *
+ * A group missing from this list sorts after it, in export order, so it is
+ * pinned from the run it first appears in. An entry here matching no exported
+ * group is an ERROR -- the rule tests/gate-parity.sh applies to its own
+ * allowlist -- because an ordering for something that no longer exists is a
+ * statement nobody is checking.
+ *
+ * Deriving the order from tck/main.ts's own GROUPS registry would be the ideal
+ * single list, and is rejected here so it is not re-proposed blind: that file
+ * is `upstream-patched` and is a CLI whose module body runs on import, so an
+ * extractor importing it buys a re-pin and a side effect to pay for five words.
+ */
+const GROUP_ORDER: readonly string[] = [
+  "core",
+  "authlist-reservation",
+  "remotetrigger-smartcharging",
+  "firmware",
+  "authorize",
 ];
+
+/** `AUTHLIST_RESERVATION_SPECS` -> `authlist-reservation`, the name main.ts's
+ *  registry gives the same array. Derived rather than tabulated: a table is
+ *  the thing that went stale. An export renamed out of the `_SPECS` shape
+ *  still yields a group -- under a different name, which is a visible line in
+ *  the artifact's diff rather than a group that vanished. */
+function groupNameOf(exportName: string): string {
+  return exportName.replace(/_SPECS$/, "").toLowerCase().replace(/_/g, "-");
+}
+
+/** Every spec group the runner can run, in GROUP_ORDER first and export order
+ *  after -- `Array#sort` is stable, so the tail keeps the order it was found
+ *  in. Selected by SHAPE rather than by name, so the `_SPECS` convention is
+ *  only ever used to label a group, never to decide whether it is one. */
+function discoverGroups(): Array<[string, SpecLike[]]> {
+  // An exported ARRAY that is not an array of specs is REFUSED, not filtered
+  // out. index.ts is a barrel of spec groups and nothing else, so an array
+  // there is a group; one whose members lost their templateId is a group that
+  // was RESHAPED, and skipping it would keep its scenarios out of the artifact
+  // with the diff staying empty -- this file's original bug, arriving by
+  // another door. Non-arrays are not candidates and are simply not groups.
+  const reshaped = Object.entries(specs).filter(
+    ([, value]) => Array.isArray(value) && !isSpecArray(value),
+  );
+  if (reshaped.length > 0) {
+    throw new Error(
+      `tck/specs/index exports ${reshaped.map(([name]) => name).join(", ")} as ` +
+        `an array whose members do not all carry a string templateId. Teach ` +
+        `this extractor the new shape; skipping it would leave those scenarios ` +
+        `unpinned with nothing to show for it.`,
+    );
+  }
+
+  const found = Object.entries(specs)
+    .filter(([, value]) => isSpecArray(value))
+    .map(([name, value]) => [groupNameOf(name), value] as [string, SpecLike[]]);
+
+  const names = new Set(found.map(([name]) => name));
+  const unknown = GROUP_ORDER.filter((name) => !names.has(name));
+  if (unknown.length > 0) {
+    throw new Error(
+      `GROUP_ORDER names ${unknown.join(", ")}, which tck/specs/index does not ` +
+        `export as an array of specs. Delete the entry, or fix the export: an ` +
+        `ordering for a group that does not exist is a rule nothing checks.`,
+    );
+  }
+
+  const rank = (name: string): number => {
+    const at = GROUP_ORDER.indexOf(name);
+    return at === -1 ? GROUP_ORDER.length : at;
+  };
+  return found.sort((a, b) => rank(a[0]) - rank(b[0]));
+}
 
 const CP_ID = "CERTCP1";
 
@@ -251,15 +354,10 @@ out.push("# Operations are normalised: OCPP action + argument VALUES (keys");
 out.push("# discarded, lowercased, sorted), so a pure driver-syntax change is");
 out.push("# invisible here while a dropped or retargeted step is not.");
 
-for (const [groupName, specs] of GROUPS) {
+for (const [groupName, groupSpecs] of discoverGroups()) {
   out.push("");
   out.push(`GROUP ${groupName}`);
-  for (const raw of specs) {
-    const spec = raw as {
-      templateId: string;
-      connector?: number;
-      drive?: (ctx: Record<string, unknown>) => Promise<unknown>;
-    };
+  for (const spec of groupSpecs) {
     out.push(`  SPEC ${spec.templateId}`);
     if (!spec.drive) {
       out.push("    <no drive>");

@@ -14,12 +14,29 @@
  * keeps it on the core side of the boundary tests/generic-core.sh enforces.
  */
 import type { ExpectedFailureEntry } from "./expected";
+/**
+ * Every verdict, once -- as the list, because the readers that have to
+ * RECOGNISE a verdict in text rather than receive one cannot iterate a type.
+ * `results/summary.md` renders the verdict into a cell that may carry free
+ * prose after it, so every tool mining that table needs something to match
+ * against.
+ *
+ * THE LIST IS THE SOURCE AND THE TYPE IS DERIVED, not the other way round. The
+ * first shape declared the union and annotated a `readonly Verdict[]` beside
+ * it, which looks like it ties the two together and checks only one direction:
+ * every element had to BE a verdict, and nothing required every verdict to be
+ * an element. Measured -- deleting `"PARTIAL"` from the array type-checked
+ * clean, and the tools scanning a summary cell would then have refused every
+ * PARTIAL row as unreadable, which is a green build turning a whole verdict
+ * into an error nobody asked for. Derived, that state cannot be written down.
+ */
+export declare const VERDICTS: readonly ["PASS", "PARTIAL", "FAIL", "ERROR", "NOT APPLICABLE"];
 /** Verdict for one scenario. PASS/FAIL/ERROR keep their upstream meaning.
  *
  *  The distinction that matters below is FAIL vs ERROR: FAIL is an assertion
  *  that ran and disagreed with the CSMS, ERROR is the scenario never getting
  *  that far. */
-export type Verdict = "PASS" | "PARTIAL" | "FAIL" | "ERROR" | "NOT APPLICABLE";
+export type Verdict = (typeof VERDICTS)[number];
 /** The two verdicts that count as a failure. Whether one ends the process
  *  non-zero is {@link standingOf}'s answer, not this one's. */
 export declare function isFailure(verdict: Verdict): boolean;
