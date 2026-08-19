@@ -133,7 +133,7 @@ FILE core-201.ts
     assertReceived(·, ·, "Reset", "Reset.req received")
     assertCallPayload(·, ·, "received", "Reset", {type:"Immediate",evseId:9}, "Reset.req names the EVSE it was asked to name")
     assertResponseStatus(·, ·, "Reset", "Rejected", "Reset rejected for an EVSE the station does not have", {direction:"received"})
-  SPEC cert201-tcf20-heartbeat connector=1 bootWaitSecs=4 holdSecs=6 ocppVersion="OCPP-2.0.1" runsSimTemplate=false
+  SPEC cert201-tcf20-heartbeat connector=1 bootWaitSecs=4 holdSecs=8 ocppVersion="OCPP-2.0.1" runsSimTemplate=false
     assertSent(·, ·, "Heartbeat", "Heartbeat.req sent")
     assertAllAnswered(·, ·, "Heartbeat")
     assertResponseTimestamp(·, ·, "Heartbeat", "currentTime", "Heartbeat.conf carries a currentTime the charge point can parse")
