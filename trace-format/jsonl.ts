@@ -22,13 +22,14 @@ import type { Diagnostic } from "./diagnostics";
  * not JSON.
  */
 export interface SplitTrace {
-  readonly values: readonly (unknown | undefined)[];
+  /** `undefined` marks a line that was not JSON -- see the header. */
+  readonly values: readonly unknown[];
   readonly diagnostics: readonly Diagnostic[];
 }
 
 /** Splits a JSONL trace into one JSON value per non-blank line. */
 export function splitJsonl(text: string): SplitTrace {
-  const values: (unknown | undefined)[] = [];
+  const values: unknown[] = [];
   const diagnostics: Diagnostic[] = [];
 
   for (const line of text.split("\n")) {

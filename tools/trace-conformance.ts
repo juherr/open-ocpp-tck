@@ -34,24 +34,18 @@ import { basename, join } from "node:path";
 
 import { parseLog, type Frame } from "../tck/ocpp";
 import { readTrace } from "../tck/trace";
+import { readTraceText } from "../trace-format";
 import {
   checkFixtures,
+  formatDiagnostics,
   formatResults,
-  readTraceText,
-  type Diagnostic,
-} from "../trace-format";
+} from "../trace-format/conformance";
 
 let failures = 0;
 const fail = (what: string, detail: string): void => {
   failures++;
   process.stderr.write(`FAIL ${what}: ${detail}\n`);
 };
-
-const show = (diagnostics: readonly Diagnostic[]): string =>
-  diagnostics
-    .slice(0, 5)
-    .map((d) => `[${d.index}] ${d.code}${d.member ? `/${d.member}` : ""}`)
-    .join(", ");
 
 // --------------------------------------------------------------------------
 // 1. The specification's fixtures.
@@ -108,7 +102,7 @@ function checkArchive(dir: string): { traces: number; records: number } {
     // news whether or not the runner would have refused over it.
     const read = readTraceText(text);
     if (read.diagnostics.length > 0) {
-      fail(file, `real records produced diagnostics: ${show(read.diagnostics)}`);
+      fail(file, `real records produced diagnostics: ${formatDiagnostics(read.diagnostics, 5)}`);
       continue;
     }
     records += read.records.length;
@@ -134,12 +128,12 @@ function checkArchive(dir: string): { traces: number; records: number } {
     }
     const a = trace.frames.map(frameKey);
     const b = fromLog.map(frameKey);
-    if (a.length !== b.length || a.some((key, i) => key !== b[i])) {
+    const at = a.findIndex((key, i) => key !== b[i]);
+    if (a.length !== b.length || at >= 0) {
       fail(
         file,
         `trace and log disagree: ${a.length} frames vs ${b.length} from the log`,
       );
-      const at = a.findIndex((key, i) => key !== b[i]);
       if (at >= 0) {
         process.stderr.write(`     first difference at frame ${at}\n`);
         process.stderr.write(`       trace ${a[at]}\n`);

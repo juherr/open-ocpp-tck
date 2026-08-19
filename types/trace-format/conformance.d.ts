@@ -29,6 +29,7 @@
  * makes correct producers look broken -- and it is why "the reader said
  * nothing" is part of passing rather than an aside.
  */
+import type { Diagnostic } from "./diagnostics";
 /** What one fixture directory had to say. */
 export interface FixtureResult {
     readonly name: string;
@@ -42,6 +43,12 @@ export interface FixtureResult {
         orphanResponses: number;
     };
 }
+/**
+ * `[index] code/member`, comma separated -- the one rendering of a diagnostic
+ * list, exported because every caller that prints one wants this and a second
+ * copy is how two of them drift apart.
+ */
+export declare function formatDiagnostics(diagnostics: readonly Diagnostic[], limit?: number): string;
 /** Checks one `trace.jsonl` + `expected.json` pair. */
 export declare function checkFixture(dir: string, name: string): FixtureResult;
 /**

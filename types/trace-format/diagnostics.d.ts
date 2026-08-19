@@ -84,6 +84,17 @@ export type DiagnosticCode =
  */
  | "response-action-mismatch";
 /**
+ * The members `raw-envelope-mismatch` can be about.
+ *
+ * Closed for the same reason `DiagnosticCode` is. A consumer's policy may
+ * depend on WHICH member disagreed -- the conformance suite refuses over
+ * `messageType`, `messageId` and `action` and merely reports the rest -- so
+ * these spellings are half of that policy's API. Left as bare strings, a
+ * respelling here would silently downgrade a refusal to a report with nothing
+ * failing to compile at either end.
+ */
+export type RawEnvelopeMember = "messageType" | "messageId" | "action" | "payload" | "error.code" | "error.description" | "error.details";
+/**
  * One fact about one record.
  *
  * `index` is the record's position in the array it was read from, which for a

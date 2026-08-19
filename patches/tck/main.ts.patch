@@ -603,7 +603,7 @@
      } else {
        process.stderr.write(
          `[runner] no drive() defined (CP-only scenario) -- nothing to do while it runs\n`,
-@@ -190,72 +527,192 @@
+@@ -190,72 +527,194 @@
        driveState = undefined as D;
      }
  
@@ -671,11 +671,12 @@
 +  // --trace-output. `unreadable` is a fourth and newer cause -- the mount
 +  // worked and the records are ones this build does not map -- and it is worth
 +  // telling apart from the other three, because it is the one that says the
-+  // pinned image moved rather than the environment. `payload-only` is a fifth
-+  // and says the opposite of all of them: nothing is broken at all. `raw` is
-+  // optional in the format, the image started emitting records without it, and
-+  // this runner needs wire bytes. Sending someone to hunt a mount bug for that
-+  // is the reason it is not spelled `unreadable`. In every case the sweep
++  // pinned image moved rather than the environment. `payload-only` and
++  // `no-message-id` are a fifth kind and say the opposite of all of them:
++  // nothing is broken at all. Both members are OPTIONAL in the format, so an
++  // image that stopped emitting one is still conformant and this runner still
++  // cannot judge on it. Sending someone to hunt a mount bug for that is why
++  // they are not spelled `unreadable`. In every case the sweep
 +  // goes green and the evidence simply is not there, which is the failure
 +  // shape this repository keeps naming. So say it -- once, since every cause
 +  // is a property of the environment or of the image, never of the scenario
@@ -699,10 +700,11 @@
 +        "is absent or empty and this runner is containerised, the bind mount " +
 +        "names a path on the docker host, not this one; SIM_TRACE=0 turns the " +
 +        "request off. If it is unreadable, the image emits records " +
-+        "tck/trace.ts does not map. If it is payload-only, the records are " +
-+        "CONFORMANT and carry no `raw`, which the format allows and this " +
-+        "runner cannot judge on -- nothing is misconfigured. Said once per " +
-+        "run: every cause holds for the whole sweep.\n",
++        "tck/trace.ts does not map. If it is payload-only or no-message-id, " +
++        "the records are CONFORMANT and omit an optional member this runner " +
++        "needs -- the format allows it, nothing here is misconfigured, and " +
++        "the log is the right substrate for that run. Said once per run: " +
++        "every cause holds for the whole sweep.\n",
 +    );
 +  }
 +
@@ -817,7 +819,7 @@
  // ---------------------------------------------------------------------------
  
  // eslint-disable-next-line @typescript-eslint/no-explicit-any
-@@ -265,20 +722,21 @@
+@@ -265,20 +724,21 @@
    "remotetrigger-smartcharging": REMOTETRIGGER_SMARTCHARGING_SPECS,
    firmware: FIRMWARE_SPECS,
    authorize: AUTHORIZE_SPECS,
@@ -845,7 +847,7 @@
  // eslint-disable-next-line @typescript-eslint/no-explicit-any
  const SPECS_BY_TEMPLATE_ID = new Map<string, ScenarioSpec<any>>(
    Object.values(GROUPS)
-@@ -286,66 +744,228 @@
+@@ -286,66 +746,228 @@
      .map((spec) => [spec.templateId, spec]),
  );
  
@@ -1114,7 +1116,7 @@
      };
    } catch (err) {
      const message =
-@@ -353,64 +973,47 @@
+@@ -353,64 +975,47 @@
      process.stderr.write(
        `[runner] ERROR: ${spec.templateId} on ${cpId} threw before completing: ${message}\n`,
      );
@@ -1203,7 +1205,7 @@
    );
  
    for (const outcome of toRetry) {
-@@ -427,18 +1030,19 @@
+@@ -427,18 +1032,19 @@
      process.stderr.write(
        `[runner] isolated retry: ${outcome.templateId} on ${outcome.cpId} (parallel verdict was ${outcome.verdict})\n`,
      );
@@ -1226,7 +1228,7 @@
            : " -- CONFIRMED (fails isolated too, not a parallel-lane artifact)\n"),
      );
    }
-@@ -451,59 +1055,153 @@
+@@ -451,59 +1057,153 @@
    return new Date().toISOString().replace(/\.\d{3}Z$/, "Z");
  }
  
@@ -1404,7 +1406,7 @@
        "",
        header,
        separator,
-@@ -518,54 +1216,54 @@
+@@ -518,54 +1218,54 @@
  }
  
  /** Sequential or parallel group sweep. Writes results/summary.md and exits
@@ -1485,7 +1487,7 @@
      );
    } else {
      for (let i = 0; i < specs.length; i++) {
-@@ -574,11 +1272,11 @@
+@@ -574,11 +1274,11 @@
    }
  
    if (retryFailedIsolated) {
@@ -1499,7 +1501,7 @@
            "(a sequential sweep is already isolated).\n",
        );
      }
-@@ -588,45 +1286,87 @@
+@@ -588,45 +1288,87 @@
    for (const o of outcomes) {
      const retrySuffix = o.isolatedRetry
        ? ` [isolated retry: ${o.isolatedRetry.verdict}${
@@ -1610,7 +1612,7 @@
  }
  
  // ---------------------------------------------------------------------------
-@@ -642,6 +1382,8 @@
+@@ -642,6 +1384,8 @@
    cpId: string;
    connector?: number;
    timeoutSecs?: number;
@@ -1619,7 +1621,7 @@
  }
  
  function requireValue(argv: string[], index: number, flag: string): string {
-@@ -663,37 +1405,82 @@
+@@ -663,37 +1407,82 @@
    return n;
  }
  
@@ -1719,7 +1721,7 @@
  
    if (argv[0] === "run-all") {
      group = "all";
-@@ -708,18 +1495,27 @@
+@@ -708,18 +1497,27 @@
          case "--retry-failed-isolated":
            retryFailedIsolated = true;
            break;
@@ -1750,7 +1752,7 @@
      process.exit(1);
    }
  
-@@ -749,9 +1545,11 @@
+@@ -749,9 +1547,11 @@
        case "--retry-failed-isolated":
          retryFailedIsolated = true;
          break;
@@ -1763,7 +1765,7 @@
          process.exit(1);
      }
    }
-@@ -764,35 +1562,495 @@
+@@ -764,35 +1564,495 @@
      cpId,
      connector,
      timeoutSecs,
@@ -1792,7 +1794,7 @@
 +  }
 +  return [...seen].map(([templateId, group]) => ({ templateId, group }));
 +}
- 
++
 +function listScenarios(argv: string[]): number {
 +  let group: string | undefined;
 +  let asJson = false;
@@ -2151,7 +2153,7 @@
 +      run: () => parts.prepareStation!(cpId),
 +    });
 +  }
-+
+ 
 +  process.stdout.write(
 +    `selftest: ${module.displayName} against ${cpId}\n`,
 +  );
@@ -2275,7 +2277,7 @@
    }
  
    const spec = SPECS_BY_TEMPLATE_ID.get(args.templateId);
-@@ -800,18 +2058,109 @@
+@@ -800,18 +2060,109 @@
      process.stderr.write(
        `Unknown template id: ${args.templateId} (known: ${[...SPECS_BY_TEMPLATE_ID.keys()].join(", ")})\n`,
      );

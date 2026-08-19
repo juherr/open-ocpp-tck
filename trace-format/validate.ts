@@ -32,7 +32,7 @@
  * must agree" rather than "both sides must say it".
  */
 
-import type { Diagnostic } from "./diagnostics";
+import type { Diagnostic, RawEnvelopeMember } from "./diagnostics";
 import {
   SUPPORTED_SCHEMA_MAJOR,
   type TraceMessageType,
@@ -140,9 +140,7 @@ export function validateRecord(value: unknown, index: number): ValidatedRecord {
     detail: string,
     member?: string,
   ): void => {
-    diagnostics.push(member === undefined
-      ? { index, code, detail }
-      : { index, code, member, detail });
+    diagnostics.push({ index, code, member, detail });
   };
 
   if (typeof value !== "object" || value === null || Array.isArray(value)) {
@@ -150,10 +148,6 @@ export function validateRecord(value: unknown, index: number): ValidatedRecord {
     return { diagnostics };
   }
   const rec = value as Record<string, unknown>;
-
-  // Track schema violations separately from the reportable-but-valid ones:
-  // only the former withhold the record.
-  const before = diagnostics.length;
 
   for (const member of REQUIRED) {
     if (rec[member] === undefined) {
@@ -223,8 +217,9 @@ export function validateRecord(value: unknown, index: number): ValidatedRecord {
     );
   }
 
-  const schemaValid = diagnostics.length === before;
-  if (!schemaValid) return { diagnostics };
+  // Everything said so far is a schema violation, and only those withhold the
+  // record. The reportable-but-valid ones are all raised below.
+  if (diagnostics.length > 0) return { diagnostics };
 
   // The cast is what the checks above earn, and it is the ONLY one in this
   // file: every member `TraceRecord` declares has been checked for presence
@@ -331,7 +326,7 @@ function checkRawFidelity(record: TraceRecord, say: Say): void {
     return;
   }
 
-  const mismatch = (member: string, detail: string): void =>
+  const mismatch = (member: RawEnvelopeMember, detail: string): void =>
     say("raw-envelope-mismatch", detail, member);
 
   if (MESSAGE_TYPE_OF_ID[frame[0] as number] !== record.messageType) {

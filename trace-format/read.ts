@@ -29,12 +29,14 @@ import { validateRecord, type ValidatedTrace } from "./validate";
  */
 export function readTraceText(text: string): ValidatedTrace {
   const split = splitJsonl(text);
-  const unreadable = new Set(split.diagnostics.map((d) => d.index));
 
   const records: (TraceRecord | undefined)[] = [];
   const diagnostics: Diagnostic[] = [...split.diagnostics];
   split.values.forEach((value, index) => {
-    if (unreadable.has(index)) {
+    // The hole itself is the signal, not the diagnostic beside it: keying off
+    // the reported indices instead would silently skip a GOOD record the day
+    // `splitJsonl` reports something that does not leave a hole.
+    if (value === undefined) {
       records.push(undefined);
       return;
     }

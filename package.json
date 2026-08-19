@@ -97,6 +97,10 @@
       "types": "./types/trace-format/index.d.ts",
       "default": "./trace-format/index.ts"
     },
+    "./trace-format/conformance": {
+      "types": "./types/trace-format/conformance.d.ts",
+      "default": "./trace-format/conformance.ts"
+    },
     "./runner": {
       "types": "./types/tck/main.d.ts",
       "default": "./tck/main.ts"
