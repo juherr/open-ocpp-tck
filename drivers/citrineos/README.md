@@ -1,15 +1,17 @@
 # The CitrineOS driver
 
 [CitrineOS](https://github.com/citrineos/citrineos-core) (LF Energy / S44) is
-the second CSMS this harness drives, and the first one the 47 scenarios were
-**not** written against. That is the point of it: an abstraction with a single
+the second CSMS this harness drives, and the first one the 47 OCPP 1.6
+scenarios were **not** written against. That is the point of it: an abstraction with a single
 implementation is CSMS-neutral by assertion, and this driver is how the
 assertion gets tested.
 
 It reports the answer rather than flattering it.
 
 **Measured 2026-08-12 against the pinned image: 39 `PASS`, 7 `NOT APPLICABLE`,
-1 `FAIL` out of 47.**
+1 `FAIL` out of the 47 OCPP 1.6 scenarios.** The 5 OCPP 2.0.1 ones came later
+and are `CONDITIONAL` until a sweep says otherwise — see [OCPP
+2.0.1](#ocpp-201) below.
 
 That run needed no isolated retry at all, which had never happened before —
 but read it as one run rather than as a property. The parallel pass is
@@ -70,14 +72,14 @@ bun bin/ocpp-tck.ts driver provision      # seed the idTags TC_023 needs
 bun bin/ocpp-tck.ts driver verify         # read-only: are they there?
 bun bin/ocpp-tck.ts driver selftest       # seconds: every record query, once
 
-bun run e2e                               # the whole suite: 47 scenarios
+bun run e2e                               # the whole suite: 52 scenarios
 
 docker compose -f drivers/citrineos/compose.yaml down -v
 ```
 
 `bun run e2e` and not `run-all`, for the retry pass: `--retry-failed-isolated`
 re-runs a parallel lane's failures sequentially, which is the mode the runner
-calls reliable. Both cover the same 47 scenarios — the `authorize` group used
+calls reliable. Both cover the same 52 scenarios — the `authorize` group used
 to sit outside `all`, so a bare `run-all` reported 44/47 as "no failures" and
 skipped exactly the three scenarios that prove `driver provision` seeded
 anything. `bun run e2e:smoke` is the short loop while iterating.
@@ -179,7 +181,8 @@ Two differences, both read off the running images rather than inferred:
    `SendLocalLists`. `Authorizations` is untouched, which is why `provision`
    was already version-agnostic; only the record reads needed it.
 
-**Measured, 2026-08-11: 18 `PASS`, 13 `NOT APPLICABLE`, 16 `FAIL` out of 47**,
+**Measured, 2026-08-11: 18 `PASS`, 13 `NOT APPLICABLE`, 16 `FAIL` out of the 47
+OCPP 1.6 scenarios**,
 against 39 / 7 / 1 on v2 — and the gap is one upstream defect rather than a
 driver limitation. That v1 row has **not** been re-measured since the
 retrieveDate fix or the move to the GraphQL transport, so read it as the
@@ -244,9 +247,9 @@ the last word.
 ## How the contract maps
 
 Operations go to the message API, which generates its routes from the OCPP
-schemas: `POST /ocpp/1.6/<module>/<action>?identifier=<cpId>&tenantId=1`, and
-the request body *is* the OCPP payload. The module prefix is not derivable from
-the action, which is the only reason a table is needed:
+schemas: `POST /ocpp/<version>/<module>/<action>?identifier=<cpId>&tenantId=1`,
+and the request body *is* the OCPP payload. The module prefix is not derivable
+from the action, which is the only reason a table is needed:
 
 | Contract operation | Endpoint |
 |---|---|
@@ -267,6 +270,40 @@ the action, which is the only reason a table is needed:
 | `GetCompositeSchedule` | `smartcharging/getCompositeSchedule` |
 | `ClearChargingProfile` | `smartcharging/clearChargingProfile` |
 | `ReserveNow`, `CancelReservation` | **none** — see the gaps below |
+
+## OCPP 2.0.1
+
+The version is a path segment, so the 2.0.1 half of the contract is the same
+three moves through the same client — `/ocpp/2.0.1/…` instead of
+`/ocpp/1.6/…`:
+
+| Contract operation | Endpoint |
+|---|---|
+| `Reset` | `configuration/reset` |
+| `GetVariables` | `monitoring/getVariables` |
+| `SetVariables` | `monitoring/setVariables` |
+
+Declared for the **v2 line only**. Nobody has pointed a 2.0.1 station at
+v1.9.1 here, and a driver declaring a surface on the strength of a version
+number is the thing `variant.ts` exists to refuse — so with `CITRINE_VARIANT=v1`
+this driver declares no `operations201` at all and every `cert201-` scenario is
+`NOT_APPLICABLE`.
+
+One CitrineOS serves both protocols on one websocket endpoint, dispatching per
+connection on the negotiated subprotocol
+([the evidence](https://github.com/juherr/open-ocpp-tck/issues/57#issuecomment-5315202272)),
+so nothing about the transport, the compose file or the station roster changes
+for a 2.0.1 scenario.
+
+**The five 2.0.1 scope rows are `CONDITIONAL`, not `DRIVABLE`**, which is the
+honest status rather than a placeholder: every 1.6 row here says "driven green
+against the pinned image" because it was, and these have never been through a
+sweep. Each row states the question the first live run must answer. Two of the
+seven selected cases — `TC_B_06` and `TC_B_09` — are not implemented at all,
+because reading or writing a variable needs a device model that
+`driver provision` does not seed; that is
+[issue #58](https://github.com/juherr/open-ocpp-tck/issues/58), and the reason
+is in `tck/specs/OCA-201-SLICE.txt`.
 
 Observations and fixtures go through the **GraphQL data API** (Hasura), because
 CitrineOS's REST data endpoints expose none of what the scenarios assert on:

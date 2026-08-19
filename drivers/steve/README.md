@@ -1,7 +1,11 @@
 # SteVe driver
 
-The reference target: the scenarios were written against it, and every one of
-them is `DRIVABLE`.
+The reference target: the OCPP 1.6 scenarios were written against it, and every
+one of them is `DRIVABLE`.
+
+SteVe implements no OCPP 2.0.1, so the `cert201-` scenarios are
+`NOT_APPLICABLE` here — one row each, with the reason. That is not a capability
+this harness lost: there is no 2.0.1 surface to have lost it to.
 
 ## Gaps
 

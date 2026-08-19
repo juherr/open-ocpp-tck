@@ -1,9 +1,10 @@
 # open-ocpp-tck
 
-An OCPP 1.6 conformance TCK you point at **your** CSMS.
+An OCPP conformance TCK you point at **your** CSMS: 47 OCPP 1.6 certification
+scenarios, and the first 5 of OCPP 2.0.1.
 
 It brings a real charge point (the [`ocpp-cp-simulator`][sim] CLI, in a
-digest-pinned container), drives it through 47 certification scenarios, parses
+digest-pinned container), drives it through 52 certification scenarios, parses
 the OCPP-J frames both directions, and asserts on the captured wire log. What
 it does *not* bring is any knowledge of your CSMS: telling it "reset this
 charge point" is a **driver**, and a driver is one file you write.
@@ -17,9 +18,14 @@ the one that applies: it is the Central System that must answer. This is not a
 certification tool and passing it is not certification — but the reference is
 where a disagreement about what a scenario *should* assert gets settled.
 
-The `cert16-` prefix is a protocol version, not decoration: which OCPP 2.0.1
-cases may become scenarios of their own is a written rule,
-[`OCA-201-SELECTION.md`](OCA-201-SELECTION.md).
+The `cert16-` prefix is a protocol version, not decoration. Its counterpart is
+`cert201-`, and those scenarios trace the same way to OCPP 2.0.1's Parts 5 and
+6 — `cert201-tcb01-…` to `TC_B_01`. Which 2.0.1 cases may be here at all is a
+written rule, [`OCA-201-SELECTION.md`](OCA-201-SELECTION.md), and the resulting
+list is [`tck/specs/OCA-201-SLICE.txt`](tck/specs/OCA-201-SLICE.txt): 7 cases
+selected, 5 implemented. A `cert201-` scenario needs a driver that speaks the
+protocol; one that does not says so per scenario in its scope table, and
+nothing else about it changes.
 
 [sim]: https://github.com/shiv3/ocpp-cp-simulator
 [octt]: https://openchargealliance.org/certificationocpp/certification-ocpp-1-6/
@@ -31,7 +37,7 @@ cases may become scenarios of their own is a written rule,
         OCPP-J                                          v
            |                                     +--------------+
     ocpp-cp-simulator  <--- JSON Lines stdin ----|   ocpp-tck   |
-      (docker, pinned)  ---- stdout wire log --->|   47 specs   |
+      (docker, pinned)  ---- stdout wire log --->|   52 specs   |
                                                  +--------------+
 ```
 
@@ -52,8 +58,8 @@ different surfaces, and each answers a question the other cannot:
 
 | Driver | Transport | What it answers | Result |
 |---|---|---|---|
-| [`drivers/steve`](drivers/steve/README.md) | HTML manager UI + WebAPI + MariaDB | *Has the harness lost a capability?* SteVe is the CSMS the scenarios were originally written against, so a scope row that had to be demoted would mean the core dropped something. | All 47 `DRIVABLE` |
-| [`drivers/citrineos`](drivers/citrineos/README.md) | JSON REST API + GraphQL | *Is the contract actually CSMS-neutral?* [CitrineOS](https://github.com/citrineos/citrineos-core) (LF Energy / S44) had no part in writing the scenarios and has a smaller OCPP 1.6 surface. | 31 `PASS`, 5 `PARTIAL`, 4 `FAIL`, 7 `NOT APPLICABLE` |
+| [`drivers/steve`](drivers/steve/README.md) | HTML manager UI + WebAPI + MariaDB | *Has the harness lost a capability?* SteVe is the CSMS the scenarios were originally written against, so a scope row that had to be demoted would mean the core dropped something. | 47 `DRIVABLE`, and the 5 OCPP 2.0.1 scenarios `NOT_APPLICABLE` |
+| [`drivers/citrineos`](drivers/citrineos/README.md) | JSON REST API + GraphQL | *Is the contract actually CSMS-neutral?* [CitrineOS](https://github.com/citrineos/citrineos-core) (LF Energy / S44) had no part in writing the scenarios and has a smaller OCPP 1.6 surface. | 31 `PASS`, 5 `PARTIAL`, 4 `FAIL`, 7 `NOT APPLICABLE` over the OCPP 1.6 scenarios; the 5 OCPP 2.0.1 ones are `CONDITIONAL` until a sweep says otherwise |
 
 An abstraction with one implementation is neutral by assertion, so the second
 driver is what turns that into a measurement — and the result is the useful
@@ -96,7 +102,7 @@ bunx ocpp-tck driver selftest    # seconds: can the driver answer the contract?
 bunx ocpp-tck run-all --group core
 ```
 
-`run-all` is the whole suite: all 47 scenarios, one command. It did not use to
+`run-all` is the whole suite: all 52 scenarios, one command. It did not use to
 be — the `authorize` group (TC_023) sat outside `all`, so "no failures, 44
 scenarios" read like a clean sweep while skipping exactly the three scenarios
 that prove the fixtures took. Working in a clone, `bun run e2e` is that sweep
@@ -152,7 +158,7 @@ re-sync, and your driver can live in a completely different repository.
 | `ocpp-tck run <template-id>` | docker + CSMS | One scenario, plus its `results/<template-id>.log` and `.jsonl` wire trace |
 | `ocpp-tck run-all [--group N] [--parallel]` | docker + CSMS | A sweep, plus `results/summary.md` |
 | `ocpp-tck check-driver [--driver SPEC]` | nothing | Offline conformance of a driver against this core |
-| `ocpp-tck list-scenarios [--json]` | nothing | The 47 registered scenarios |
+| `ocpp-tck list-scenarios [--json]` | nothing | The 52 registered scenarios |
 | `ocpp-tck print-sim-image` | nothing | The pinned simulator image digest |
 | `ocpp-tck driver selftest [--with-writes]` | CSMS | Every `CsmsRecords` method once, in seconds: does this driver answer the contract? `--with-writes` adds the `prepareStation` hook |
 | `ocpp-tck driver <verb>` | driver-defined | A bootstrap verb your driver contributes |
