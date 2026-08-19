@@ -147,10 +147,10 @@ runner records `NOT APPLICABLE` *and* warns that your table is out of date.
   That converts a finding about your CSMS into a silence about the harness, and
   the two are indistinguishable afterwards.
 - For an OCPP 2.0.1 scenario, open the `reason` with the **feature identifier**
-  the case is conditional on — `"C-45: …"`. OCPP 1.6 publishes no such
-  identifier, so its rows stay prose. `reason` is a plain `string` either way;
-  [`OCA-201-SELECTION.md`](OCA-201-SELECTION.md) says where the identifiers
-  come from.
+  the case is conditional on — `"C-45: …"`, from Part 5 §4's `Feature no.`
+  column. OCPP 1.6 publishes no such identifier, so its rows stay prose.
+  `reason` is a plain `string` either way; the provenance is in
+  [`OCA-201-SELECTION.md`](OCA-201-SELECTION.md#what-a-201-reason-cites).
 
 Put it on the **module**, not inside `create()`. `check-driver` and the
 preflight read it without calling `create()`, which is what lets them run with

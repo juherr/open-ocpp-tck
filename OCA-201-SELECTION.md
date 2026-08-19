@@ -1,7 +1,7 @@
 # OCA-201-SELECTION.md
 
 Which OCPP 2.0.1 certification cases this suite is allowed to implement, stated
-as a rule rather than as a list, and what a scope row about 2.0.1 may cite.
+as the rule the list is drawn from, and what a scope row about 2.0.1 may cite.
 
 OCPP 2.0.1 Part 6 is 914 pages. The milestone that introduces 2.0.1 says
 explicitly that the suite is not to be ported, and names six candidate
@@ -11,56 +11,20 @@ the milestone grows by a case at a time.
 
 This file is the rule. It is not a coverage table: at the time of writing there
 is **no `cert201-` scenario in the tree**, and the coverage arithmetic for OCPP
-1.6 lives in [`OCA-COVERAGE.md`](OCA-COVERAGE.md), where it counts a different
-reference and must not absorb this one.
+1.6 lives in [`OCA-COVERAGE.md`](OCA-COVERAGE.md).
 
-## The reference, and what may be committed
-
-*OCPP 2.0.1 Part 5 — Certification Profiles and Test Cases* supplies the
-selection matrix; *Part 6 — Test Cases* supplies the cases themselves. Both are
-**CC BY-ND 4.0**. This repository is public and Apache-2.0, and BY-ND permits
-no derivative works, so their text, their tables and the PDFs stay out of it.
-
-What may be committed, and what everything below is made of: **case
-identifiers** (`TC_B_01`), **requirement identifiers** (`P02.FR.06`),
-**feature identifiers** (`C-45`), **counts**, and our own prose. That is
-already the line the OCPP 1.6 scenarios sit on.
-
-The line is drawn on **extent**, not on shape, and that is what decides an
-argument later: the 104-case pool the rule selects is **not** committed here,
-while the handful of cases named below are. Citing the cases under discussion
-is a citation; committing the column in full re-renders the matrix's own
-selection, whatever the surrounding markup looks like. So the tables on this
-page stay at the size of the argument they support, and none of them is the
-pool.
-
-## How the counts below were derived
-
-Part 5 §4 is a matrix with a `Conf. test for CSMS` column, where `M` means
-mandatory for the profile, `C` means conditional on a declared feature, and
-blank means the case does not address this role at all.
-
-The columns cannot be recovered from PDF reading order, but they can be
-recovered from x-position: `pdftotext -bbox-layout`, then bucket the `M` and
-`C` glyphs by column. That is a dozen lines of text processing, and it is
-written down here so it can be **redone** rather than re-read when the
-reference is revised — the same arrangement, and for the same reason, as
-`OCA-COVERAGE.md`'s derivation note.
-
-The per-profile counts below, and the `M` / `C` status of every case this page
-names, were produced that way once. Nothing in this repository can check them —
-the PDF is not here and cannot be — so they carry exactly the status
-`OCA-COVERAGE.md`'s own totals carry: measured, then written into prose.
-Everything else numeric here is cited from the references rather than counted,
-and the two places where that distinction changes what may be concluded say so
-on the spot.
+Writing a driver scope row rather than choosing scenarios? The section you want
+is [what a 2.0.1 `reason` cites](#what-a-201-reason-cites); nothing between here
+and there concerns you.
 
 ## The rule
 
+Part 5 §4 is a matrix with a `Conf. test for CSMS` column, where `M` means
+mandatory for the profile, `C` means conditional on a declared feature, and
+blank means the case does not address this role at all. So:
+
 > **profile = Core, role = CSMS, status = `M`.**
 
-A case is in the candidate pool if and only if it sits in the Core
-certification profile, addresses the CSMS role, and is marked mandatory.
 Everything else — the other profiles, the conditionals, the
 charging-station-only cases — is out, and out by arithmetic rather than by
 taste.
@@ -74,17 +38,27 @@ taste.
 | Smart Charging | 40 | 36 | 4 | 0 |
 | ISO 15118 Support | 64 | 59 | 5 | 0 |
 
-For scale, against the 1.6 suite this repository already implements: that whole
-certification set has 77 `_CSMS` cases ([`OCA-COVERAGE.md`](OCA-COVERAGE.md)
-counts what they cover). **The Core profile of 2.0.1 alone has more than twice
-the mandatory CSMS surface of the entire 1.6 suite**, and Part 6 devotes
-p608–p900 to 251 `*_CSMS` cases.
+Two narrowings, and only the first is a rule: it takes Core's 364 rows to the
+104 mandatory for this role, and the slice below takes those 104 to seven.
 
-Two narrowings, and only the first is a rule: the rule takes Core's 364 rows to
-the 104 that are mandatory for this role, and the slice below takes those 104 to
-seven. Part 6's 251 is scale, not a term in either — it is a different
+For scale: the entire OCPP 1.6 certification set has 77 `_CSMS` cases — the
+count [`OCA-COVERAGE.md`](OCA-COVERAGE.md) derives and this suite's 47 scenarios
+are measured against. One profile of 2.0.1 asks for more mandatory CSMS cases
+than 1.6 has cases at all. Part 6 devotes p608–p900 to 251 `*_CSMS` cases,
+which is scale rather than a term in either narrowing: it is a different
 document's count of a different population, and how it relates to the matrix's
 rows was **not measured**.
+
+**How the counts above were derived.** The columns cannot be recovered from PDF
+reading order, but they can be recovered from x-position: `pdftotext
+-bbox-layout`, then bucket the `M` and `C` glyphs by column. That is a dozen
+lines of text processing, written down so it can be **redone** rather than
+re-read when the reference is revised — the same arrangement, and for the same
+reason, as `OCA-COVERAGE.md`'s derivation note. Nothing in this repository can
+check the result; the PDF is not here and cannot be. Those counts, and the `M` /
+`C` status of every case this page names, carry exactly the status
+`OCA-COVERAGE.md`'s own totals carry: measured, then written into prose.
+Everything else numeric here is cited from the references rather than counted.
 
 ## What the rule corrects on a hand-drawn list
 
@@ -109,13 +83,12 @@ mandatory cases and `StatusNotification` turning out to be none is the
 correction, and it runs in both directions.
 
 `TC_G_20`'s own status was **not measured** — it is the one cell in this table
-the parse above did not produce. Look it up before a status scenario is
-written, and do not read the row above as calling it mandatory.
+the parse did not produce. Look it up before a status scenario is written, and
+do not read the row above as calling it mandatory.
 
 ## The v0.3 slice
 
-The rule gives a pool of 104. The first vertical slice is a subset of that
-pool, and this is it — seven cases, every one of them `M`:
+Seven cases from the pool of 104, every one of them `M`:
 
 | Case | What it exercises |
 |---|---|
@@ -140,7 +113,9 @@ number instead of an intention.
 A scenario issue may implement fewer of these seven and say why. It may not
 implement a case outside them without either extending this list or changing
 the rule — which is the whole point of the list being here rather than in a
-review comment.
+review comment. Nothing checks that today; see
+[the guard this page does not have yet](#the-guard-this-page-does-not-have-yet)
+for when it will, and for where this list moves when it does.
 
 ## `M` only, not `M` plus the conditionals a CSMS declares
 
@@ -151,14 +126,11 @@ reason is not size.
 
 `M` is a property of the **specification**. "`C`, and the feature is declared"
 is a property of **one CSMS**. Folding the second into the selection rule would
-make this harness's own perimeter depend on a particular vendor's attestation,
-which is exactly the boundary the core is built not to cross: what a CSMS can
-and cannot drive is a fact about that CSMS, not about this harness, and the
-place it already lives is the **driver's** scope table.
-
-So the two halves of this file close on each other. The rule stays
-CSMS-independent; a conditional case becomes reachable through a driver
-declaring it, in the vocabulary the next section gives it.
+make this harness's own perimeter depend on one vendor's attestation, which is
+the boundary `tck/scope.ts` is built on — and the place that fact already lives
+is the **driver's** scope table. The rule stays CSMS-independent; a conditional
+case becomes reachable through a driver declaring it, in the vocabulary the
+next section gives it.
 
 ## What a 2.0.1 `reason` cites
 
@@ -181,7 +153,8 @@ same feature a certification tool would have used to skip the same case.
 ```
 
 The licensing objection this invites — that the declaration form is an OCA
-template under BY-ND and a vendor's filled copy is not ours to publish — does
+template under the [no-derivatives licence](#what-may-be-committed-here-and-what-may-not)
+the references carry, and a vendor's filled copy is not ours to publish — does
 not bite, because **the OCA publishes the filled abstract itself**, inside the
 certificate. Certificate `OCA.0201.0053.CSMS` (S44 Energy, product CitrineOS,
 OCPP software version 1.5.1, certified 2024-12-12 by DEKRA Certification, Inc.
@@ -194,43 +167,55 @@ A scope row derived from a public attestation cites a URL. Nothing needs
 republishing, and a reviewer can check the claim without asking the vendor for
 a spreadsheet.
 
-**`reason` stays `string`.** Typing that identifier — a closed union, so a typo
-is a build error — is the obvious next move and it is not made here. The
-argument sits where it would be re-proposed, next to the declaration in
-`tck/scope.ts`, and the instruction alone is in `CONTRIBUTING.md` for a driver
-author who never opens this page.
+**`reason` stays `string`.** Both ways of structuring that identifier — a
+closed union, and an optional free-string field beside `reason` — are declined
+for now, and the argument sits where they get re-proposed, next to the
+declaration in `tck/scope.ts`. `CONTRIBUTING.md` carries the instruction alone,
+for a driver author who never opens this page.
+
+## What may be committed here, and what may not
+
+*OCPP 2.0.1 Part 5 — Certification Profiles and Test Cases* supplies the
+selection matrix; *Part 6 — Test Cases* supplies the cases themselves. Both are
+**CC BY-ND 4.0**. This repository is public and Apache-2.0, and BY-ND permits
+no derivative works, so their text, their tables and the PDFs stay out of it.
+What may be committed, and what this page is made of: **case identifiers**
+(`TC_B_01`), **requirement identifiers** (`P02.FR.06`), **feature identifiers**
+(`C-45`), **counts**, and our own prose — already the line the OCPP 1.6
+scenarios sit on.
+
+The line is drawn on **extent**, not shape: citing the handful of cases under
+discussion is a citation, while committing the 104-case column in full
+re-renders the matrix's own selection whatever the markup around it looks like.
+So no table on this page is the pool, and the pool is not committed anywhere.
 
 ## Why this is not a selection axis, yet
 
 Certification profiles are a ready-made way to select scenarios by domain, and
 that makes it tempting to build `--profile` here. It is not built, deliberately.
 
-What the tree has today is **one** way to select scenarios and one way to tell
-them apart, which are not the same thing:
+What the tree has today is one way to select scenarios and one way to tell them
+apart:
 
-- `--group` selects. Its five buckets mirror an upstream file's array
+- `--group` **selects**. Its five buckets mirror an upstream file's array
   membership rather than any taxonomy, which is the problem issue #34 opens for
   OCPP 1.6 in a later milestone.
 - the **certification namespace** a `templateId` opens with — `cert16-`,
-  `cert201-` — separates. The runner and its guards already treat it as a
+  `cert201-` — **separates**. The runner and its guards treat it as a
   first-class concept, deliberately without a version literal anywhere in them,
-  but **no flag selects on it**: it scopes container names and guard reach, not
-  a sweep.
+  but no flag reads it: it scopes container names and guard reach, not a sweep.
 
 That separation is enough for v0.3, because a handful of new scenarios can be
 named or swept without an axis at all. A `--profile` built now would be built
-on a **single value**, deciding blind the questions #34 exists to settle: whether
-the axis is declared in the vendored spec files (each edit costs a re-pin) or
-in a registry beside the groups (no re-pin, a second place to keep in step),
-and whether the vocabulary is closed or open.
+on a **single value**, deciding blind the questions #34 exists to settle:
+whether the axis is declared in the vendored spec files (each edit costs a
+re-pin) or in a registry beside the groups (no re-pin, a second place to keep
+in step), and whether the vocabulary is closed or open.
 
 The rule that applies is the milestone's own (issue #25): if 2.0.1 introduces a
 selection axis it must be **the** mechanism #34 builds, not a second one beside
 it, or the milestone after inherits two ways to select the same thing.
 Building it here is precisely how that happens.
-
-So this page states a rule and a list, and #34 gets to decide how a list
-becomes a flag.
 
 ## The guard this page does not have yet
 
@@ -252,15 +237,18 @@ therefore a build nobody reads. A guard that cannot be made to fail today
 cannot be shown to fail *correctly* today, and that demonstration is this
 repository's entry condition for a guard.
 
-**The trigger is the first `cert201-` scenario.** The issue that writes it owns
-this guard, and by then both directions have rows to break. Written down here
-so that "should this have a guard?" is a decision on the record rather than an
-omission someone re-discovers.
+**The trigger is the first `cert201-` scenario**, and three things retire with
+it, so the issue that writes it owns all three: this guard; the seven-case
+table above, which moves to a machine-readable file under `tck/specs/` with
+this page citing it rather than restating it, the way `OCA-COVERAGE.md` cites
+`OCA-OBLIGATIONS.txt`; and the "no `cert201-` scenario yet" sentences here and
+in `README.md`. Written down so that "should this have a guard?" is a decision
+on the record rather than an omission someone re-discovers.
 
-The precedent is exact and worth reading before re-proposing: the OCA
-obligations guard refuses a per-namespace breakdown for the same reason, in the
-same terms — with one namespace in the file it would be a second spelling of
-the same number.
+The precedent is exact and worth reading before re-proposing — the header of
+`tests/oca-obligations.sh` refuses a per-namespace breakdown in the same terms:
+with one namespace in the file it would be a second spelling of the same
+number.
 
 ## Not in v0.3
 
