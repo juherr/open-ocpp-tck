@@ -1243,10 +1243,11 @@
            : " -- CONFIRMED (fails isolated too, not a parallel-lane artifact)\n"),
      );
    }
-@@ -447,63 +1069,157 @@
+@@ -446,64 +1068,158 @@
+ 
  function timestampUtc(): string {
    // date -u +%FT%TZ equivalent: ISO-8601 down to the second, "Z" suffix
-   // (toISOString() always yields millisecond precision + "Z"; drop the
+-  // (toISOString() always yields millisecond precision + "Z"; drop the
 -  // milliseconds to match).
 -  return new Date().toISOString().replace(/\.\d{3}Z$/, "Z");
 -}
@@ -1256,6 +1257,7 @@
 - *  When any outcome carries an `isolatedRetry` (--retry-failed-isolated ran),
 - *  an extra "isolated retry" column and a flake-count note are added; a
 - *  sweep with no retries produces the original table unchanged. */
++  // (toISOString() always yields millisecond precision + "Z"; drop the
 +  // milliseconds to match).
 +  return new Date().toISOString().replace(/\.\d{3}Z$/, "Z");
 +}
@@ -1788,7 +1790,7 @@
          process.exit(1);
      }
    }
-@@ -764,35 +1580,548 @@
+@@ -764,35 +1580,547 @@
      cpId,
      connector,
      timeoutSecs,
@@ -2011,11 +2013,12 @@
 +    field: "operations16" | "operations201",
 +    declared: ReadonlySet<string>,
 +    known: readonly string[],
-+    throwSite: string,
 +  ): void => {
-+    // "" for 1.6: it is the unmarked case, and every message here predates the
-+    // second vocabulary.
-+    const kind = field === "operations201" ? "OCPP 2.0.1 " : "";
++    // Both per-vocabulary strings derive from the same discriminant, so
++    // neither is a parameter: passing one and inferring the other was the
++    // asymmetry a reviewer kept stopping on.
++    const kind = field === "operations201" ? "OCPP 2.0.1 " : "OCPP 1.6 ";
++    const throwSite = `${field}.execute()`;
 +    const unknown = [...declared].filter((op) => !known.includes(op));
 +    if (unknown.length > 0) {
 +      problems.push(
@@ -2038,7 +2041,6 @@
 +      "operations16",
 +      capabilities.operations16,
 +      CSMS_OPERATION_16_ACTIONS,
-+      "execute()",
 +    );
 +    // ONLY when the declaration is present, and that conditional IS the
 +    // asymmetry between the two vocabularies. Absent means "this driver does
@@ -2051,7 +2053,6 @@
 +        "operations201",
 +        capabilities.operations201,
 +        CSMS_OPERATION_201_ACTIONS,
-+        "operations201.execute()",
 +      );
 +    }
 +  }
@@ -2353,7 +2354,7 @@
    }
  
    const spec = SPECS_BY_TEMPLATE_ID.get(args.templateId);
-@@ -800,18 +2129,109 @@
+@@ -800,18 +2128,109 @@
      process.stderr.write(
        `Unknown template id: ${args.templateId} (known: ${[...SPECS_BY_TEMPLATE_ID.keys()].join(", ")})\n`,
      );

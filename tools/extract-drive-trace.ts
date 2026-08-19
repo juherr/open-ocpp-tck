@@ -64,6 +64,7 @@
  *    branch the placeholder selects.
  */
 import * as specs from "../tck/specs/index";
+import type { DriveContext } from "../tck/spec-types";
 
 interface SpecLike {
   templateId: string;
@@ -285,12 +286,6 @@ const operationsStub = {
  * both. Sharing the stub would record a 2.0.1 Reset as `OP Reset`, which is
  * what a 1.6 Reset records -- so this artifact, whose whole job is to make a
  * retargeted step visible, would be blind to a scenario switching protocols.
- *
- * `SpecLike.drive` takes a `Record<string, unknown>` so that a spec can be
- * traced through either the legacy or the neutral field names, which means
- * tsc CANNOT check this context against DriveContext. A member the runner
- * supplies and this file forgets is therefore a crash at --regenerate time,
- * not a compile error: `csms201` was exactly that until it was added here.
  */
 const operations201Stub = {
   async execute(_cpId: string, operation: { action: string }): Promise<string> {
@@ -298,6 +293,33 @@ const operations201Stub = {
     return "<receipt>";
   },
 };
+
+/**
+ * Compile-time refusal of a stub context that OMITS a DriveContext member.
+ *
+ * `SpecLike.drive` takes a `Record<string, unknown>` on purpose -- a spec must
+ * be traceable through either the legacy field names or the neutral ones -- so
+ * the PARAMETER cannot be typed as DriveContext. The ARGUMENT still can be
+ * checked for coverage, which is a different question and the one that bites:
+ * `csms201` was added to DriveContext, the runner supplied it, this file did
+ * not, and nothing said so. That would have surfaced as a crash inside
+ * `tests/spec-invariants.sh --regenerate` -- which pulls a pinned docker image
+ * -- rather than in `bun run typecheck`, the first command of the fast loop.
+ *
+ * Coverage, not exactness: `steve` and `db` are legacy members DriveContext
+ * has never had, and they stay legal. Only a MISSING member is refused, by
+ * name. Same three details as `everyOneOf` in tck/driver.ts, for the same
+ * reasons: `const T` to keep inference, a bare template literal so the whole
+ * object mismatches once, and a function rather than a type alias so
+ * `noUnusedLocals` has something that is used.
+ */
+function coversDriveContext<const T extends Record<string, unknown>>(
+  ctx: keyof DriveContext extends keyof T
+    ? T
+    : `stub context omits ${Exclude<keyof DriveContext, keyof T> & string}`,
+): Record<string, unknown> {
+  return ctx as T;
+}
 
 function observationStub(): Record<string, unknown> {
   const stub: Record<string, unknown> = {};
@@ -390,18 +412,22 @@ for (const [groupName, groupSpecs] of discoverGroups()) {
     const records = observationStub();
     let result: unknown;
     try {
-      result = await spec.drive({
-        cpId: CP_ID,
-        connector: spec.connector ?? 1,
-        sim: simStub,
+      result = await spec.drive(
         // Both the legacy field names and the neutral ones, so a spec traces
-        // identically before and after it is converted.
-        steve: operationsStub,
-        csms16: operationsStub,
-        csms201: operations201Stub,
-        db: records,
-        records,
-      });
+        // identically before and after it is converted -- and wrapped, so that
+        // a DriveContext member this file forgets is named by tsc rather than
+        // discovered by a crash mid-regenerate. See coversDriveContext.
+        coversDriveContext({
+          cpId: CP_ID,
+          connector: spec.connector ?? 1,
+          sim: simStub,
+          steve: operationsStub,
+          csms16: operationsStub,
+          csms201: operations201Stub,
+          db: records,
+          records,
+        }),
+      );
     } catch (err) {
       trace.push(`  THREW ${err instanceof Error ? err.name : "unknown"}`);
     }

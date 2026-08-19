@@ -50,18 +50,22 @@ export function unsupportedChargingProfiles(
 /**
  * The stand-in for a driver that declares no OCPP 2.0.1 operations.
  *
- * It reports the ACTION, not a fixed method name, because that is what the
- * runner prints when it degrades the scenario, and what ends up as the NOT
- * APPLICABLE reason in the summary -- "driver reported "GetVariables"
- * unsupported" is a sentence a driver author can act on.
- *
- * QUALIFIED WITH THE SUB-INTERFACE, like the two above, and here that is not
- * merely symmetry: `Reset` is an action name in BOTH vocabularies, so a bare
- * one makes a summary row about a 2.0.1 Reset read exactly like one about a
- * 1.6 Reset. The whole reason these are two unions is that the two operations
- * are not the same; the one place their names actually collide in OUTPUT
- * should not be where that gets forgotten.
+ * It reports `operations201.<action>`: QUALIFIED like the two above, whose
+ * names are also the sub-interface they stand in for, and carrying the ACTION
+ * because that is what the runner prints when it degrades the scenario and
+ * what becomes the NOT APPLICABLE reason in the summary -- "driver reported
+ * "operations201.GetVariables" unsupported" is a sentence a driver author can
+ * act on.
  */
+// TRIED AND NOT BUILT, here because here is where it gets re-proposed: folding
+// these three into one `unsupported<T>(prefix, methods): T`. They do rhyme --
+// each returns an object whose every method throws with a stated reason -- and
+// two things stop it. The fold has to name its methods in an array, so the
+// return type stops being CsmsReservationRecords / CsmsChargingProfileRecords
+// / CsmsOperations201 and starts being a cast, which is what these three
+// signatures are FOR: the runner substitutes them into a typed slot. And this
+// third one is not the same shape anyway -- its name comes from the argument
+// at call time, not from a fixed method. Two of three is not a pattern.
 export function unsupportedOperations201(reason: string): CsmsOperations201 {
   return {
     execute: async (_cpId, op) => {

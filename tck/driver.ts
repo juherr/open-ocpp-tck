@@ -88,7 +88,7 @@ export type ChargingProfileRef = string;
 // /"Reset".*"type":"Hard"/ against the captured frame).
 // ---------------------------------------------------------------------------
 
-export type ResetType = "Hard" | "Soft";
+export type ResetType16 = "Hard" | "Soft";
 export type AvailabilityType = "Operative" | "Inoperative";
 export type UpdateType = "Full" | "Differential";
 export type ChargingRateUnit = "A" | "W";
@@ -133,7 +133,7 @@ export interface LocalAuthorizationEntry {
 
 export type CsmsOperation16 =
   // --- Core -----------------------------------------------------------------
-  | { action: "Reset"; type: ResetType }
+  | { action: "Reset"; type: ResetType16 }
   | { action: "UnlockConnector"; connectorId: number }
   | { action: "ClearCache" }
   | { action: "ChangeAvailability"; connectorId: number; type: AvailabilityType }
@@ -604,7 +604,8 @@ export interface CsmsChargingProfileRecords {
  */
 export interface CsmsCapabilities {
   /** Operations this driver can express. Anything outside it MUST throw
-   *  {@link UnsupportedOperationError} from `execute()`; the driver's own
+   *  {@link UnsupportedOperationError} from `operations16.execute()`; the
+   *  driver's own
    *  switch is where that is enforced, this set is what gets printed. */
   readonly operations16: ReadonlySet<CsmsOperation16Action>;
   /**

@@ -27,7 +27,7 @@ against a different CSMS.
 Files modified relative to upstream
 -----------------------------------
   tck/spec-types.ts PATCHED    the drive/assert context carries the neutral
-                               CsmsOperations/CsmsRecords contract instead of
+                               CsmsOperations16/CsmsRecords contract instead of
                                SteVe's SteveOps/SteveTx
   tck/specs/index.ts PATCHED    "authorize" is folded into the "all" group
   tck/specs/core.ts PATCHED    CSMS operations expressed as typed OCPP

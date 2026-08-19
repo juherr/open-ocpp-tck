@@ -1793,11 +1793,12 @@ async function checkDriver(argv: string[]): Promise<number> {
     field: "operations16" | "operations201",
     declared: ReadonlySet<string>,
     known: readonly string[],
-    throwSite: string,
   ): void => {
-    // "" for 1.6: it is the unmarked case, and every message here predates the
-    // second vocabulary.
-    const kind = field === "operations201" ? "OCPP 2.0.1 " : "";
+    // Both per-vocabulary strings derive from the same discriminant, so
+    // neither is a parameter: passing one and inferring the other was the
+    // asymmetry a reviewer kept stopping on.
+    const kind = field === "operations201" ? "OCPP 2.0.1 " : "OCPP 1.6 ";
+    const throwSite = `${field}.execute()`;
     const unknown = [...declared].filter((op) => !known.includes(op));
     if (unknown.length > 0) {
       problems.push(
@@ -1820,7 +1821,6 @@ async function checkDriver(argv: string[]): Promise<number> {
       "operations16",
       capabilities.operations16,
       CSMS_OPERATION_16_ACTIONS,
-      "execute()",
     );
     // ONLY when the declaration is present, and that conditional IS the
     // asymmetry between the two vocabularies. Absent means "this driver does
@@ -1833,7 +1833,6 @@ async function checkDriver(argv: string[]): Promise<number> {
         "operations201",
         capabilities.operations201,
         CSMS_OPERATION_201_ACTIONS,
-        "operations201.execute()",
       );
     }
   }

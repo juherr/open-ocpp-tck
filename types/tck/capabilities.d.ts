@@ -18,16 +18,11 @@ export declare function unsupportedChargingProfiles(reason: string): CsmsChargin
 /**
  * The stand-in for a driver that declares no OCPP 2.0.1 operations.
  *
- * It reports the ACTION, not a fixed method name, because that is what the
- * runner prints when it degrades the scenario, and what ends up as the NOT
- * APPLICABLE reason in the summary -- "driver reported "GetVariables"
- * unsupported" is a sentence a driver author can act on.
- *
- * QUALIFIED WITH THE SUB-INTERFACE, like the two above, and here that is not
- * merely symmetry: `Reset` is an action name in BOTH vocabularies, so a bare
- * one makes a summary row about a 2.0.1 Reset read exactly like one about a
- * 1.6 Reset. The whole reason these are two unions is that the two operations
- * are not the same; the one place their names actually collide in OUTPUT
- * should not be where that gets forgotten.
+ * It reports `operations201.<action>`: QUALIFIED like the two above, whose
+ * names are also the sub-interface they stand in for, and carrying the ACTION
+ * because that is what the runner prints when it degrades the scenario and
+ * what becomes the NOT APPLICABLE reason in the summary -- "driver reported
+ * "operations201.GetVariables" unsupported" is a sentence a driver author can
+ * act on.
  */
 export declare function unsupportedOperations201(reason: string): CsmsOperations201;
