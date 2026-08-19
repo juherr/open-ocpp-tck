@@ -97,25 +97,28 @@ import { type Frame } from "./ocpp";
  * which leaves no word for a record that validates and is unusable for what
  * the consumer is FOR. This is that word, spelled locally.
  */
-export type MappingRefusal = "unreadable" | "payload-only";
+export type MappingRefusal = "unreadable" | "payload-only" | "no-message-id";
 /** Why a trace produced no frames -- see {@link readTrace}. */
 export type TraceRefusal = "absent" | "empty" | MappingRefusal;
-/** Frames, or the reason there are none. */
-export type FrameMapping = {
+/**
+ * Frames, or a reason there are none.
+ *
+ * Parameterised because the two readings below differ only in which refusals
+ * they can produce, and a discriminated union survives being generic here --
+ * unlike the `EnvDependent` case `tck/driver.ts` records as rejected, where
+ * folding the resolvers together stopped the type narrowing.
+ */
+type FramesOr<R> = {
     frames: Frame[];
     refusal?: undefined;
 } | {
     frames?: undefined;
-    refusal: MappingRefusal;
+    refusal: R;
 };
+/** What mapping a set of records produced. */
+export type FrameMapping = FramesOr<MappingRefusal>;
 /** A trace read: frames, or the reason there are none. */
-export type TraceRead = {
-    frames: Frame[];
-    refusal?: undefined;
-} | {
-    frames?: undefined;
-    refusal: TraceRefusal;
-};
+export type TraceRead = FramesOr<TraceRefusal>;
 /**
  * Maps one whole trace, in file order, or refuses it.
  *
@@ -153,3 +156,4 @@ export declare function recordsToFrames(records: readonly unknown[]): FrameMappi
  * record.
  */
 export declare function readTrace(path: string): TraceRead;
+export {};

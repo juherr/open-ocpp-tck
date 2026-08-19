@@ -44,13 +44,15 @@
  *     got wrong by parsing records itself -- it accepted a CALLERROR with no
  *     `details` and a CALL with no payload, both of which parseLog refuses, so
  *     the fallback and the trace disagreed about what a frame IS.
- *  7. A CONFORMANT record with no wire bytes refuses as `payload-only`, NOT as
- *     `unreadable`. `raw` is optional in the schema, so a producer that sets
- *     `payload` instead is correct and this runner still cannot judge on it --
- *     its assertions read frames parseFrameMessage made from bytes. The two
- *     refusals are different news and the runner says different things about
- *     them, so collapsing them would send a user to look for a bug that is not
- *     there.
+ *  7. A CONFORMANT record this runner cannot use refuses under ITS OWN NAME,
+ *     never as `unreadable`. Two of them: `payload-only` for a record with no
+ *     `raw`, and `no-message-id` for one with no `messageId`. Both members are
+ *     optional in the schema, so a producer that omits either is correct and
+ *     this runner still cannot judge on the result -- its assertions read
+ *     frames parseFrameMessage made from bytes, correlated by id. Collapsing
+ *     them into `unreadable` sends a user to look for a bug that is not there,
+ *     which is exactly what the second one did until the class was named
+ *     rather than the one instance.
  *  8. Refusal is WHOLE-FILE, and readTrace NAMES ITS REASON: `absent`,
  *     `empty`, `unreadable`, `payload-only`. One unmappable record among good
  *     ones refuses all of them, so the caller falls back to a complete log
@@ -262,13 +264,11 @@ if (!frames) {
     // just about trace-format/.
     const { records } = validateRecords(reused);
     const view = consumerView(records.filter((r): r is TraceRecord => r !== undefined));
-    const fromView = view.records
-      .map((entry) => entry.correlatesWith)
-      .map((at, i) => (at === undefined ? undefined : [at, i]))
-      .filter((pair): pair is number[] => pair !== undefined);
+    const fromView = view.records.flatMap((entry, response) =>
+      entry.correlatesWith === undefined ? [] : [[entry.correlatesWith, response]],
+    );
     const fromFrames = paired.map((response, call) => [call, response]);
-    if (JSON.stringify(fromView.map(([c, r]) => [c, r]).sort()) !==
-        JSON.stringify(fromFrames.sort())) {
+    if (JSON.stringify(fromView.sort()) !== JSON.stringify(fromFrames.sort())) {
       fail(
         "findResponseFor agrees with the format's consumer view",
         `view says ${JSON.stringify(fromView)}, frames say ${JSON.stringify(fromFrames)}`,
@@ -338,10 +338,15 @@ const refusals: Array<{
     record: tweak(CALL, {}, ["schemaVersion"]),
     expect: "unreadable",
   },
+  // The OTHER conformant-but-unusable record, and it must not be spelled
+  // `unreadable` either: `messageId` is optional in the schema, so a producer
+  // that omits it is correct and this runner simply has nothing to correlate
+  // on. It used to fall through to `unreadable`, which handed a conformant
+  // trace the runner's advice about broken mounts.
   {
-    name: "no messageId",
+    name: "no messageId, which the schema permits",
     record: tweak(CALL, {}, ["messageId"]),
-    expect: "unreadable",
+    expect: "no-message-id",
   },
   {
     name: "an empty messageId",

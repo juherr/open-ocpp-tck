@@ -248,7 +248,7 @@ if (validateRecord(tweak(CALL, { timestamp: "2024-02-29T00:00:00Z" }), 0).record
 // 3. `raw` against the members beside it, per member.
 // --------------------------------------------------------------------------
 
-const fidelity: Array<{ name: string; value: unknown; code: DiagnosticCode; member?: string }> = [
+const fidelity: Array<{ name: string; value: unknown; code: DiagnosticCode; member: string }> = [
   { name: "raw that is not JSON", value: tweak(CALL, { raw: "not json" }), code: "raw-not-json", member: "raw" },
   { name: "raw that is not an array", value: tweak(CALL, { raw: '{"a":1}' }), code: "raw-not-array", member: "raw" },
   {
@@ -309,7 +309,7 @@ for (const { name, value, code, member } of fidelity) {
   if (!hit) {
     fail(
       `a raw mismatch names its member: ${name}`,
-      `expected ${code}/${member ?? "-"}, got ${codesOf(diagnostics)}`,
+      `expected ${code}/${member}, got ${codesOf(diagnostics)}`,
     );
   }
 }
