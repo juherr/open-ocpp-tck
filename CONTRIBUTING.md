@@ -3,7 +3,7 @@
 A driver is the only thing standing between these 47 scenarios and your CSMS.
 It answers two questions and nothing else:
 
-- **`CsmsOperations.execute(cpId, op)`** — "make the CSMS send this OCPP
+- **`CsmsOperations16.execute(cpId, op)`** — "make the CSMS send this OCPP
   operation to this charge point."
 - **`CsmsRecords`** — "what does the CSMS believe happened?"
 
@@ -37,7 +37,7 @@ import {
   assertNever,
   UnsupportedOperationError,
   type CsmsDriverModule,
-  type CsmsOperation,
+  type CsmsOperation16,
 } from "open-ocpp-tck/driver";
 import { unverifiable } from "open-ocpp-tck/unverifiable";
 import { waitForCondition } from "open-ocpp-tck/wait";
@@ -62,8 +62,8 @@ export const csmsDriver: CsmsDriverModule = {
     if (!token) throw new Error("ACME_TOKEN is not set");
 
     return {
-      operations: {
-        async execute(cpId: string, op: CsmsOperation): Promise<string> {
+      operations16: {
+        async execute(cpId: string, op: CsmsOperation16): Promise<string> {
           switch (op.action) {
             case "Reset":
               return post(`/cp/${cpId}/reset`, { type: op.type });
@@ -146,6 +146,11 @@ runner records `NOT APPLICABLE` *and* warns that your table is out of date.
 - **Never** demote a row to `NOT_APPLICABLE` to make a red scenario go away.
   That converts a finding about your CSMS into a silence about the harness, and
   the two are indistinguishable afterwards.
+- If your CSMS does not speak OCPP 2.0.1 at all — see
+  [the section below](#speaking-ocpp-201-optional) — every
+  `cert201-` scenario still gets its own `NOT_APPLICABLE` row, citing *"no OCPP
+  2.0.1 message endpoint"*. There is deliberately no protocol-level way to
+  decline in one line; `tck/scope.ts` records why, above `scopeCoverage`.
 - For an OCPP 2.0.1 scenario, open the `reason` with the **feature identifier**
   the case is conditional on — `"C-45: …"`, from Part 5 §4's `Feature no.`
   column. OCPP 1.6 publishes no such identifier, so its rows stay prose.
@@ -177,6 +182,75 @@ The function is still read with no credentials and no server: it may read a
 answer. If you read those fields yourself rather than through the runner, use
 `driverScope(module, env)` / `driverCapabilities(module, env)` from
 `open-ocpp-tck/driver` instead of narrowing the union by hand.
+
+## Speaking OCPP 2.0.1 (optional)
+
+Everything above is OCPP 1.6. If your CSMS also speaks 2.0.1, there is a
+**second** operation vocabulary — `CsmsOperation201`, **three** members:
+`Reset`, `GetVariables`, `SetVariables`.
+
+Three, not eighteen and not six, because
+[`OCA-201-SELECTION.md`](OCA-201-SELECTION.md)'s first slice is seven
+certification cases and only those three are CSMS-*initiated*.
+`BootNotification` and `Heartbeat` are watched on the wire, so they need no
+operation at all.
+
+It is a **separate closed union**, not an extension of the first, and the
+consequence is the point: **a 1.6-only driver implements nothing here and
+compiles untouched.** If 2.0.1 arms had been added to `CsmsOperation16`, the
+`assertNever` that protects you would have broken every existing driver on an
+upgrade nobody asked for.
+
+```ts
+import {
+  assertNever,
+  CSMS_OPERATION_201_ACTIONS,
+  type CsmsOperation201,
+} from "open-ocpp-tck/driver";
+
+// ... inside create()'s return value, beside `operations16`:
+operations201: {
+  async execute(cpId: string, op: CsmsOperation201): Promise<string> {
+    switch (op.action) {
+      case "Reset":
+        return post(`/v201/cp/${cpId}/reset`, { type: op.type });
+      case "GetVariables":
+        return post(`/v201/cp/${cpId}/get-variables`, { getVariableData: op.variables });
+      case "SetVariables":
+        return post(`/v201/cp/${cpId}/set-variables`, { setVariableData: op.variables });
+      default:
+        return assertNever(op, "acme.execute201");
+    }
+  },
+},
+```
+
+Exhaustiveness works exactly as it does for 1.6, *within* this union: omitting
+an arm is a compile error. `Reset` appears in **both** vocabularies and the two
+are not the same operation — 1.6 carries `Hard`/`Soft`, 2.0.1 carries
+`Immediate`/`OnIdle` — so the two switches stay separate.
+
+That shared name is also the one thing worth remembering when throwing
+`UnsupportedOperationError` from this switch: **qualify the operation**, e.g.
+`new UnsupportedOperationError(\`operations201.${op.action}\`, why)`. The
+string becomes the `NOT APPLICABLE` reason in the run summary, and a bare
+`"Reset"` there reads identically whether it came from 1.6 or 2.0.1.
+
+Declare it alongside the rest, and `ocpp-tck check-driver` prints it:
+
+```ts
+capabilities: {
+  // ... operations16, reservations, chargingProfiles as above
+  operations201: new Set(CSMS_OPERATION_201_ACTIONS),
+},
+```
+
+Omitting `operations201` entirely means "this driver does not speak OCPP
+2.0.1". `check-driver` then says nothing about it — no warning, no problem —
+and a scenario that needs it gets the usual `UnsupportedOperationError`
+treatment: the runner substitutes a throwing stub, so a spec calls
+`ctx.csms201` unconditionally and absence becomes `NOT APPLICABLE`, not a
+crash.
 
 ## Expected failures
 

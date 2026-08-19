@@ -34,7 +34,7 @@
  * therefore always true and always useless. The presence of
  * `ocppConnectionName` is the discriminator, and that is what verify() checks.
  */
-import type { CsmsEnv, CsmsOperationAction } from "../../tck/driver";
+import type { CsmsEnv, CsmsOperation16Action } from "../../tck/driver";
 
 export type CitrineVariant = "v1" | "v2";
 
@@ -96,7 +96,7 @@ export const NO_LOCAL_LIST =
  * for.
  */
 const UNROUTED: Readonly<
-  Record<CitrineVariant, ReadonlyMap<CsmsOperationAction, string>>
+  Record<CitrineVariant, ReadonlyMap<CsmsOperation16Action, string>>
 > = {
   v2: new Map([
     ["ReserveNow", NO_RESERVATIONS],
@@ -113,7 +113,7 @@ const UNROUTED: Readonly<
 /** The unrouted actions for a variant, mapped to why. */
 export function unroutedActions(
   variant: CitrineVariant,
-): ReadonlyMap<CsmsOperationAction, string> {
+): ReadonlyMap<CsmsOperation16Action, string> {
   return UNROUTED[variant];
 }
 

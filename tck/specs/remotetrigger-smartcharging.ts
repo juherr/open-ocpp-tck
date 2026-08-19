@@ -121,10 +121,10 @@ export const tc010RemoteStartSpec: ScenarioSpec<void> = {
   connector: 1,
   bootWaitSecs: 4,
   holdSecs: 25,
-  async drive({ cpId, records, csms }) {
+  async drive({ cpId, records, csms16 }) {
     await sleep(2000);
     try {
-      await csms.execute(cpId, {
+      await csms16.execute(cpId, {
         action: "RemoteStartTransaction",
         connectorId: 1,
         idTag: "CERT-TAG-1",
@@ -142,7 +142,7 @@ export const tc010RemoteStartSpec: ScenarioSpec<void> = {
     const txPk = await records.latestTransaction(cpId);
     if (txPk) {
       try {
-        await csms.execute(cpId, { action: "RemoteStopTransaction", transaction: txPk });
+        await csms16.execute(cpId, { action: "RemoteStopTransaction", transaction: txPk });
       } catch (err) {
         warnOpFailed("RemoteStopTransaction", err);
       }
@@ -223,10 +223,10 @@ export const tc011RemoteStartStopSpec: ScenarioSpec<void> = {
   connector: 1,
   bootWaitSecs: 4,
   holdSecs: 20,
-  async drive({ cpId, records, csms }) {
+  async drive({ cpId, records, csms16 }) {
     await sleep(2000);
     try {
-      await csms.execute(cpId, {
+      await csms16.execute(cpId, {
         action: "RemoteStartTransaction",
         connectorId: 1,
         idTag: "CERT-TAG-2",
@@ -241,7 +241,7 @@ export const tc011RemoteStartStopSpec: ScenarioSpec<void> = {
     await sleep(2000);
     if (txPk) {
       try {
-        await csms.execute(cpId, { action: "RemoteStopTransaction", transaction: txPk });
+        await csms16.execute(cpId, { action: "RemoteStopTransaction", transaction: txPk });
       } catch (err) {
         warnOpFailed("RemoteStopTransaction", err);
       }
@@ -309,12 +309,12 @@ export const tc012RemoteStopSpec: ScenarioSpec<void> = {
   connector: 1,
   bootWaitSecs: 4,
   holdSecs: 18,
-  async drive({ cpId, records, csms }) {
+  async drive({ cpId, records, csms16 }) {
     await sleep(4000);
     const txPk = await records.latestTransaction(cpId);
     if (txPk) {
       try {
-        await csms.execute(cpId, { action: "RemoteStopTransaction", transaction: txPk });
+        await csms16.execute(cpId, { action: "RemoteStopTransaction", transaction: txPk });
       } catch (err) {
         warnOpFailed("RemoteStopTransaction", err);
       }
@@ -384,14 +384,14 @@ export const tc026RemoteStartRejectedSpec: ScenarioSpec<RemoteStartRejectedDrive
     connector: 1,
     bootWaitSecs: 4,
     holdSecs: 15,
-    async drive({ cpId, records, csms }): Promise<RemoteStartRejectedDriveState> {
+    async drive({ cpId, records, csms16 }): Promise<RemoteStartRejectedDriveState> {
       const baselineTxPk = await records.latestTransaction(cpId);
       // Give the scenario time to arm its responseOverride and park on the
       // csmsCallTrigger node before we fire the operation -- mirrors the
       // bash spec's `sleep 2`.
       await sleep(2000);
       try {
-        await csms.execute(cpId, {
+        await csms16.execute(cpId, {
         action: "RemoteStartTransaction",
         connectorId: 1,
         idTag: "CERT-TAG-1",
@@ -458,7 +458,7 @@ export const tc028RemoteStopRejectedSpec: ScenarioSpec<RemoteStopRejectedDriveSt
     connector: 1,
     bootWaitSecs: 4,
     holdSecs: 20,
-    async drive({ cpId, records, csms }): Promise<RemoteStopRejectedDriveState> {
+    async drive({ cpId, records, csms16 }): Promise<RemoteStopRejectedDriveState> {
       // Bind to the ACTIVE transaction CERT028's own StartTransaction
       // created, not records.latestTransaction's "newest row regardless of tag/state"
       // -- on a reused charge point that could silently pick up a stale
@@ -474,7 +474,7 @@ export const tc028RemoteStopRejectedSpec: ScenarioSpec<RemoteStopRejectedDriveSt
       }
       if (txPk) {
         try {
-          await csms.execute(cpId, { action: "RemoteStopTransaction", transaction: txPk });
+          await csms16.execute(cpId, { action: "RemoteStopTransaction", transaction: txPk });
         } catch (err) {
           warnOpFailed("RemoteStopTransaction", err);
         }
@@ -529,10 +529,10 @@ export const tc054TriggerMessageSpec: ScenarioSpec<void> = {
   connector: 1,
   bootWaitSecs: 4,
   holdSecs: 12,
-  async drive({ cpId, csms }) {
+  async drive({ cpId, csms16 }) {
     await sleep(2000);
     try {
-      await csms.execute(cpId, { action: "TriggerMessage", requestedMessage: "Heartbeat" });
+      await csms16.execute(cpId, { action: "TriggerMessage", requestedMessage: "Heartbeat" });
     } catch (err) {
       warnOpFailed("TriggerMessage", err);
     }
@@ -590,10 +590,10 @@ export const tc055TriggerMessageRejectedSpec: ScenarioSpec<void> = {
   connector: 1,
   bootWaitSecs: 4,
   holdSecs: 12,
-  async drive({ cpId, csms }) {
+  async drive({ cpId, csms16 }) {
     await sleep(2000);
     try {
-      await csms.execute(cpId, { action: "TriggerMessage", requestedMessage: "Heartbeat" });
+      await csms16.execute(cpId, { action: "TriggerMessage", requestedMessage: "Heartbeat" });
     } catch (err) {
       warnOpFailed("TriggerMessage", err);
     }
@@ -645,14 +645,14 @@ export const tc056SmartChargingTxDefaultSpec: ScenarioSpec<TxDefaultProfileDrive
     bootWaitSecs: 4,
     // tx-start settle(3s) + csmsCallTrigger + 10s delay-before-stop + tail.
     holdSecs: 25,
-    async drive({ cpId, records, csms }): Promise<TxDefaultProfileDriveState> {
+    async drive({ cpId, records, csms16 }): Promise<TxDefaultProfileDriveState> {
       await sleep(3000);
       const txPk = await records.latestTransaction(cpId);
       const profilePk = await records.chargingProfiles.refByDescription(
         "TC056 TxDefaultProfile",
       );
       try {
-        await csms.execute(cpId, {
+        await csms16.execute(cpId, {
         action: "SetChargingProfile",
         connectorId: 1,
         chargingProfile: profilePk,
@@ -730,7 +730,7 @@ export const tc057SmartChargingTxProfileSpec: ScenarioSpec<TxProfileDriveState> 
     connector: 1,
     bootWaitSecs: 4,
     holdSecs: 25,
-    async drive({ cpId, records, csms }): Promise<TxProfileDriveState> {
+    async drive({ cpId, records, csms16 }): Promise<TxProfileDriveState> {
       // Bind to the ACTIVE transaction CERT057's own StartTransaction
       // created, not records.latestTransaction's "newest row regardless of tag/state"
       // -- on a reused charge point that could silently pick up a stale
@@ -745,7 +745,7 @@ export const tc057SmartChargingTxProfileSpec: ScenarioSpec<TxProfileDriveState> 
       const profilePk =
         await records.chargingProfiles.refByDescription("TC057 TxProfile");
       try {
-        await csms.execute(cpId, {
+        await csms16.execute(cpId, {
         action: "SetChargingProfile",
         connectorId: 1,
         chargingProfile: profilePk,
@@ -824,13 +824,13 @@ export const tc059RemoteStartWithProfileSpec: ScenarioSpec<RemoteStartWithProfil
     async drive({
       cpId,
       records,
-      csms,
+      csms16,
     }): Promise<RemoteStartWithProfileDriveState> {
       await sleep(2000);
       const profilePk =
         await records.chargingProfiles.refByDescription("TC057 TxProfile");
       try {
-        await csms.execute(cpId, {
+        await csms16.execute(cpId, {
         action: "RemoteStartTransaction",
         connectorId: 1,
         idTag: "CERT-TAG-1",
@@ -912,7 +912,7 @@ export const tc066GetCompositeScheduleSpec: ScenarioSpec<void> = {
   connector: 1,
   bootWaitSecs: 4,
   holdSecs: 15,
-  async drive({ cpId, records, sim, csms }) {
+  async drive({ cpId, records, sim, csms16 }) {
     await sleep(2000);
     // Looked up by description (see TxDefaultProfileDriveState's comment
     // above -- same hardcoded-pk drift issue, fixed the same way) rather
@@ -921,7 +921,7 @@ export const tc066GetCompositeScheduleSpec: ScenarioSpec<void> = {
       "TC056 TxDefaultProfile",
     );
     try {
-      await csms.execute(cpId, {
+      await csms16.execute(cpId, {
         action: "SetChargingProfile",
         connectorId: 1,
         chargingProfile: profilePk,
@@ -951,7 +951,7 @@ export const tc066GetCompositeScheduleSpec: ScenarioSpec<void> = {
     }
 
     try {
-      await csms.execute(cpId, {
+      await csms16.execute(cpId, {
         action: "GetCompositeSchedule",
         connectorId: 1,
         duration: 600,
@@ -997,7 +997,7 @@ export const tc067ClearChargingProfileSpec: ScenarioSpec<void> = {
   connector: 1,
   bootWaitSecs: 4,
   holdSecs: 15,
-  async drive({ cpId, records, sim, csms }) {
+  async drive({ cpId, records, sim, csms16 }) {
     await sleep(2000);
     // Looked up by description (see TxDefaultProfileDriveState's comment
     // in the TC_056 spec above -- same hardcoded-pk drift issue, fixed the
@@ -1006,7 +1006,7 @@ export const tc067ClearChargingProfileSpec: ScenarioSpec<void> = {
       "TC056 TxDefaultProfile",
     );
     try {
-      await csms.execute(cpId, {
+      await csms16.execute(cpId, {
         action: "SetChargingProfile",
         connectorId: 1,
         chargingProfile: profilePk,
@@ -1032,7 +1032,7 @@ export const tc067ClearChargingProfileSpec: ScenarioSpec<void> = {
     }
 
     try {
-      await csms.execute(cpId, { action: "ClearChargingProfile", chargingProfile: profilePk });
+      await csms16.execute(cpId, { action: "ClearChargingProfile", chargingProfile: profilePk });
     } catch (err) {
       warnOpFailed("ClearChargingProfile", err);
     }

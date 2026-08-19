@@ -8,7 +8,8 @@ behind each rule lives in the file it protects.
 driver, `VENDOR.md` is the vendoring manifest, `OCA-COVERAGE.md` maps every
 OCPP 1.6 scenario to its OCA test case and to what that case obliges the CSMS
 to answer, `OCA-201-SELECTION.md` is the rule deciding which OCPP 2.0.1 cases
-may be implemented at all. This file is the working loop.
+may be implemented at all, `CHANGELOG.md` is what a consumer reads before
+moving a pinned ref. This file is the working loop.
 
 ## First
 

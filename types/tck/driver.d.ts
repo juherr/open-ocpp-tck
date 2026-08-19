@@ -59,7 +59,7 @@ export type TransactionRef = string;
 export type ReservationRef = string;
 /** A CSMS-side charging-profile handle. `""` = none. */
 export type ChargingProfileRef = string;
-export type ResetType = "Hard" | "Soft";
+export type ResetType16 = "Hard" | "Soft";
 export type AvailabilityType = "Operative" | "Inoperative";
 export type UpdateType = "Full" | "Differential";
 export type ChargingRateUnit = "A" | "W";
@@ -81,9 +81,9 @@ export interface LocalAuthorizationEntry {
     expiryDate?: Date;
     parentIdTag?: string;
 }
-export type CsmsOperation = {
+export type CsmsOperation16 = {
     action: "Reset";
-    type: ResetType;
+    type: ResetType16;
 } | {
     action: "UnlockConnector";
     connectorId: number;
@@ -177,9 +177,49 @@ export type CsmsOperation = {
     action: "CancelReservation";
     reservation: ReservationRef;
 };
-export type CsmsOperationAction = CsmsOperation["action"];
+export type CsmsOperation16Action = CsmsOperation16["action"];
 /** Every action name, for capability declarations and run reporting. */
-export declare const CSMS_OPERATION_ACTIONS: readonly ["Reset", "UnlockConnector", "ClearCache", "ChangeAvailability", "GetConfiguration", "ChangeConfiguration", "RemoteStartTransaction", "RemoteStopTransaction", "TriggerMessage", "SetChargingProfile", "GetCompositeSchedule", "ClearChargingProfile", "UpdateFirmware", "GetDiagnostics", "GetLocalListVersion", "SendLocalList", "ReserveNow", "CancelReservation"];
+export declare const CSMS_OPERATION_16_ACTIONS: readonly ["Reset", "UnlockConnector", "ClearCache", "ChangeAvailability", "GetConfiguration", "ChangeConfiguration", "RemoteStartTransaction", "RemoteStopTransaction", "TriggerMessage", "SetChargingProfile", "GetCompositeSchedule", "ClearChargingProfile", "UpdateFirmware", "GetDiagnostics", "GetLocalListVersion", "SendLocalList", "ReserveNow", "CancelReservation"];
+/** OCPP 2.0.1 `ResetEnumType`. Not OCPP 1.6's Hard/Soft -- see the note on
+ *  the `Reset` arm below. */
+export type ResetType201 = "Immediate" | "OnIdle";
+/** OCPP 2.0.1 `ComponentType` -- half of a device-model address. */
+export interface Component201 {
+    name: string;
+}
+/** OCPP 2.0.1 `VariableType` -- the other half of a device-model address. */
+export interface Variable201 {
+    name: string;
+}
+/** OCPP 2.0.1 `GetVariableDataType`. */
+export interface GetVariableData201 {
+    component: Component201;
+    variable: Variable201;
+}
+/** OCPP 2.0.1 `SetVariableDataType`. */
+export interface SetVariableData201 {
+    component: Component201;
+    variable: Variable201;
+    /** Always a string on the wire, whatever the variable's declared data type:
+     *  2.0.1 carries values as text and the device model says how to read them.
+     *  A driver must not "helpfully" send a number. */
+    attributeValue: string;
+}
+export type CsmsOperation201 = {
+    action: "Reset";
+    type: ResetType201;
+} | {
+    action: "GetVariables";
+    variables: GetVariableData201[];
+} | {
+    action: "SetVariables";
+    variables: SetVariableData201[];
+};
+export type CsmsOperation201Action = CsmsOperation201["action"];
+/** Every 2.0.1 action name. Same job as {@link CSMS_OPERATION_16_ACTIONS},
+ *  and a SECOND list rather than an extension of it -- see the note on
+ *  {@link CsmsOperation201}'s `Reset` arm for why the two must not merge. */
+export declare const CSMS_OPERATION_201_ACTIONS: readonly ["Reset", "GetVariables", "SetVariables"];
 /**
  * "This CSMS's API cannot express this operation or observation AT ALL."
  *
@@ -203,12 +243,12 @@ export declare class UnsupportedOperationError extends Error {
 /**
  * Compile-time exhaustiveness guard for a driver's `switch (op.action)`.
  *
- * Adding an operation to {@link CsmsOperation} becomes a type error in every
+ * Adding an operation to {@link CsmsOperation16} becomes a type error in every
  * driver that has not handled it -- which is the entire reason the vocabulary
  * is a discriminated union rather than a string map.
  */
 export declare function assertNever(value: never, context: string): never;
-export interface CsmsOperations {
+export interface CsmsOperations16 {
     /**
      * Drives one CSMS operation against one charge point.
      *
@@ -221,7 +261,19 @@ export interface CsmsOperations {
      * Throws {@link UnsupportedOperationError} when this CSMS cannot express the
      * operation at all, and anything else for a genuine transport failure.
      */
-    execute(cpId: string, op: CsmsOperation): Promise<string>;
+    execute(cpId: string, op: CsmsOperation16): Promise<string>;
+}
+/**
+ * The same contract for {@link CsmsOperation201}, and OPTIONAL: a driver whose
+ * CSMS speaks only OCPP 1.6 omits it from its {@link CsmsDriverParts} and the
+ * runner substitutes a stub whose `execute` throws
+ * {@link UnsupportedOperationError} -- the same substitution
+ * {@link CsmsReservationRecords} gets, for the same reason. A spec therefore
+ * calls `ctx.csms201` unconditionally and never branches on which driver is
+ * loaded; absence becomes a NOT APPLICABLE verdict through the normal escape.
+ */
+export interface CsmsOperations201 {
+    execute(cpId: string, op: CsmsOperation201): Promise<string>;
 }
 /**
  * The CSMS-side state a spec may inspect. READ-ONLY: every method answers
@@ -308,9 +360,22 @@ export interface CsmsChargingProfileRecords {
  */
 export interface CsmsCapabilities {
     /** Operations this driver can express. Anything outside it MUST throw
-     *  {@link UnsupportedOperationError} from `execute()`; the driver's own
-     *  switch is where that is enforced, this set is what gets printed. */
-    readonly operations: ReadonlySet<CsmsOperationAction>;
+     *  {@link UnsupportedOperationError} from `operations16.execute()`; the
+     *  driver's own switch is where that is enforced, this set is what gets
+     *  printed. */
+    readonly operations16: ReadonlySet<CsmsOperation16Action>;
+    /**
+     * The same, for {@link CsmsOperation201}. ABSENT means "this driver does not
+     * speak OCPP 2.0.1 at all" -- not "it speaks it and declares nothing" -- and
+     * `check-driver` says nothing about a driver that omits it.
+     *
+     * It lives on the CAPABILITIES rather than only on {@link CsmsDriverParts}
+     * for the reason {@link CsmsDriverModule.capabilities} gives: parts are
+     * reachable only through `create(env)`, which is entitled to demand
+     * credentials, and "does this driver speak 2.0.1" has to be answerable
+     * offline, without a container.
+     */
+    readonly operations201?: ReadonlySet<CsmsOperation201Action>;
     readonly reservations: boolean;
     readonly chargingProfiles: boolean;
 }
@@ -400,10 +465,14 @@ export type EnvDependent<T> = T | ((env: CsmsEnv) => T);
 /**
  * What a driver hands the runner. Everything optional is a CAPABILITY that the
  * runner substitutes or skips when absent, so a minimal driver is
- * `{ operations, records }` and nothing else.
+ * `{ operations16, records }` and nothing else.
  */
 export interface CsmsDriverParts {
-    operations: CsmsOperations;
+    operations16: CsmsOperations16;
+    /** OPTIONAL CAPABILITY. Omitted by a driver whose CSMS speaks only OCPP
+     *  1.6; the runner substitutes a throwing stub. See
+     *  {@link CsmsOperations201}. */
+    operations201?: CsmsOperations201;
     records: Omit<CsmsRecords, "reservations" | "chargingProfiles"> & {
         reservations?: CsmsReservationRecords;
         chargingProfiles?: CsmsChargingProfileRecords;

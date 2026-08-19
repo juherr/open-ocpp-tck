@@ -1,5 +1,5 @@
 /**
- * forms.ts -- renders a neutral CsmsOperation into the fields SteVe's manager
+ * forms.ts -- renders a neutral CsmsOperation16 into the fields SteVe's manager
  * UI forms expect.
  *
  * This mapping used to BE the contract: every scenario was written in these
@@ -7,7 +7,7 @@
  * them. Now it is what it always was -- one CSMS's serialisation, owned by the
  * driver for that CSMS.
  */
-import { type CsmsOperation } from "../../tck/driver";
+import { type CsmsOperation16 } from "../../tck/driver";
 /**
  * SteVe's ReserveNow `expiry` and UpdateFirmware `retrieveDateTime` inputs
  * have no seconds field. Round UP, so any strictly-future instant formats to a
@@ -38,7 +38,7 @@ export interface ChargingProfileFields {
  * which would age out of validity between runs.
  */
 export declare function chargingProfileForm(profile: ChargingProfileFields): Record<string, string>;
-export declare function toSteveForm(op: CsmsOperation): {
+export declare function toSteveForm(op: CsmsOperation16): {
     opPath: string;
     fields: Record<string, string>;
 };

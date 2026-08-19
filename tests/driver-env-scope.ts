@@ -61,7 +61,7 @@ const SYNTHETIC: CsmsDriverModule = {
     },
   }),
   capabilities: (env) => ({
-    operations: new Set(env.LINE === "old" ? [] : ["Reset"]),
+    operations16: new Set(env.LINE === "old" ? [] : ["Reset"]),
     reservations: false,
     chargingProfiles: false,
   }),
@@ -104,8 +104,8 @@ check(
   "driverScope() does not answer from the env it was handed.",
 );
 check(
-  driverCapabilities(SYNTHETIC, { LINE: "old" })?.operations.size === 0 &&
-    driverCapabilities(SYNTHETIC, {})?.operations.has("Reset") === true,
+  driverCapabilities(SYNTHETIC, { LINE: "old" })?.operations16.size === 0 &&
+    driverCapabilities(SYNTHETIC, {})?.operations16.has("Reset") === true,
   "driverCapabilities() does not answer from the env it was handed.",
 );
 check(
@@ -168,11 +168,11 @@ const v2Caps = driverCapabilities(citrineos, V2_ENV);
 
 for (const action of LOCAL_LIST_ACTIONS) {
   check(
-    v1Caps?.operations.has(action) === false,
+    v1Caps?.operations16.has(action) === false,
     `capabilities resolved for v1 declare ${action}, which v1.9.1 does not route.`,
   );
   check(
-    v2Caps?.operations.has(action) === true,
+    v2Caps?.operations16.has(action) === true,
     `capabilities resolved for v2 omit ${action}, so the two resolutions do ` +
       "not differ.",
   );

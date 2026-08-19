@@ -473,10 +473,10 @@ export const tc013HardResetSpec: ScenarioSpec<void> = {
   connector: 1,
   bootWaitSecs: 4,
   holdSecs: 25,
-  async drive({ cpId, csms }) {
+  async drive({ cpId, csms16 }) {
     await sleep(3000);
     try {
-      await csms.execute(cpId, { action: "Reset", type: "Hard" });
+      await csms16.execute(cpId, { action: "Reset", type: "Hard" });
     } catch (err) {
       process.stderr.write(
         `[runner] WARN: CSMS operation Reset(Hard) failed (continuing): ${err instanceof Error ? err.message : String(err)}\n`,
@@ -565,10 +565,10 @@ export const tc014SoftResetSpec: ScenarioSpec<void> = {
   connector: 1,
   bootWaitSecs: 4,
   holdSecs: 25,
-  async drive({ cpId, csms }) {
+  async drive({ cpId, csms16 }) {
     await sleep(3000);
     try {
-      await csms.execute(cpId, { action: "Reset", type: "Soft" });
+      await csms16.execute(cpId, { action: "Reset", type: "Soft" });
     } catch (err) {
       process.stderr.write(
         `[runner] WARN: CSMS operation Reset(Soft) failed (continuing): ${err instanceof Error ? err.message : String(err)}\n`,
@@ -632,7 +632,7 @@ export const tc017UnlockOccupiedSpec: ScenarioSpec<void> = {
   connector: 1,
   bootWaitSecs: 4,
   holdSecs: 35,
-  async drive({ cpId, csms }) {
+  async drive({ cpId, csms16 }) {
     // Timing: delay(2s) -> plug-in -> preparing -> tx-start -> charging ->
     // meter-auto(maxTime 15s, BLOCKS) -> unlock pre-arm (instant) ->
     // delay(10s window) -> tx-stop. The pre-arm window for
@@ -641,7 +641,7 @@ export const tc017UnlockOccupiedSpec: ScenarioSpec<void> = {
     // rationale, see .superpowers/sdd/steve-verify-results-g1.md).
     await sleep(20_000);
     try {
-      await csms.execute(cpId, { action: "UnlockConnector", connectorId: 1 });
+      await csms16.execute(cpId, { action: "UnlockConnector", connectorId: 1 });
     } catch (err) {
       process.stderr.write(
         `[runner] WARN: CSMS operation UnlockConnector failed (continuing): ${err instanceof Error ? err.message : String(err)}\n`,
@@ -696,11 +696,11 @@ export const tc018UnlockFailureSpec: ScenarioSpec<void> = {
   connector: 1,
   bootWaitSecs: 4,
   holdSecs: 35,
-  async drive({ cpId, csms }) {
+  async drive({ cpId, csms16 }) {
     // Same timing window as TC_017 -- see that spec for the derivation.
     await sleep(20_000);
     try {
-      await csms.execute(cpId, { action: "UnlockConnector", connectorId: 1 });
+      await csms16.execute(cpId, { action: "UnlockConnector", connectorId: 1 });
     } catch (err) {
       process.stderr.write(
         `[runner] WARN: CSMS operation UnlockConnector failed (continuing): ${err instanceof Error ? err.message : String(err)}\n`,
@@ -758,10 +758,10 @@ export const tc019GetConfigurationAllSpec: ScenarioSpec<void> = {
   connector: 1,
   bootWaitSecs: 4,
   holdSecs: 12,
-  async drive({ cpId, csms }) {
+  async drive({ cpId, csms16 }) {
     await sleep(2000);
     try {
-      await csms.execute(cpId, { action: "GetConfiguration" });
+      await csms16.execute(cpId, { action: "GetConfiguration" });
     } catch (err) {
       process.stderr.write(
         `[runner] WARN: CSMS operation GetConfiguration failed (continuing): ${err instanceof Error ? err.message : String(err)}\n`,
@@ -806,10 +806,10 @@ export const tc019GetConfigurationKeySpec: ScenarioSpec<void> = {
   connector: 1,
   bootWaitSecs: 4,
   holdSecs: 12,
-  async drive({ cpId, csms }) {
+  async drive({ cpId, csms16 }) {
     await sleep(2000);
     try {
-      await csms.execute(cpId, { action: "GetConfiguration", keys: ["HeartbeatInterval"] });
+      await csms16.execute(cpId, { action: "GetConfiguration", keys: ["HeartbeatInterval"] });
     } catch (err) {
       process.stderr.write(
         `[runner] WARN: CSMS operation GetConfiguration failed (continuing): ${err instanceof Error ? err.message : String(err)}\n`,
@@ -843,10 +843,10 @@ export const tc021ChangeConfigurationSpec: ScenarioSpec<void> = {
   connector: 1,
   bootWaitSecs: 4,
   holdSecs: 12,
-  async drive({ cpId, csms }) {
+  async drive({ cpId, csms16 }) {
     await sleep(2000);
     try {
-      await csms.execute(cpId, {
+      await csms16.execute(cpId, {
         action: "ChangeConfiguration",
         key: "MeterValueSampleInterval",
         value: "10",
@@ -958,10 +958,10 @@ export const tc031UnlockUnknownConnectorSpec: ScenarioSpec<void> = {
   connector: 1,
   bootWaitSecs: 4,
   holdSecs: 10,
-  async drive({ cpId, csms }) {
+  async drive({ cpId, csms16 }) {
     await sleep(2000);
     try {
-      await csms.execute(cpId, { action: "UnlockConnector", connectorId: 99 });
+      await csms16.execute(cpId, { action: "UnlockConnector", connectorId: 99 });
     } catch (err) {
       process.stderr.write(
         `[runner] WARN: CSMS operation UnlockConnector failed (continuing): ${err instanceof Error ? err.message : String(err)}\n`,
@@ -995,10 +995,10 @@ export const tc061ClearCacheSpec: ScenarioSpec<void> = {
   connector: 1,
   bootWaitSecs: 4,
   holdSecs: 15,
-  async drive({ cpId, csms }) {
+  async drive({ cpId, csms16 }) {
     await sleep(2000);
     try {
-      await csms.execute(cpId, { action: "ClearCache" });
+      await csms16.execute(cpId, { action: "ClearCache" });
     } catch (err) {
       process.stderr.write(
         `[runner] WARN: CSMS operation ClearCache failed (continuing): ${err instanceof Error ? err.message : String(err)}\n`,
