@@ -6,8 +6,9 @@ behind each rule lives in the file it protects.
 
 `README.md` is the user-facing tour, `CONTRIBUTING.md` is how to write a
 driver, `VENDOR.md` is the vendoring manifest, `OCA-COVERAGE.md` maps every
-scenario to its OCA test case and to what that case obliges the CSMS to
-answer. This file is the working loop.
+OCPP 1.6 scenario to its OCA test case and to what that case obliges the CSMS
+to answer, `OCA-201-SELECTION.md` is the rule deciding which OCPP 2.0.1 cases
+may be implemented at all. This file is the working loop.
 
 ## First
 

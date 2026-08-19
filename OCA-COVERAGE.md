@@ -3,6 +3,10 @@
 Which OCA test case each scenario traces to, and every obligation that case
 puts on the **Central System** in response to a request the charge point sent.
 
+**Everything counted here is OCPP 1.6** — the reference below, and every total
+derived from it. OCPP 2.0.1's cases come from another document and are governed
+by [`OCA-201-SELECTION.md`](OCA-201-SELECTION.md).
+
 `README.md` states the mapping rule; this file is where it is checked. It
 exists because a scenario can assert everything the charge point *sent* and
 still not notice that the CSMS answered with a CALLERROR -- which is exactly

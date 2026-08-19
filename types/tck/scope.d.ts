@@ -23,6 +23,11 @@
  *  - NEVER demote a row to NOT_APPLICABLE to make a red scenario go away. That
  *    converts a finding about the CSMS into a silence about the harness, and
  *    it is indistinguishable from the finding never having existed.
+ *  - For an OCPP 2.0.1 scenario, OPEN the reason with the feature identifier
+ *    the case is conditional on -- "C-45: ...", from Part 5 §4's `Feature no.`
+ *    column. That protocol makes features optional rather than cases and
+ *    publishes an identifier per feature; OCPP 1.6 publishes none, so its rows
+ *    are prose and stay prose. OCA-201-SELECTION.md has the provenance.
  */
 export type ScopeStatus = "DRIVABLE" | "CONDITIONAL" | "NOT_APPLICABLE";
 export interface ScopeEntry {

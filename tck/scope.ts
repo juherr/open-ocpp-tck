@@ -25,10 +25,33 @@
  *  - NEVER demote a row to NOT_APPLICABLE to make a red scenario go away. That
  *    converts a finding about the CSMS into a silence about the harness, and
  *    it is indistinguishable from the finding never having existed.
+ *  - For an OCPP 2.0.1 scenario, OPEN the reason with the feature identifier
+ *    the case is conditional on -- "C-45: ...", from Part 5 §4's `Feature no.`
+ *    column. That protocol makes features optional rather than cases and
+ *    publishes an identifier per feature; OCPP 1.6 publishes none, so its rows
+ *    are prose and stay prose. OCA-201-SELECTION.md has the provenance.
  */
 
 export type ScopeStatus = "DRIVABLE" | "CONDITIONAL" | "NOT_APPLICABLE";
 
+// TRIED AND NOT BUILT, here because here is where it gets re-proposed: giving
+// the feature identifier above a home of its own instead of a string prefix.
+// Two shapes, declined for two different reasons, and `//` rather than a doc
+// comment so an internal decision stays out of the emitted declarations.
+//
+// A CLOSED UNION of feature ids, so a typo is a build error the way
+// V1_LOCAL_LIST makes one in drivers/citrineos/scope.ts: premature twice. No
+// scenario of the protocol that HAS those identifiers is registered yet, so
+// the union would be written against zero rows -- and the complete enumeration
+// it needs is a reproduction of a no-derivatives table rather than the
+// citation of one, which is the whole reason the identifiers are quotable.
+//
+// AN OPTIONAL `feature?: string` beside `reason`, which is additive, keeps 1.6
+// rows prose and enumerates nothing: the objections above do not touch it, and
+// it is declined only because it would ship a field no row sets and no check
+// reads. It is the cheaper of the two the day either changes, so weigh it
+// first -- the prefix convention is what has to be shown insufficient, and one
+// real row citing one real feature is what shows it.
 export interface ScopeEntry {
   status: ScopeStatus;
   reason: string;
