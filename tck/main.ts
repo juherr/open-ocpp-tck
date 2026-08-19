@@ -703,8 +703,11 @@ async function runScenario<D>(
 // protocol's profiles are a ready-made taxonomy, and building a selector for
 // them alone would give this runner two ways to select the same thing, one of
 // them shipped before there were two values to test it with.
-// OCA-201-SELECTION.md records that decision and why the version namespace a
-// templateId opens with is enough until #34 lands.
+//
+// Note that the namespace a templateId opens with SEPARATES the protocols but
+// selects nothing -- no flag reads it -- so it is not the second axis already
+// in place, and cannot be pointed at as one. OCA-201-SELECTION.md records the
+// decision and what the newer protocol's scenarios do instead until #34 lands.
 // ---------------------------------------------------------------------------
 
 // eslint-disable-next-line @typescript-eslint/no-explicit-any

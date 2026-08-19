@@ -26,10 +26,13 @@ identifiers** (`TC_B_01`), **requirement identifiers** (`P02.FR.06`),
 **feature identifiers** (`C-45`), **counts**, and our own prose. That is
 already the line the OCPP 1.6 scenarios sit on.
 
-The one consequence worth stating up front, because it decides an argument
-later: the 104-row pool the rule selects is **not** committed here. A table of
-(case, profile, role, status) is that matrix's selection column re-rendered,
-which is the derivative side of the line, not the identifier side.
+The line is drawn on **extent**, not on shape, and that is what decides an
+argument later: the 104-case pool the rule selects is **not** committed here,
+while the handful of cases named below are. Citing the cases under discussion
+is a citation; committing the column in full re-renders the matrix's own
+selection, whatever the surrounding markup looks like. So the tables on this
+page stay at the size of the argument they support, and none of them is the
+pool.
 
 ## How the counts below were derived
 
@@ -44,9 +47,13 @@ written down here so it can be **redone** rather than re-read when the
 reference is revised — the same arrangement, and for the same reason, as
 `OCA-COVERAGE.md`'s derivation note.
 
-The numbers below were produced that way once. Nothing in this repository can
-check them — the PDF is not here and cannot be — so they carry exactly the
-status `OCA-COVERAGE.md`'s carry: measured, then written into prose.
+The per-profile counts below, and the `M` / `C` status of every case this page
+names, were produced that way once. Nothing in this repository can check them —
+the PDF is not here and cannot be — so they carry exactly the status
+`OCA-COVERAGE.md`'s own totals carry: measured, then written into prose.
+Everything else numeric here is cited from the references rather than counted,
+and the two places where that distinction changes what may be concluded say so
+on the spot.
 
 ## The rule
 
@@ -70,10 +77,14 @@ taste.
 For scale, against the 1.6 suite this repository already implements: that whole
 certification set has 77 `_CSMS` cases ([`OCA-COVERAGE.md`](OCA-COVERAGE.md)
 counts what they cover). **The Core profile of 2.0.1 alone has more than twice
-the mandatory CSMS surface of the entire 1.6 suite**, and Part 6's CSMS chapter
-runs p608–p900 with 251 `*_CSMS` cases in it. The rule narrows 251 to 104; the
-slice below narrows 104 to seven. Both steps are needed, and only the first one
-is a rule.
+the mandatory CSMS surface of the entire 1.6 suite**, and Part 6 devotes
+p608–p900 to 251 `*_CSMS` cases.
+
+Two narrowings, and only the first is a rule: the rule takes Core's 364 rows to
+the 104 that are mandatory for this role, and the slice below takes those 104 to
+seven. Part 6's 251 is scale, not a term in either — it is a different
+document's count of a different population, and how it relates to the matrix's
+rows was **not measured**.
 
 ## What the rule corrects on a hand-drawn list
 
@@ -97,9 +108,9 @@ organised by **which side is under test**. `Reset` turning out to be three
 mandatory cases and `StatusNotification` turning out to be none is the
 correction, and it runs in both directions.
 
-`TC_G_20`'s own status was **not measured**, unlike every other number on this
-page. It is the one thing to look up before a status scenario is written; do
-not read the row above as calling it mandatory.
+`TC_G_20`'s own status was **not measured** — it is the one cell in this table
+the parse above did not produce. Look it up before a status scenario is
+written, and do not read the row above as calling it mandatory.
 
 ## The v0.3 slice
 
@@ -194,18 +205,21 @@ author who never opens this page.
 Certification profiles are a ready-made way to select scenarios by domain, and
 that makes it tempting to build `--profile` here. It is not built, deliberately.
 
-Two selection mechanisms exist in the tree today:
+What the tree has today is **one** way to select scenarios and one way to tell
+them apart, which are not the same thing:
 
-- `--group`, whose five buckets mirror an upstream file's array membership
-  rather than any taxonomy. Issue #34 opens exactly that problem, for OCPP 1.6,
-  in a later milestone.
+- `--group` selects. Its five buckets mirror an upstream file's array
+  membership rather than any taxonomy, which is the problem issue #34 opens for
+  OCPP 1.6 in a later milestone.
 - the **certification namespace** a `templateId` opens with — `cert16-`,
-  `cert201-` — which the runner and its guards already treat as a first-class
-  concept, and deliberately without a version literal anywhere in them.
+  `cert201-` — separates. The runner and its guards already treat it as a
+  first-class concept, deliberately without a version literal anywhere in them,
+  but **no flag selects on it**: it scopes container names and guard reach, not
+  a sweep.
 
-The namespace already separates 1.6 from 2.0.1, so v0.3 needs no new mechanism
-to run seven scenarios. And a `--profile` built now would be built on a
-**single value**, deciding blind the questions #34 exists to settle: whether
+That separation is enough for v0.3, because a handful of new scenarios can be
+named or swept without an axis at all. A `--profile` built now would be built
+on a **single value**, deciding blind the questions #34 exists to settle: whether
 the axis is declared in the vendored spec files (each edit costs a re-pin) or
 in a registry beside the groups (no re-pin, a second place to keep in step),
 and whether the vocabulary is closed or open.
@@ -255,7 +269,7 @@ Written out, because 914 pages of test cases make an unwritten line slip:
 - the other three certification profiles — Advanced Security, Smart Charging,
   ISO 15118 Support — and Core's conditional rows: everything the table above
   counts that the rule does not select;
-- the Core mandatory cases beyond the slice, which is most of them;
+- the Core mandatory cases beyond the slice — all but the seven above;
 - a shared 1.6 / 2.0.1 abstraction layer. One slice is not evidence;
 - a `Reusable State` fixture mechanism. Part 6 defines 13 of them for the CSMS
   role, and this suite has timers and one-shot provisioning, which are not the

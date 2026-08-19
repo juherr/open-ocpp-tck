@@ -603,7 +603,7 @@
      } else {
        process.stderr.write(
          `[runner] no drive() defined (CP-only scenario) -- nothing to do while it runs\n`,
-@@ -190,72 +527,184 @@
+@@ -190,72 +527,187 @@
        driveState = undefined as D;
      }
  
@@ -804,12 +804,15 @@
 +// protocol's profiles are a ready-made taxonomy, and building a selector for
 +// them alone would give this runner two ways to select the same thing, one of
 +// them shipped before there were two values to test it with.
-+// OCA-201-SELECTION.md records that decision and why the version namespace a
-+// templateId opens with is enough until #34 lands.
++//
++// Note that the namespace a templateId opens with SEPARATES the protocols but
++// selects nothing -- no flag reads it -- so it is not the second axis already
++// in place, and cannot be pointed at as one. OCA-201-SELECTION.md records the
++// decision and what the newer protocol's scenarios do instead until #34 lands.
  // ---------------------------------------------------------------------------
  
  // eslint-disable-next-line @typescript-eslint/no-explicit-any
-@@ -265,20 +714,21 @@
+@@ -265,20 +717,21 @@
    "remotetrigger-smartcharging": REMOTETRIGGER_SMARTCHARGING_SPECS,
    firmware: FIRMWARE_SPECS,
    authorize: AUTHORIZE_SPECS,
@@ -837,7 +840,7 @@
  // eslint-disable-next-line @typescript-eslint/no-explicit-any
  const SPECS_BY_TEMPLATE_ID = new Map<string, ScenarioSpec<any>>(
    Object.values(GROUPS)
-@@ -286,66 +736,228 @@
+@@ -286,66 +739,228 @@
      .map((spec) => [spec.templateId, spec]),
  );
  
@@ -1105,7 +1108,7 @@
      };
    } catch (err) {
      const message =
-@@ -353,64 +965,47 @@
+@@ -353,64 +968,47 @@
      process.stderr.write(
        `[runner] ERROR: ${spec.templateId} on ${cpId} threw before completing: ${message}\n`,
      );
@@ -1194,7 +1197,7 @@
    );
  
    for (const outcome of toRetry) {
-@@ -427,18 +1022,19 @@
+@@ -427,18 +1025,19 @@
      process.stderr.write(
        `[runner] isolated retry: ${outcome.templateId} on ${outcome.cpId} (parallel verdict was ${outcome.verdict})\n`,
      );
@@ -1217,7 +1220,7 @@
            : " -- CONFIRMED (fails isolated too, not a parallel-lane artifact)\n"),
      );
    }
-@@ -451,59 +1047,153 @@
+@@ -451,59 +1050,153 @@
    return new Date().toISOString().replace(/\.\d{3}Z$/, "Z");
  }
  
@@ -1395,7 +1398,7 @@
        "",
        header,
        separator,
-@@ -518,54 +1208,54 @@
+@@ -518,54 +1211,54 @@
  }
  
  /** Sequential or parallel group sweep. Writes results/summary.md and exits
@@ -1476,7 +1479,7 @@
      );
    } else {
      for (let i = 0; i < specs.length; i++) {
-@@ -574,11 +1264,11 @@
+@@ -574,11 +1267,11 @@
    }
  
    if (retryFailedIsolated) {
@@ -1490,7 +1493,7 @@
            "(a sequential sweep is already isolated).\n",
        );
      }
-@@ -588,45 +1278,87 @@
+@@ -588,45 +1281,87 @@
    for (const o of outcomes) {
      const retrySuffix = o.isolatedRetry
        ? ` [isolated retry: ${o.isolatedRetry.verdict}${
@@ -1601,7 +1604,7 @@
  }
  
  // ---------------------------------------------------------------------------
-@@ -642,6 +1374,8 @@
+@@ -642,6 +1377,8 @@
    cpId: string;
    connector?: number;
    timeoutSecs?: number;
@@ -1610,7 +1613,7 @@
  }
  
  function requireValue(argv: string[], index: number, flag: string): string {
-@@ -663,37 +1397,82 @@
+@@ -663,37 +1400,82 @@
    return n;
  }
  
@@ -1710,7 +1713,7 @@
  
    if (argv[0] === "run-all") {
      group = "all";
-@@ -708,18 +1487,27 @@
+@@ -708,18 +1490,27 @@
          case "--retry-failed-isolated":
            retryFailedIsolated = true;
            break;
@@ -1741,7 +1744,7 @@
      process.exit(1);
    }
  
-@@ -749,9 +1537,11 @@
+@@ -749,9 +1540,11 @@
        case "--retry-failed-isolated":
          retryFailedIsolated = true;
          break;
@@ -1754,7 +1757,7 @@
          process.exit(1);
      }
    }
-@@ -764,35 +1554,495 @@
+@@ -764,35 +1557,495 @@
      cpId,
      connector,
      timeoutSecs,
@@ -2266,7 +2269,7 @@
    }
  
    const spec = SPECS_BY_TEMPLATE_ID.get(args.templateId);
-@@ -800,18 +2050,109 @@
+@@ -800,18 +2053,109 @@
      process.stderr.write(
        `Unknown template id: ${args.templateId} (known: ${[...SPECS_BY_TEMPLATE_ID.keys()].join(", ")})\n`,
      );
