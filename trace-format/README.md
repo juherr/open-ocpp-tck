@@ -22,7 +22,12 @@ again.
 | `jsonl.ts` | `splitJsonl(text)` — one JSON value per non-blank line, holes preserved |
 | `validate.ts` | `validateRecord` / `validateRecords` — the schema's rules, plus `raw` fidelity |
 | `consumer-view.ts` | `consumerView(records)` — the normative derivation, and the one cross-record producer rule |
-| `index.ts` | `readTraceText(text)` — the two halves composed |
+| `read.ts` | `readTraceText(text)` — the two halves composed |
+| `conformance.ts` | `checkFixtures(dir)` — the corpus self-check, meant to replace `conformance/validate.mjs` |
+
+`SPEC-FEEDBACK.md` beside this file collects what writing the reader turned up
+about the **document** — three things that need spec text rather than code,
+including the one this library's whole API shape is a workaround for.
 
 ## Two rules it is built on
 
@@ -45,8 +50,19 @@ with `payload` and no `raw` is valid — both are optional — and a consumer th
 needs wire bytes must refuse it *on its own account*, under its own name. The
 conformance rules oblige a consumer to "accept any record that validates
 against the schema", and the distinction between *valid* and *usable for my
-purpose* is one the specification does not yet have a word for. It should; the
-first consumer here is the worked example.
+purpose* is one the specification does not yet have a word for. It should —
+that is finding 1 in `SPEC-FEEDBACK.md`, and this API shape is what standing in
+for it looks like.
+
+Two consequences that are easy to get wrong in the other direction:
+
+- `validateRecords` is **total** — every input value gets a record or a
+  diagnostic. An unexplained hole is the one thing a lenient consumer cannot
+  annotate, so it must not be reachable.
+- `readTraceText` is the only place allowed to suppress a diagnostic, and it
+  suppresses exactly one: it does not re-validate a line `splitJsonl` already
+  reported as not-JSON, because "record is absent, not an object" would be true
+  and would not be what happened.
 
 ## The contract worth remembering
 

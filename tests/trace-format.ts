@@ -8,7 +8,11 @@
  *     `trace-v1.schema.json`. Everything else the reader can say -- an
  *     unreadable `schemaVersion` major, a `raw` that contradicts its envelope
  *     -- comes back WITH the record. This is the whole reason two consumers
- *     with opposite policies can share the library, so it is claim one.
+ *     with opposite policies can share the library, so it is claim one. And
+ *     `validateRecords` is TOTAL: no input value may come back as a hole with
+ *     nothing saying why. A caller that refuses on any hole cannot tell the
+ *     difference; the other kind of caller -- one that shows what it can and
+ *     annotates the rest -- would drop a record with nothing to annotate.
  *  2. THE SCHEMA'S RULES, transcribed rather than compiled, so each one is a
  *     line that can be wrong: the five required members, the types, the three
  *     enums, `connectorId`'s minimum, `timestamp`'s date-time, and the two
@@ -186,6 +190,28 @@ for (const { name, value, code } of offSchema) {
   }
   if (!diagnostics.some((d) => d.code === code)) {
     fail(`off the schema says why: ${name}`, `expected ${code}, got ${codesOf(diagnostics)}`);
+  }
+}
+
+// validateRecords is TOTAL. `undefined` is the shape that used to slip
+// through: it was skipped so that readTraceText would not report a line as
+// "not an object" when it was not JSON at all, and the skip made an
+// unexplained hole reachable through the library's own entry point.
+{
+  const { records, diagnostics } = validateRecords([undefined, CALL, null]);
+  if (records.length !== 3) {
+    fail("validateRecords is index-aligned", `got ${records.length} records for 3 values`);
+  }
+  for (const index of [0, 2]) {
+    if (records[index] !== undefined) {
+      fail("validateRecords withholds a bad record", `index ${index} came back`);
+    }
+    if (!diagnostics.some((d) => d.index === index)) {
+      fail(
+        "validateRecords explains every hole it leaves",
+        `index ${index} is missing with no diagnostic -- got ${codesOf(diagnostics)}`,
+      );
+    }
   }
 }
 

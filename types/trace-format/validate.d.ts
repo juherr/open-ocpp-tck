@@ -46,5 +46,19 @@ export interface ValidatedTrace {
 }
 /** Reads one JSON value as a record, reporting everything wrong with it. */
 export declare function validateRecord(value: unknown, index: number): ValidatedRecord;
-/** Reads a whole trace, index-aligned with the values it was given. */
-export declare function validateRecords(values: readonly (unknown | undefined)[]): ValidatedTrace;
+/**
+ * Reads a whole trace, index-aligned with the values it was given.
+ *
+ * TOTAL: every input value gets either a record or at least one diagnostic
+ * explaining why it did not. An earlier shape skipped `undefined` entries
+ * silently -- so that `readTraceText` would not report a line as "not an
+ * object" when what happened is that it was not JSON at all -- and that made
+ * this function able to return an unexplained hole. Harmless to a caller that
+ * refuses on any hole, and exactly wrong for the other kind: a UI that shows
+ * what it can and annotates the rest would have dropped the record with
+ * nothing to annotate.
+ *
+ * The no-double-report belongs to the caller that HAS the earlier diagnostic,
+ * so it lives in {@link ../index.readTraceText} now.
+ */
+export declare function validateRecords(values: readonly unknown[]): ValidatedTrace;
