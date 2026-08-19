@@ -1,38 +1,14 @@
 # Changelog
 
-## 0.3.0 - 2026-08-19
+All notable changes to this project are documented in this file.
 
-_Not tagged yet. The date above is when this entry was written, and is to be
-corrected when `v0.3.0` is cut — the documented install ref already points at
-that tag, so `tests/documented-install-ref.sh` is the thing that will notice._
+The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
+and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
-_This file starts here. Releases before `0.3.0` are readable through the git
-history and the GitHub releases page; reconstructing them after the fact would
-mean writing summaries nobody measured._
+## [Unreleased]
 
-### Changed
-
-- **Breaking:** Rename the OCPP 1.6 operation vocabulary so it says which
-  protocol it is: `CsmsOperation` → `CsmsOperation16`, `CsmsOperationAction` →
-  `CsmsOperation16Action`, `CsmsOperations` → `CsmsOperations16`,
-  `ResetType` → `ResetType16`, `CSMS_OPERATION_ACTIONS` →
-  `CSMS_OPERATION_16_ACTIONS`, `CsmsDriverParts.operations` and
-  `CsmsCapabilities.operations` → `operations16`, `DriveContext.csms` →
-  `csms16`. A driver updates its imports and renames those members; no
-  behaviour changes and no signature changes shape
-  ([#70](https://github.com/juherr/open-ocpp-tck/pull/70))
-- **Breaking:** Move the OCPP version from the driver's transport defaults to
-  `SimConfig`, where it is a property of the scenario rather than of the CSMS
-  ([#64](https://github.com/juherr/open-ocpp-tck/pull/64))
-- **Breaking:** Drop `SimTransportDefaults.extraArgs`. Nothing read it, so a
-  driver stating it was ignored in silence
-  ([#64](https://github.com/juherr/open-ocpp-tck/pull/64))
-- Judge a scenario on the simulator's JSONL wire trace, with the log as the
-  floor rather than the source of truth
-  ([#65](https://github.com/juherr/open-ocpp-tck/pull/65))
-- Derive `Verdict` from `VERDICTS` so the list cannot lose a member without the
-  typecheck saying so
-  ([#65](https://github.com/juherr/open-ocpp-tck/pull/65))
+Released as `0.3.0`. The documented install ref already points at that tag, so
+`tests/documented-install-ref.sh` is what notices when it is cut.
 
 ### Added
 
@@ -40,46 +16,94 @@ mean writing summaries nobody measured._
   with `Reset`, `GetVariables` and `SetVariables`; `operations201?` on
   `CsmsDriverParts` and `CsmsCapabilities`; `csms201` on `DriveContext`. A
   driver that speaks only OCPP 1.6 declares nothing and compiles untouched
-  ([#70](https://github.com/juherr/open-ocpp-tck/pull/70))
+  ([#70])
 - Report which OCPP 2.0.1 operations a driver drives, in `check-driver` and in
-  its `--json` summary, answerable offline and without a container
-  ([#70](https://github.com/juherr/open-ocpp-tck/pull/70))
-- Keep the simulator's JSONL wire trace beside its log, per scenario
-  ([#64](https://github.com/juherr/open-ocpp-tck/pull/64))
-- Document the rule deciding which OCPP 2.0.1 certification cases this suite
-  may implement at all, in `OCA-201-SELECTION.md`
-  ([#68](https://github.com/juherr/open-ocpp-tck/pull/68))
-- Give an OCPP 2.0.1 scope `reason` a feature identifier to cite
-  ([#68](https://github.com/juherr/open-ocpp-tck/pull/68))
+  its `--json` summary, answerable offline and without a container ([#70])
+- Keep the simulator's JSONL wire trace beside its log, per scenario ([#64])
+- `OCA-201-SELECTION.md`, the rule deciding which OCPP 2.0.1 certification
+  cases this suite may implement at all ([#68])
+- A feature identifier for an OCPP 2.0.1 scope `reason` to cite ([#68])
+- This changelog ([#70])
 
-### Fixed
+### Changed
 
-- Make an operation-name list a compile error when it omits a member. Both
-  vocabularies are covered; the 1.6 list had the same hole, and everything able
-  to notice a missing name was computed from the list itself
-  ([#70](https://github.com/juherr/open-ocpp-tck/pull/70))
-- Name the protocol when an OCPP 2.0.1 operation is unsupported, so a summary
-  row about a 2.0.1 `Reset` does not read like one about a 1.6 `Reset`
-  ([#70](https://github.com/juherr/open-ocpp-tck/pull/70))
-- Give the drive-trace extractor the OCPP 2.0.1 half of `DriveContext`, and
-  refuse a stub context that omits a member at compile time rather than at
-  regeneration time
-  ([#70](https://github.com/juherr/open-ocpp-tck/pull/70))
-- Unbind the foreign-sweep guard, the red-row reading and the spec invariants
-  from the `cert16-` namespace, so a scenario in any certification namespace is
-  seen ([#67](https://github.com/juherr/open-ocpp-tck/pull/67),
-  [#64](https://github.com/juherr/open-ocpp-tck/pull/64))
-- Unpin six assertions that were matching the vendored simulator's member order
-  rather than the OCPP payload
-  ([#65](https://github.com/juherr/open-ocpp-tck/pull/65))
-- Refuse a reshaped spec array instead of filtering it out, which had kept
-  whole scenario groups out of the pinned artifacts with the diff staying empty
-  ([#67](https://github.com/juherr/open-ocpp-tck/pull/67))
-- Refuse an unusable simulator environment, and report a missing trace
-  ([#64](https://github.com/juherr/open-ocpp-tck/pull/64))
+- **BREAKING** — the OCPP 1.6 operation vocabulary now says which protocol it
+  is: `CsmsOperation` → `CsmsOperation16`, `CsmsOperationAction` →
+  `CsmsOperation16Action`, `CsmsOperations` → `CsmsOperations16`, `ResetType` →
+  `ResetType16`, `CSMS_OPERATION_ACTIONS` → `CSMS_OPERATION_16_ACTIONS`,
+  `CsmsDriverParts.operations` and `CsmsCapabilities.operations` →
+  `operations16`, `DriveContext.csms` → `csms16`. A driver updates its imports
+  and renames those members; no behaviour changes and no signature changes
+  shape ([#70])
+- **BREAKING** — the OCPP version moved from the driver's transport defaults to
+  `SimConfig`, where it is a property of the scenario rather than of the CSMS
+  ([#64])
+- A scenario is judged on the simulator's JSONL wire trace, with the log as the
+  floor rather than the source of truth ([#65])
+- `Verdict` is derived from `VERDICTS`, so the list cannot lose a member
+  without the typecheck saying so ([#65])
 
 ### Removed
 
-- Revert the adaptive observation window. It was built, guarded and shipped,
-  then measured: every scenario it extended reached the cap and failed anyway
-  ([#55](https://github.com/juherr/open-ocpp-tck/pull/55))
+- **BREAKING** — `SimTransportDefaults.extraArgs`. Nothing read it, so a driver
+  stating it was ignored in silence ([#64])
+- The adaptive observation window. It was built, guarded and shipped, then
+  measured: every scenario it extended reached the cap and failed anyway
+  ([#55])
+
+### Fixed
+
+- An operation-name list that omits a member is now a compile error. Both
+  vocabularies are covered; the 1.6 list had the same hole, and everything able
+  to notice a missing name was computed from the list itself ([#70])
+- A summary row about an unsupported OCPP 2.0.1 `Reset` no longer reads like
+  one about a 1.6 `Reset` ([#70])
+- The drive-trace extractor receives the OCPP 2.0.1 half of `DriveContext`, and
+  a stub context that omits a member is refused at compile time rather than at
+  regeneration time ([#70])
+- The foreign-sweep guard, the red-row reading and the spec invariants no
+  longer assume the `cert16-` namespace, so a scenario in any certification
+  namespace is seen ([#67], [#64])
+- Six assertions that matched the vendored simulator's member order rather than
+  the OCPP payload ([#65])
+- A reshaped spec array is refused rather than filtered out, which had kept
+  whole scenario groups out of the pinned artifacts with the diff staying empty
+  ([#67])
+- An unusable simulator environment is refused, and a missing trace is reported
+  ([#64])
+
+## [0.2.1] - 2026-08-17
+
+Trustworthy verdicts on OCPP 1.6 — the `v0.2` milestone, closed. An
+observation-window extension was added and removed inside this release; see
+[the release notes][0.2.1-notes] for why.
+
+## [0.2.0] - 2026-08-16
+
+A second CSMS, declared expected failures, and the answers a CSMS owes. See
+[the release notes][0.2.0-notes].
+
+## [0.1.0] - 2026-07-31
+
+The OCPP 1.6 TCK, extracted as a standalone package. See
+[the release notes][0.1.0-notes].
+
+<!--
+Releases before 0.3.0 are summarised by their own release notes rather than
+restated here: this file was started during 0.3.0, and reconstructing three
+releases from 141 commits would mean writing detail nobody measured.
+-->
+
+[Unreleased]: https://github.com/juherr/open-ocpp-tck/compare/v0.2.1...HEAD
+[0.2.1]: https://github.com/juherr/open-ocpp-tck/compare/v0.2.0...v0.2.1
+[0.2.0]: https://github.com/juherr/open-ocpp-tck/compare/v0.1.0...v0.2.0
+[0.1.0]: https://github.com/juherr/open-ocpp-tck/releases/tag/v0.1.0
+[0.2.1-notes]: https://github.com/juherr/open-ocpp-tck/releases/tag/v0.2.1
+[0.2.0-notes]: https://github.com/juherr/open-ocpp-tck/releases/tag/v0.2.0
+[0.1.0-notes]: https://github.com/juherr/open-ocpp-tck/releases/tag/v0.1.0
+[#55]: https://github.com/juherr/open-ocpp-tck/pull/55
+[#64]: https://github.com/juherr/open-ocpp-tck/pull/64
+[#65]: https://github.com/juherr/open-ocpp-tck/pull/65
+[#67]: https://github.com/juherr/open-ocpp-tck/pull/67
+[#68]: https://github.com/juherr/open-ocpp-tck/pull/68
+[#70]: https://github.com/juherr/open-ocpp-tck/pull/70
