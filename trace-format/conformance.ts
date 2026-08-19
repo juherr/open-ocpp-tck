@@ -52,10 +52,23 @@ export interface FixtureResult {
   };
 }
 
-const render = (diagnostics: readonly Diagnostic[]): string =>
-  diagnostics
-    .map((d) => `[${d.index}] ${d.code}${d.member ? `/${d.member}` : ""}`)
-    .join(", ");
+/**
+ * `[index] code/member`, comma separated -- the one rendering of a diagnostic
+ * list, exported because every caller that prints one wants this and a second
+ * copy is how two of them drift apart.
+ */
+export function formatDiagnostics(
+  diagnostics: readonly Diagnostic[],
+  limit = Number.POSITIVE_INFINITY,
+): string {
+  const shown = diagnostics.slice(0, limit);
+  const rest = diagnostics.length - shown.length;
+  return (
+    shown
+      .map((d) => `[${d.index}] ${d.code}${d.member ? `/${d.member}` : ""}`)
+      .join(", ") + (rest > 0 ? `, and ${rest} more` : "")
+  );
+}
 
 /**
  * Structural equality through JSON.
@@ -91,7 +104,7 @@ export function checkFixture(dir: string, name: string): FixtureResult {
       name,
       ok: false,
       problems: [
-        `${holes} record(s) this reader refused: ${render(diagnostics)}`,
+        `${holes} record(s) this reader refused: ${formatDiagnostics(diagnostics)}`,
       ],
     };
   }
@@ -100,7 +113,7 @@ export function checkFixture(dir: string, name: string): FixtureResult {
   const view = consumerView(valid);
   const all = [...diagnostics, ...crossRecordDiagnostics(valid, view)];
   if (all.length > 0) {
-    problems.push(`this reader is stricter than the format: ${render(all)}`);
+    problems.push(`this reader is stricter than the format: ${formatDiagnostics(all)}`);
   }
   if (normalise(view) !== normalise(expected)) {
     problems.push("the derived consumer view does not match expected.json");

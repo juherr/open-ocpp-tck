@@ -8,19 +8,13 @@
  * shape, it is the normative output, and `tools/trace-conformance.sh` checks
  * it against the corpus rather than against our opinion of it.
  *
- * THE CORRELATION RULE, quoted: a CALLRESULT or CALLERROR correlates with "the
- * most recent preceding CALL in the trace" that has the same `messageId`,
- * travels in the opposite direction, and "is not already correlated with an
- * earlier response". Unmatched responses are orphans; CALLs left over are
- * unanswered.
- *
- * NOT-ALREADY-ANSWERED IS THE PART THAT IS EASY TO DROP, and dropping it is a
- * bug that hides: with unique `messageId`s -- which every real producer
- * generates -- a search that forgets it returns the same answer, so it passes
- * every trace anyone is likely to hand it. It only diverges on a REUSED id,
- * where forgetting maps two calls onto one response and the rule pairs them
- * one to one. The corpus has an `orphan-response` fixture precisely because
- * the tail is where consumers disagree.
+ * THE CORRELATION RULE ITSELF IS `correlate.ts`, because this is not its only
+ * caller -- a consumer that has already mapped a trace onto its own frame type
+ * needs the same rule over those, and writing it twice is what put the clause
+ * below in two places once already. So this module is the VIEW: counts, the
+ * effective action, and the shape `expected.json` is in. The rule it applies
+ * is one function, and `correlate.ts`'s header is where its three clauses and
+ * their failure modes are argued.
  *
  * ORDER IS THE INPUT'S ORDER, and `index` is the input's index. For a file
  * that means the ordinal among non-blank lines -- `jsonl.ts` keeps that
@@ -58,8 +52,8 @@ export interface ConsumerView {
     schemaVersion: string;
     counts: ConsumerCounts;
     records: ConsumerRecordView[];
-    unansweredCalls: number[];
-    orphanResponses: number[];
+    unansweredCalls: readonly number[];
+    orphanResponses: readonly number[];
 }
 /**
  * Derives the normative consumer view.
@@ -68,8 +62,7 @@ export interface ConsumerView {
  * orphan is a perfectly derivable view, and whether that is alarming is the
  * caller's question. The one cross-record fact that IS a producer-conformance
  * violation lives in {@link crossRecordDiagnostics}, so that this function
- * stays exactly the reference's `buildConsumerView` and can be compared to it
- * line for line.
+ * stays the reference's `buildConsumerView` and nothing else.
  */
 export declare function consumerView(records: readonly TraceRecord[]): ConsumerView;
 /**

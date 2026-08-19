@@ -81,30 +81,26 @@ export declare function findAllCalls(frames: readonly Frame[], direction: Direct
  * by OCPP-J `uniqueId` and reply direction (a response to a sent CALL must
  * be received, and vice versa) -- never by adjacency in the log.
  *
- * THIS IS THE open-ocpp-trace CORRELATION RULE, stated from the call's side.
- * The format's `conformance/README.md` defines it from the response's: a
- * response correlates with "the most recent preceding CALL in the trace" that
- * has the same `messageId`, travels in the opposite direction, and "is not
- * already correlated with an earlier response". The three clauses are why this
- * computes the whole pairing rather than scanning forward for a match: the
- * answer to "which response is this call's" depends on which calls the OTHER
- * responses have already claimed, so it is not a local question.
+ * THIS IS THE open-ocpp-trace CORRELATION RULE, and it is not implemented
+ * here. `trace-format/correlate.ts` owns it -- three clauses whose failure
+ * modes are argued in that file's header -- and this function does the two
+ * things that ARE local: spell a `Frame` in the format's vocabulary, and turn
+ * the whole-trace pairing into the per-call question every assertion asks.
  *
- * THE THIRD CLAUSE IS THE ONE THAT MATTERS, and it is invisible almost always.
- * uniqueIds are effectively unique in practice -- both the CP
- * (OCPPWebSocket) and every CSMS here generate one per outstanding request --
- * and while they are, a forward scan for the first match returns exactly what
- * this returns. The two only diverge on a REUSED id, where a forward scan maps
- * two calls onto the same response and the rule pairs them one to one, most
- * recent first. So the cheap implementation passes every trace anyone is
- * likely to hand it, and is wrong about the one it is not.
+ * Writing the rule out again here is the obvious thing and it was the first
+ * shape of this function. It is wrong for the reason `tck/trace.ts` gives
+ * about parsers, one layer up: this suite reads the same wire two ways, and
+ * `tools/trace-conformance.sh` proves the LIBRARY reproduces the
+ * specification. A second copy of the rule means that proof says nothing about
+ * the assertions, and agreement between the two becomes a property to measure
+ * and re-measure. One copy makes it a property of the code.
  *
- * The suite reads the same wire two ways -- the JSONL trace and the simulator
- * log -- and `trace-format/consumer-view.ts` derives the format's view from
- * the first. Correlating differently here would mean the conformance run
- * proves the library agrees with the specification while the assertions
- * quietly do not, which is the divergence a single reading exists to make
- * impossible.
+ * It is not a local question, either: which response answers this call depends
+ * on which calls the OTHER responses have already claimed, so the pairing is
+ * computed whole and then indexed. That is O(n^2) per lookup where a forward
+ * scan was O(n) -- measured at 0.03 ms for this repository's largest scenario
+ * and 3 ms at 1000 frames, against sweeps that take minutes, so the shape that
+ * states the rule wins over the shape that saves the microseconds.
  *
  * A `call` that is not in `frames` has no position, so the rule has nothing to
  * anchor on and this returns undefined rather than guessing from index 0.

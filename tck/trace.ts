@@ -85,6 +85,7 @@ import {
   readTraceText,
   validateRecords,
   type Diagnostic,
+  type RawEnvelopeMember,
   type TraceDirection,
   type TraceRecord,
 } from "../trace-format";
@@ -97,7 +98,11 @@ const DIRECTION_PREFIX: Record<Direction, string> = {
 };
 
 /** The record members an assertion SELECTS frames by -- see this file's header. */
-const SELECTING_MEMBERS = ["messageType", "messageId", "action"];
+const SELECTING_MEMBERS: readonly RawEnvelopeMember[] = [
+  "messageType",
+  "messageId",
+  "action",
+];
 
 /**
  * Why a set of records produced no frames.
@@ -117,20 +122,28 @@ const SELECTING_MEMBERS = ["messageType", "messageId", "action"];
  * which leaves no word for a record that validates and is unusable for what
  * the consumer is FOR. This is that word, spelled locally.
  */
-export type MappingRefusal = "unreadable" | "payload-only";
+export type MappingRefusal = "unreadable" | "payload-only" | "no-message-id";
 
 /** Why a trace produced no frames -- see {@link readTrace}. */
 export type TraceRefusal = "absent" | "empty" | MappingRefusal;
 
-/** Frames, or the reason there are none. */
-export type FrameMapping =
+/**
+ * Frames, or a reason there are none.
+ *
+ * Parameterised because the two readings below differ only in which refusals
+ * they can produce, and a discriminated union survives being generic here --
+ * unlike the `EnvDependent` case `tck/driver.ts` records as rejected, where
+ * folding the resolvers together stopped the type narrowing.
+ */
+type FramesOr<R> =
   | { frames: Frame[]; refusal?: undefined }
-  | { frames?: undefined; refusal: MappingRefusal };
+  | { frames?: undefined; refusal: R };
+
+/** What mapping a set of records produced. */
+export type FrameMapping = FramesOr<MappingRefusal>;
 
 /** A trace read: frames, or the reason there are none. */
-export type TraceRead =
-  | { frames: Frame[]; refusal?: undefined }
-  | { frames?: undefined; refusal: TraceRefusal };
+export type TraceRead = FramesOr<TraceRefusal>;
 
 /**
  * Maps one whole trace, in file order, or refuses it.
@@ -168,12 +181,9 @@ function framesFrom(
 
   const frames: Frame[] = [];
   for (const record of validated as readonly TraceRecord[]) {
-    // Schema-valid and unusable here, which is not the same as wrong.
-    if (record.raw === undefined) return { refusal: "payload-only" };
-
-    const frame = recordToFrame(record);
-    if (!frame) return { refusal: "unreadable" };
-    frames.push(frame);
+    const mapped = recordToFrame(record);
+    if (mapped.refusal !== undefined) return { refusal: mapped.refusal };
+    frames.push(mapped.frame);
   }
   return { frames };
 }
@@ -188,10 +198,16 @@ function framesFrom(
  *    every frame after it is a guess;
  *  - a `raw` that contradicts its envelope on a member assertions select by
  *    answers the wrong question silently -- and on any other member it does
- *    not, so it is left to show up in the failure detail;
- *  - a `raw` that is not a JSON array at all cannot become a frame, and saying
- *    so here rather than letting `parseFrameMessage` return null costs
- *    nothing and reads better.
+ *    not, so it is left to show up in the failure detail.
+ *
+ * AND THAT IS ALL OF IT, deliberately. `raw-not-json` and `raw-not-array` used
+ * to be rows here too, on the reasoning that saying so early "costs nothing
+ * and reads better". It cost something: neither can become a frame anyway --
+ * `parseFrameMessage` refuses both and the mapping below turns that into the
+ * same `unreadable` -- so the rows were unfalsifiable. Deleting them left
+ * `tests/trace-frames.ts` green, which is the mutation saying the table
+ * claimed two judgements it did not make. A policy list whose rows nothing
+ * depends on is a policy list a reader cannot trust.
  *
  * A code this suite has no opinion about is NOT refused. That is the safe
  * default in the direction that matters: a new diagnostic in the library turns
@@ -200,31 +216,47 @@ function framesFrom(
 function refusesOver(diagnostic: Diagnostic): boolean {
   switch (diagnostic.code) {
     case "unsupported-schema-major":
-    case "raw-not-json":
-    case "raw-not-array":
       return true;
     case "raw-envelope-mismatch":
-      return SELECTING_MEMBERS.includes(diagnostic.member ?? "");
+      return (SELECTING_MEMBERS as readonly string[]).includes(
+        diagnostic.member ?? "",
+      );
     default:
       return false;
   }
 }
 
-function recordToFrame(record: TraceRecord): Frame | undefined {
+/**
+ * One record as a frame, or which kind of "no" it is.
+ *
+ * THE TWO CONFORMANT REFUSALS COME FIRST, and they are the same fact twice:
+ * the schema makes both `raw` and `messageId` optional, so a producer that
+ * omits either is correct and this runner still cannot judge on the result.
+ * Naming them apart from `unreadable` is the whole point -- see
+ * {@link MappingRefusal}. They were not always both named: `payload-only` was
+ * a special case tested above this function while a missing `messageId` fell
+ * through to `unreadable`, which handed a conformant producer the runner's
+ * advice about broken mounts and stale images. One special case is a bug
+ * waiting for its second instance; the second instance was already here.
+ */
+function recordToFrame(
+  record: TraceRecord,
+): { frame: Frame; refusal?: undefined } | { frame?: undefined; refusal: MappingRefusal } {
+  // No wire bytes, and the assertions read frames made from bytes.
+  if (record.raw === undefined) return { refusal: "payload-only" };
+
+  // No id to correlate on. An empty uniqueId would make `findResponseFor`
+  // answer every id-less CALL with every id-less response, which is a wrong
+  // verdict where refusing is a missing one.
+  if (record.messageId === undefined) return { refusal: "no-message-id" };
+
   const direction = directionOf(record.direction);
-
-  // `messageId` is OPTIONAL in the schema, so the library is right to pass a
-  // record without one -- and this suite cannot use it. An empty uniqueId
-  // would make `findResponseFor` answer every id-less CALL with every id-less
-  // response, which is a wrong verdict where refusing is a missing one.
-  if (record.messageId === undefined) return undefined;
-
   const frame = parseFrameMessage(
     `${DIRECTION_PREFIX[direction]} ${record.raw}`,
     record.timestamp,
     record.raw,
   );
-  return frame ?? undefined;
+  return frame ? { frame } : { refusal: "unreadable" };
 }
 
 function directionOf(value: TraceDirection): Direction {

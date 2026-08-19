@@ -41,7 +41,8 @@ Files modified relative to upstream
                                open-ocpp-trace rule -- most recent preceding
                                CALL, opposite direction, not already answered
                                -- instead of the first matching response
-                               after the call
+                               after the call, and delegates that rule to
+                               trace-format/ rather than restating it
   tck/sim.ts        PATCHED    config-driven docker argv, published image
                                pinned by digest, no repo bind-mount,
                                outgoing WS Basic auth, secret redaction
