@@ -35,6 +35,7 @@
     "types/",
     "patches/",
     "tsconfig.base.json",
+    "CHANGELOG.md",
     "NOTICE",
     "VENDOR.md",
     "LICENSE"

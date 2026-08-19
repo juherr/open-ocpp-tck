@@ -23,36 +23,29 @@
  *
  * What is recorded, and why it is recorded THAT way
  * ------------------------------------------------
- * The whole point of this artifact is to survive the very refactor it guards.
- * That refactor replaces
+ * This artifact was built to survive a refactor that has since landed -- one
+ * CSMS's form encoding becoming `csms16.execute(cpId, { action, ... })` -- and
+ * the shape it took for that reason is the shape that keeps it useful for the
+ * next one.
  *
- *     steve.op("v1.6/Reset", { chargePointSelectList: …, resetType: "HARD" })
- * with
- *     csms16.execute(cpId, { action: "Reset", type: "Hard" })
- *
- * so a trace that recorded method names, field names, or raw values would be
- * regenerated wholesale by the refactor and would guard nothing during it.
- *
- * Recorded instead is the NORMALISED operation: the OCPP action, plus its
- * argument VALUES (not keys), lowercased and sorted. Values survive the
- * rewrite where keys do not -- `resetType: "HARD"` and `type: "Hard"` both
- * normalise to `hard`, while `resetType` and `type` share nothing. Sorting by
- * value also makes the trace insensitive to argument order.
+ * Recorded is the NORMALISED operation: the OCPP action, plus its argument
+ * VALUES (not keys), lowercased and sorted. Values survive a rewrite where
+ * keys do not, so renaming a field is invisible here while retargeting a step
+ * is not. Sorting by value also makes the trace insensitive to argument order.
  *
  * Dropped from the value list, each for a stated reason:
- *  - the empty string: pre-refactor it is the in-band "absent" marker
- *    (`chargingProfilePk: ""`), post-refactor the field is simply absent. They
- *    must compare equal or every optional-field call site would show a diff.
+ *  - the empty string: an absent optional field and one carrying an in-band
+ *    "absent" marker must compare equal, or every optional-field call site
+ *    would show a diff.
  *  - anything that looks like a date or timestamp: `reservationExpirySoon()`
  *    and `retrieveDatetimeSoon()` are runtime-relative by design, so their
  *    values change every run. Rendered `<ts>`.
- *  - the charge-point selector: `cpSelect(cpId)` pre-refactor, the `cpId`
- *    parameter post-refactor. Same fact, two encodings.
+ *  - the charge-point selector, however it is spelled: it names the station
+ *    the whole trace is about.
  *
- * Observations (the CsmsRecords / SteveTx surface) are recorded under
- * canonical ids from OBSERVATION_ALIASES below, for the same reason: those
- * methods get renamed off SteVe's MariaDB schema, and a trace keyed on
- * `latestTxPk` would move when `latestTransaction` replaces it.
+ * Observations (the CsmsRecords surface) are recorded under canonical ids from
+ * OBSERVATION_ALIASES below, for the same reason: a trace keyed on a method
+ * name would move when that method is renamed.
  *
  * Known limits, stated plainly:
  *  - Argument VALUES are pinned, argument KEYS are not. An operation issued
@@ -219,7 +212,6 @@ const PLACEHOLDER: Readonly<Record<string, string>> = {
   "charging-profile-by-description": "PROFILEPK",
 };
 
-const CP_SELECT_TOKEN = `V_16_JSON;${CP_ID};-`;
 const DATEISH = /^\d{4}-\d{2}-\d{2}([T ]\d{2}:\d{2})?/;
 
 let trace: string[] = [];
@@ -236,7 +228,7 @@ function normaliseValue(raw: unknown): string | null {
   }
   if (typeof raw !== "string") return JSON.stringify(raw).toLowerCase();
   if (raw === "") return null; // in-band "absent" pre-refactor, absent after
-  if (raw === CP_ID || raw === CP_SELECT_TOKEN) return null; // the selector
+  if (raw === CP_ID) return null; // the station the trace is about
   if (DATEISH.test(raw)) return "<ts>";
   return raw.toLowerCase();
 }
@@ -262,16 +254,6 @@ function leafValues(payload: unknown): unknown[] {
 }
 
 const operationsStub = {
-  // --- legacy shape (today) -------------------------------------------------
-  cpSelect(_cpId: string): string {
-    return CP_SELECT_TOKEN;
-  },
-  async op(opPath: string, fields: Record<string, string>): Promise<string> {
-    const action = opPath.split("/").pop() ?? opPath;
-    recordOperation(action, Object.values(fields));
-    return "<receipt>";
-  },
-  // --- neutral shape (after the refactor) -----------------------------------
   async execute(_cpId: string, operation: { action: string }): Promise<string> {
     recordOperation(operation.action, leafValues(operation));
     return "<receipt>";
@@ -297,21 +279,25 @@ const operations201Stub = {
 /**
  * Compile-time refusal of a stub context that OMITS a DriveContext member.
  *
- * `SpecLike.drive` takes a `Record<string, unknown>` on purpose -- a spec must
- * be traceable through either the legacy field names or the neutral ones -- so
- * the PARAMETER cannot be typed as DriveContext. The ARGUMENT still can be
- * checked for coverage, which is a different question and the one that bites:
+ * `SpecLike.drive` cannot take a `DriveContext`, and the reason is the STUBS,
+ * not the members: `simStub` implements two of SimProcess's six, and
+ * `observationStub()` builds CsmsRecords from a table at runtime. Typing the
+ * parameter properly would oblige both to be complete, which is stub surface
+ * no spec calls -- measured, by trying it: tsc names SimProcess's `cpId`,
+ * `container`, `lines` and `stop`, and all eight CsmsRecords methods.
+ *
+ * The ARGUMENT is still checkable, and that is the question that bites:
  * `csms201` was added to DriveContext, the runner supplied it, this file did
- * not, and nothing said so. That would have surfaced as a crash inside
+ * not, and nothing said so. That surfaces as a crash inside
  * `tests/spec-invariants.sh --regenerate` -- which pulls a pinned docker image
  * -- rather than in `bun run typecheck`, the first command of the fast loop.
  *
- * Coverage, not exactness: `steve` and `db` are legacy members DriveContext
- * has never had, and they stay legal. Only a MISSING member is refused, by
- * name. Same three details as `everyOneOf` in tck/driver.ts, for the same
- * reasons: `const T` to keep inference, a bare template literal so the whole
- * object mismatches once, and a function rather than a type alias so
- * `noUnusedLocals` has something that is used.
+ * COVERAGE, NOT EXACTNESS, which is what lets the partial stubs through: a
+ * member DriveContext does not have stays legal, and only a MISSING one is
+ * refused, by name. Same three details as `everyOneOf` in tck/driver.ts, and
+ * for the same reasons: `const T` to keep inference, a bare template literal
+ * so the whole object mismatches once, and a function rather than a type alias
+ * so `noUnusedLocals` has something that is used.
  */
 function coversDriveContext<const T extends Record<string, unknown>>(
   ctx: keyof DriveContext extends keyof T
@@ -360,28 +346,6 @@ const simStub = {
   },
 };
 
-/**
- * TC_052 builds its own SteVe manager-UI client and drives it over fetch,
- * bypassing the ambient driver. Stubbing fetch keeps that visible in the trace
- * instead of vanishing into the spec's own try/catch -- which is what makes
- * the ONE deliberate diff of the refactor (that call becoming an ordinary
- * driver operation) reviewable rather than invisible.
- */
-const CSRF_BODY = '<input name="_csrf" value="stub-csrf" />';
-globalThis.fetch = (async (input: Request | string | URL, init?: RequestInit) => {
-  const url = typeof input === "string" ? input : String(input);
-  const method = init?.method ?? "GET";
-  const path = new URL(url, "http://stub.invalid").pathname;
-  record(`HTTP ${method} ${path}`);
-  return new Response(CSRF_BODY, {
-    status: method === "POST" ? 302 : 200,
-    headers: {
-      location: "/stub/redirect",
-      "set-cookie": "JSESSIONID=stub; Path=/",
-    },
-  });
-}) as typeof fetch;
-
 // Collapse every timer to the next tick. 47 scenarios of literal `sleep(2000)`
 // plus waitForCondition poll loops would otherwise cost ~95s of wall clock for
 // an artifact that must be regenerable in a pre-commit-length window. The
@@ -413,18 +377,14 @@ for (const [groupName, groupSpecs] of discoverGroups()) {
     let result: unknown;
     try {
       result = await spec.drive(
-        // Both the legacy field names and the neutral ones, so a spec traces
-        // identically before and after it is converted -- and wrapped, so that
-        // a DriveContext member this file forgets is named by tsc rather than
-        // discovered by a crash mid-regenerate. See coversDriveContext.
+        // Wrapped, so that a DriveContext member this file forgets is named by
+        // tsc rather than discovered by a crash mid-regenerate.
         coversDriveContext({
           cpId: CP_ID,
           connector: spec.connector ?? 1,
           sim: simStub,
-          steve: operationsStub,
           csms16: operationsStub,
           csms201: operations201Stub,
-          db: records,
           records,
         }),
       );
