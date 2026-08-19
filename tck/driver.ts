@@ -127,7 +127,8 @@ export interface LocalAuthorizationEntry {
 }
 
 // ---------------------------------------------------------------------------
-// The operation vocabulary -- 18 members.
+// The OCPP 1.6 operation vocabulary -- 18 members. Compulsory: every driver
+// switches on it. The opt-in 2.0.1 one is further down.
 // ---------------------------------------------------------------------------
 
 export type CsmsOperation =
@@ -229,8 +230,50 @@ export type CsmsOperation =
 
 export type CsmsOperationAction = CsmsOperation["action"];
 
+// `as const satisfies readonly CsmsOperationAction[]` -- what the first of the
+// two lists below used to say -- rejects a name that is NOT an action, and
+// accepts one that MISSES an action. That is the same one-directional hole
+// tck/standing.ts records above its own list, with the measurement: deleting a
+// member type-checked clean. There the fix is to derive the type FROM the
+// list, which is not available here, because CsmsOperationAction is derived
+// from the union's arms and the list is the second copy.
+//
+// And nothing else covers the hole. `drivers/steve/index.ts` declares
+// `new Set(CSMS_OPERATION_ACTIONS)` wholesale, so a short list silently shrinks
+// what SteVe claims; `drivers/citrineos/index.ts` filters the same list; and
+// check-driver's "not declared" warning is computed from it too -- so a missing
+// name is invisible from every direction at once, including the one that would
+// have printed it.
+//
+// Closed in the compiler rather than in a guard, because the compiler already
+// decides the other half and a shell guard would be re-deciding from outside
+// what tsc knows from inside. Three details, each load-bearing:
+//   - CURRIED because TypeScript has no partial type-argument inference.
+//     `everyOneOf<U, T>(list)` with `T` defaulted stops inferring and the
+//     emitted declaration degrades from the tuple to `readonly U[]`.
+//   - `[U] extends [T[number]]` is BRACKETED to stop the naked type parameter
+//     distributing.
+//   - the false branch is a BARE template literal rather than an array of one,
+//     so the whole list mismatches ONCE and the diagnostic names what is
+//     missing -- "Argument of type 'string[]' is not assignable to parameter
+//     of type '"this list omits GetVariables"'" -- instead of repeating itself
+//     per element.
+//
+// The flattening a reviewer reaches for first is `as const satisfies` plus a
+// `type Missing = Exclude<...>` alias. It was tried: tsc reports
+// "'Missing' is declared but never used" under this repo's noUnusedLocals, and
+// exporting the alias to silence that publishes a `never` into the API that
+// can never go red.
+function everyOneOf<U extends string>() {
+  return <const T extends readonly U[]>(
+    list: [U] extends [T[number]]
+      ? T
+      : `this list omits ${Exclude<U, T[number]>}`,
+  ): T => list as T;
+}
+
 /** Every action name, for capability declarations and run reporting. */
-export const CSMS_OPERATION_ACTIONS = [
+export const CSMS_OPERATION_ACTIONS = everyOneOf<CsmsOperationAction>()([
   "Reset",
   "UnlockConnector",
   "ClearCache",
@@ -249,7 +292,119 @@ export const CSMS_OPERATION_ACTIONS = [
   "SendLocalList",
   "ReserveNow",
   "CancelReservation",
-] as const satisfies readonly CsmsOperationAction[];
+]);
+
+// ---------------------------------------------------------------------------
+// The OCPP 2.0.1 operation vocabulary -- 3 members, OPT-IN.
+//
+// A SECOND CLOSED UNION, not a widening of the one above, and the reason is
+// the mechanism rather than taste. `assertNever` makes every arm of
+// `CsmsOperation` compulsory in every driver that switches on it -- which is
+// the property worth having, and exactly why adding 2.0.1 arms there is not
+// available: it would fire in every existing driver, third-party ones
+// included, on an upgrade they did not ask for. A 1.6-only driver would have
+// no way to decline. The mechanism that protects us would be the mechanism
+// that breaks everyone.
+//
+// So: a driver that speaks only OCPP 1.6 implements nothing here and compiles
+// untouched. Exhaustiveness is preserved WITHIN each union, because each
+// driver's switch still covers one closed set. Issue #25 argues the two
+// alternatives -- widening, and a version-parameterised `CsmsOperations<V>` --
+// and rejects both; that argument is not re-run here.
+//
+// WHY THREE AND NOT SIX. OCA-201-SELECTION.md's v0.3 slice is seven
+// certification cases, and only three of them are CSMS-INITIATED: Reset,
+// GetVariables, SetVariables. BootNotification and Heartbeat are observed on
+// the wire, not driven, so they need no operation at all. "As few as the first
+// slice needs" is that file's number, not this file's judgement.
+// ---------------------------------------------------------------------------
+
+/** OCPP 2.0.1 `ResetEnumType`. Not OCPP 1.6's Hard/Soft -- see the note on
+ *  the `Reset` arm below. */
+export type ResetType201 = "Immediate" | "OnIdle";
+
+// NOT BUILT, here because here is where they get added -- every OPTIONAL
+// member of the three requests below: `ResetRequest`'s `evseId`,
+// `ComponentType`'s `instance` and `evse`, `VariableType`'s `instance`,
+// `GetVariableDataType`'s and `SetVariableDataType`'s `attributeType`, and the
+// `EVSEType` and `AttributeEnumType` the last two of those need.
+//
+// The section header above applies "as few as the first slice needs" to the
+// operation count. This is the same rule one level down, applied to every
+// optional member rather than to the ones that looked speculative -- a rule
+// kept for five members out of six is not a rule. None is reachable from what
+// the slice is known to do: TC_B_06 and TC_B_09 are "read one variable" and
+// "write one variable", and `attributeType` is what TC_B_07 varies, a case
+// OCA-201-SELECTION.md puts OUTSIDE the slice as conditional on C-45.
+//
+// It holds here for a reason the array note below does not share. Widening
+// `variables` from one to many later would BREAK a driver's switch; adding an
+// optional member breaks nothing. So each of these can arrive with the
+// scenario that needs it, priced at zero -- and arrive MEASURED against a real
+// device model and a real Part 6 step table, which is what nobody can do
+// before #63 exists. Guessing now and being half-right ships a published
+// `.d.ts` that nobody can subtract from.
+
+/** OCPP 2.0.1 `ComponentType` -- half of a device-model address. */
+export interface Component201 {
+  name: string;
+}
+
+/** OCPP 2.0.1 `VariableType` -- the other half of a device-model address. */
+export interface Variable201 {
+  name: string;
+}
+
+/** OCPP 2.0.1 `GetVariableDataType`. */
+export interface GetVariableData201 {
+  component: Component201;
+  variable: Variable201;
+}
+
+/** OCPP 2.0.1 `SetVariableDataType`. */
+export interface SetVariableData201 {
+  component: Component201;
+  variable: Variable201;
+  /** Always a string on the wire, whatever the variable's declared data type:
+   *  2.0.1 carries values as text and the device model says how to read them.
+   *  A driver must not "helpfully" send a number. */
+  attributeValue: string;
+}
+
+export type CsmsOperation201 =
+  // TRIED AND REJECTED, here because here is where it gets re-proposed:
+  // folding the two `Reset` arms -- this one and CsmsOperation's -- into one
+  // shared arm, or one shared core union the two protocols extend. They are
+  // homonyms, not a duplication. OCPP 1.6's Reset carries `type: "Hard" |
+  // "Soft"`; 2.0.1's carries `type: "Immediate" | "OnIdle"`. One member name in
+  // common, no value in common, and the two protocols disagree about what the
+  // word means. Factoring them together means a driver's 1.6 switch accepting
+  // "OnIdle", which the 1.6 wire has no way to spell -- a value no scenario can
+  // assert on, reaching a request body. The collision is the ARGUMENT AGAINST a
+  // shared core, not a case for one, and it is the first thing anyone reading
+  // these two unions side by side will offer to clean up. `//` rather than a
+  // doc comment: an internal decision, not something a driver author is
+  // shipped.
+  | { action: "Reset"; type: ResetType201 }
+  // Arrays because the wire is an array -- `getVariableData` and
+  // `setVariableData` are 1..N in the specification, and the assertions match
+  // on the frame. A single-variable arm would read closer to TC_B_06 ("read
+  // one variable") and would be a BREAKING change to widen later; an array is
+  // not the premature abstraction #25 warns about, which is about how many
+  // operations exist, and there are still three.
+  | { action: "GetVariables"; variables: GetVariableData201[] }
+  | { action: "SetVariables"; variables: SetVariableData201[] };
+
+export type CsmsOperation201Action = CsmsOperation201["action"];
+
+/** Every 2.0.1 action name. Same job as {@link CSMS_OPERATION_ACTIONS}, and a
+ *  SECOND list rather than an extension of it -- see the note on
+ *  {@link CsmsOperation201}'s `Reset` arm for why the two must not merge. */
+export const CSMS_OPERATION_201_ACTIONS = everyOneOf<CsmsOperation201Action>()([
+  "Reset",
+  "GetVariables",
+  "SetVariables",
+]);
 
 // ---------------------------------------------------------------------------
 // Escapes
@@ -313,6 +468,33 @@ export interface CsmsOperations {
    * operation at all, and anything else for a genuine transport failure.
    */
   execute(cpId: string, op: CsmsOperation): Promise<string>;
+}
+
+/**
+ * The same contract for {@link CsmsOperation201}, and OPTIONAL: a driver whose
+ * CSMS speaks only OCPP 1.6 omits it from its {@link CsmsDriverParts} and the
+ * runner substitutes a stub whose `execute` throws
+ * {@link UnsupportedOperationError} -- the same substitution
+ * {@link CsmsReservationRecords} gets, for the same reason. A spec therefore
+ * calls `ctx.csms201` unconditionally and never branches on which driver is
+ * loaded; absence becomes a NOT APPLICABLE verdict through the normal escape.
+ */
+// TWO FOLDS GET RE-PROPOSED HERE, and this is where a reader meets them.
+//
+// A second overload of `execute` on CsmsOperations, rather than a second
+// interface: the objection is the substitution above, not the call sites. A
+// driver may implement one protocol and not the other, so the two halves have
+// to be independently OMISSIBLE -- overloads on one method are not, and the
+// runner would have nothing to replace.
+//
+// `CsmsOperations<Op = CsmsOperation>`, parameterised on the operation type,
+// which is what two one-method interfaces differing only in that type invite.
+// That is issue #25's second rejected shape, declined there rather than here;
+// the header above the 2.0.1 vocabulary says why, and the short version is
+// that it asks us to decide what the two protocols share before a second 2.0.1
+// driver exists to disagree.
+export interface CsmsOperations201 {
+  execute(cpId: string, op: CsmsOperation201): Promise<string>;
 }
 
 // ---------------------------------------------------------------------------
@@ -425,6 +607,23 @@ export interface CsmsCapabilities {
    *  {@link UnsupportedOperationError} from `execute()`; the driver's own
    *  switch is where that is enforced, this set is what gets printed. */
   readonly operations: ReadonlySet<CsmsOperationAction>;
+  /**
+   * The same, for {@link CsmsOperation201}. ABSENT means "this driver does not
+   * speak OCPP 2.0.1 at all" -- not "it speaks it and declares nothing" -- and
+   * `check-driver` says nothing about a driver that omits it.
+   *
+   * It lives on the CAPABILITIES rather than only on {@link CsmsDriverParts}
+   * for the reason {@link CsmsDriverModule.capabilities} gives: parts are
+   * reachable only through `create(env)`, which is entitled to demand
+   * credentials, and "does this driver speak 2.0.1" has to be answerable
+   * offline, without a container.
+   */
+  // A SECOND SET rather than widening the one above -- the note on
+  // CsmsOperation201's `Reset` arm has the argument. One consequence is this
+  // declaration's alone, though: merged, every 1.6-only driver would draw an
+  // "operation not declared" warning for three operations it never claimed,
+  // and that zero cost is the whole point of the opt-in shape.
+  readonly operations201?: ReadonlySet<CsmsOperation201Action>;
   readonly reservations: boolean;
   readonly chargingProfiles: boolean;
 }
@@ -523,6 +722,10 @@ export type EnvDependent<T> = T | ((env: CsmsEnv) => T);
  */
 export interface CsmsDriverParts {
   operations: CsmsOperations;
+  /** OPTIONAL CAPABILITY. Omitted by a driver whose CSMS speaks only OCPP
+   *  1.6; the runner substitutes a throwing stub. See
+   *  {@link CsmsOperations201}. */
+  operations201?: CsmsOperations201;
   records: Omit<CsmsRecords, "reservations" | "chargingProfiles"> & {
     reservations?: CsmsReservationRecords;
     chargingProfiles?: CsmsChargingProfileRecords;
@@ -559,6 +762,10 @@ export interface CsmsDriverModule {
    * May be a function of the environment -- see {@link EnvDependent}. Resolve
    * it with {@link driverScope} rather than by hand.
    */
+  // A protocol-level opt-out beside this -- `protocols: ["1.6"]`, so a table
+  // need not carry a row per cert201- scenario -- was declined. The argument
+  // is in scope.ts, above `scopeCoverage`, which is the other place it gets
+  // re-proposed.
   readonly scope?: EnvDependent<ScopeTable>;
 
   /** Same reasoning as {@link CsmsDriverModule.scope}: read without

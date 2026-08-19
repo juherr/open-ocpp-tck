@@ -1,6 +1,6 @@
 --- /tmp/ocpp-upstream/scripts/steve-verify/runner/main.ts	2026-07-31 20:05:48
 +++ tck/main.ts	2026-07-31 20:12:10
-@@ -1,39 +1,104 @@
+@@ -1,39 +1,107 @@
  #!/usr/bin/env bun
 +// Derived from shiv3/ocpp-cp-simulator scripts/steve-verify/runner/main.ts @ 604054adb0d7d7129a26a5f1ad2d5fdc290d1ca1 (Apache-2.0). Modified: the STEVE_DRIVER=api|ui selection is replaced by a CSMS driver loaded through ./driver-registry; a per-driver scope table (./scope) is consulted BEFORE any container starts and yields the NOT APPLICABLE verdict; UnsupportedOperationError (./driver) thrown out of drive() degrades to NOT APPLICABLE with a stderr WARNING; the PARTIAL verdict and the `skipped` summary column were added; the exit code is non-zero only for FAIL/ERROR; parallel lanes derive from the resolved station list instead of the fixed CERTCP1..3 trio; the SteVe capability probe is dropped.
 +
@@ -69,6 +69,7 @@
  import { AssertRecorder } from "./assert";
 -import { printCapabilityProbe } from "./capability-probe";
 +import {
++  CSMS_OPERATION_201_ACTIONS,
 +  CSMS_OPERATION_ACTIONS,
 +  driverCapabilities,
 +  driverExpectedFailures,
@@ -101,6 +102,7 @@
 +} from "./standing";
 +import {
 +  unsupportedChargingProfiles,
++  unsupportedOperations201,
 +  unsupportedReservations,
 +} from "./capabilities";
  import { parseLog } from "./ocpp";
@@ -126,13 +128,14 @@
 +  CsmsDriverModule,
 +  CsmsDriverParts,
 +  CsmsEnv,
++  CsmsOperations201,
 +  CsmsRecords,
 +  SimTransportDefaults,
 +} from "./driver";
  import {
    AUTHLIST_RESERVATION_SPECS,
    AUTHORIZE_SPECS,
-@@ -43,13 +108,109 @@
+@@ -43,13 +111,109 @@
  } from "./specs/index";
  import type { ScenarioSpec } from "./spec-types";
  import { sleep } from "./util";
@@ -247,7 +250,7 @@
  // ---------------------------------------------------------------------------
  // Runner core
  // ---------------------------------------------------------------------------
-@@ -58,97 +219,261 @@
+@@ -58,97 +222,281 @@
    cpId: string;
    connector?: number;
    timeoutSecs?: number;
@@ -437,6 +440,23 @@
 +}
 +
 +/**
++ * The same substitution for the other omissible half of a driver, the OCPP
++ * 2.0.1 operation vocabulary.
++ *
++ * A SIBLING of withCapabilityStubs rather than a third field on it: the other
++ * caller, `driver selftest`, wants the records and has nothing to ask a 2.0.1
++ * vocabulary. What both functions exist for is that the default reason a
++ * driver gets for omitting something lives HERE, next to the other two, and
++ * not at whichever call site happened to need it first.
++ */
++function withOperationStubs201(parts: CsmsDriverParts): CsmsOperations201 {
++  return (
++    parts.operations201 ??
++    unsupportedOperations201("this driver declares no OCPP 2.0.1 operations")
++  );
++}
++
++/**
 + * Driver transport defaults under operator overrides.
 + *
 + * Precedence is explicit `SIM_*` environment > driver default > harness
@@ -505,6 +525,9 @@
 +    tracePath: prepareTracePath(`${artifactStem}.jsonl`),
 +  };
 +  const csms = parts.operations;
++  // A cert201- scenario against a 1.6-only driver therefore throws out of
++  // drive() and is caught below as NOT APPLICABLE.
++  const csms201 = withOperationStubs201(parts);
 +  const records = withCapabilityStubs(parts);
  
 -  await db.closeStaleTx(options.cpId);
@@ -570,7 +593,7 @@
          30_000,
        );
      } catch (err) {
-@@ -176,13 +501,25 @@
+@@ -176,13 +524,26 @@
  
      if (spec.drive) {
        process.stderr.write(`[runner] running drive() for ${spec.templateId}\n`);
@@ -591,6 +614,7 @@
 +          connector,
 +          sim,
 +          csms,
++          csms201,
 +          records,
 +        });
 +      } catch (err) {
@@ -603,7 +627,7 @@
      } else {
        process.stderr.write(
          `[runner] no drive() defined (CP-only scenario) -- nothing to do while it runs\n`,
-@@ -190,72 +527,186 @@
+@@ -190,72 +551,186 @@
        driveState = undefined as D;
      }
  
@@ -811,7 +835,7 @@
  // ---------------------------------------------------------------------------
  
  // eslint-disable-next-line @typescript-eslint/no-explicit-any
-@@ -265,20 +716,21 @@
+@@ -265,20 +740,21 @@
    "remotetrigger-smartcharging": REMOTETRIGGER_SMARTCHARGING_SPECS,
    firmware: FIRMWARE_SPECS,
    authorize: AUTHORIZE_SPECS,
@@ -839,7 +863,7 @@
  // eslint-disable-next-line @typescript-eslint/no-explicit-any
  const SPECS_BY_TEMPLATE_ID = new Map<string, ScenarioSpec<any>>(
    Object.values(GROUPS)
-@@ -286,66 +738,228 @@
+@@ -286,66 +762,228 @@
      .map((spec) => [spec.templateId, spec]),
  );
  
@@ -1107,7 +1131,7 @@
      };
    } catch (err) {
      const message =
-@@ -353,64 +967,47 @@
+@@ -353,64 +991,47 @@
      process.stderr.write(
        `[runner] ERROR: ${spec.templateId} on ${cpId} threw before completing: ${message}\n`,
      );
@@ -1196,7 +1220,7 @@
    );
  
    for (const outcome of toRetry) {
-@@ -427,18 +1024,19 @@
+@@ -427,18 +1048,19 @@
      process.stderr.write(
        `[runner] isolated retry: ${outcome.templateId} on ${outcome.cpId} (parallel verdict was ${outcome.verdict})\n`,
      );
@@ -1219,15 +1243,23 @@
            : " -- CONFIRMED (fails isolated too, not a parallel-lane artifact)\n"),
      );
    }
-@@ -451,59 +1049,153 @@
-   return new Date().toISOString().replace(/\.\d{3}Z$/, "Z");
- }
- 
+@@ -447,63 +1069,157 @@
+ function timestampUtc(): string {
+   // date -u +%FT%TZ equivalent: ISO-8601 down to the second, "Z" suffix
+   // (toISOString() always yields millisecond precision + "Z"; drop the
+-  // milliseconds to match).
+-  return new Date().toISOString().replace(/\.\d{3}Z$/, "Z");
+-}
+-
 -/** Renders + writes results/summary.md -- SAME columns/format as
 - *  run-all.sh's summary table, so existing docs/screenshots stay truthful.
 - *  When any outcome carries an `isolatedRetry` (--retry-failed-isolated ran),
 - *  an extra "isolated retry" column and a flake-count note are added; a
 - *  sweep with no retries produces the original table unchanged. */
++  // milliseconds to match).
++  return new Date().toISOString().replace(/\.\d{3}Z$/, "Z");
++}
++
 +/**
 + * What the HOST was doing, recorded beside the verdict.
 + *
@@ -1397,7 +1429,7 @@
        "",
        header,
        separator,
-@@ -518,54 +1210,54 @@
+@@ -518,54 +1234,54 @@
  }
  
  /** Sequential or parallel group sweep. Writes results/summary.md and exits
@@ -1478,7 +1510,7 @@
      );
    } else {
      for (let i = 0; i < specs.length; i++) {
-@@ -574,11 +1266,11 @@
+@@ -574,11 +1290,11 @@
    }
  
    if (retryFailedIsolated) {
@@ -1492,7 +1524,7 @@
            "(a sequential sweep is already isolated).\n",
        );
      }
-@@ -588,45 +1280,87 @@
+@@ -588,45 +1304,87 @@
    for (const o of outcomes) {
      const retrySuffix = o.isolatedRetry
        ? ` [isolated retry: ${o.isolatedRetry.verdict}${
@@ -1544,11 +1576,6 @@
      );
 -    process.exit(1);
    }
--  process.stderr.write(
--    `[runner] all ${outcomes.length} scenario(s) in group '${groupName}' PASSed` +
--      (flakeCount > 0
--        ? ` (${flakeCount} flake(s) resolved by isolated retry).\n`
--        : ".\n"),
 +  // Its own standing, and its own line, because it reads as a regression of the
 +  // DECLARATION when it is nothing of the sort: the entry is almost certainly
 +  // still good and something new stopped the scenario ever reaching the CSMS.
@@ -1589,7 +1616,11 @@
 +
 +  const partialCount = outcomes.filter((o) => o.verdict === "PARTIAL").length;
 +  const naCount = outcomes.filter((o) => o.verdict === "NOT APPLICABLE").length;
-+  process.stderr.write(
+   process.stderr.write(
+-    `[runner] all ${outcomes.length} scenario(s) in group '${groupName}' PASSed` +
+-      (flakeCount > 0
+-        ? ` (${flakeCount} flake(s) resolved by isolated retry).\n`
+-        : ".\n"),
 +    `[runner] no unexpected failures in group '${groupName}': ${outcomes.length} scenario(s), ` +
 +      `${partialCount} PARTIAL, ${naCount} NOT APPLICABLE` +
 +      (expectedFails.length > 0
@@ -1603,7 +1634,7 @@
  }
  
  // ---------------------------------------------------------------------------
-@@ -642,6 +1376,8 @@
+@@ -642,6 +1400,8 @@
    cpId: string;
    connector?: number;
    timeoutSecs?: number;
@@ -1612,11 +1643,17 @@
  }
  
  function requireValue(argv: string[], index: number, flag: string): string {
-@@ -663,37 +1399,82 @@
+@@ -663,37 +1423,82 @@
    return n;
  }
  
 -function printUsage(): void {
+-  process.stderr.write(
+-    "Usage (paths shown from the repo root; from scripts/steve-verify " +
+-      "use the shorter `bun runner/main.ts …`):\n" +
+-      "       bun scripts/steve-verify/runner/main.ts run <template-id> " +
+-      "[--cp CERTCP1] [--timeout N] [--connector N]\n" +
+-      "       bun scripts/steve-verify/runner/main.ts run --group " +
 +const VERBS = [
 +  "run",
 +  "run-all",
@@ -1627,12 +1664,7 @@
 +] as const;
 +
 +async function printUsage(): Promise<void> {
-   process.stderr.write(
--    "Usage (paths shown from the repo root; from scripts/steve-verify " +
--      "use the shorter `bun runner/main.ts …`):\n" +
--      "       bun scripts/steve-verify/runner/main.ts run <template-id> " +
--      "[--cp CERTCP1] [--timeout N] [--connector N]\n" +
--      "       bun scripts/steve-verify/runner/main.ts run --group " +
++  process.stderr.write(
 +    "Usage: ocpp-tck run <template-id> [--cp CP1] [--timeout N] " +
 +      "[--connector N] [--results-dir DIR]\n" +
 +      "       ocpp-tck run --group " +
@@ -1712,7 +1744,7 @@
  
    if (argv[0] === "run-all") {
      group = "all";
-@@ -708,18 +1489,27 @@
+@@ -708,18 +1513,27 @@
          case "--retry-failed-isolated":
            retryFailedIsolated = true;
            break;
@@ -1743,7 +1775,7 @@
      process.exit(1);
    }
  
-@@ -749,9 +1539,11 @@
+@@ -749,9 +1563,11 @@
        case "--retry-failed-isolated":
          retryFailedIsolated = true;
          break;
@@ -1756,7 +1788,7 @@
          process.exit(1);
      }
    }
-@@ -764,35 +1556,495 @@
+@@ -764,35 +1580,548 @@
      cpId,
      connector,
      timeoutSecs,
@@ -1785,7 +1817,7 @@
 +  }
 +  return [...seen].map(([templateId, group]) => ({ templateId, group }));
 +}
-+
+ 
 +function listScenarios(argv: string[]): number {
 +  let group: string | undefined;
 +  let asJson = false;
@@ -1969,25 +2001,57 @@
 +    }
 +  }
 +
-+  if (capabilities) {
-+    const known = new Set<string>(CSMS_OPERATION_ACTIONS);
-+    const unknown = [...capabilities.operations].filter(
-+      (op) => !known.has(op),
-+    );
++  // One rule, applied to each vocabulary a driver declares: a name this core
++  // does not define is a problem, a name it defines that the driver does not
++  // declare is a warning. The two vocabularies differ only in WHEN it applies
++  // -- see the call sites -- so the rule is written once. Splitting it in two
++  // is what AGENTS.md's "the gate is one list" records going wrong three
++  // times: the copies drift, always in the direction of the one nobody edited.
++  const checkVocabulary = (
++    field: "operations" | "operations201",
++    declared: ReadonlySet<string>,
++    known: readonly string[],
++    throwSite: string,
++  ): void => {
++    // "" for 1.6: it is the unmarked case, and every message here predates the
++    // second vocabulary.
++    const kind = field === "operations201" ? "OCPP 2.0.1 " : "";
++    const unknown = [...declared].filter((op) => !known.includes(op));
 +    if (unknown.length > 0) {
 +      problems.push(
-+        `capabilities.operations names ${unknown.length} operation(s) this ` +
-+          `core does not define: ${unknown.join(", ")}.`,
++        `capabilities.${field} names ${unknown.length} ${kind}operation(s) ` +
++          `this core does not define: ${unknown.join(", ")}.`,
 +      );
 +    }
-+    const undeclared = CSMS_OPERATION_ACTIONS.filter(
-+      (op) => !capabilities.operations.has(op),
-+    );
++    const undeclared = known.filter((op) => !declared.has(op));
 +    if (undeclared.length > 0) {
 +      warnings.push(
-+        `${undeclared.length} operation(s) are not declared: ` +
++        `${undeclared.length} ${kind}operation(s) are not declared: ` +
 +          `${undeclared.join(", ")}. Each MUST throw ` +
-+          "UnsupportedOperationError from execute().",
++          `UnsupportedOperationError from ${throwSite}.`,
++      );
++    }
++  };
++
++  if (capabilities) {
++    checkVocabulary(
++      "operations",
++      capabilities.operations,
++      CSMS_OPERATION_ACTIONS,
++      "execute()",
++    );
++    // ONLY when the declaration is present, and that conditional IS the
++    // asymmetry between the two vocabularies. Absent means "this driver does
++    // not speak 2.0.1", which is the state every driver here is in and is not
++    // a finding -- run unconditionally, the rule above would cost a 1.6-only
++    // driver three warnings for operations it never claimed, which is exactly
++    // the zero cost the opt-in shape exists to provide.
++    if (capabilities.operations201) {
++      checkVocabulary(
++        "operations201",
++        capabilities.operations201,
++        CSMS_OPERATION_201_ACTIONS,
++        "operations201.execute()",
 +      );
 +    }
 +  }
@@ -1996,6 +2060,18 @@
 +    driver: module.id ?? "",
 +    displayName: module.displayName ?? "",
 +    registeredScenarios: registered.length,
++    // Both vocabularies, listed rather than counted, for the reason the
++    // expectedFailures field below gives: --json is what a conformance report
++    // reads, and "which operations does this driver drive" is a question it
++    // must answer without going back to the driver's source. Neither is a
++    // constant -- a driver may declare fewer than the 18 -- so leaving 1.6 out
++    // would have left a machine parsing English for it. `null` means the
++    // declaration is ABSENT, which for 2.0.1 is the answer to "does this
++    // driver speak it at all". Sorted, so two runs diff cleanly.
++    operations: capabilities ? [...capabilities.operations].sort() : null,
++    operations201: capabilities?.operations201
++      ? [...capabilities.operations201].sort()
++      : null,
 +    scope: scope
 +      ? {
 +          DRIVABLE: templateIdsWithStatus(scope, "DRIVABLE").length,
@@ -2042,6 +2118,15 @@
 +        : "") +
 +      ".\n",
 +  );
++  // Silence when absent: a 1.6-only driver is the ordinary case, not a gap.
++  // `?.length` rather than truthiness -- an empty declaration is a driver that
++  // claims 2.0.1 and drives none of it, which the warning above reports and
++  // this line would otherwise render as "speaks OCPP 2.0.1:" and nothing.
++  if (summary.operations201?.length) {
++    process.stderr.write(
++      `  speaks OCPP 2.0.1: ${summary.operations201.join(", ")}\n`,
++    );
++  }
 +  // Listed rather than counted: this is the one declaration whose whole job is
 +  // to shrink, and a number does not tell a reviewer which rows to go and check.
 +  if (summary.expectedFailures && summary.expectedFailures.length > 0) {
@@ -2144,7 +2229,7 @@
 +      run: () => parts.prepareStation!(cpId),
 +    });
 +  }
- 
++
 +  process.stdout.write(
 +    `selftest: ${module.displayName} against ${cpId}\n`,
 +  );
@@ -2268,7 +2353,7 @@
    }
  
    const spec = SPECS_BY_TEMPLATE_ID.get(args.templateId);
-@@ -800,18 +2052,109 @@
+@@ -800,18 +2129,109 @@
      process.stderr.write(
        `Unknown template id: ${args.templateId} (known: ${[...SPECS_BY_TEMPLATE_ID.keys()].join(", ")})\n`,
      );

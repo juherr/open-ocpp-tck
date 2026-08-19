@@ -47,6 +47,7 @@ import { cpus, loadavg } from "node:os";
 import { resolve } from "node:path";
 import { AssertRecorder } from "./assert";
 import {
+  CSMS_OPERATION_201_ACTIONS,
   CSMS_OPERATION_ACTIONS,
   driverCapabilities,
   driverExpectedFailures,
@@ -79,6 +80,7 @@ import {
 } from "./standing";
 import {
   unsupportedChargingProfiles,
+  unsupportedOperations201,
   unsupportedReservations,
 } from "./capabilities";
 import { parseLog } from "./ocpp";
@@ -96,6 +98,7 @@ import type {
   CsmsDriverModule,
   CsmsDriverParts,
   CsmsEnv,
+  CsmsOperations201,
   CsmsRecords,
   SimTransportDefaults,
 } from "./driver";
@@ -370,6 +373,23 @@ function withCapabilityStubs(parts: CsmsDriverParts): CsmsRecords {
 }
 
 /**
+ * The same substitution for the other omissible half of a driver, the OCPP
+ * 2.0.1 operation vocabulary.
+ *
+ * A SIBLING of withCapabilityStubs rather than a third field on it: the other
+ * caller, `driver selftest`, wants the records and has nothing to ask a 2.0.1
+ * vocabulary. What both functions exist for is that the default reason a
+ * driver gets for omitting something lives HERE, next to the other two, and
+ * not at whichever call site happened to need it first.
+ */
+function withOperationStubs201(parts: CsmsDriverParts): CsmsOperations201 {
+  return (
+    parts.operations201 ??
+    unsupportedOperations201("this driver declares no OCPP 2.0.1 operations")
+  );
+}
+
+/**
  * Driver transport defaults under operator overrides.
  *
  * Precedence is explicit `SIM_*` environment > driver default > harness
@@ -428,6 +448,9 @@ async function runScenario<D>(
     tracePath: prepareTracePath(`${artifactStem}.jsonl`),
   };
   const csms = parts.operations;
+  // A cert201- scenario against a 1.6-only driver therefore throws out of
+  // drive() and is caught below as NOT APPLICABLE.
+  const csms201 = withOperationStubs201(parts);
   const records = withCapabilityStubs(parts);
 
   // A write, and the driver's own business: closing a transaction an
@@ -511,6 +534,7 @@ async function runScenario<D>(
           connector,
           sim,
           csms,
+          csms201,
           records,
         });
       } catch (err) {
@@ -1759,25 +1783,57 @@ async function checkDriver(argv: string[]): Promise<number> {
     }
   }
 
-  if (capabilities) {
-    const known = new Set<string>(CSMS_OPERATION_ACTIONS);
-    const unknown = [...capabilities.operations].filter(
-      (op) => !known.has(op),
-    );
+  // One rule, applied to each vocabulary a driver declares: a name this core
+  // does not define is a problem, a name it defines that the driver does not
+  // declare is a warning. The two vocabularies differ only in WHEN it applies
+  // -- see the call sites -- so the rule is written once. Splitting it in two
+  // is what AGENTS.md's "the gate is one list" records going wrong three
+  // times: the copies drift, always in the direction of the one nobody edited.
+  const checkVocabulary = (
+    field: "operations" | "operations201",
+    declared: ReadonlySet<string>,
+    known: readonly string[],
+    throwSite: string,
+  ): void => {
+    // "" for 1.6: it is the unmarked case, and every message here predates the
+    // second vocabulary.
+    const kind = field === "operations201" ? "OCPP 2.0.1 " : "";
+    const unknown = [...declared].filter((op) => !known.includes(op));
     if (unknown.length > 0) {
       problems.push(
-        `capabilities.operations names ${unknown.length} operation(s) this ` +
-          `core does not define: ${unknown.join(", ")}.`,
+        `capabilities.${field} names ${unknown.length} ${kind}operation(s) ` +
+          `this core does not define: ${unknown.join(", ")}.`,
       );
     }
-    const undeclared = CSMS_OPERATION_ACTIONS.filter(
-      (op) => !capabilities.operations.has(op),
-    );
+    const undeclared = known.filter((op) => !declared.has(op));
     if (undeclared.length > 0) {
       warnings.push(
-        `${undeclared.length} operation(s) are not declared: ` +
+        `${undeclared.length} ${kind}operation(s) are not declared: ` +
           `${undeclared.join(", ")}. Each MUST throw ` +
-          "UnsupportedOperationError from execute().",
+          `UnsupportedOperationError from ${throwSite}.`,
+      );
+    }
+  };
+
+  if (capabilities) {
+    checkVocabulary(
+      "operations",
+      capabilities.operations,
+      CSMS_OPERATION_ACTIONS,
+      "execute()",
+    );
+    // ONLY when the declaration is present, and that conditional IS the
+    // asymmetry between the two vocabularies. Absent means "this driver does
+    // not speak 2.0.1", which is the state every driver here is in and is not
+    // a finding -- run unconditionally, the rule above would cost a 1.6-only
+    // driver three warnings for operations it never claimed, which is exactly
+    // the zero cost the opt-in shape exists to provide.
+    if (capabilities.operations201) {
+      checkVocabulary(
+        "operations201",
+        capabilities.operations201,
+        CSMS_OPERATION_201_ACTIONS,
+        "operations201.execute()",
       );
     }
   }
@@ -1786,6 +1842,18 @@ async function checkDriver(argv: string[]): Promise<number> {
     driver: module.id ?? "",
     displayName: module.displayName ?? "",
     registeredScenarios: registered.length,
+    // Both vocabularies, listed rather than counted, for the reason the
+    // expectedFailures field below gives: --json is what a conformance report
+    // reads, and "which operations does this driver drive" is a question it
+    // must answer without going back to the driver's source. Neither is a
+    // constant -- a driver may declare fewer than the 18 -- so leaving 1.6 out
+    // would have left a machine parsing English for it. `null` means the
+    // declaration is ABSENT, which for 2.0.1 is the answer to "does this
+    // driver speak it at all". Sorted, so two runs diff cleanly.
+    operations: capabilities ? [...capabilities.operations].sort() : null,
+    operations201: capabilities?.operations201
+      ? [...capabilities.operations201].sort()
+      : null,
     scope: scope
       ? {
           DRIVABLE: templateIdsWithStatus(scope, "DRIVABLE").length,
@@ -1832,6 +1900,15 @@ async function checkDriver(argv: string[]): Promise<number> {
         : "") +
       ".\n",
   );
+  // Silence when absent: a 1.6-only driver is the ordinary case, not a gap.
+  // `?.length` rather than truthiness -- an empty declaration is a driver that
+  // claims 2.0.1 and drives none of it, which the warning above reports and
+  // this line would otherwise render as "speaks OCPP 2.0.1:" and nothing.
+  if (summary.operations201?.length) {
+    process.stderr.write(
+      `  speaks OCPP 2.0.1: ${summary.operations201.join(", ")}\n`,
+    );
+  }
   // Listed rather than counted: this is the one declaration whose whole job is
   // to shrink, and a number does not tell a reviewer which rows to go and check.
   if (summary.expectedFailures && summary.expectedFailures.length > 0) {

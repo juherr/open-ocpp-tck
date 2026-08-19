@@ -30,6 +30,13 @@
  *    column. That protocol makes features optional rather than cases and
  *    publishes an identifier per feature; OCPP 1.6 publishes none, so its rows
  *    are prose and stay prose. OCA-201-SELECTION.md has the provenance.
+ *  - A CSMS that does not speak OCPP 2.0.1 AT ALL still needs a row per
+ *    `cert201-` scenario, and those rows are PROSE -- "no OCPP 2.0.1 message
+ *    endpoint" -- not a feature identifier. An identifier names the feature a
+ *    CONDITIONAL case hangs on; a CSMS with no 2.0.1 surface is declining
+ *    every case whatever its features, so there is nothing conditional to
+ *    cite. Why there is no shorter way to say it: see the note above
+ *    `scopeCoverage`.
  */
 
 export type ScopeStatus = "DRIVABLE" | "CONDITIONAL" | "NOT_APPLICABLE";
@@ -87,6 +94,29 @@ export function templateIdsWithStatus(
  * `stale` -- a row for a scenario nobody registers: usually a rename, and it
  * silently stops covering anything.
  */
+// TRIED AND NOT BUILT, here because here is where it gets re-proposed: the day
+// the first cert201- scenario registers, EVERY table in this repository and
+// every third-party one reports it `missing`, and the reader of that red is
+// the person who proposes letting a driver decline a whole protocol in one
+// line -- `protocols: ["1.6"]` on the module, or a status this function skips.
+// It is declined, and the reason is not verbosity.
+//
+// Such a declaration obliges the CORE to turn a templateId into a protocol,
+// which means a version literal -- "cert201-", "2.0.1" -- inside tck/. The
+// certification namespace is deliberately first-class here WITHOUT one: it
+// scopes container names and guard reach, and nothing in the runner reads it
+// as a version. OCA-201-SELECTION.md records that as a decision, not an
+// accident, and a protocol-level opt-out is exactly what would undo it.
+//
+// So the answer is one NOT_APPLICABLE row per scenario, which is verbose and
+// says something true per row. It is not the "branch on a scenario id" that
+// CONTRIBUTING.md forbids -- that rule is about execute() and the record
+// queries at runtime, and it names this table as where the fact belongs; every
+// row here already names a scenario. The cost is bounded: the v0.3 slice is
+// seven cases, so a table grows by at most seven rows, and check-driver going
+// red until they are written is the drift detection this pair of lists is for.
+// What those rows say is an author's business, and it is the last bullet of
+// this file's header.
 export function scopeCoverage(
   table: ScopeTable,
   registeredTemplateIds: readonly string[],

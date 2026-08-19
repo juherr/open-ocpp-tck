@@ -6,7 +6,7 @@
 import type { AssertRecorder } from "./assert";
 import type { Frame } from "./ocpp";
 import type { SimProcess } from "./sim";
-import type { CsmsOperations, CsmsRecords } from "./driver";
+import type { CsmsOperations, CsmsOperations201, CsmsRecords } from "./driver";
 export interface DriveContext {
     cpId: string;
     connector: number;
@@ -15,6 +15,13 @@ export interface DriveContext {
      *  asks for OCPP operations and never learns which CSMS carried them
      *  out -- see driver.ts's CsmsOperation for the vocabulary. */
     csms: CsmsOperations;
+    /** The OCPP 2.0.1 half of the same CSMS, for a cert201- scenario. NON-
+     *  OPTIONAL as a spec sees it, exactly like records.reservations: a driver
+     *  that speaks only 1.6 omits it and the runner substitutes a stub that
+     *  throws, so a spec never writes `?.` and never branches on which driver is
+     *  loaded -- see capabilities.ts. Absence therefore reads as NOT APPLICABLE
+     *  rather than as a green scenario that drove nothing. */
+    csms201: CsmsOperations201;
     /** What the CSMS believes happened: transactions, reservations, charging
      *  profiles. Read-only, and a driver that cannot answer says so rather
      *  than inventing a value -- see driver.ts's CsmsRecords. */

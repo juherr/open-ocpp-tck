@@ -45,7 +45,7 @@ strongest available demonstration that the core names no CSMS.
 
 | path | origin | upstream path @ `604054a…` | upstream sha256 | local sha256 | patch |
 |---|---|---|---|---|---|
-| `tck/spec-types.ts` | `upstream-patched` | `scripts/steve-verify/runner/spec-types.ts` | `db4b29ab5ee0c623c950a52a999ef4e4c0a916dab0b6cfebe8fa8eabc5da0d26` | `40159b798f2919b463c6dde79efd6b550f035d57f64899bcf37f9e9e2c767202` | `patches/tck/spec-types.ts.patch` |
+| `tck/spec-types.ts` | `upstream-patched` | `scripts/steve-verify/runner/spec-types.ts` | `db4b29ab5ee0c623c950a52a999ef4e4c0a916dab0b6cfebe8fa8eabc5da0d26` | `f1a3a0df8793fbb1c866102a0062d389a941fa60c9a9f8034b74162be2830f45` | `patches/tck/spec-types.ts.patch` |
 | `tck/util.ts` | `upstream-verbatim` | `scripts/steve-verify/runner/util.ts` | `ba62ed29c79e04533e0725739c9c0d514caadb7bff8146e46688c867432eee9e` | `ba62ed29c79e04533e0725739c9c0d514caadb7bff8146e46688c867432eee9e` | `—` |
 | `tck/ocpp.ts` | `upstream-verbatim` | `src/cp/application/verification/ocpp.ts` | `a3f99c1b77b30d0ab0b22556b65aca05332d68f4b4b8d566a500d2036065368f` | `a3f99c1b77b30d0ab0b22556b65aca05332d68f4b4b8d566a500d2036065368f` | `—` |
 | `tsconfig.json` | `upstream-verbatim` | `scripts/steve-verify/runner/tsconfig.json` | `b632b69c836000d80209c183b57d43ac917e3a1d50f042af65112bdf234d1931` | `b632b69c836000d80209c183b57d43ac917e3a1d50f042af65112bdf234d1931` | `—` |
@@ -57,7 +57,7 @@ strongest available demonstration that the core names no CSMS.
 | `tck/specs/index.ts` | `upstream-patched` | `scripts/steve-verify/runner/specs/index.ts` | `be8595765f4d66965bfd58498622c26a696962fabae8a2700f080ae5cd55d832` | `9c2e78576c114fd7b42208b6a5aec0801b705e36517631fda6f077a5badceced` | `patches/tck/specs/index.ts.patch` |
 | `tck/assert.ts` | `upstream-patched` | `src/cp/application/verification/assert.ts` | `2431f5f6c0df997d4d821d9af55689c1f0f2df199de1e9e4ed6f3fbaad4fc89e` | `0bdb7abd6baa0c9e5b9203b392b330f73935890151f3b1e4a0812e238cd4e61a` | `patches/tck/assert.ts.patch` |
 | `tck/sim.ts` | `upstream-patched` | `scripts/steve-verify/runner/sim.ts` | `2bf2f78afe3434e7139cd62c3ff6d70f02defd39dd700611e7c5f7614260cd35` | `8fc375649f238b36229f9a1b2d1843b0271ef8a2b5155cf5e951617de60bb7a6` | `patches/tck/sim.ts.patch` |
-| `tck/main.ts` | `upstream-patched` | `scripts/steve-verify/runner/main.ts` | `a757b0d35d29c7627336c0e858ad7d2f305a33c0acad819b5296f3847382f4e2` | `81b70854ff1ad25d61df68d0a0e5b99441a455c9290324a53e79242f1e1f545a` | `patches/tck/main.ts.patch` |
+| `tck/main.ts` | `upstream-patched` | `scripts/steve-verify/runner/main.ts` | `a757b0d35d29c7627336c0e858ad7d2f305a33c0acad819b5296f3847382f4e2` | `82b0c8ba84e0927693668129ee35806f96cef65dd6c91896a0a437b1c8bd833c` | `patches/tck/main.ts.patch` |
 | `tck/driver.ts` | `local-upstreamable` | `—` | `—` | `—` | `—` |
 | `tck/index.ts` | `local-upstreamable` | `—` | `—` | `—` | `—` |
 | `tck/driver-registry.ts` | `local-upstreamable` | `—` | `—` | `—` | `—` |
