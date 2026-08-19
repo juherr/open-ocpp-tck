@@ -54,8 +54,8 @@
  *     which is exactly what the second one did until the class was named
  *     rather than the one instance.
  *  8. Refusal is WHOLE-FILE, and readTrace NAMES ITS REASON: `absent`,
- *     `empty`, `unreadable`, `payload-only`. One unmappable record among good
- *     ones refuses all of them, so the caller falls back to a complete log
+ *     `empty`, `unreadable`, `payload-only`, `no-message-id`. One unmappable
+ *     record among good ones refuses all of them, so the caller falls back to a complete log
  *     rather than judging a wire with a hole in it -- and it can say which
  *     happened without going back to the filesystem, where the answer may have
  *     changed. A blank line is skipped rather than refused: a trailing newline
@@ -272,6 +272,34 @@ if (!frames) {
       fail(
         "findResponseFor agrees with the format's consumer view",
         `view says ${JSON.stringify(fromView)}, frames say ${JSON.stringify(fromFrames)}`,
+      );
+    }
+  }
+}
+
+// A CALL THAT IS NOT IN `frames` HAS NO ANSWER. This is the behaviour change
+// this branch declares as breaking -- the old forward scan started from index 0
+// when `indexOf` missed, correlating against a wire the call is not on. The
+// frame below is structurally identical to a real one and is a different
+// object, which is exactly the case `indexOf` cannot find.
+{
+  const mapped = recordsToFrames([CALL, CALLRESULT]).frames;
+  if (!mapped) {
+    fail("the fixture maps", "recordsToFrames refused two real records");
+  } else {
+    const stranger: CallFrame = { ...(mapped[0] as CallFrame) };
+    if (findResponseFor(mapped, stranger) !== undefined) {
+      fail(
+        "a CALL absent from the frames has no answer",
+        "findResponseFor correlated against a wire the call is not on",
+      );
+    }
+    // ...and the identical frame that IS in the array still has one, or the
+    // row above would pass for a findResponseFor that answers nothing.
+    if (indexOfAnswer(mapped, mapped[0] as CallFrame) !== 1) {
+      fail(
+        "the same CALL present in the frames still correlates",
+        "the control case for the row above did not hold",
       );
     }
   }

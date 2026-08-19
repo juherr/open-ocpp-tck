@@ -164,6 +164,10 @@ const offSchema: Array<{ name: string; value: unknown; code: DiagnosticCode }> =
 
   { name: "a timestamp that is not a date-time", value: tweak(CALL, { timestamp: "yesterday" }), code: "bad-timestamp" },
   { name: "a 31st of February", value: tweak(CALL, { timestamp: "2024-02-31T00:00:00Z" }), code: "bad-timestamp" },
+  // The offset is `time-hour ":" time-minute` in the grammar, so it has the
+  // same ranges the clock does. The shape alone admits +99:99.
+  { name: "an offset hour past 23", value: tweak(CALL, { timestamp: "2024-01-15T10:00:00+99:00" }), code: "bad-timestamp" },
+  { name: "an offset minute past 59", value: tweak(CALL, { timestamp: "2024-01-15T10:00:00-00:99" }), code: "bad-timestamp" },
 
   // The schema's two conditionals.
   { name: "a CALL with no action", value: tweak(CALL, {}, ["action"]), code: "call-missing-action" },
@@ -212,6 +216,14 @@ for (const { name, value, code } of offSchema) {
         `index ${index} is missing with no diagnostic -- got ${codesOf(diagnostics)}`,
       );
     }
+  }
+}
+
+// A legal offset must still validate, or the two rows above would be satisfied
+// by a validator that rejects every non-Z timestamp.
+for (const offset of ["+01:00", "-05:30", "+23:59", "-00:00"]) {
+  if (validateRecord(tweak(CALL, { timestamp: `2024-01-15T10:00:00${offset}` }), 0).record === undefined) {
+    fail("a legal UTC offset validates", `${offset} was refused`);
   }
 }
 
