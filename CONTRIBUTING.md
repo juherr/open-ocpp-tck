@@ -229,6 +229,12 @@ an arm is a compile error. `Reset` appears in **both** vocabularies and the two
 are not the same operation — 1.6 carries `Hard`/`Soft`, 2.0.1 carries
 `Immediate`/`OnIdle` — so the two switches stay separate.
 
+That shared name is also the one thing worth remembering when throwing
+`UnsupportedOperationError` from this switch: **qualify the operation**, e.g.
+`new UnsupportedOperationError(\`operations201.${op.action}\`, why)`. The
+string becomes the `NOT APPLICABLE` reason in the run summary, and a bare
+`"Reset"` there reads identically whether it came from 1.6 or 2.0.1.
+
 Declare it alongside the rest, and `ocpp-tck check-driver` prints it:
 
 ```ts
