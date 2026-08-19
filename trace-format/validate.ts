@@ -71,7 +71,7 @@ const REQUIRED = [
  * below, and nothing beyond what the format actually says.
  */
 const RFC3339 =
-  /^(\d{4})-(\d{2})-(\d{2})[Tt](\d{2}):(\d{2}):(\d{2})(\.\d+)?([Zz]|[+-]\d{2}:\d{2})$/;
+  /^(\d{4})-(\d{2})-(\d{2})[Tt](\d{2}):(\d{2}):(\d{2})(\.\d+)?([Zz]|[+-](\d{2}):(\d{2}))$/;
 
 const DAYS_IN_MONTH = [31, 28, 31, 30, 31, 30, 31, 31, 30, 31, 30, 31];
 
@@ -93,6 +93,13 @@ function isRfc3339DateTime(value: string): boolean {
     month === 2 && isLeapYear(year) ? 29 : DAYS_IN_MONTH[month - 1];
   if (day < 1 || day > monthLength) return false;
   if (hour > 23 || minute > 59) return false;
+
+  // The offset has ranges too -- `time-numoffset` is `time-hour ":" time-minute`
+  // in the grammar, so `+99:99` is not a date-time however well it matches the
+  // shape. Both groups are absent for a `Z` suffix, hence the presence checks.
+  if (match[9] !== undefined && Number(match[9]) > 23) return false;
+  if (match[10] !== undefined && Number(match[10]) > 59) return false;
+
   // 60 is a leap second, which RFC 3339 admits.
   return second <= 60;
 }

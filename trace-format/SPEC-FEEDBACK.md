@@ -126,7 +126,25 @@ the clause was removed.
 
 ---
 
-## 4. Smaller notes
+## 4. What does "the same `messageId`" mean when neither record has one?
+
+`messageId` is optional, and the correlation rule says a response correlates
+with the most recent preceding CALL that has "the same `messageId`". The
+reference consumer implements that as `c.messageId === r.messageId`, so a CALL
+with no id and a response with no id **do** correlate — `undefined === undefined`.
+
+That may well be intended, but nothing says so, and it is the kind of clause
+two implementations will read differently: the obvious defensive reading is
+that a record with no id correlates with nothing. This library reproduces the
+reference deliberately rather than guessing, and a review of it flagged the
+absence of the guard as a bug — which is the evidence that the document is
+ambiguous, not that either behaviour is wrong.
+
+**Suggested shape.** One sentence saying which it is, and a fixture carrying
+two id-less records in an exchange so the corpus can fail an implementation
+that chose the other reading. No fixture exercises it today.
+
+## 5. Smaller notes
 
 - **`conformance/validate.mjs` is a second implementation of the rules.** It
   compiles the schema with ajv and open-codes `buildConsumerView`, so the
