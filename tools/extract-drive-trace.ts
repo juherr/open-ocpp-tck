@@ -115,6 +115,7 @@ const GROUP_ORDER: readonly string[] = [
   "remotetrigger-smartcharging",
   "firmware",
   "authorize",
+  "core-201",
 ];
 
 /** `AUTHLIST_RESERVATION_SPECS` -> `authlist-reservation`, the name main.ts's

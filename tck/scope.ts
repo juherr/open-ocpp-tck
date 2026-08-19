@@ -95,18 +95,29 @@ export function templateIdsWithStatus(
  * silently stops covering anything.
  */
 // TRIED AND NOT BUILT, here because here is where it gets re-proposed: the day
-// the first cert201- scenario registers, EVERY table in this repository and
-// every third-party one reports it `missing`, and the reader of that red is
+// the first cert201- scenario registered, EVERY table in this repository and
+// every third-party one reported it `missing`, and the reader of that red is
 // the person who proposes letting a driver decline a whole protocol in one
 // line -- `protocols: ["1.6"]` on the module, or a status this function skips.
 // It is declined, and the reason is not verbosity.
 //
-// Such a declaration obliges the CORE to turn a templateId into a protocol,
-// which means a version literal -- "cert201-", "2.0.1" -- inside tck/. The
-// certification namespace is deliberately first-class here WITHOUT one: it
-// scopes container names and guard reach, and nothing in the runner reads it
-// as a version. OCA-201-SELECTION.md records that as a decision, not an
-// accident, and a protocol-level opt-out is exactly what would undo it.
+// THE ARGUMENT THAT USED TO BE HERE IS SPENT, and it is left standing only
+// long enough to say so: it was that such a declaration obliges the CORE to
+// turn a templateId into a protocol, which means a version literal --
+// "cert201-", "2.0.1" -- inside tck/. That was already half untrue (sim.ts
+// spells every version the simulator CLI takes) and issue #63 finished it:
+// `ScenarioSpec.ocppVersion` makes a scenario's protocol a FIELD, so the core
+// can answer "which protocol is this" without reading a prefix. The namespace
+// stays what it was -- container names and guard reach, no flag reading it as
+// a version -- and that is still recorded in OCA-201-SELECTION.md.
+//
+// WHAT ACTUALLY BLOCKS IT NOW is that the field is OPTIONAL, and 47 of 52
+// scenarios declare nothing: the core's honest answer for them is "undeclared"
+// rather than "1.6", so a `protocols: ["1.6"]` opt-out would silently decline
+// nothing at all, or decline everything, depending on how the absence is read.
+// Making it non-optional is the move to weigh, and it is not free -- it leaves
+// SIM_OCPP_VERSION with nothing to influence, which is how issue #57 ran the
+// same scenario on both protocols and found six checks out of seven green.
 //
 // So the answer is one NOT_APPLICABLE row per scenario, which is verbose and
 // says something true per row. It is not the "branch on a scenario id" that

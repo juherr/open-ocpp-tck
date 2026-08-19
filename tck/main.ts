@@ -5,7 +5,7 @@
  * main.ts -- TypeScript OCPP conformance runner CLI.
  *
  * Usage: ocpp-tck run <template-id> [--cp CP1] [--timeout N] [--connector N]
- *        ocpp-tck run --group core|authlist-reservation|remotetrigger-smartcharging|firmware|authorize|all [--parallel]
+ *        ocpp-tck run --group core|authlist-reservation|remotetrigger-smartcharging|firmware|authorize|core-201|all [--parallel]
  *        ocpp-tck run-all [--group <name>] [--parallel]
  *
  * Brings its own simulator container up (sim.ts), drives it over the JSON
@@ -105,6 +105,7 @@ import type {
 import {
   AUTHLIST_RESERVATION_SPECS,
   AUTHORIZE_SPECS,
+  CORE_201_SPECS,
   CORE_SPECS,
   FIRMWARE_SPECS,
   REMOTETRIGGER_SMARTCHARGING_SPECS,
@@ -396,6 +397,14 @@ function withOperationStubs201(parts: CsmsDriverParts): CsmsOperations201 {
  * default, and it is enforced by only filling a field the environment left
  * unset. An operator who exported SIM_WS_URL to chase a handshake problem must
  * not have it silently replaced by what the driver believes the URL should be.
+ *
+ * THE ORDERING ABOVE IS THIS FUNCTION'S, NOT ALL OF `SimConfig`'S. Exactly one
+ * field has a fourth source that outranks the environment, and it is not one
+ * this function sees: `ocppVersion`, which a SCENARIO may declare. The
+ * exception is stated at the call site, where the scenario is in scope; the
+ * rule here is unchanged for every field a driver contributes, which is what
+ * this function is about. A field added here with a scenario-level opinion
+ * belongs in both places or in neither.
  */
 function mergeSimTransport(
   base: SimConfig,
@@ -440,11 +449,30 @@ async function runScenario<D>(
   const artifactStem = `${spec.templateId}${options.attempt ?? ""}`;
 
   const parts = await driver();
+  const resolved = mergeSimTransport(
+    defaultSimConfig(),
+    await parts.simTransport?.(options.cpId),
+  );
   const simCfg = {
-    ...mergeSimTransport(
-      defaultSimConfig(),
-      await parts.simTransport?.(options.cpId),
-    ),
+    ...resolved,
+    // THE ONE `SIM_*` SETTING A SCENARIO OVERRULES, and the exception is
+    // narrow: every other field here is a fact about the deployment (where the
+    // CSMS is, how to authenticate, which docker network), where the protocol
+    // is what the scenario is ABOUT. See ScenarioSpec.ocppVersion for the
+    // measurement -- a scenario run on the other version goes six checks out of
+    // seven green, so leaving this to an export makes a green sweep unable to
+    // say which protocol it exercised. A scenario that declares nothing is
+    // still the environment's, which is every scenario written before the
+    // field existed.
+    //
+    // NO OFFLINE GUARD, and that was weighed rather than skipped. Inverting
+    // this precedence is the one way to get it wrong, and it cannot hide: the
+    // environment's value is never undefined, so an inverted `??` would run
+    // every 2.0.1 scenario on the 1.6 default, and cert201-tcb01 asserts a
+    // member the 1.6 BootNotification does not have. The sweep goes red in CI
+    // on the first scenario. A pure helper extracted for a test to call would
+    // pin the same rule one layer earlier and buy a layer, not a signal.
+    ocppVersion: spec.ocppVersion ?? resolved.ocppVersion,
     tracePath: prepareTracePath(`${artifactStem}.jsonl`),
   };
   const csms16 = parts.operations16;
@@ -507,19 +535,26 @@ async function runScenario<D>(
       );
     }
     await sleep(bootWaitSecs * 1000);
-    await sim.send({
-      command: "run_scenario_template",
-      params: { connector, templateId: spec.templateId },
-    });
+    // BOTH STATEMENTS OR NEITHER -- see ScenarioSpec.runsSimTemplate. The wait
+    // below is what the command above produces, so skipping the send and
+    // keeping the wait would spend 20s proving that a scenario nobody started
+    // did not start, and say so in a WARN whose whole job is to report the
+    // opposite situation.
+    if (spec.runsSimTemplate !== false) {
+      await sim.send({
+        command: "run_scenario_template",
+        params: { connector, templateId: spec.templateId },
+      });
 
-    try {
-      await sim.waitForLine(/"event":"scenario_started"/, 20_000);
-    } catch (err) {
-      process.stderr.write(
-        `[runner] WARN: did not see scenario_started within 20s -- continuing anyway, assert() will likely fail if the scenario never ran (${
-          err instanceof Error ? err.message : String(err)
-        })\n`,
-      );
+      try {
+        await sim.waitForLine(/"event":"scenario_started"/, 20_000);
+      } catch (err) {
+        process.stderr.write(
+          `[runner] WARN: did not see scenario_started within 20s -- continuing anyway, assert() will likely fail if the scenario never ran (${
+            err instanceof Error ? err.message : String(err)
+          })\n`,
+        );
+      }
     }
 
     if (spec.drive) {
@@ -698,10 +733,23 @@ async function runScenario<D>(
 }
 
 // ---------------------------------------------------------------------------
-// Spec registry -- the five groups mirror the upstream group names and array
-// membership/order exactly (47 scenarios total: 15 core + 13
-// authlist-reservation + 12 remotetrigger-smartcharging + 4 firmware + 3
-// authorize).
+// Spec registry -- five groups mirror the upstream group names and array
+// membership/order exactly (47 scenarios: 15 core + 13 authlist-reservation +
+// 12 remotetrigger-smartcharging + 4 firmware + 3 authorize), and one has no
+// upstream counterpart at all: core-201, the 5 OCPP 2.0.1 scenarios written
+// here rather than ported. 52 in total.
+//
+// A SIXTH BUCKET, NOT A SECOND AXIS, and the difference is worth stating here
+// because the note further down forbids the second. --group selects
+// hand-declared buckets; this is one, sitting beside the five for the same
+// reason they sit beside each other -- it is the set of scenarios one file
+// holds. Nothing derives it: no code reads a templateId's namespace to decide
+// membership, which is what a protocol axis would be and what issue #34 owns.
+// Honestly, though: today that bucket also happens to be every 2.0.1 scenario
+// there is, so `--group core-201` selects by version by coincidence. What
+// keeps that from becoming the axis by accident is that a second 2.0.1 file
+// would join `all` and get its own bucket, exactly as a second 1.6 one would,
+// rather than being folded in to keep the coincidence true.
 //
 // DIVERGENCE FROM UPSTREAM, deliberate: "all" includes "authorize". Upstream
 // leaves the 3 TC_023 scenarios outside it, and this registry used to mirror
@@ -740,12 +788,14 @@ const GROUPS: Record<string, ScenarioSpec<any>[]> = {
   "remotetrigger-smartcharging": REMOTETRIGGER_SMARTCHARGING_SPECS,
   firmware: FIRMWARE_SPECS,
   authorize: AUTHORIZE_SPECS,
+  "core-201": CORE_201_SPECS,
   all: [
     ...CORE_SPECS,
     ...AUTHLIST_RESERVATION_SPECS,
     ...REMOTETRIGGER_SMARTCHARGING_SPECS,
     ...FIRMWARE_SPECS,
     ...AUTHORIZE_SPECS,
+    ...CORE_201_SPECS,
   ],
 };
 
