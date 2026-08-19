@@ -2,9 +2,11 @@
 # trace-format/ must not depend on anything in this repository.
 #
 # THE PROPERTY: every import and re-export specifier under trace-format/ is
-# either relative-and-inward (`./x`) or a Node built-in (`node:x`). A specifier
-# that climbs out (`../x`) ties the library to this repository; a bare one
-# (`some-package`) gives it a runtime dependency.
+# either relative-and-inward or a Node built-in (`node:x`). Inward is about
+# where the specifier RESOLVES, not how it is spelled: `./x` and `./sub/x`
+# qualify, `../x` and `./../x` do not. A specifier that climbs out ties the
+# library to this repository; a bare one (`some-package`) gives it a runtime
+# dependency.
 #
 # WHY IT IS A GUARD AND NOT A LINE IN THE README. That directory is destined
 # for the open-ocpp-trace organisation, and the only reason it can go there is
@@ -57,14 +59,25 @@ if [ "$status" -gt 1 ]; then
   exit 1
 fi
 
-# Reshaped to `<specifier> <file>:<line>` so the allow-list can anchor at the
-# start of the line: a specifier is the only thing a pattern should be able to
-# match, and `node:` inside a path would otherwise be indistinguishable from
-# `node:` as a package.
+# Reshaped to `<specifier> <file>:<line>` so the rule can anchor at the start of
+# the line: a specifier is the only thing a pattern should be able to match, and
+# `node:` inside a path would otherwise be indistinguishable from `node:` as a
+# package.
+#
+# A `..` SEGMENT IS AN OFFENDER WHEREVER IT SITS, not only at the front. The
+# first shape of this filter was `grep -vE '^(\./|node:)'`, which reads as
+# "inward or built-in" and is not: `./../tck/ocpp` starts with `./`, resolves
+# straight out of the directory, and was allowed. Same specifier, same tie back
+# to this repository, silently permitted -- so the check is on the resolved
+# shape now rather than on the prefix.
 offenders=$(
   printf '%s\n' "$found" |
     sed -E 's/^([^:]+:[0-9]+):.*["'"'"']([^"'"'"']+)["'"'"'].*$/\2 \1/' |
-    grep -vE '^(\./|node:)' |
+    awk '
+      $1 ~ /^node:/            { next }   # a built-in, the one bare form allowed
+      $1 !~ /^\.\//            { print; next }   # bare, or climbing out at the front
+      $1 ~ /(^|\/)\.\.(\/|$)/  { print; next }   # climbing out anywhere after it
+    ' |
     sort -u
 )
 
