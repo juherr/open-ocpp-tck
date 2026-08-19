@@ -166,3 +166,21 @@ GROUP authorize
     <no drive>
   SPEC cert16-tc023-3-authorize-blocked
     <no drive>
+
+GROUP core-201
+  SPEC cert201-tcb01-cold-boot
+    <no drive>
+  SPEC cert201-tcb20-reset-accepted
+    OP 201:Reset [immediate]
+    -> driveState keys=[]
+  SPEC cert201-tcb21-reset-scheduled
+    SIM send {"command":"start_transaction","params":{"connector":1,"tagId":"CERT-TAG-1"}}
+    SIM wait-for-line Sent: \[2,.*"TransactionEvent" 10000
+    OP 201:Reset [onidle]
+    -> driveState keys=[]
+  SPEC cert201-tcb22-reset-rejected
+    OP 201:Reset [9, immediate]
+    -> driveState keys=[]
+  SPEC cert201-tcf20-heartbeat
+    SIM send {"command":"heartbeat"}
+    -> driveState keys=[]
