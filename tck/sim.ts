@@ -196,8 +196,13 @@ function splitArgs(raw: string | undefined): string[] {
 /** Whether `extraArgs` already carries `flag`, in either spelling the CLI's
  *  parser accepts. What makes {@link SimConfig.extraArgs} the last word on the
  *  two flags that consult it, without depending on how upstream resolves a
- *  repeated option. */
-function namesFlag(extraArgs: readonly string[], flag: string): boolean {
+ *  repeated option.
+ *
+ *  EXPORTED for the runner, which is the only place that can see both this and
+ *  a scenario's declared protocol: being the last word is right for an operator
+ *  overriding a default, and wrong -- silently -- when what it overrides is a
+ *  certification case's own version. See the refusal in main.ts. */
+export function namesFlag(extraArgs: readonly string[], flag: string): boolean {
   return extraArgs.some(
     (token) => token === flag || token.startsWith(`${flag}=`),
   );
@@ -294,8 +299,10 @@ export function buildDockerArgs(
   args.push("--cp-id", cpId);
   args.push("--json");
   // EMITTED EVEN WHEN IT IS THE CLI'S OWN DEFAULT, because this argv is the
-  // only place a run says which protocol it spoke: it goes to stderr and into
-  // results/*.log through renderDockerArgs. A 1.6 scenario driven on 2.0.1
+  // only place a run says which protocol it spoke: it goes to stderr, and the
+  // runner writes it as the first line of results/*.log through
+  // renderDockerArgs -- which it did not until issue #63, so no archived run
+  // before that one can answer the question this flag exists to answer. A 1.6 scenario driven on 2.0.1
   // passes six of its seven checks -- measured, issue #57 -- so "which version
   // was that run?" has to be answerable from the evidence rather than from
   // whichever environment the operator had exported.

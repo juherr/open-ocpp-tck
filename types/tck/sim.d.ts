@@ -93,6 +93,16 @@ export interface SimConfig {
      */
     extraArgs: string[];
 }
+/** Whether `extraArgs` already carries `flag`, in either spelling the CLI's
+ *  parser accepts. What makes {@link SimConfig.extraArgs} the last word on the
+ *  two flags that consult it, without depending on how upstream resolves a
+ *  repeated option.
+ *
+ *  EXPORTED for the runner, which is the only place that can see both this and
+ *  a scenario's declared protocol: being the last word is right for an operator
+ *  overriding a default, and wrong -- silently -- when what it overrides is a
+ *  certification case's own version. See the refusal in main.ts. */
+export declare function namesFlag(extraArgs: readonly string[], flag: string): boolean;
 export declare function defaultSimConfig(env?: NodeJS.ProcessEnv): SimConfig;
 /**
  * Whether a run should ask its container for a wire trace at all --

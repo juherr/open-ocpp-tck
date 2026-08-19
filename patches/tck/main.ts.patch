@@ -1,6 +1,6 @@
 --- /tmp/ocpp-upstream/scripts/steve-verify/runner/main.ts	2026-07-31 20:05:48
 +++ tck/main.ts	2026-07-31 20:12:10
-@@ -1,55 +1,220 @@
+@@ -1,55 +1,223 @@
  #!/usr/bin/env bun
 +// Derived from shiv3/ocpp-cp-simulator scripts/steve-verify/runner/main.ts @ 604054adb0d7d7129a26a5f1ad2d5fdc290d1ca1 (Apache-2.0). Modified: the STEVE_DRIVER=api|ui selection is replaced by a CSMS driver loaded through ./driver-registry; a per-driver scope table (./scope) is consulted BEFORE any container starts and yields the NOT APPLICABLE verdict; UnsupportedOperationError (./driver) thrown out of drive() degrades to NOT APPLICABLE with a stderr WARNING; the PARTIAL verdict and the `skipped` summary column were added; the exit code is non-zero only for FAIL/ERROR; parallel lanes derive from the resolved station list instead of the fixed CERTCP1..3 trio; the SteVe capability probe is dropped.
 +
@@ -117,7 +117,10 @@
 -import { defaultSteveConfig, SteveDb, SteveUiOps } from "./steve";
 -import type { SteveOps, SteveTx } from "./steve";
 +  DEFAULT_SIM_IMAGE,
++  buildDockerArgs,
 +  defaultSimConfig,
++  namesFlag,
++  renderDockerArgs,
 +  traceRequested,
 +  startSim,
 +  type SimConfig,
@@ -253,7 +256,7 @@
  // ---------------------------------------------------------------------------
  // Runner core
  // ---------------------------------------------------------------------------
-@@ -58,97 +223,308 @@
+@@ -58,97 +226,328 @@
    cpId: string;
    connector?: number;
    timeoutSecs?: number;
@@ -337,8 +340,8 @@
 +  templateId: string,
 +): Promise<ExpectedFailureEntry | undefined> {
 +  return expectedFailureFor(await expectedFailureTable(), templateId);
- }
- 
++}
++
 +/** Result of one scenario execution -- either it produced checks, or the
 + *  driver declared the scenario undrivable partway through drive(). */
 +type ScenarioRun =
@@ -376,8 +379,8 @@
 +async function driverModule(): Promise<CsmsDriverModule> {
 +  driverModulePromise ??= loadDriverModule();
 +  return driverModulePromise;
-+}
-+
+ }
+ 
 +async function driver(): Promise<CsmsDriverParts> {
 +  driverPartsPromise ??= (async () => {
 +    const module = await driverModule();
@@ -554,6 +557,26 @@
 +    ocppVersion: spec.ocppVersion ?? resolved.ocppVersion,
 +    tracePath: prepareTracePath(`${artifactStem}.jsonl`),
 +  };
++  // SIM_EXTRA_ARGS IS THE LAST WORD ON THE ARGV, AND IT MAY NOT BE THE LAST
++  // WORD ON A CERTIFICATION CASE. buildDockerArgs drops our --ocpp-version
++  // when extraArgs already names one, which is the right rule for a default
++  // and a silent lie for a scenario that declared its protocol: the run then
++  // measures the other one. It is not hypothetical for the reason the boot
++  // assertion in cert201-tcb01 exists -- a Heartbeat request and response are
++  // byte-identical across 1.6 and 2.0.1, so cert201-tcf20 would pass every one
++  // of its checks on a 1.6 wire and certify a case it never exercised.
++  //
++  // A REFUSAL AND NOT A WARNING, by preflight()'s rule two hundred lines up: a
++  // per-scenario complaint about a process-wide environment variable is one
++  // typo rendered as a table of rows nobody can act on. This is the only place
++  // both facts are in scope.
++  if (spec.ocppVersion && namesFlag(simCfg.extraArgs, "--ocpp-version")) {
++    throw new Error(
++      `${spec.templateId} is written for ${spec.ocppVersion}, and SIM_EXTRA_ARGS ` +
++        "names --ocpp-version, which would silently replace it. Drop it from " +
++        "SIM_EXTRA_ARGS, or run a scenario that declares no version.",
++    );
++  }
 +  const csms16 = parts.operations16;
 +  // A cert201- scenario against a 1.6-only driver therefore throws out of
 +  // drive() and is caught below as NOT APPLICABLE.
@@ -623,7 +646,7 @@
          30_000,
        );
      } catch (err) {
-@@ -159,30 +535,50 @@
+@@ -159,103 +558,262 @@
        );
      }
      await sleep(bootWaitSecs * 1000);
@@ -692,8 +715,9 @@
 +      }
      } else {
        process.stderr.write(
-         `[runner] no drive() defined (CP-only scenario) -- nothing to do while it runs\n`,
-@@ -190,72 +586,199 @@
+-        `[runner] no drive() defined (CP-only scenario) -- nothing to do while it runs\n`,
++        `[runner] no drive() defined -- nothing for this runner to do while the charge point is watched\n`,
+       );
        driveState = undefined as D;
      }
  
@@ -735,13 +759,23 @@
 +  // every flake this project has ever recorded was destroyed by the mechanism
 +  // that recorded it. The sweep keeps the bare name; a re-run says which it is.
 +  const logName = `${artifactStem}.log`;
++  // THE ARGV FIRST, because it is the only line that says which protocol this
++  // run spoke and it was reaching stderr alone -- so `results/` could not
++  // answer the question afterwards, which is the half of issue #57 §C that
++  // matters once a sweep is over. Rebuilt from the same two pure functions the
++  // container was started with rather than captured, so it cannot describe a
++  // different run; renderDockerArgs redacts the password.
++  const argv = renderDockerArgs(
++    buildDockerArgs(options.cpId, sim.container, simCfg),
++  );
    try {
      mkdirSync(RESULTS_DIR, { recursive: true });
--    await Bun.write(
+     await Bun.write(
 -      `${RESULTS_DIR}${spec.templateId}.log`,
 -      lines.join("\n") + "\n",
--    );
-+    await Bun.write(`${RESULTS_DIR}${logName}`, lines.join("\n") + "\n");
++      `${RESULTS_DIR}${logName}`,
++      `[runner] ${argv}\n${lines.join("\n")}\n`,
+     );
    } catch (err) {
      process.stderr.write(
 -      `[runner] WARN: could not write results/${spec.templateId}.log: ${
@@ -914,7 +948,7 @@
  // ---------------------------------------------------------------------------
  
  // eslint-disable-next-line @typescript-eslint/no-explicit-any
-@@ -265,20 +788,23 @@
+@@ -265,20 +823,23 @@
    "remotetrigger-smartcharging": REMOTETRIGGER_SMARTCHARGING_SPECS,
    firmware: FIRMWARE_SPECS,
    authorize: AUTHORIZE_SPECS,
@@ -944,7 +978,7 @@
  // eslint-disable-next-line @typescript-eslint/no-explicit-any
  const SPECS_BY_TEMPLATE_ID = new Map<string, ScenarioSpec<any>>(
    Object.values(GROUPS)
-@@ -286,66 +812,228 @@
+@@ -286,66 +847,228 @@
      .map((spec) => [spec.templateId, spec]),
  );
  
@@ -1019,14 +1053,15 @@
 -   * change. isolatedRetry.verdict === "PASS" means the parallel FAIL/ERROR
 -   * was a flake; still non-PASS means it's a real failure, confirmed
 -   * isolated.
-+   * change. A non-failing isolated retry means the parallel FAIL/ERROR was
-+   * a flake.
-    */
+-   */
 -  isolatedRetry?: {
 -    verdict: "PASS" | "FAIL" | "ERROR";
 -    checks: number | null;
 -    failed: number | null;
 -    errorMessage?: string;
++   * change. A non-failing isolated retry means the parallel FAIL/ERROR was
++   * a flake.
++   */
 +  isolatedRetry?: RetryOutcome;
 +  /** The driver's declaration that this scenario is known to fail, attached
 +   *  whether or not it did. Both directions are reported: a declared FAIL is
@@ -1212,7 +1247,7 @@
      };
    } catch (err) {
      const message =
-@@ -353,64 +1041,47 @@
+@@ -353,64 +1076,47 @@
      process.stderr.write(
        `[runner] ERROR: ${spec.templateId} on ${cpId} threw before completing: ${message}\n`,
      );
@@ -1301,7 +1336,7 @@
    );
  
    for (const outcome of toRetry) {
-@@ -427,18 +1098,19 @@
+@@ -427,18 +1133,19 @@
      process.stderr.write(
        `[runner] isolated retry: ${outcome.templateId} on ${outcome.cpId} (parallel verdict was ${outcome.verdict})\n`,
      );
@@ -1324,7 +1359,7 @@
            : " -- CONFIRMED (fails isolated too, not a parallel-lane artifact)\n"),
      );
    }
-@@ -446,64 +1118,158 @@
+@@ -446,64 +1153,158 @@
  
  function timestampUtc(): string {
    // date -u +%FT%TZ equivalent: ISO-8601 down to the second, "Z" suffix
@@ -1512,7 +1547,7 @@
        "",
        header,
        separator,
-@@ -518,54 +1284,54 @@
+@@ -518,54 +1319,54 @@
  }
  
  /** Sequential or parallel group sweep. Writes results/summary.md and exits
@@ -1593,7 +1628,7 @@
      );
    } else {
      for (let i = 0; i < specs.length; i++) {
-@@ -574,11 +1340,11 @@
+@@ -574,11 +1375,11 @@
    }
  
    if (retryFailedIsolated) {
@@ -1607,7 +1642,7 @@
            "(a sequential sweep is already isolated).\n",
        );
      }
-@@ -588,45 +1354,87 @@
+@@ -588,45 +1389,87 @@
    for (const o of outcomes) {
      const retrySuffix = o.isolatedRetry
        ? ` [isolated retry: ${o.isolatedRetry.verdict}${
@@ -1717,7 +1752,7 @@
  }
  
  // ---------------------------------------------------------------------------
-@@ -642,6 +1450,8 @@
+@@ -642,6 +1485,8 @@
    cpId: string;
    connector?: number;
    timeoutSecs?: number;
@@ -1726,7 +1761,7 @@
  }
  
  function requireValue(argv: string[], index: number, flag: string): string {
-@@ -663,37 +1473,82 @@
+@@ -663,37 +1508,82 @@
    return n;
  }
  
@@ -1827,7 +1862,7 @@
  
    if (argv[0] === "run-all") {
      group = "all";
-@@ -708,18 +1563,27 @@
+@@ -708,18 +1598,27 @@
          case "--retry-failed-isolated":
            retryFailedIsolated = true;
            break;
@@ -1858,7 +1893,7 @@
      process.exit(1);
    }
  
-@@ -749,9 +1613,11 @@
+@@ -749,9 +1648,11 @@
        case "--retry-failed-isolated":
          retryFailedIsolated = true;
          break;
@@ -1871,7 +1906,7 @@
          process.exit(1);
      }
    }
-@@ -764,35 +1630,547 @@
+@@ -764,35 +1665,547 @@
      cpId,
      connector,
      timeoutSecs,
@@ -2435,7 +2470,7 @@
    }
  
    const spec = SPECS_BY_TEMPLATE_ID.get(args.templateId);
-@@ -800,18 +2178,109 @@
+@@ -800,18 +2213,109 @@
      process.stderr.write(
        `Unknown template id: ${args.templateId} (known: ${[...SPECS_BY_TEMPLATE_ID.keys()].join(", ")})\n`,
      );

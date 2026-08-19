@@ -22,6 +22,13 @@
 #   - A `not-implemented` ROW CARRIES A REASON. Declining a mandatory case is
 #     a decision; "not yet" with nothing after it is the absence of one, and it
 #     reads identically six months later.
+#   - ONE ROW PER CASE, ONE ROW PER SCENARIO, AND THE COUNTS ADD UP. Both
+#     duplicates were reproduced defeating the rest of this guard rather than
+#     supposed: a second row for a scenario already listed makes the pair set
+#     below a superset that absorbs any disagreement with the obligations
+#     table, and two rows naming the same case drop a mandatory case out of
+#     the list entirely while the summary still prints the row count as though
+#     it were a case count.
 #
 # AND THE CASE A SCENARIO TRACES TO IS ONE ANSWER, not two. OCA-OBLIGATIONS.txt
 # names an OCA case per row as well, and nothing read it against anything:
@@ -68,6 +75,7 @@ trap 'rm -rf "$work"' EXIT
 # a case nobody said anything about, and refusing it here is what keeps it from
 # being skipped by both passes while still looking like a row.
 if ! awk '
+  { sub(/\r$/, "") }
   /^[[:space:]]*#/ { next }
   /^[[:space:]]*$/ { next }
   NF >= 2 { print; next }
@@ -82,6 +90,32 @@ if ! awk '
 fi
 
 status=0
+
+# ONE ROW PER CASE. Two rows naming the same case is not a tidiness problem: it
+# drops a case out of the list while every count still adds up against the rows,
+# so a mandatory case can stop being selected by anything with the summary
+# unchanged. Reproduced, not supposed.
+if dup=$(awk '{ print $1 }' "$work/rows" | sort | uniq -d) && [ -n "$dup" ]; then
+  status=1
+  echo "FAIL: $slice lists a case more than once:" >&2
+  awk '{ printf "  %s\n", $1 }' <<< "$dup" >&2
+  echo "  → one row per case. A second row for a case already listed leaves" >&2
+  echo "    the case it replaced selected by nothing, and every count in this" >&2
+  echo "    file still adds up." >&2
+fi
+
+# ONE ROW PER SCENARIO, for the reason direction 3 below needs: it reads the
+# rows as a case-per-scenario answer, and a scenario listed twice turns that
+# into a set of acceptable answers -- which absorbs any disagreement with the
+# obligations table. Also reproduced.
+if dup=$(awk '$2 != "not-implemented" { print $2 }' "$work/rows" | sort | uniq -d) \
+  && [ -n "$dup" ]; then
+  status=1
+  echo "FAIL: $slice claims a scenario for more than one case:" >&2
+  awk '{ printf "  %s\n", $1 }' <<< "$dup" >&2
+  echo "  → one scenario implements one case here. Two rows make the" >&2
+  echo "    cross-check below vacuous." >&2
+fi
 
 # A declined case says why. `not-implemented` with nothing after it is the one
 # row shape that parses and means nothing.
@@ -104,10 +138,15 @@ done < "$work/rows"
 # Direction 1: every scenario the slice claims to have is registered.
 awk '$2 != "not-implemented" { print $2 }' "$work/rows" | sort -u > "$work/claimed"
 
-# Direction 2: every registered scenario in the certification namespace this
-# page governs. Derived from the inventory's SPEC lines, whose first token
-# after `SPEC` is the templateId.
-awk '/^  SPEC cert201-/ { print $2 }' "$inventory" | sort -u > "$work/registered"
+# Direction 2: every registered scenario written for this protocol. Keyed on
+# the VERSION THE SCENARIO DECLARES, not on how it is named -- `cert201-` is a
+# convention nothing enforces, and a 2.0.1 scenario named anything else was
+# invisible here, which is the drift this guard exists for arriving through the
+# door it was watching. The inventory carries the declaration because
+# tools/extract-assert-inventory.ts puts it on the SPEC line, so the templateId
+# and the protocol are one line apart and neither is inferred.
+awk '/^  SPEC / && /ocppVersion="OCPP-2.0.1"/ { print $2 }' "$inventory" \
+  | sort -u > "$work/registered"
 
 if missing=$(comm -23 "$work/claimed" "$work/registered") && [ -n "$missing" ]; then
   status=1
@@ -133,8 +172,26 @@ fi
 # the obligations table is mostly OCPP 1.6 and none of its business here.
 awk '$2 != "not-implemented" { print $2 "\t" $1 }' "$work/rows" | sort -u \
   > "$work/case-of"
-awk '$1 ~ /^cert201-/ { print $1 "\t" $4 }' "$obligations" | sort -u \
-  > "$work/obliged"
+# The shape check the sibling applies to this file applies here too, because
+# this guard reads it before that one has necessarily run: a truncated row
+# yields an empty case column, which renders as trailing whitespace and sends
+# the reader to edit the OTHER file. That is the sibling's own recorded lesson,
+# and it arrives here through a different door.
+if ! awk '
+  { sub(/\r$/, "") }
+  $1 !~ /^cert201-/ { next }
+  NF == 4 { next }
+  { printf "  line %d: %s\n", FNR, $0 > "/dev/stderr"; bad = 1 }
+  END { exit(bad ? 1 : 0) }
+' "$obligations"; then
+  echo "FAIL: $obligations has an OCPP 2.0.1 row that is not four fields." >&2
+  echo "  → scenario / action / checked-by / OCA case. Read as fewer, its" >&2
+  echo "    case column reads empty and this guard blames the other file." >&2
+  exit 1
+fi
+
+awk '{ sub(/\r$/, "") } $1 ~ /^cert201-/ { print $1 "\t" $4 }' "$obligations" \
+  | sort -u > "$work/obliged"
 
 if disagree=$(comm -23 "$work/obliged" "$work/case-of") && [ -n "$disagree" ]; then
   status=1
@@ -152,6 +209,21 @@ if [ "$status" -ne 0 ]; then
   exit 1
 fi
 
+# The summary is arithmetic over ONE set, and this asserts it rather than
+# trusting it -- the sibling's rule, arrived at the same way. `cases` counts
+# rows and `implemented` counts distinct scenarios, so without this the two
+# could count different things and the line would still read sensibly. The
+# duplicate refusals above are what make the first equality hold; this is what
+# would notice if one of them were ever removed.
 cases=$(wc -l < "$work/rows" | tr -d ' ')
 implemented=$(wc -l < "$work/claimed" | tr -d ' ')
+declined=$(awk '$2 == "not-implemented" { n++ } END { print n + 0 }' "$work/rows")
+distinct=$(awk '{ print $1 }' "$work/rows" | sort -u | wc -l | tr -d ' ')
+if [ "$((implemented + declined))" != "$cases" ] || [ "$distinct" != "$cases" ]; then
+  echo "FAIL: the slice counts do not add up: $implemented implemented + $declined declined" >&2
+  echo "  != $cases row(s), or $distinct distinct case(s) != $cases row(s)." >&2
+  echo "  → a row is counted by something other than the rows of $slice, or" >&2
+  echo "    two rows name the same case or the same scenario." >&2
+  exit 1
+fi
 echo "OCPP 2.0.1 slice: $cases case(s) selected, $implemented implemented."

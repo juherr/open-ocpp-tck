@@ -89,8 +89,18 @@ export interface ScenarioSpec<D = void> {
      * is what every scenario ported from the bash suite needs.
      *
      * `false` says the charge point has nothing to act out on its own: the whole
-     * scenario is `connect`, plus whatever `drive()` asks the CSMS for. It is
-     * not an optimisation -- the simulator image ships a template per ported
+     * scenario is `connect`, plus whatever `drive()` asks the CSMS for.
+     *
+     * IT ALSO MOVES TEARDOWN ONTO `drive()`. A template runs a lifecycle and
+     * leaves the station idle, which is why the ported scenarios need no
+     * wind-down; without one, whatever `drive()` puts the charge point into is
+     * still there when the container is removed. A scenario that starts a
+     * transaction and does not stop it leaves the CSMS holding an active row for
+     * the next scenario on that station to trip over -- survivable only because
+     * `prepareStation` exists, which is a driver's courtesy and not this
+     * runner's contract.
+     *
+     * It is not an optimisation -- the simulator image ships a template per ported
      * scenario and none for anything else, so a scenario with no template of its
      * own would otherwise spend 20s waiting for a `scenario_started` that cannot
      * come, and report that as a warning rather than as the misconfiguration it

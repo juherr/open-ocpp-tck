@@ -87,7 +87,10 @@ import { parseLog } from "./ocpp";
 import { readTrace } from "./trace";
 import {
   DEFAULT_SIM_IMAGE,
+  buildDockerArgs,
   defaultSimConfig,
+  namesFlag,
+  renderDockerArgs,
   traceRequested,
   startSim,
   type SimConfig,
@@ -475,6 +478,26 @@ async function runScenario<D>(
     ocppVersion: spec.ocppVersion ?? resolved.ocppVersion,
     tracePath: prepareTracePath(`${artifactStem}.jsonl`),
   };
+  // SIM_EXTRA_ARGS IS THE LAST WORD ON THE ARGV, AND IT MAY NOT BE THE LAST
+  // WORD ON A CERTIFICATION CASE. buildDockerArgs drops our --ocpp-version
+  // when extraArgs already names one, which is the right rule for a default
+  // and a silent lie for a scenario that declared its protocol: the run then
+  // measures the other one. It is not hypothetical for the reason the boot
+  // assertion in cert201-tcb01 exists -- a Heartbeat request and response are
+  // byte-identical across 1.6 and 2.0.1, so cert201-tcf20 would pass every one
+  // of its checks on a 1.6 wire and certify a case it never exercised.
+  //
+  // A REFUSAL AND NOT A WARNING, by preflight()'s rule two hundred lines up: a
+  // per-scenario complaint about a process-wide environment variable is one
+  // typo rendered as a table of rows nobody can act on. This is the only place
+  // both facts are in scope.
+  if (spec.ocppVersion && namesFlag(simCfg.extraArgs, "--ocpp-version")) {
+    throw new Error(
+      `${spec.templateId} is written for ${spec.ocppVersion}, and SIM_EXTRA_ARGS ` +
+        "names --ocpp-version, which would silently replace it. Drop it from " +
+        "SIM_EXTRA_ARGS, or run a scenario that declares no version.",
+    );
+  }
   const csms16 = parts.operations16;
   // A cert201- scenario against a 1.6-only driver therefore throws out of
   // drive() and is caught below as NOT APPLICABLE.
@@ -581,7 +604,7 @@ async function runScenario<D>(
       }
     } else {
       process.stderr.write(
-        `[runner] no drive() defined (CP-only scenario) -- nothing to do while it runs\n`,
+        `[runner] no drive() defined -- nothing for this runner to do while the charge point is watched\n`,
       );
       driveState = undefined as D;
     }
@@ -621,9 +644,21 @@ async function runScenario<D>(
   // every flake this project has ever recorded was destroyed by the mechanism
   // that recorded it. The sweep keeps the bare name; a re-run says which it is.
   const logName = `${artifactStem}.log`;
+  // THE ARGV FIRST, because it is the only line that says which protocol this
+  // run spoke and it was reaching stderr alone -- so `results/` could not
+  // answer the question afterwards, which is the half of issue #57 §C that
+  // matters once a sweep is over. Rebuilt from the same two pure functions the
+  // container was started with rather than captured, so it cannot describe a
+  // different run; renderDockerArgs redacts the password.
+  const argv = renderDockerArgs(
+    buildDockerArgs(options.cpId, sim.container, simCfg),
+  );
   try {
     mkdirSync(RESULTS_DIR, { recursive: true });
-    await Bun.write(`${RESULTS_DIR}${logName}`, lines.join("\n") + "\n");
+    await Bun.write(
+      `${RESULTS_DIR}${logName}`,
+      `[runner] ${argv}\n${lines.join("\n")}\n`,
+    );
   } catch (err) {
     process.stderr.write(
       `[runner] WARN: could not write results/${logName}: ${
