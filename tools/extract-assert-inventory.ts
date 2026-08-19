@@ -293,9 +293,10 @@ for (const file of readdirSync(SPECS_DIR).filter((f) => f.endsWith(".ts")).sort(
       // checks out of seven (issue #57 §C). That is the definition of a change
       // this artifact exists to make visible.
       const declared = ["ocppVersion", "runsSimTemplate"]
-        .map((k) => [k, literalProp(spec, k)] as const)
-        .filter(([, value]) => value !== null)
-        .map(([k, value]) => ` ${k}=${value}`)
+        .map((k) => {
+          const value = literalProp(spec, k);
+          return value === null ? "" : ` ${k}=${value}`;
+        })
         .join("");
       out.push(`  SPEC ${JSON.parse(templateId)} ${meta}${declared}`);
 

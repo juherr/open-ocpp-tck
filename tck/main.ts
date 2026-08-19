@@ -87,10 +87,8 @@ import { parseLog } from "./ocpp";
 import { readTrace } from "./trace";
 import {
   DEFAULT_SIM_IMAGE,
-  buildDockerArgs,
   defaultSimConfig,
   namesFlag,
-  renderDockerArgs,
   traceRequested,
   startSim,
   type SimConfig,
@@ -489,8 +487,18 @@ async function runScenario<D>(
   //
   // A REFUSAL AND NOT A WARNING, by preflight()'s rule two hundred lines up: a
   // per-scenario complaint about a process-wide environment variable is one
-  // typo rendered as a table of rows nobody can act on. This is the only place
-  // both facts are in scope.
+  // typo rendered as a table of rows nobody can act on.
+  //
+  // AND PER SCENARIO ANYWAY, WHICH IS A TRADE AND NOT A CONSTRAINT. preflight()
+  // is the layer that owns refusals about the environment, and both its call
+  // sites already have the scenario set in hand, so refusing there is
+  // available: it would name every affected scenario once, before any container
+  // starts. It also stops the whole sweep on one exported variable. Here, the
+  // 47 scenarios that declare no version report normally and the typo arrives
+  // as a handful of ERROR rows that name themselves -- which is what an
+  // operator who set SIM_EXTRA_ARGS to debug a 1.6 handshake actually wants.
+  // Worth moving up the day the scenarios that declare a version are the
+  // majority, and the cost of the trade flips with them.
   if (spec.ocppVersion && namesFlag(simCfg.extraArgs, "--ocpp-version")) {
     throw new Error(
       `${spec.templateId} is written for ${spec.ocppVersion}, and SIM_EXTRA_ARGS ` +
@@ -647,17 +655,14 @@ async function runScenario<D>(
   // THE ARGV FIRST, because it is the only line that says which protocol this
   // run spoke and it was reaching stderr alone -- so `results/` could not
   // answer the question afterwards, which is the half of issue #57 §C that
-  // matters once a sweep is over. Rebuilt from the same two pure functions the
-  // container was started with rather than captured, so it cannot describe a
-  // different run; renderDockerArgs redacts the password.
-  const argv = renderDockerArgs(
-    buildDockerArgs(options.cpId, sim.container, simCfg),
-  );
+  // matters once a sweep is over. Read off the SimProcess rather than rebuilt
+  // from the same inputs: what the container was started with cannot describe
+  // a different run, where a second derivation can. Already redacted.
   try {
     mkdirSync(RESULTS_DIR, { recursive: true });
     await Bun.write(
       `${RESULTS_DIR}${logName}`,
-      `[runner] ${argv}\n${lines.join("\n")}\n`,
+      `[runner] ${sim.argv}\n${lines.join("\n")}\n`,
     );
   } catch (err) {
     process.stderr.write(

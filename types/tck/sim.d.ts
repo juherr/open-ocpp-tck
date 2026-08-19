@@ -141,6 +141,13 @@ export declare function renderDockerArgs(args: readonly string[]): string;
 export interface SimProcess {
     readonly cpId: string;
     readonly container: string;
+    /** The docker command line this container was started with, rendered and
+     *  password-redacted -- the record, not a reconstruction. It is here rather
+     *  than rebuilt by callers because it is the only line that says which OCPP
+     *  protocol a run spoke, and a caller re-deriving it from the same inputs
+     *  can drift from what was actually spawned the moment either side gains an
+     *  argument. `runScenario` writes it as the first line of `results/*.log`. */
+    readonly argv: string;
     /** Every stdout line seen so far, in order (JSON events, JSON command
      *  responses, and the plain-text Logger lines ocpp.ts parses). */
     readonly lines: readonly string[];

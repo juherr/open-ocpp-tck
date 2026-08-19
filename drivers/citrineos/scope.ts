@@ -306,6 +306,13 @@ const V1_KNOWN =
 const V1_LOCAL_LIST: readonly (keyof typeof V2_SCOPE)[] =
   V1_LOCAL_LIST_SCENARIOS;
 
+/** The same annotation for the same reason, over the other id list v1Scope()
+ *  demotes. Both lists are written in variant.ts against a table declared
+ *  here, so both need the round trip back through `keyof` to be checked at
+ *  all -- and this is the one whose own note in variant.ts records that a row
+ *  it fails to name is inherited silently. */
+const CERT_201: readonly (keyof typeof V2_SCOPE)[] = CERT_201_SCENARIOS;
+
 /**
  * The v1.9.1 table, derived from V2_SCOPE rather than written out again.
  *
@@ -335,7 +342,7 @@ function v1Scope(): ScopeTable {
     table[id] = na(NO_LOCAL_LIST);
   }
   // Last, so it overrides both passes above rather than being overridden.
-  for (const id of CERT_201_SCENARIOS) {
+  for (const id of CERT_201) {
     table[id] = na(NO_OCPP_201_ON_V1);
   }
   return table;

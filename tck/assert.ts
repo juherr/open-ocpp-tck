@@ -408,6 +408,14 @@ export function assertIdTagInfoStatus(
  * third pass would put a pure refactor in the same ASSERT-INVENTORY.txt diff
  * as six checks that genuinely changed, which is precisely what makes such a
  * diff unreadable. Worth doing in a commit whose only job is that refactor.
+ *
+ * THE CALLER COUNT HAS SINCE MOVED, which is the thing that decides when that
+ * commit is owed. `assertResponseTimestamp` in specs/core-201.ts is a third
+ * scenario-side copy of the same spine, and two independent reviews of the
+ * branch that added it arrived at `correlatedResult` unprompted. Read that as
+ * a measurement rather than as a nuisance: a rejection recorded with its
+ * reason stops being re-argued and starts being re-proposed, and a shape three
+ * callers spell out is no longer being declined for scope.
  */
 
 export interface AnsweredOptions {

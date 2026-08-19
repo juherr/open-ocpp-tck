@@ -391,7 +391,11 @@ const TC_F_20: ScenarioSpec = {
   runsSimTemplate: false,
   connector: 1,
   bootWaitSecs: 4,
-  holdSecs: 6,
+  // 8 = the 6 this scenario needs, plus the 2 that were a trailing sleep() at
+  // the end of drive(). The runner sleeps holdSecs the moment drive() returns
+  // and runs nothing in between, so a wait on either side of that boundary is
+  // one wait; written on both sides it reads as two and drifts as two.
+  holdSecs: 8,
   async drive({ sim }) {
     // ONE HEARTBEAT ON DEMAND, not the periodic one. The charge point starts a
     // timer at whatever interval the BootNotification response returned, and
@@ -399,7 +403,6 @@ const TC_F_20: ScenarioSpec = {
     // for the timer would mean holding every run of this scenario open for a
     // minute to observe a message the simulator will send on request.
     await sim.send({ command: "heartbeat" });
-    await sleep(2000);
   },
   assert({ frames, rec }) {
     assertSent(rec, frames, "Heartbeat", "Heartbeat.req sent");
