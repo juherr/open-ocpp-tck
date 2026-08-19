@@ -247,20 +247,25 @@ export function validateRecord(value: unknown, index: number): ValidatedRecord {
   return { record, diagnostics };
 }
 
-/** Reads a whole trace, index-aligned with the values it was given. */
-export function validateRecords(
-  values: readonly (unknown | undefined)[],
-): ValidatedTrace {
+/**
+ * Reads a whole trace, index-aligned with the values it was given.
+ *
+ * TOTAL: every input value gets either a record or at least one diagnostic
+ * explaining why it did not. An earlier shape skipped `undefined` entries
+ * silently -- so that `readTraceText` would not report a line as "not an
+ * object" when what happened is that it was not JSON at all -- and that made
+ * this function able to return an unexplained hole. Harmless to a caller that
+ * refuses on any hole, and exactly wrong for the other kind: a UI that shows
+ * what it can and annotates the rest would have dropped the record with
+ * nothing to annotate.
+ *
+ * The no-double-report belongs to the caller that HAS the earlier diagnostic,
+ * so it lives in {@link ../index.readTraceText} now.
+ */
+export function validateRecords(values: readonly unknown[]): ValidatedTrace {
   const records: (TraceRecord | undefined)[] = [];
   const diagnostics: Diagnostic[] = [];
   values.forEach((value, index) => {
-    // A hole left by `splitJsonl` already has its own diagnostic; re-reporting
-    // it as `record-not-object` would say the line was the wrong shape when
-    // what happened is that it was not JSON at all.
-    if (value === undefined) {
-      records.push(undefined);
-      return;
-    }
     const { record, diagnostics: found } = validateRecord(value, index);
     records.push(record);
     diagnostics.push(...found);
@@ -375,6 +380,7 @@ function isPlainObject(value: unknown): value is Record<string, unknown> {
 }
 
 function describe(value: unknown): string {
+  if (value === undefined) return "absent";
   if (value === null) return "null";
   if (Array.isArray(value)) return "an array";
   return `a ${typeof value}`;

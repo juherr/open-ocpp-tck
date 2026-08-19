@@ -13,13 +13,6 @@ export type { ValidatedRecord, ValidatedTrace } from "./validate";
 export { validateRecord, validateRecords } from "./validate";
 export type { ConsumerCounts, ConsumerRecordView, ConsumerView, } from "./consumer-view";
 export { consumerView, crossRecordDiagnostics } from "./consumer-view";
-import { type ValidatedTrace } from "./validate";
-/**
- * Reads a whole JSONL trace: split, then validate, diagnostics concatenated.
- *
- * The two halves stay separately exported because a consumer that already has
- * records -- from a websocket, from a test table, from another tool's output
- * -- has no text to split, and making it invent some to reach the validator is
- * how a reader ends up with two ways in that drift.
- */
-export declare function readTraceText(text: string): ValidatedTrace;
+export { readTraceText } from "./read";
+export type { FixtureResult } from "./conformance";
+export { checkFixture, checkFixtures, formatResults } from "./conformance";
