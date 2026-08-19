@@ -1,0 +1,28 @@
+/**
+ * jsonl.ts -- a trace file's text, split into one JSON value per record.
+ *
+ * BLANK LINES ARE SKIPPED, NOT REFUSED. A trailing newline is a property of
+ * appending to a file, not a malformed record, and the format is written by
+ * appending.
+ *
+ * A BAD LINE LEAVES A HOLE rather than closing the gap. Everything downstream
+ * -- diagnostics, the consumer view's `index`, `correlatesWith` -- addresses
+ * records by position, and the normative correlation rule is "the most recent
+ * PRECEDING call", so positions are load-bearing rather than cosmetic. Dropping
+ * an unreadable line would renumber every record after it, which turns one
+ * broken line into a whole file of indices that point at the wrong record and
+ * says nothing about it. `undefined` at that position keeps every other index
+ * true and puts the fact in a diagnostic.
+ */
+import type { Diagnostic } from "./diagnostics";
+/**
+ * One entry per non-blank line, in file order, `undefined` where the line was
+ * not JSON.
+ */
+export interface SplitTrace {
+    /** `undefined` marks a line that was not JSON -- see the header. */
+    readonly values: readonly unknown[];
+    readonly diagnostics: readonly Diagnostic[];
+}
+/** Splits a JSONL trace into one JSON value per non-blank line. */
+export declare function splitJsonl(text: string): SplitTrace;
