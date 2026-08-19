@@ -20,6 +20,21 @@ Released as `0.3.0`. The documented install ref already points at that tag, so
 - Report which OCPP 2.0.1 operations a driver drives, in `check-driver` and in
   its `--json` summary, answerable offline and without a container ([#70])
 - Keep the simulator's JSONL wire trace beside its log, per scenario ([#64])
+- The first five OCPP 2.0.1 scenarios — `cert201-tcb01-cold-boot`,
+  `cert201-tcb20-reset-accepted`, `cert201-tcb21-reset-scheduled`,
+  `cert201-tcb22-reset-rejected` and `cert201-tcf20-heartbeat` — in a
+  `core-201` group that `run-all` sweeps like any other ([#73])
+- A scenario can declare the OCPP version it is written for, and whether the
+  simulator runs a scenario template of its name. Neither field is set by the
+  47 scenarios that predate them ([#73])
+- `drivers/citrineos` drives the OCPP 2.0.1 vocabulary against the v2 line:
+  `Reset`, `GetVariables` and `SetVariables` over the same message API, with
+  the version as a path segment ([#73])
+- `ResetRequest`'s optional `evseId`, which is what makes a rejected reset
+  expressible ([#73])
+- `tck/specs/OCA-201-SLICE.txt`, the list of selected OCPP 2.0.1 cases, and
+  `tests/oca-201-slice.sh`, which holds it and the registered scenarios to each
+  other in both directions ([#73])
 - `OCA-201-SELECTION.md`, the rule deciding which OCPP 2.0.1 certification
   cases this suite may implement at all ([#68])
 - A feature identifier for an OCPP 2.0.1 scope `reason` to cite ([#68])
@@ -38,6 +53,15 @@ Released as `0.3.0`. The documented install ref already points at that tag, so
 - **BREAKING** — the OCPP version moved from the driver's transport defaults to
   `SimConfig`, where it is a property of the scenario rather than of the CSMS
   ([#64])
+- `OCA-201-SELECTION.md` cites the slice list instead of restating it, the way
+  `OCA-COVERAGE.md` cites `OCA-OBLIGATIONS.txt` ([#73])
+- The runner refuses a run where `SIM_EXTRA_ARGS` would silently replace a
+  scenario's declared OCPP version, and writes the simulator's argv as the
+  first line of `results/<scenario>.log` so an archived run can say which
+  protocol it spoke ([#73])
+- `ASSERT-INVENTORY.txt` records the OCPP version a scenario declares, so
+  dropping the declaration — which changes nothing else a committed artifact
+  can see, and silently measures the other protocol — moves the diff ([#73])
 - A scenario is judged on the simulator's JSONL wire trace, with the log as the
   floor rather than the source of truth ([#65])
 - `Verdict` is derived from `VERDICTS`, so the list cannot lose a member
@@ -107,3 +131,4 @@ releases from 141 commits would mean writing detail nobody measured.
 [#67]: https://github.com/juherr/open-ocpp-tck/pull/67
 [#68]: https://github.com/juherr/open-ocpp-tck/pull/68
 [#70]: https://github.com/juherr/open-ocpp-tck/pull/70
+[#73]: https://github.com/juherr/open-ocpp-tck/pull/73

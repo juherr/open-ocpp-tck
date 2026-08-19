@@ -1,6 +1,6 @@
 # Writing a CSMS driver
 
-A driver is the only thing standing between these 47 scenarios and your CSMS.
+A driver is the only thing standing between these 52 scenarios and your CSMS.
 It answers two questions and nothing else:
 
 - **`CsmsOperations16.execute(cpId, op)`** — "make the CSMS send this OCPP
@@ -213,7 +213,10 @@ operations201: {
   async execute(cpId: string, op: CsmsOperation201): Promise<string> {
     switch (op.action) {
       case "Reset":
-        return post(`/v201/cp/${cpId}/reset`, { type: op.type });
+        // `evseId` is optional and absent means the whole station, so pass it
+        // through rather than defaulting it: 2.0.1 reads evseId 0 as the
+        // station's own component, which is a different request.
+        return post(`/v201/cp/${cpId}/reset`, { type: op.type, evseId: op.evseId });
       case "GetVariables":
         return post(`/v201/cp/${cpId}/get-variables`, { getVariableData: op.variables });
       case "SetVariables":

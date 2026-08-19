@@ -45,7 +45,7 @@ strongest available demonstration that the core names no CSMS.
 
 | path | origin | upstream path @ `604054a…` | upstream sha256 | local sha256 | patch |
 |---|---|---|---|---|---|
-| `tck/spec-types.ts` | `upstream-patched` | `scripts/steve-verify/runner/spec-types.ts` | `db4b29ab5ee0c623c950a52a999ef4e4c0a916dab0b6cfebe8fa8eabc5da0d26` | `fd505c1c6032950fa92effcba7490eff7f66e3c24128fd04d19947674c189156` | `patches/tck/spec-types.ts.patch` |
+| `tck/spec-types.ts` | `upstream-patched` | `scripts/steve-verify/runner/spec-types.ts` | `db4b29ab5ee0c623c950a52a999ef4e4c0a916dab0b6cfebe8fa8eabc5da0d26` | `9020e8e6be458d37b5f3d3e61d0071caf8e885812bbf0c20df95b66d0f329994` | `patches/tck/spec-types.ts.patch` |
 | `tck/util.ts` | `upstream-verbatim` | `scripts/steve-verify/runner/util.ts` | `ba62ed29c79e04533e0725739c9c0d514caadb7bff8146e46688c867432eee9e` | `ba62ed29c79e04533e0725739c9c0d514caadb7bff8146e46688c867432eee9e` | `—` |
 | `tck/ocpp.ts` | `upstream-verbatim` | `src/cp/application/verification/ocpp.ts` | `a3f99c1b77b30d0ab0b22556b65aca05332d68f4b4b8d566a500d2036065368f` | `a3f99c1b77b30d0ab0b22556b65aca05332d68f4b4b8d566a500d2036065368f` | `—` |
 | `tsconfig.json` | `upstream-verbatim` | `scripts/steve-verify/runner/tsconfig.json` | `b632b69c836000d80209c183b57d43ac917e3a1d50f042af65112bdf234d1931` | `b632b69c836000d80209c183b57d43ac917e3a1d50f042af65112bdf234d1931` | `—` |
@@ -54,10 +54,10 @@ strongest available demonstration that the core names no CSMS.
 | `tck/specs/authlist-reservation.ts` | `upstream-patched` | `scripts/steve-verify/runner/specs/authlist-reservation.ts` | `3ee302032025a889053d108d0813cc644819e58879b6cd554d56f85b804d0cd6` | `58fc8e1fa80dec54b7d860e2874e5336dc8da4a3a210947935e3c4687af2a0b0` | `patches/tck/specs/authlist-reservation.ts.patch` |
 | `tck/specs/remotetrigger-smartcharging.ts` | `upstream-patched` | `scripts/steve-verify/runner/specs/remotetrigger-smartcharging.ts` | `f0d2b720c8b6343d08e2506f4d6e4fcbf68069bb586e5bfea841ca9e37fdbca2` | `6e989588af4c2b58498b4ab85d7764d3c6de88e05125ed902e09cacde7e82d69` | `patches/tck/specs/remotetrigger-smartcharging.ts.patch` |
 | `tck/specs/firmware.ts` | `upstream-patched` | `scripts/steve-verify/runner/specs/firmware.ts` | `e1bc6c288fe5c56e2cceae6f4ea650e901d852637ecdec914fc7ccdbdd5d1fe8` | `785f569a4ed0888639849701475a78db0f003b31fdb0fccc3db29b87ce203fe2` | `patches/tck/specs/firmware.ts.patch` |
-| `tck/specs/index.ts` | `upstream-patched` | `scripts/steve-verify/runner/specs/index.ts` | `be8595765f4d66965bfd58498622c26a696962fabae8a2700f080ae5cd55d832` | `9c2e78576c114fd7b42208b6a5aec0801b705e36517631fda6f077a5badceced` | `patches/tck/specs/index.ts.patch` |
-| `tck/assert.ts` | `upstream-patched` | `src/cp/application/verification/assert.ts` | `2431f5f6c0df997d4d821d9af55689c1f0f2df199de1e9e4ed6f3fbaad4fc89e` | `0bdb7abd6baa0c9e5b9203b392b330f73935890151f3b1e4a0812e238cd4e61a` | `patches/tck/assert.ts.patch` |
-| `tck/sim.ts` | `upstream-patched` | `scripts/steve-verify/runner/sim.ts` | `2bf2f78afe3434e7139cd62c3ff6d70f02defd39dd700611e7c5f7614260cd35` | `8fc375649f238b36229f9a1b2d1843b0271ef8a2b5155cf5e951617de60bb7a6` | `patches/tck/sim.ts.patch` |
-| `tck/main.ts` | `upstream-patched` | `scripts/steve-verify/runner/main.ts` | `a757b0d35d29c7627336c0e858ad7d2f305a33c0acad819b5296f3847382f4e2` | `6e26340f2f8e4e29c5d58317c978e34abfee91b67ca085bfc82a4366a6fbcf3d` | `patches/tck/main.ts.patch` |
+| `tck/specs/index.ts` | `upstream-patched` | `scripts/steve-verify/runner/specs/index.ts` | `be8595765f4d66965bfd58498622c26a696962fabae8a2700f080ae5cd55d832` | `fb27277e3bbe10d32219e24a9d7d04f79c657d51b41f5ecd538ae635d9973524` | `patches/tck/specs/index.ts.patch` |
+| `tck/assert.ts` | `upstream-patched` | `src/cp/application/verification/assert.ts` | `2431f5f6c0df997d4d821d9af55689c1f0f2df199de1e9e4ed6f3fbaad4fc89e` | `6a28ab9406e30733c27914de7eded98ee60733fc3dc46e7a2de24d13c6c2f1fa` | `patches/tck/assert.ts.patch` |
+| `tck/sim.ts` | `upstream-patched` | `scripts/steve-verify/runner/sim.ts` | `2bf2f78afe3434e7139cd62c3ff6d70f02defd39dd700611e7c5f7614260cd35` | `bd345ee0ccb9166590fc8d0e1efd08151fb4318c4cb54a34ea67d26ed79a0e39` | `patches/tck/sim.ts.patch` |
+| `tck/main.ts` | `upstream-patched` | `scripts/steve-verify/runner/main.ts` | `a757b0d35d29c7627336c0e858ad7d2f305a33c0acad819b5296f3847382f4e2` | `759aa78887339ea4e33bdcae0d5c0a6c5971151a0cc50a72d370e48a90950c64` | `patches/tck/main.ts.patch` |
 | `tck/driver.ts` | `local-upstreamable` | `—` | `—` | `—` | `—` |
 | `tck/index.ts` | `local-upstreamable` | `—` | `—` | `—` | `—` |
 | `tck/driver-registry.ts` | `local-upstreamable` | `—` | `—` | `—` | `—` |
@@ -70,9 +70,11 @@ strongest available demonstration that the core names no CSMS.
 | `tck/unverifiable.ts` | `local-upstreamable` | `—` | `—` | `—` | `—` |
 | `tck/wait.ts` | `local-upstreamable` | `—` | `—` | `—` | `—` |
 | `bin/ocpp-tck.ts` | `local-upstreamable` | `—` | `—` | `—` | `—` |
+| `tck/specs/core-201.ts` | `local-upstreamable` | `—` | `—` | `—` | `—` |
 | `tck/specs/ASSERT-INVENTORY.txt` | `local-upstreamable` | `—` | `—` | `—` | `—` |
 | `tck/specs/DRIVE-TRACE.txt` | `local-upstreamable` | `—` | `—` | `—` | `—` |
 | `tck/specs/OCA-OBLIGATIONS.txt` | `local-upstreamable` | `—` | `—` | `—` | `—` |
+| `tck/specs/OCA-201-SLICE.txt` | `local-upstreamable` | `—` | `—` | `—` | `—` |
 | `drivers/steve/index.ts` | `local-upstreamable` | `—` | `—` | `—` | `—` |
 | `drivers/steve/forms.ts` | `local-upstreamable` | `—` | `—` | `—` | `—` |
 | `drivers/steve/records.ts` | `local-upstreamable` | `—` | `—` | `—` | `—` |
@@ -425,8 +427,8 @@ lane artifacts by the isolated retry, the same confirmed failure. Only the
 identity of the lane flakes differed (`tc056`+`tc044-1`, then `tc013`+`tc044-1`),
 which is the same pattern the SteVe table shows across its two versions and the
 reason `--retry-failed-isolated` is not optional in CI. Counting the isolated
-retry as the verdict, that was **38 PASS, 7 NOT APPLICABLE, 2 FAIL across all
-47**.
+retry as the verdict, that was **38 PASS, 7 NOT APPLICABLE, 2 FAIL across all 47
+OCPP 1.6 scenarios**.
 
 The third row is the same pin read through the GraphQL data API, after
 `tck/specs/firmware.ts` stopped asking for a retrieveDate the driver's rounding
@@ -436,7 +438,7 @@ APPLICABLE, 1 FAIL** — and, for the first time, a parallel pass with nothing
 for the isolated retry to reclassify.
 
 **The `v1.9.1` row is a report, not a recommendation.** 18 PASS, 13 NOT
-APPLICABLE and 16 FAIL across all 47 — against 39 / 7 / 1 on v2 — and the gap
+APPLICABLE and 16 FAIL across all 47 OCPP 1.6 scenarios — against 39 / 7 / 1 on v2 — and the gap
 is one upstream defect, not a driver limitation.
 
 Fourteen of the fifteen `all`-group failures carry an identical wire signature:

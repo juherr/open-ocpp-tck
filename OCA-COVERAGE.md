@@ -139,8 +139,8 @@ something no one can look up.
 `TC_043_2_CS` exists (SUT = Charge Point) and has no `_CSMS` counterpart. There
 is nothing to cover, and nothing to open an issue about.
 
-**29 of the 77 `_CSMS` cases have no scenario at all.** The 47 scenarios cover
-48 cases -- `cert16-tc017-unlock-occupied` answers both `TC_017_1` and
+**29 of the 77 `_CSMS` cases have no scenario at all.** The 47 OCPP 1.6
+scenarios cover 48 cases -- `cert16-tc017-unlock-occupied` answers both `TC_017_1` and
 `TC_017_2`. Uncovered:
 
 ```
@@ -154,7 +154,9 @@ That is a coverage gap in the other direction, and a much larger piece of work
 than issue #11: each needs a charge-point-side scenario template, and the
 templates are not in this repository -- they are baked into the pinned
 `ocpp-cp-simulator` image (`tck/sim.ts`). Stated here so the suite's extent is
-a number rather than an inference from "47 scenarios".
+a number rather than an inference from "47 scenarios". The OCPP 2.0.1
+scenarios are counted nowhere on this page: their own selection rule and list
+are `OCA-201-SELECTION.md` and `tck/specs/OCA-201-SLICE.txt`.
 
 ## Checking a real sweep against this table
 

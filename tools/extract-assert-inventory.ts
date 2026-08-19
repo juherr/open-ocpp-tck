@@ -276,7 +276,29 @@ for (const file of readdirSync(SPECS_DIR).filter((f) => f.endsWith(".ts")).sort(
       const meta = ["connector", "bootWaitSecs", "holdSecs"]
         .map((k) => `${k}=${literalProp(spec, k) ?? "default"}`)
         .join(" ");
-      out.push(`  SPEC ${JSON.parse(templateId)} ${meta}`);
+      // JOINED ONLY WHEN DECLARED, unlike the three above, and that is the
+      // rule for every field added from here on rather than a judgement made
+      // once: the three unconditional ones predate it and stay as they are,
+      // because changing them would rewrite all 52 lines of a committed
+      // artifact to say nothing new. Rendering `=default` here would do the
+      // same to the 47 that declare neither -- a diff in which the one line
+      // that actually changed is invisible. Both directions stay pinned
+      // either way: a scenario that gains or loses either field gains or
+      // loses it here.
+      //
+      // They belong on this line at all because deleting `ocppVersion` from a
+      // scenario written for one protocol changes nothing else a committed
+      // artifact can see -- the assertions are identical -- while the run
+      // silently becomes a measurement of the other protocol, which passes six
+      // checks out of seven (issue #57 §C). That is the definition of a change
+      // this artifact exists to make visible.
+      const declared = ["ocppVersion", "runsSimTemplate"]
+        .map((k) => {
+          const value = literalProp(spec, k);
+          return value === null ? "" : ` ${k}=${value}`;
+        })
+        .join("");
+      out.push(`  SPEC ${JSON.parse(templateId)} ${meta}${declared}`);
 
       const body = assertBody(spec);
       if (body === null) {

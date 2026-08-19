@@ -92,6 +92,52 @@ FILE authorize.ts
     assertLineMatches(·, ·, /"event":"scenario_completed"/, "scenario ran to completion despite the denied transaction start")
     assertNoTransactionForTag(·, "CERT023-BLK", ·, ·)
 
+FILE core-201.ts
+  HELPER assertResponseTimestamp
+    IF
+      ·.fail(·, ·)
+      RETURN
+    IF
+      ·.fail(·, ·)
+      RETURN
+    IF
+      ·.fail(·, ·)
+      RETURN
+    IF
+      OR
+      ·.fail(·, ·)
+      RETURN
+    ·.pass(·)
+  SPEC cert201-tcb01-cold-boot connector=1 bootWaitSecs=4 holdSecs=10 ocppVersion="OCPP-2.0.1" runsSimTemplate=false
+    assertSent(·, ·, "BootNotification", "BootNotification.req sent")
+    assertCallPayload(·, ·, "sent", "BootNotification", {reason:"PowerUp"}, "BootNotification.req is the OCPP 2.0.1 request (reason=PowerUp)")
+    assertResponseStatus(·, ·, "BootNotification", "Accepted", "BootNotification accepted", {direction:"sent"})
+    assertAllAnswered(·, ·, "StatusNotification")
+  SPEC cert201-tcb20-reset-accepted connector=1 bootWaitSecs=4 holdSecs=32 ocppVersion="OCPP-2.0.1" runsSimTemplate=false
+    assertReceived(·, ·, "Reset", "Reset.req received")
+    assertCallPayload(·, ·, "received", "Reset", {type:"Immediate"}, "Reset.req asks for type=Immediate")
+    assertResponseStatus(·, ·, "Reset", "Accepted", "Reset accepted", {direction:"received"})
+    assertResponseStatus(·, ·, "BootNotification", "Accepted", "the cold boot is accepted, so the next boot is the reset's", {direction:"sent",occurrence:0})
+    assertAllAnswered(·, ·, "BootNotification", ·, {minimum:2})
+  SPEC cert201-tcb21-reset-scheduled connector=1 bootWaitSecs=4 holdSecs=12 ocppVersion="OCPP-2.0.1" runsSimTemplate=false
+    IF
+      ·.pass(·)
+      ·.skip(·, ·)
+    assertReceived(·, ·, "Reset", "Reset.req received")
+    assertCallPayload(·, ·, "received", "Reset", {type:"OnIdle"}, "Reset.req asks for type=OnIdle")
+    IF
+      assertResponseStatus(·, ·, "Reset", "Scheduled", "Reset scheduled until the transaction ends", {direction:"received"})
+      ·.skip("Reset scheduled until the transaction ends", ·)
+    assertAllAnswered(·, ·, "TransactionEvent")
+  SPEC cert201-tcb22-reset-rejected connector=1 bootWaitSecs=4 holdSecs=10 ocppVersion="OCPP-2.0.1" runsSimTemplate=false
+    assertReceived(·, ·, "Reset", "Reset.req received")
+    assertCallPayload(·, ·, "received", "Reset", {type:"Immediate",evseId:9}, "Reset.req names the EVSE it was asked to name")
+    assertResponseStatus(·, ·, "Reset", "Rejected", "Reset rejected for an EVSE the station does not have", {direction:"received"})
+  SPEC cert201-tcf20-heartbeat connector=1 bootWaitSecs=4 holdSecs=8 ocppVersion="OCPP-2.0.1" runsSimTemplate=false
+    assertSent(·, ·, "Heartbeat", "Heartbeat.req sent")
+    assertAllAnswered(·, ·, "Heartbeat")
+    assertResponseTimestamp(·, ·, "Heartbeat", "currentTime", "Heartbeat.conf carries a currentTime the charge point can parse")
+
 FILE core.ts
   HELPER assertGetConfigurationUnfiltered
     IF

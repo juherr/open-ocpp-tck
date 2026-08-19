@@ -1,0 +1,41 @@
+# OCA-201-SLICE -- which OCPP 2.0.1 certification cases this suite may
+# implement, and which scenario implements each.
+#
+# THIS FILE IS THE LIST. OCA-201-SELECTION.md states the RULE it is drawn from
+# -- certification profile Core, role CSMS, status M in Part 5 §4's
+# `Conf. test for CSMS` column -- and cites this file rather than restating it.
+# The same arrangement OCA-COVERAGE.md has with OCA-OBLIGATIONS.txt, for the
+# same reason: two copies of a list drift, and the prose copy is the one nobody
+# diffs.
+#
+# Hand-maintained, and guarded: tests/oca-201-slice.sh reads it against
+# tck/specs/ASSERT-INVENTORY.txt in both directions, so a `cert201-` scenario
+# for a case that is not listed here and a case here that is neither
+# implemented nor declined are both build failures.
+#
+# WHAT NO GUARD CAN CHECK: that these seven cases ARE the Core mandatory CSMS
+# cases the rule selects. That is a reading of a PDF this repository does not
+# and cannot contain -- Parts 5 and 6 are CC BY-ND -- and the method for
+# redoing it is written down in OCA-201-SELECTION.md. What is checked is that
+# the list and the scenarios stop drifting afterwards.
+#
+# A row is three fields, the third free text:
+#
+#   <OCA case>  <templateId | not-implemented>  <why not, on a not-implemented
+#                                                row; omitted on an implemented
+#                                                one, where the scenario says it>
+#
+# WHICH RESET OUTCOME IS WHICH CASE IS OUR READING, not something read off Part
+# 6. `ResetStatusEnumType` has three values and the Reset block has three
+# mandatory CSMS cases, so they are mapped Accepted / Scheduled / Rejected in
+# case order. tck/specs/core-201.ts's header carries the argument. Correcting
+# it moves three rows here and three templateIds there.
+#
+# case / scenario / why not
+TC_B_01    cert201-tcb01-cold-boot
+TC_B_06    not-implemented    Reading a variable needs a device model to read it from, and the CSMS this suite drives seeds authorizations only -- no station, no EVSE, no component. Blocked on the device-model provisioning assigned to issue #58 by issue #57's closing comment, section A -- #58's own text is about pinning a certified build, so the assignment is what to read. The per-case measurement is in issue #61's comment on #63.
+TC_B_09    not-implemented    Writing a variable, same gap and the same issue: there is nothing provisioned to write to.
+TC_B_20    cert201-tcb20-reset-accepted
+TC_B_21    cert201-tcb21-reset-scheduled
+TC_B_22    cert201-tcb22-reset-rejected
+TC_F_20    cert201-tcf20-heartbeat

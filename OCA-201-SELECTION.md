@@ -9,9 +9,10 @@ messages. Six names chosen by hand is not a rule, and without a rule a
 "small representative set" is a judgement each reviewer makes differently and
 the milestone grows by a case at a time.
 
-This file is the rule. It is not a coverage table: at the time of writing there
-is **no `cert201-` scenario in the tree**, and the coverage arithmetic for OCPP
-1.6 lives in [`OCA-COVERAGE.md`](OCA-COVERAGE.md).
+This file is the rule. It is not a coverage table and it is not the list: the
+list is [`tck/specs/OCA-201-SLICE.txt`](tck/specs/OCA-201-SLICE.txt), one row
+per selected case, and the coverage arithmetic for OCPP 1.6 lives in
+[`OCA-COVERAGE.md`](OCA-COVERAGE.md).
 
 Writing a driver scope row rather than choosing scenarios? The section you want
 is [what a 2.0.1 `reason` cites](#what-a-201-reason-cites); nothing between here
@@ -42,8 +43,8 @@ Two narrowings, and only the first is a rule: it takes Core's 364 rows to the
 104 mandatory for this role, and the slice below takes those 104 to seven.
 
 For scale: the entire OCPP 1.6 certification set has 77 `_CSMS` cases — the
-count [`OCA-COVERAGE.md`](OCA-COVERAGE.md) derives and this suite's 47 scenarios
-are measured against. One profile of 2.0.1 asks for more mandatory CSMS cases
+count [`OCA-COVERAGE.md`](OCA-COVERAGE.md) derives and this suite's 47 OCPP 1.6
+scenarios are measured against. One profile of 2.0.1 asks for more mandatory CSMS cases
 than 1.6 has cases at all. Part 6 devotes p608–p900 to 251 `*_CSMS` cases,
 which is scale rather than a term in either narrowing: it is a different
 document's count of a different population, and how it relates to the matrix's
@@ -88,20 +89,21 @@ do not read the row above as calling it mandatory.
 
 ## The v0.3 slice
 
-Seven cases from the pool of 104, every one of them `M`:
+Seven cases from the pool of 104, every one of them `M`, and they are listed
+**in [`tck/specs/OCA-201-SLICE.txt`](tck/specs/OCA-201-SLICE.txt)** rather than
+here — one row per case, naming the scenario that implements it or the reason
+there is none. That file is machine-readable and guarded in both directions;
+this page states the rule it was drawn against. The arrangement, and the reason
+for it, is [`OCA-COVERAGE.md`](OCA-COVERAGE.md)'s with
+[`OCA-OBLIGATIONS.txt`](tck/specs/OCA-OBLIGATIONS.txt): a second copy of a list
+drifts, and the prose copy is the one nobody diffs.
 
-| Case | What it exercises |
-|---|---|
-| `TC_B_01` | cold boot, accepted |
-| `TC_B_06` | read one variable |
-| `TC_B_09` | write one variable |
-| `TC_B_20`, `TC_B_21`, `TC_B_22` | reset, three mandatory cases |
-| `TC_F_20` | heartbeat |
-
-Chosen because between them they touch boot, the device model and a
-CSMS-initiated operation — the three parts of the driver contract this
-milestone changes. A slice that exercised only charge-point-initiated messages
-would leave the half of the contract that is actually new untested.
+The seven are boot, reading and writing one variable, reset — three mandatory
+cases of its own — and heartbeat. Chosen because between them they touch boot,
+the device model and a CSMS-initiated operation: the three parts of the driver
+contract this milestone changes. A slice that exercised only
+charge-point-initiated messages would leave the half of the contract that is
+actually new untested.
 
 **What this bounds, and why it is written before the contract work rather than
 after it.** Only three of the seven are CSMS-initiated: `Reset`,
@@ -110,12 +112,13 @@ observed, not driven. So the first 2.0.1 operation vocabulary needs **three
 operations**, not eighteen, and "as few as the first slice needs" is now a
 number instead of an intention.
 
-A scenario issue may implement fewer of these seven and say why. It may not
-implement a case outside them without either extending this list or changing
-the rule — which is the whole point of the list being here rather than in a
-review comment. Nothing checks that today; see
-[the guard this page does not have yet](#the-guard-this-page-does-not-have-yet)
-for when it will, and for where this list moves when it does.
+A scenario issue may implement fewer of these seven and say why — which the
+first one did, leaving `TC_B_06` and `TC_B_09` to the device-model provisioning
+they have nothing to read or write without, with the reason in the row. It may
+not implement a case outside them without either extending the list or changing
+the rule, which is the whole point of the list existing rather than being
+re-drawn per review. That half is now checked: see
+[the guard](#the-guard).
 
 ## `M` only, not `M` plus the conditionals a CSMS declares
 
@@ -197,9 +200,11 @@ that makes it tempting to build `--profile` here. It is not built, deliberately.
 What the tree has today is one way to select scenarios and one way to tell them
 apart:
 
-- `--group` **selects**. Its five buckets mirror an upstream file's array
-  membership rather than any taxonomy, which is the problem issue #34 opens for
-  OCPP 1.6 in a later milestone.
+- `--group` **selects**. Five of its six buckets mirror an upstream file's
+  array membership rather than any taxonomy, which is the problem issue #34
+  opens for OCPP 1.6 in a later milestone; the sixth is the file the 2.0.1
+  scenarios are written in, which is the same kind of accident of authorship
+  rather than a version axis — nothing derives a bucket from a `templateId`.
 - the **certification namespace** a `templateId` opens with — `cert16-`,
   `cert201-` — **separates**. The runner and its guards treat it as a
   first-class concept, deliberately without a version literal anywhere in them,
@@ -217,38 +222,35 @@ selection axis it must be **the** mechanism #34 builds, not a second one beside
 it, or the milestone after inherits two ways to select the same thing.
 Building it here is precisely how that happens.
 
-## The guard this page does not have yet
+## The guard
 
 The failure mode this page has is the ordinary one: the written rule and the
 implemented perimeter drift apart, quietly, and the page keeps reading well.
-It is the failure `OCA-COVERAGE.md` records under its own obligation count, so
-the question is not whether a guard is wanted but whether one can exist yet.
+It is the failure `OCA-COVERAGE.md` records under its own obligation count.
 
-It cannot, for the reason in the opening: nothing implements the rule. The
-guard worth having has two directions, and both are empty:
+`tests/oca-201-slice.sh` is the check, and it has two directions:
 
-1. every registered `cert201-` scenario traces to a case in the slice list
-   above;
-2. every case in that list is either implemented or marked as not yet.
+1. every registered `cert201-` scenario traces to a row of
+   [`tck/specs/OCA-201-SLICE.txt`](tck/specs/OCA-201-SLICE.txt);
+2. every row of that file is either implemented or declined **with a reason**.
 
-Direction 1 has nothing to range over. Direction 2 would be red on all seven
-rows from the first commit, which is a build that is red on purpose and
-therefore a build nobody reads. A guard that cannot be made to fail today
-cannot be shown to fail *correctly* today, and that demonstration is this
-repository's entry condition for a guard.
+**It could not have existed before the first scenario**, which is why this page
+carried its absence as a decision rather than an omission. Direction 1 had
+nothing to range over, and direction 2 would have been red on all seven rows
+from the first commit — a build that is red on purpose is a build nobody reads.
+A guard that cannot be made to fail cannot be shown to fail *correctly*, and
+that demonstration is this repository's entry condition for a guard.
 
-**The trigger is the first `cert201-` scenario**, and three things retire with
-it, so the issue that writes it owns all three: this guard; the seven-case
-table above, which moves to a machine-readable file under `tck/specs/` with
-this page citing it rather than restating it, the way `OCA-COVERAGE.md` cites
-`OCA-OBLIGATIONS.txt`; and the "no `cert201-` scenario yet" sentences here and
-in `README.md`. Written down so that "should this have a guard?" is a decision
-on the record rather than an omission someone re-discovers.
+What the guard cannot check is the thing that matters most: that the seven rows
+really are the cases the rule selects. That is a reading of a PDF this
+repository cannot contain, the method for redoing it is above, and those rows
+carry exactly the status `OCA-COVERAGE.md`'s totals carry — measured, then
+written down. What stops afterwards is the drift.
 
-The precedent is exact and worth reading before re-proposing — the header of
-`tests/oca-obligations.sh` refuses a per-namespace breakdown in the same terms:
-with one namespace in the file it would be a second spelling of the same
-number.
+One shape it deliberately does not have, and the precedent is exact — the
+header of `tests/oca-obligations.sh` refuses a per-namespace breakdown in the
+same terms: with one namespace in the file it would be a second spelling of the
+same number.
 
 ## Not in v0.3
 
@@ -257,7 +259,8 @@ Written out, because 914 pages of test cases make an unwritten line slip:
 - the other three certification profiles — Advanced Security, Smart Charging,
   ISO 15118 Support — and Core's conditional rows: everything the table above
   counts that the rule does not select;
-- the Core mandatory cases beyond the slice — all but the seven above;
+- the Core mandatory cases beyond the slice — all but the seven the slice list
+  names;
 - a shared 1.6 / 2.0.1 abstraction layer. One slice is not evidence;
 - a `Reusable State` fixture mechanism. Part 6 defines 13 of them for the CSMS
   role, and this suite has timers and one-shot provisioning, which are not the

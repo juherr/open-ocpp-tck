@@ -14,9 +14,10 @@
  * ------------------------
  * Unlike SteVe, there is no choice to justify: CitrineOS generates its
  * outbound surface from the OCPP schemas themselves, so
- * `POST /ocpp/1.6/<module>/<action>` IS the way to put a Call on the wire, and
- * the request body IS the OCPP payload. The interesting part is what the
- * surface omits -- see requests.ts.
+ * `POST /ocpp/<version>/<module>/<action>` IS the way to put a Call on the
+ * wire, and the request body IS the OCPP payload. That holds for both
+ * protocols -- the version is a path segment, not a second API. The
+ * interesting part is what the surface omits -- see requests.ts.
  *
  * Where the observations come from
  * ---------------------------------
@@ -38,15 +39,27 @@
  * digest, and compose.v1.yaml overrides it with v1.9.1. v1 costs the six
  * local-auth-list scenarios, whose 1.6 endpoints exist only from the v2 line,
  * and renames the OCPP connection column. See variant.ts.
+ *
+ * Protocols
+ * ---------
+ * This is the first driver to declare an OCPP 2.0.1 surface, and it declares
+ * it for the v2 line only -- three operations, which is the whole vocabulary
+ * the first `cert201-` slice needs. The 1.6 half is untouched by it: one
+ * CitrineOS serves both protocols on one websocket endpoint, dispatching on
+ * the negotiated subprotocol, so there is no second deployment, no second
+ * client and nothing conditional in the transport.
  */
 import {
   CSMS_OPERATION_16_ACTIONS,
+  CSMS_OPERATION_201_ACTIONS,
   type CsmsCapabilities,
   type CsmsDriverModule,
   type CsmsDriverParts,
   type CsmsEnv,
   type CsmsOperation16,
+  type CsmsOperation201,
   type CsmsOperations16,
+  type CsmsOperations201,
 } from "../../tck/driver";
 import { CitrineMessageApi } from "./api-client";
 import { defaultCitrineConfig } from "./config";
@@ -57,10 +70,11 @@ import {
 } from "./provision";
 import { citrineosExpectedFailures } from "./expected";
 import { CitrineRecords } from "./records";
-import { toCitrineRequest } from "./requests";
+import { toCitrineRequest, toCitrineRequest201 } from "./requests";
 import { citrineosScope } from "./scope";
 import {
   resolveVariant,
+  speaksOcpp201,
   unroutedActions,
   type CitrineVariant,
 } from "./variant";
@@ -91,6 +105,16 @@ function capabilitiesFor(variant: CitrineVariant): CsmsCapabilities {
     operations16: new Set(
       CSMS_OPERATION_16_ACTIONS.filter((action) => !unrouted.has(action)),
     ),
+    // ALL THREE OR NONE, and the line decides which. On v2 the three 2.0.1
+    // routes are the whole vocabulary, so there is nothing to subtract. On v1
+    // the declaration is ABSENT rather than empty, which is the contract's way
+    // of saying "this driver, pointed here, does not speak OCPP 2.0.1" -- and
+    // that is the honest answer: the 2.0.1 surface has never been measured
+    // against the v1.9.1 image, and an empty set would claim it had been and
+    // found nothing.
+    ...(speaksOcpp201(variant)
+      ? { operations201: new Set(CSMS_OPERATION_201_ACTIONS) }
+      : {}),
     // No reservation capability at all, which is structural rather than a gap
     // in this driver: with nothing able to SEND a 1.6 ReserveNow, the
     // Reservations table never gets a row for 1.6 to have an opinion about.
@@ -120,6 +144,26 @@ function createOperations(
   };
 }
 
+/**
+ * The 2.0.1 half, and it shares the api client rather than getting one of its
+ * own: the message API is one HTTP surface with a version segment in the path,
+ * so a second client would be a second copy of the timeout, the confirmation
+ * parsing and the `success: false` rule for no gain.
+ *
+ * No `records` and no `variant`, which is the whole difference from the
+ * function above: nothing in the 2.0.1 vocabulary carries an opaque ref to
+ * resolve, and the v1 line reaches this through nothing at all -- `create`
+ * omits the part, so the runner substitutes its throwing stub and the scenario
+ * lands NOT APPLICABLE.
+ */
+function createOperations201(api: CitrineMessageApi): CsmsOperations201 {
+  return {
+    async execute(cpId: string, op: CsmsOperation201): Promise<string> {
+      return api.send(cpId, toCitrineRequest201(op));
+    },
+  };
+}
+
 export const csmsDriver: CsmsDriverModule = {
   id: "citrineos",
   displayName: "CitrineOS",
@@ -132,8 +176,16 @@ export const csmsDriver: CsmsDriverModule = {
   create(env: CsmsEnv): CsmsDriverParts {
     const cfg = defaultCitrineConfig(env);
     const records = new CitrineRecords(cfg);
+    const api = new CitrineMessageApi(cfg);
     return {
-      operations16: createOperations(cfg.variant, new CitrineMessageApi(cfg), records),
+      operations16: createOperations(cfg.variant, api, records),
+      // Present exactly when `capabilities.operations201` is declared, and the
+      // two read the same variant: a driver whose capability set claims a
+      // protocol its parts cannot drive would report the gap only at runtime,
+      // after a container had started.
+      ...(speaksOcpp201(cfg.variant)
+        ? { operations201: createOperations201(api) }
+        : {}),
       records,
       prepareStation: (cpId) => records.prepareStation(cpId),
       simTransport: async () => ({

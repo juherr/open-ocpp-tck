@@ -12,9 +12,10 @@
  * ------------------------
  * Unlike SteVe, there is no choice to justify: CitrineOS generates its
  * outbound surface from the OCPP schemas themselves, so
- * `POST /ocpp/1.6/<module>/<action>` IS the way to put a Call on the wire, and
- * the request body IS the OCPP payload. The interesting part is what the
- * surface omits -- see requests.ts.
+ * `POST /ocpp/<version>/<module>/<action>` IS the way to put a Call on the
+ * wire, and the request body IS the OCPP payload. That holds for both
+ * protocols -- the version is a path segment, not a second API. The
+ * interesting part is what the surface omits -- see requests.ts.
  *
  * Where the observations come from
  * ---------------------------------
@@ -36,6 +37,15 @@
  * digest, and compose.v1.yaml overrides it with v1.9.1. v1 costs the six
  * local-auth-list scenarios, whose 1.6 endpoints exist only from the v2 line,
  * and renames the OCPP connection column. See variant.ts.
+ *
+ * Protocols
+ * ---------
+ * This is the first driver to declare an OCPP 2.0.1 surface, and it declares
+ * it for the v2 line only -- three operations, which is the whole vocabulary
+ * the first `cert201-` slice needs. The 1.6 half is untouched by it: one
+ * CitrineOS serves both protocols on one websocket endpoint, dispatching on
+ * the negotiated subprotocol, so there is no second deployment, no second
+ * client and nothing conditional in the transport.
  */
 import { type CsmsDriverModule } from "../../tck/driver";
 export declare const csmsDriver: CsmsDriverModule;

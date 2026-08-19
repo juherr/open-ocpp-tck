@@ -93,6 +93,16 @@ export interface SimConfig {
      */
     extraArgs: string[];
 }
+/** Whether `extraArgs` already carries `flag`, in either spelling the CLI's
+ *  parser accepts. What makes {@link SimConfig.extraArgs} the last word on the
+ *  two flags that consult it, without depending on how upstream resolves a
+ *  repeated option.
+ *
+ *  EXPORTED for the runner, which is the only place that can see both this and
+ *  a scenario's declared protocol: being the last word is right for an operator
+ *  overriding a default, and wrong -- silently -- when what it overrides is a
+ *  certification case's own version. See the refusal in main.ts. */
+export declare function namesFlag(extraArgs: readonly string[], flag: string): boolean;
 export declare function defaultSimConfig(env?: NodeJS.ProcessEnv): SimConfig;
 /**
  * Whether a run should ask its container for a wire trace at all --
@@ -131,6 +141,13 @@ export declare function renderDockerArgs(args: readonly string[]): string;
 export interface SimProcess {
     readonly cpId: string;
     readonly container: string;
+    /** The docker command line this container was started with, rendered and
+     *  password-redacted -- the record, not a reconstruction. It is here rather
+     *  than rebuilt by callers because it is the only line that says which OCPP
+     *  protocol a run spoke, and a caller re-deriving it from the same inputs
+     *  can drift from what was actually spawned the moment either side gains an
+     *  argument. `runScenario` writes it as the first line of `results/*.log`. */
+    readonly argv: string;
     /** Every stdout line seen so far, in order (JSON events, JSON command
      *  responses, and the plain-text Logger lines ocpp.ts parses). */
     readonly lines: readonly string[];

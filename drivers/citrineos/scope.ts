@@ -27,7 +27,9 @@
 import type { ScopeEntry, ScopeTable } from "../../tck/scope";
 import { BLOCKED_UNREACHABLE, FIRMWARE_STATUS_NOT_HANDLED } from "./expected";
 import {
+  CERT_201_SCENARIOS,
   NO_LOCAL_LIST,
+  NO_OCPP_201_ON_V1,
   NO_RESERVATIONS,
   V1_LOCAL_LIST_SCENARIOS,
   type CitrineVariant,
@@ -40,6 +42,14 @@ const OBSERVED =
 
 const d = (reason: string) => ({ status: "DRIVABLE" as const, reason });
 const na = (reason: string) => ({ status: "NOT_APPLICABLE" as const, reason });
+
+/** What the first sweep answered for every driven 2.0.1 row, worded once. */
+const RESET_201 =
+  "Driven green against the pinned CitrineOS image. The question these rows " +
+  "were opened on is answered: v2.0.0-beta1 DOES dispatch a 2.0.1 Reset to a " +
+  "station it accepted through allowUnknownChargingStations, whose EVSEs and " +
+  "device model are not provisioned -- it does not refuse it before the wire, " +
+  "which is the shape several of its 1.6 refusals take.";
 
 // `satisfies` rather than `: ScopeTable`, so the keys stay literal and
 // V1_LOCAL_LIST below can be typed against them.
@@ -220,6 +230,48 @@ const V2_SCOPE = {
       "response handler, and DiagnosticsStatusNotification has a 1.6 request " +
       "handler -- so nothing here is answered with a CALLERROR.",
   ),
+
+  // --- OCPP 2.0.1 ----------------------------------------------------------
+  // MEASURED 2026-08-19, the first sweep that ran them, which is why none of
+  // these says CONDITIONAL any more. They were written that way -- each row
+  // stating the question the first live run must answer, because DRIVABLE
+  // would have asserted a measurement nobody had taken -- and the run answered
+  // it. Four are green. The fifth is DRIVABLE and red, and its row says why
+  // that is a finding against neither this driver nor the CSMS.
+  "cert201-tcb01-cold-boot": d(
+    "Driven green. Nothing to express -- the scenario drives no CSMS " +
+      "operation -- and the transport reaches a 2.0.1 station unchanged: one " +
+      "endpoint advertising ocpp2.1, ocpp2.0.1 and ocpp1.6, with the boot " +
+      "accepted and routed against the 2.0.1 schemas.",
+  ),
+  "cert201-tcf20-heartbeat": d(
+    "Driven green. Nothing to express either: the heartbeat is sent by the " +
+      "charge point on request, and the CSMS answering it with a parseable " +
+      "currentTime is the measurement.",
+  ),
+  "cert201-tcb20-reset-accepted": d(RESET_201),
+  // DRIVABLE AND RED, and the finding is against neither side. This driver
+  // dispatches OnIdle faithfully and the station answers correctly for the
+  // state it is in; the state is what fails. The simulator sends its Authorize
+  // idToken as ISO14443, and CitrineOS validates that type's FORMAT -- 8 or 14
+  // hex characters -- before any lookup, which no fixture `driver provision`
+  // seeds satisfies. So no transaction starts, OnIdle has nothing to wait for,
+  // and Accepted comes back. The scenario reports its precondition as
+  // unexercised rather than filing a Reset non-conformance; see
+  // tck/specs/core-201.ts, and note this is NOT the device-model gap the row
+  // predicted before the run.
+  "cert201-tcb21-reset-scheduled": d(
+    `${RESET_201} Its own precondition is what fails: a 2.0.1 transaction ` +
+      "cannot be started against this CSMS with the fixtures this driver " +
+      "provisions, because the Authorize idToken travels as ISO14443 and is " +
+      "rejected on format before any lookup. Provisioning an ISO14443-shaped " +
+      "idToken is what would make the case measurable.",
+  ),
+  "cert201-tcb22-reset-rejected": d(
+    `${RESET_201} And an evseId the station does not have survives the CSMS ` +
+      "intact: the 2.0.1 ResetRequest schema constrains it no further, and " +
+      "nothing validates it against the station's own EVSEs before dispatch.",
+  ),
 } satisfies ScopeTable;
 
 /**
@@ -254,6 +306,13 @@ const V1_KNOWN =
 const V1_LOCAL_LIST: readonly (keyof typeof V2_SCOPE)[] =
   V1_LOCAL_LIST_SCENARIOS;
 
+/** The same annotation for the same reason, over the other id list v1Scope()
+ *  demotes. Both lists are written in variant.ts against a table declared
+ *  here, so both need the round trip back through `keyof` to be checked at
+ *  all -- and this is the one whose own note in variant.ts records that a row
+ *  it fails to name is inherited silently. */
+const CERT_201: readonly (keyof typeof V2_SCOPE)[] = CERT_201_SCENARIOS;
+
 /**
  * The v1.9.1 table, derived from V2_SCOPE rather than written out again.
  *
@@ -266,6 +325,13 @@ const V1_LOCAL_LIST: readonly (keyof typeof V2_SCOPE)[] =
  *
  * The v1.9.1 line has a defect that most of the suite depends on, so a blanket
  * "driven green" would be wrong twice over. See V1_KNOWN.
+ *
+ * A third edit since: the five OCPP 2.0.1 rows are demoted whatever they say
+ * on v2. They are the one group the inherit-then-edit shape gets wrong in BOTH
+ * directions -- a DRIVABLE one would come through as "expressible on v1.9.1
+ * and driven identically", which is the opposite of true, and a CONDITIONAL
+ * one would come through untouched, asking a question of a line this driver
+ * declares no 2.0.1 surface for at all.
  */
 function v1Scope(): ScopeTable {
   const table: Record<string, ScopeEntry> = {};
@@ -274,6 +340,10 @@ function v1Scope(): ScopeTable {
   }
   for (const id of V1_LOCAL_LIST) {
     table[id] = na(NO_LOCAL_LIST);
+  }
+  // Last, so it overrides both passes above rather than being overridden.
+  for (const id of CERT_201) {
+    table[id] = na(NO_OCPP_201_ON_V1);
   }
   return table;
 }

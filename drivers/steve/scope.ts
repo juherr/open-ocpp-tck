@@ -1,14 +1,21 @@
 // Copyright 2026 Julien Herr
 // SPDX-License-Identifier: Apache-2.0
 /**
- * scope.ts -- what SteVe can drive: everything.
+ * scope.ts -- what SteVe can drive: every OCPP 1.6 scenario, and no OCPP 2.0.1
+ * one.
  *
- * This table is not padding. It is the regression guard on the whole
+ * The 1.6 half is not padding. It is the regression guard on the whole
  * generalization: the scenarios were WRITTEN against SteVe, so if making the
  * harness CSMS-neutral had dropped a capability, the loss would surface here
- * as a row that has to be demoted to NOT_APPLICABLE.
- * tests/ocpp-verify-scope-coverage.sh asserts that no row ever is, which turns
- * "the refactor kept everything working" from a claim into a check.
+ * as a row that had to be demoted to NOT_APPLICABLE. Every one of them still
+ * says DRIVABLE, which is what turns "the refactor kept everything working"
+ * from a claim into something a reader can check row by row.
+ *
+ * The 2.0.1 rows are the opposite kind of fact and cost that guard nothing:
+ * SteVe implements OCPP 1.6 and nothing else, so no capability of ours could
+ * have been dropped to produce them. They are here one per scenario because
+ * there is deliberately no protocol-level way to decline in one line -- the
+ * note above `scopeCoverage` in tck/scope.ts has the argument.
  *
  * A driver for a CSMS with a smaller API says so row by row, citing the
  * precise limitation -- see tck/scope.ts for the rules.
@@ -18,6 +25,19 @@ import type { ScopeTable } from "../../tck/scope";
 const REFERENCE_CSMS =
   "SteVe exposes the operation and the observation the scenario needs " +
   "(manager UI for operations, MariaDB for records).";
+
+/**
+ * Prose and not a feature identifier, by tck/scope.ts's rule: an identifier
+ * names the feature a conditional case hangs on, and a CSMS with no 2.0.1
+ * surface at all is declining every case whatever its features.
+ */
+const NO_OCPP_201 =
+  "No OCPP 2.0.1 message endpoint: SteVe implements OCPP 1.2, 1.5 and 1.6 " +
+  "(SOAP and JSON) and advertises no 2.0.1 subprotocol, so a charge point " +
+  "started on that version has no counterpart to connect to -- which is why " +
+  "the two scenarios here that drive no operation at all are excluded too. " +
+  "This driver accordingly declares no operations201, and the runner " +
+  "substitutes a stub that throws for the three that do drive one.";
 
 export const STEVE_SCOPE: ScopeTable = {
   "cert16-reservation-basic": {
@@ -207,5 +227,27 @@ export const STEVE_SCOPE: ScopeTable = {
   "cert16-tc067-clear-charging-profile": {
     status: "DRIVABLE",
     reason: REFERENCE_CSMS,
+  },
+
+  // --- OCPP 2.0.1: a protocol this CSMS does not speak --------------------
+  "cert201-tcb01-cold-boot": {
+    status: "NOT_APPLICABLE",
+    reason: NO_OCPP_201,
+  },
+  "cert201-tcb20-reset-accepted": {
+    status: "NOT_APPLICABLE",
+    reason: NO_OCPP_201,
+  },
+  "cert201-tcb21-reset-scheduled": {
+    status: "NOT_APPLICABLE",
+    reason: NO_OCPP_201,
+  },
+  "cert201-tcb22-reset-rejected": {
+    status: "NOT_APPLICABLE",
+    reason: NO_OCPP_201,
+  },
+  "cert201-tcf20-heartbeat": {
+    status: "NOT_APPLICABLE",
+    reason: NO_OCPP_201,
   },
 };

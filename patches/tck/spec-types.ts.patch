@@ -1,10 +1,12 @@
 --- a/scripts/steve-verify/runner/spec-types.ts (upstream @ 604054adb0d7d7129a26a5f1ad2d5fdc290d1ca1)
 +++ b/scripts/ocpp-verify/tck/spec-types.ts
-@@ -7,21 +7,31 @@
+@@ -6,22 +6,32 @@
+ 
  import type { AssertRecorder } from "./assert";
  import type { Frame } from "./ocpp";
- import type { SimProcess } from "./sim";
+-import type { SimProcess } from "./sim";
 -import type { SteveOps, SteveTx } from "./steve";
++import type { SimOcppVersion, SimProcess } from "./sim";
 +import type {
 +  CsmsOperations16,
 +  CsmsOperations201,
@@ -42,7 +44,7 @@
  }
  
  export interface AssertContext<D> {
-@@ -35,8 +45,8 @@
+@@ -35,16 +45,45 @@
     *  (scenario lifecycle events, boot-gate-suppression absence, ...). */
    lines: readonly string[];
    rec: AssertRecorder;
@@ -53,3 +55,82 @@
     *  triggering a CSMS op), threaded through for a later negative check. */
    driveState: D;
  }
+ 
+ export interface ScenarioSpec<D = void> {
++  /**
++   * TWO JOBS, and the second one is optional. It is this scenario's identity
++   * everywhere -- the registry, a driver's scope table, the results filenames,
++   * the container name, both pinned artifacts -- AND, unless
++   * {@link runsSimTemplate} says otherwise, the name of the simulator-side
++   * scenario template the charge point is asked to act out. Every scenario
++   * ported from the bash suite is named after its template because it has one.
++   */
+   templateId: string;
+   description?: string;
+-  /** Connector to run the scenario template on. Default 1. */
++  /**
++   * The OCPP version this scenario is written for, when it is written for one.
++   *
++   * ABSENT MEANS "whatever the environment resolves", which is what keeps the
++   * 47 scenarios that predate this field running exactly what they have always
++   * run. Declared, it WINS over `SIM_OCPP_VERSION`: the version is a property
++   * of the scenario -- see SimConfig.ocppVersion, which said so before anything
++   * could express it -- and an operator's export is not an opinion about which
++   * protocol a certification case is about.
++   *
++   * The alternative, leaving the environment in charge, was measured and is
++   * why this exists: a scenario driven on the version it was NOT written for
++   * goes six checks out of seven green
++   * ({@link https://github.com/juherr/open-ocpp-tck/issues/57#issuecomment-5315202272 §C}),
++   * so the one thing a green sweep cannot tell you is that it ran the wrong
++   * protocol. `SIM_EXTRA_ARGS` remains the escape hatch and still wins, by the
++   * structural rule in buildDockerArgs rather than by anything here.
++   */
++  ocppVersion?: SimOcppVersion;
++  /** Connector the scenario runs on: the one its template is started on, and
++   *  the one threaded into `drive()` and `assert()`. Default 1. A scenario
++   *  with no template still has one -- it is what a CSMS operation addresses. */
+   connector?: number;
+   /** Seconds to wait after `connect` before running the scenario template
+    *  (past BootNotification.conf) -- mirrors lib.sh's SPEC_BOOT_WAIT. */
+@@ -52,6 +91,40 @@
+   /** Seconds to hold the sim open after triggering the scenario, for the
+    *  scenario + any drive() traffic to finish -- mirrors SPEC_HOLD_SECS. */
+   holdSecs?: number;
++  /**
++   * Whether the simulator is asked to run a scenario template named
++   * {@link templateId} once the charge point has booted. Default true, which
++   * is what every scenario ported from the bash suite needs.
++   *
++   * `false` says the charge point has nothing to act out on its own: the whole
++   * scenario is `connect`, plus whatever `drive()` asks the CSMS for.
++   *
++   * IT ALSO MOVES TEARDOWN ONTO `drive()`. A template runs a lifecycle and
++   * leaves the station idle, which is why the ported scenarios need no
++   * wind-down; without one, whatever `drive()` puts the charge point into is
++   * still there when the container is removed. A scenario that starts a
++   * transaction and does not stop it leaves the CSMS holding an active row for
++   * the next scenario on that station to trip over -- survivable only because
++   * `prepareStation` exists, which is a driver's courtesy and not this
++   * runner's contract.
++   *
++   * It is not an optimisation -- the pinned image ships templates for the
++   * ported 1.6 scenarios and for no other certification namespace, so a
++   * scenario with no template of its own would otherwise spend 20s waiting for
++   * a `scenario_started` that cannot come, and report that as a warning rather
++   * than as the misconfiguration it would be for the 47 that do have one.
++   *
++   * A `simTemplateId?: string | null` -- absent meaning `templateId`, null
++   * meaning none -- is the shape this invites, and it is declined, but not for
++   * the reason it first looks like. Its real merit is that it would make
++   * `templateId`'s second job explicit instead of leaving a boolean to switch
++   * off something the type never mentions; its cost is a second way to say
++   * "none" and the ability to run a template under another name, which nothing
++   * has wanted. The doc comment on `templateId` buys the first at no cost, so
++   * what is left is the one bit actually being asked for. The day a scenario
++   * needs a template it is not named after, this becomes that.
++   */
++  runsSimTemplate?: boolean;
+   /** Runs concurrently with the sim's scenario execution, for scenarios
+    *  that need CSMS-side operator action (steve_op equivalent). Its
+    *  return value is threaded into assert() as `driveState`. Omitted
