@@ -41,18 +41,15 @@ const OBSERVED =
   "expresses the operation and Postgres answers the observation.";
 
 const d = (reason: string) => ({ status: "DRIVABLE" as const, reason });
-const c = (reason: string) => ({ status: "CONDITIONAL" as const, reason });
 const na = (reason: string) => ({ status: "NOT_APPLICABLE" as const, reason });
 
-/** The question every driven 2.0.1 row shares, worded once. */
+/** What the first sweep answered for every driven 2.0.1 row, worded once. */
 const RESET_201 =
-  "Expressible: CitrineOS binds Reset to the Configuration module's 2.0.1 " +
-  "MessageApi, so this driver POSTs /ocpp/2.0.1/configuration/reset the same " +
-  "way it POSTs the 1.6 path. What no run has answered yet is whether the " +
-  "pinned v2.0.0-beta1 image dispatches it to a station it accepted through " +
-  "allowUnknownChargingStations, whose EVSEs and device model are not " +
-  "provisioned -- or refuses it before anything reaches the wire, which is " +
-  "the shape several of its 1.6 refusals take.";
+  "Driven green against the pinned CitrineOS image. The question these rows " +
+  "were opened on is answered: v2.0.0-beta1 DOES dispatch a 2.0.1 Reset to a " +
+  "station it accepted through allowUnknownChargingStations, whose EVSEs and " +
+  "device model are not provisioned -- it does not refuse it before the wire, " +
+  "which is the shape several of its 1.6 refusals take.";
 
 // `satisfies` rather than `: ScopeTable`, so the keys stay literal and
 // V1_LOCAL_LIST below can be typed against them.
@@ -235,42 +232,45 @@ const V2_SCOPE = {
   ),
 
   // --- OCPP 2.0.1 ----------------------------------------------------------
-  // THE FIRST CONDITIONAL ROWS IN THIS REPOSITORY, and the status is the
-  // honest one rather than a placeholder. Every other row here says "driven
-  // green against the pinned image" because it was; these five have never been
-  // through a sweep, and DRIVABLE would assert a measurement nobody took. Each
-  // reason therefore states the question the first live run must answer, which
-  // is what tck/scope.ts asks a CONDITIONAL row for.
-  //
-  // Two of them are DRIVABLE all the same, and the difference is not
-  // confidence: they drive no CSMS operation at all, so there is nothing about
-  // this driver's API left to be conditional on.
+  // MEASURED 2026-08-19, the first sweep that ran them, which is why none of
+  // these says CONDITIONAL any more. They were written that way -- each row
+  // stating the question the first live run must answer, because DRIVABLE
+  // would have asserted a measurement nobody had taken -- and the run answered
+  // it. Four are green. The fifth is DRIVABLE and red, and its row says why
+  // that is a finding against neither this driver nor the CSMS.
   "cert201-tcb01-cold-boot": d(
-    "Nothing to express: the scenario drives no CSMS operation, and the " +
-      "transport already reaches a 2.0.1 station on this CSMS -- one endpoint " +
-      "advertising ocpp2.1, ocpp2.0.1 and ocpp1.6, with the boot accepted and " +
-      "routed against the 2.0.1 schemas " +
-      "(github.com/juherr/open-ocpp-tck/issues/57).",
+    "Driven green. Nothing to express -- the scenario drives no CSMS " +
+      "operation -- and the transport reaches a 2.0.1 station unchanged: one " +
+      "endpoint advertising ocpp2.1, ocpp2.0.1 and ocpp1.6, with the boot " +
+      "accepted and routed against the 2.0.1 schemas.",
   ),
   "cert201-tcf20-heartbeat": d(
-    "Nothing to express either: the heartbeat is sent by the charge point on " +
-      "request and the CSMS's answer is the measurement. Observed answered on " +
-      "the pinned image in the same run as the boot above.",
+    "Driven green. Nothing to express either: the heartbeat is sent by the " +
+      "charge point on request, and the CSMS answering it with a parseable " +
+      "currentTime is the measurement.",
   ),
-  "cert201-tcb20-reset-accepted": c(RESET_201),
-  "cert201-tcb21-reset-scheduled": c(
-    `${RESET_201} This one asks a second question first: whether a 2.0.1 ` +
-      "transaction can be started at all against a station whose device model " +
-      "is not provisioned, since without one there is nothing for OnIdle to " +
-      "wait for and the answer comes back Accepted rather than Scheduled. " +
-      "That gap was assigned to issue #58 by issue #57's closing comment, section A; it is not this driver's.",
+  "cert201-tcb20-reset-accepted": d(RESET_201),
+  // DRIVABLE AND RED, and the finding is against neither side. This driver
+  // dispatches OnIdle faithfully and the station answers correctly for the
+  // state it is in; the state is what fails. The simulator sends its Authorize
+  // idToken as ISO14443, and CitrineOS validates that type's FORMAT -- 8 or 14
+  // hex characters -- before any lookup, which no fixture `driver provision`
+  // seeds satisfies. So no transaction starts, OnIdle has nothing to wait for,
+  // and Accepted comes back. The scenario reports its precondition as
+  // unexercised rather than filing a Reset non-conformance; see
+  // tck/specs/core-201.ts, and note this is NOT the device-model gap the row
+  // predicted before the run.
+  "cert201-tcb21-reset-scheduled": d(
+    `${RESET_201} Its own precondition is what fails: a 2.0.1 transaction ` +
+      "cannot be started against this CSMS with the fixtures this driver " +
+      "provisions, because the Authorize idToken travels as ISO14443 and is " +
+      "rejected on format before any lookup. Provisioning an ISO14443-shaped " +
+      "idToken is what would make the case measurable.",
   ),
-  "cert201-tcb22-reset-rejected": c(
-    `${RESET_201} And whether an evseId the station does not have survives ` +
-      "the CSMS: CitrineOS may hold its own view of the station's EVSEs and " +
-      "refuse to dispatch, which would be a finding about the CSMS rather " +
-      "than about the charge point's answer -- but the two are only " +
-      "distinguishable from a run.",
+  "cert201-tcb22-reset-rejected": d(
+    `${RESET_201} And an evseId the station does not have survives the CSMS ` +
+      "intact: the 2.0.1 ResetRequest schema constrains it no further, and " +
+      "nothing validates it against the station's own EVSEs before dispatch.",
   ),
 } satisfies ScopeTable;
 

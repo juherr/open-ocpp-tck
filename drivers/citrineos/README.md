@@ -9,9 +9,9 @@ assertion gets tested.
 It reports the answer rather than flattering it.
 
 **Measured 2026-08-12 against the pinned image: 39 `PASS`, 7 `NOT APPLICABLE`,
-1 `FAIL` out of the 47 OCPP 1.6 scenarios.** The 5 OCPP 2.0.1 ones came later:
-two are `DRIVABLE` because they drive no CSMS operation at all, and three are
-`CONDITIONAL` until a sweep says otherwise — see [OCPP 2.0.1](#ocpp-201) below.
+1 `FAIL` out of the 47 OCPP 1.6 scenarios.** The 5 OCPP 2.0.1 ones came later
+and were measured 2026-08-19: **4 `PASS`, 1 unable to establish its
+precondition** — see [OCPP 2.0.1](#ocpp-201) below.
 
 That run needed no isolated retry at all, which had never happened before —
 but read it as one run rather than as a property. The parallel pass is
@@ -328,16 +328,24 @@ connection on the negotiated subprotocol
 so nothing about the transport, the compose file or the station roster changes
 for a 2.0.1 scenario.
 
-**Three of the five 2.0.1 scope rows are `CONDITIONAL` rather than
-`DRIVABLE`**, which is the honest status rather than a placeholder: every 1.6
-row here says "driven green against the pinned image" because it was, and these
-have never been through a sweep. Each of the three states the question the
-first live run must answer.
+**Measured 2026-08-19, on the first sweep that ran them: four `PASS`.** They
+were written `CONDITIONAL` — each row stating the question the first live run
+had to answer, because `DRIVABLE` would have asserted a measurement nobody had
+taken — and the run answered it: CitrineOS v2.0.0-beta1 *does* dispatch a 2.0.1
+`Reset` to a station it accepted through `allowUnknownChargingStations` whose
+device model is not provisioned, and an `evseId` the station does not have
+survives the schema and reaches the wire.
 
-The other two — cold boot and heartbeat — are `DRIVABLE`, and the difference is
-not confidence: they drive no CSMS operation at all, so there is nothing about
-this driver's API left to be conditional on. Whether they PASS is still a
-question for a sweep; whether this driver can express them is not.
+**`cert201-tcb21-reset-scheduled` is the fifth, and it is red against neither
+side.** The case needs a transaction running before the reset — that is what
+makes `Scheduled` distinguishable from `Accepted` — and one cannot be started
+here: the simulator sends its `Authorize` idToken as `ISO14443`, and CitrineOS
+validates that type's *format* (8 or 14 hex characters) before any lookup, which
+no fixture `driver provision` seeds satisfies. So the station stays idle,
+`OnIdle` is answered `Accepted`, and that answer is correct. The scenario
+reports its precondition as **unexercised** rather than filing a `Reset`
+non-conformance; provisioning an `ISO14443`-shaped idToken is what would make
+the case measurable.
 
 Two of the seven selected cases — `TC_B_06` and `TC_B_09` — are not implemented at all,
 because reading or writing a variable needs a device model that

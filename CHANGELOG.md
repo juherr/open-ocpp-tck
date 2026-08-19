@@ -55,6 +55,10 @@ Released as `0.3.0`. The documented install ref already points at that tag, so
   ([#64])
 - `OCA-201-SELECTION.md` cites the slice list instead of restating it, the way
   `OCA-COVERAGE.md` cites `OCA-OBLIGATIONS.txt` ([#73])
+- The runner refuses a run where `SIM_EXTRA_ARGS` would silently replace a
+  scenario's declared OCPP version, and writes the simulator's argv as the
+  first line of `results/<scenario>.log` so an archived run can say which
+  protocol it spoke ([#73])
 - `ASSERT-INVENTORY.txt` records the OCPP version a scenario declares, so
   dropping the declaration — which changes nothing else a committed artifact
   can see, and silently measures the other protocol — moves the diff ([#73])

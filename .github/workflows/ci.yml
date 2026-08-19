@@ -285,7 +285,9 @@ jobs:
       # that trade is bad: these scenarios are dominated by fixed waits
       # (bootWaitSecs + holdSecs), not by CPU, so the cost is predictable and
       # barely moves with runner speed. Across 3 lanes, core is ~3 min and all
-      # 44 are ~10 min. Roughly 7 minutes buys back the 29 scenarios that core
+      # 52 are ~15 min on SteVe; the CitrineOS lane took ~21 min on the sweep
+      # that first ran the OCPP 2.0.1 scenarios, its isolated-retry pass
+      # included. Roughly 7 minutes buys back the 29 scenarios that core
       # leaves out -- on precisely the branch where a regression is introduced,
       # and for a job whose entire reason to exist is that these drivers cannot
       # rot green. Cheap coverage is not worth a stale signal.
