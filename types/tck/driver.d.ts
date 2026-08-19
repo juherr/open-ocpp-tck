@@ -208,6 +208,10 @@ export interface SetVariableData201 {
 export type CsmsOperation201 = {
     action: "Reset";
     type: ResetType201;
+    /** Which EVSE to reset. Absent means the whole charging station, which
+     *  is what 2.0.1 says an omitted `evseId` means -- so an absent one is
+     *  omitted rather than sent as 0. */
+    evseId?: number;
 } | {
     action: "GetVariables";
     variables: GetVariableData201[];

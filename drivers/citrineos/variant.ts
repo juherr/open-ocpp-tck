@@ -117,6 +117,64 @@ export function unroutedActions(
   return UNROUTED[variant];
 }
 
+/**
+ * Whether this driver declares an OCPP 2.0.1 surface for a line.
+ *
+ * ONE PLACE, TWO READERS -- the capability set and the parts `create()`
+ * returns -- for the reason this module exists: a driver whose capabilities
+ * claim a protocol its parts cannot drive reports the gap only once a
+ * container has started, and `check-driver` cannot catch it because it never
+ * calls `create()`. The scope table is the third statement of the same fact
+ * and reads {@link CERT_201_SCENARIOS} instead, because what it needs is the
+ * rows rather than the answer.
+ *
+ * v2 ONLY, and that is a statement about what has been MEASURED rather than
+ * about what v1.9.1 can do. The 2.0.1 routes were read off the v2 line and the
+ * handshake was observed against the pinned v2 image; nobody has pointed a
+ * 2.0.1 station at v1.9.1 here. Declaring a surface on the strength of a
+ * version number is exactly the "declare, then check" this module refuses.
+ */
+export function speaksOcpp201(variant: CitrineVariant): boolean {
+  return variant === "v2";
+}
+
+/** Why a `cert201-` row is NOT_APPLICABLE on v1. Prose rather than a feature
+ *  identifier, by tck/scope.ts's rule: nothing here is conditional on a
+ *  feature, the whole protocol is undeclared for this line. */
+export const NO_OCPP_201_ON_V1 =
+  "This driver declares no OCPP 2.0.1 surface for the v1.9.1 line: the " +
+  "message-API routes and the handshake were both measured on the v2 line " +
+  "only, so `capabilities.operations201` is absent here and the runner " +
+  "substitutes a stub that throws. Drivable with CITRINE_VARIANT=v2 against a " +
+  "v2 server -- and a v1 measurement, not a version comparison, is what would " +
+  "change this row.";
+
+/**
+ * Scenarios the OCPP 2.0.1 declaration covers, and which v1 therefore demotes.
+ * Named here rather than in scope.ts for the same reason
+ * {@link V1_LOCAL_LIST_SCENARIOS} is: one list, and the table cannot drift from
+ * {@link speaksOcpp201}.
+ *
+ * ONE DIRECTION OF THAT IS UNGUARDED, and it is worth knowing which.
+ * `scopeCoverage` catches a row that is missing and a row that is stale; it
+ * cannot catch a row that is present and NOT demoted. So a sixth `cert201-`
+ * scenario added without a line here still gets its v2 row -- the coverage
+ * check forces that -- and `v1Scope()` inherits it unchanged, leaving the v1
+ * table claiming exactly what the comment above that function calls wrong.
+ *
+ * Unlike {@link V1_LOCAL_LIST_SCENARIOS}, this list cannot be derived from
+ * anything the driver can see: a scenario's declared protocol lives on its
+ * `ScenarioSpec` and never reaches a driver. Whatever changes that is what
+ * deletes this list.
+ */
+export const CERT_201_SCENARIOS = [
+  "cert201-tcb01-cold-boot",
+  "cert201-tcb20-reset-accepted",
+  "cert201-tcb21-reset-scheduled",
+  "cert201-tcb22-reset-rejected",
+  "cert201-tcf20-heartbeat",
+] as const;
+
 /** Scenarios the local-auth-list gap costs on v1. Named here rather than in
  *  scope.ts so the two cannot drift from {@link unroutedActions}. */
 export const V1_LOCAL_LIST_SCENARIOS = [

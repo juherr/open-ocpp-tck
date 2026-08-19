@@ -53,7 +53,7 @@ export class CitrineMessageApi {
       identifier: cpId,
       tenantId: String(this.cfg.tenantId),
     });
-    return `${this.cfg.apiUrl}/ocpp/1.6/${req.module}/${req.action}?${query}`;
+    return `${this.cfg.apiUrl}/ocpp/${req.ocppVersion}/${req.module}/${req.action}?${query}`;
   }
 
   /**
@@ -91,11 +91,14 @@ export class CitrineMessageApi {
       // A 404 here is worth calling out by name, because it is what an
       // unrouted action looks like: CitrineOS skips route registration
       // entirely when no schema exists for the version, so an operation it
-      // does not support for 1.6 is indistinguishable from a typo in the path
-      // unless the message says so.
+      // does not support is indistinguishable from a typo in the path unless
+      // the message says so. The version is named because that is half the
+      // question -- the same action is routed for one protocol and not the
+      // other often enough that "which one did we ask for" is the first thing
+      // a reader needs.
       const hint =
         res.status === 404
-          ? " -- no OCPP 1.6 route is registered for this action on this CitrineOS version"
+          ? ` -- no OCPP ${req.ocppVersion} route is registered for this action on this CitrineOS version`
           : "";
       throw new Error(
         `citrineos: POST ${url} returned ${res.status}${hint}: ${text.slice(0, 300)}`,

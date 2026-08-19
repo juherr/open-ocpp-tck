@@ -324,7 +324,7 @@ export const CSMS_OPERATION_16_ACTIONS = everyOneOf<CsmsOperation16Action>()([
 export type ResetType201 = "Immediate" | "OnIdle";
 
 // NOT BUILT, here because here is where they get added -- every OPTIONAL
-// member of the three requests below: `ResetRequest`'s `evseId`,
+// member of the three requests below EXCEPT the one the first slice reached:
 // `ComponentType`'s `instance` and `evse`, `VariableType`'s `instance`,
 // `GetVariableDataType`'s and `SetVariableDataType`'s `attributeType`, and the
 // `EVSEType` and `AttributeEnumType` the last two of those need.
@@ -332,18 +332,24 @@ export type ResetType201 = "Immediate" | "OnIdle";
 // The section header above applies "as few as the first slice needs" to the
 // operation count. This is the same rule one level down, applied to every
 // optional member rather than to the ones that looked speculative -- a rule
-// kept for five members out of six is not a rule. None is reachable from what
-// the slice is known to do: TC_B_06 and TC_B_09 are "read one variable" and
-// "write one variable", and `attributeType` is what TC_B_07 varies, a case
-// OCA-201-SELECTION.md puts OUTSIDE the slice as conditional on C-45.
+// kept for five members out of six is not a rule. None of those left is
+// reachable from what the slice does: TC_B_06 and TC_B_09 are "read one
+// variable" and "write one variable", and `attributeType` is what TC_B_07
+// varies, a case OCA-201-SELECTION.md puts OUTSIDE the slice as conditional on
+// C-45.
 //
-// It holds here for a reason the array note below does not share. Widening
+// It holds for a reason the array note below does not share. Widening
 // `variables` from one to many later would BREAK a driver's switch; adding an
-// optional member breaks nothing. So each of these can arrive with the
-// scenario that needs it, priced at zero -- and arrive MEASURED against a real
-// device model and a real Part 6 step table, which is what nobody can do
-// before #63 exists. Guessing now and being half-right ships a published
-// `.d.ts` that nobody can subtract from.
+// optional member breaks nothing. So each of these arrives with the scenario
+// that needs it, priced at zero -- which is exactly how `ResetRequest`'s
+// `evseId` left this list. It is not a member somebody thought would be handy:
+// addressing an EVSE the station does not have is the only way this simulator
+// answers a Reset `Rejected` at all, so without it one of the three mandatory
+// Reset cases has no request to make. Arriving that way is the rule working,
+// not an exception to it.
+//
+// What none of them can arrive with is a guess. Being half-right ships a
+// published `.d.ts` that nobody can subtract from.
 
 /** OCPP 2.0.1 `ComponentType` -- half of a device-model address. */
 export interface Component201 {
@@ -385,7 +391,14 @@ export type CsmsOperation201 =
   // these two unions side by side will offer to clean up. `//` rather than a
   // doc comment: an internal decision, not something a driver author is
   // shipped.
-  | { action: "Reset"; type: ResetType201 }
+  | {
+      action: "Reset";
+      type: ResetType201;
+      /** Which EVSE to reset. Absent means the whole charging station, which
+       *  is what 2.0.1 says an omitted `evseId` means -- so an absent one is
+       *  omitted rather than sent as 0. */
+      evseId?: number;
+    }
   // Arrays because the wire is an array -- `getVariableData` and
   // `setVariableData` are 1..N in the specification, and the assertions match
   // on the frame. A single-variable arm would read closer to TC_B_06 ("read
