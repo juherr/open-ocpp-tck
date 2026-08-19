@@ -646,7 +646,7 @@
          30_000,
        );
      } catch (err) {
-@@ -159,103 +558,262 @@
+@@ -159,103 +558,270 @@
        );
      }
      await sleep(bootWaitSecs * 1000);
@@ -917,6 +917,14 @@
 +// would join `all` and get its own bucket, exactly as a second 1.6 one would,
 +// rather than being folded in to keep the coincidence true.
 +//
++// AND THE COINCIDENCE IS MEANT TO END. Issue #74 replaces it with the two axes
++// this bucket welds together -- `--version` filtering on what a scenario
++// DECLARES, and `--group` back to a domain -- at which point `core-201`
++// disappears into `core` and "Core" means the certification profile it means
++// in both protocols. The note below refuses a version axis on the ground that
++// it would ship before there were two values to test it with; there are two
++// now, which is what makes #74 constructible and this bucket temporary.
++//
 +// DIVERGENCE FROM UPSTREAM, deliberate: "all" includes "authorize". Upstream
 +// leaves the 3 TC_023 scenarios outside it, and this registry used to mirror
 +// that, with a TODO saying the fix belonged upstream because fidelity was
@@ -948,7 +956,7 @@
  // ---------------------------------------------------------------------------
  
  // eslint-disable-next-line @typescript-eslint/no-explicit-any
-@@ -265,20 +823,23 @@
+@@ -265,20 +831,23 @@
    "remotetrigger-smartcharging": REMOTETRIGGER_SMARTCHARGING_SPECS,
    firmware: FIRMWARE_SPECS,
    authorize: AUTHORIZE_SPECS,
@@ -978,7 +986,7 @@
  // eslint-disable-next-line @typescript-eslint/no-explicit-any
  const SPECS_BY_TEMPLATE_ID = new Map<string, ScenarioSpec<any>>(
    Object.values(GROUPS)
-@@ -286,66 +847,228 @@
+@@ -286,66 +855,228 @@
      .map((spec) => [spec.templateId, spec]),
  );
  
@@ -1053,15 +1061,14 @@
 -   * change. isolatedRetry.verdict === "PASS" means the parallel FAIL/ERROR
 -   * was a flake; still non-PASS means it's a real failure, confirmed
 -   * isolated.
--   */
++   * change. A non-failing isolated retry means the parallel FAIL/ERROR was
++   * a flake.
+    */
 -  isolatedRetry?: {
 -    verdict: "PASS" | "FAIL" | "ERROR";
 -    checks: number | null;
 -    failed: number | null;
 -    errorMessage?: string;
-+   * change. A non-failing isolated retry means the parallel FAIL/ERROR was
-+   * a flake.
-+   */
 +  isolatedRetry?: RetryOutcome;
 +  /** The driver's declaration that this scenario is known to fail, attached
 +   *  whether or not it did. Both directions are reported: a declared FAIL is
@@ -1247,7 +1254,7 @@
      };
    } catch (err) {
      const message =
-@@ -353,64 +1076,47 @@
+@@ -353,64 +1084,47 @@
      process.stderr.write(
        `[runner] ERROR: ${spec.templateId} on ${cpId} threw before completing: ${message}\n`,
      );
@@ -1336,7 +1343,7 @@
    );
  
    for (const outcome of toRetry) {
-@@ -427,18 +1133,19 @@
+@@ -427,18 +1141,19 @@
      process.stderr.write(
        `[runner] isolated retry: ${outcome.templateId} on ${outcome.cpId} (parallel verdict was ${outcome.verdict})\n`,
      );
@@ -1359,7 +1366,7 @@
            : " -- CONFIRMED (fails isolated too, not a parallel-lane artifact)\n"),
      );
    }
-@@ -446,64 +1153,158 @@
+@@ -446,64 +1161,158 @@
  
  function timestampUtc(): string {
    // date -u +%FT%TZ equivalent: ISO-8601 down to the second, "Z" suffix
@@ -1547,7 +1554,7 @@
        "",
        header,
        separator,
-@@ -518,54 +1319,54 @@
+@@ -518,54 +1327,54 @@
  }
  
  /** Sequential or parallel group sweep. Writes results/summary.md and exits
@@ -1628,7 +1635,7 @@
      );
    } else {
      for (let i = 0; i < specs.length; i++) {
-@@ -574,11 +1375,11 @@
+@@ -574,11 +1383,11 @@
    }
  
    if (retryFailedIsolated) {
@@ -1642,7 +1649,7 @@
            "(a sequential sweep is already isolated).\n",
        );
      }
-@@ -588,45 +1389,87 @@
+@@ -588,45 +1397,87 @@
    for (const o of outcomes) {
      const retrySuffix = o.isolatedRetry
        ? ` [isolated retry: ${o.isolatedRetry.verdict}${
@@ -1752,7 +1759,7 @@
  }
  
  // ---------------------------------------------------------------------------
-@@ -642,6 +1485,8 @@
+@@ -642,6 +1493,8 @@
    cpId: string;
    connector?: number;
    timeoutSecs?: number;
@@ -1761,7 +1768,7 @@
  }
  
  function requireValue(argv: string[], index: number, flag: string): string {
-@@ -663,37 +1508,82 @@
+@@ -663,37 +1516,82 @@
    return n;
  }
  
@@ -1862,7 +1869,7 @@
  
    if (argv[0] === "run-all") {
      group = "all";
-@@ -708,18 +1598,27 @@
+@@ -708,18 +1606,27 @@
          case "--retry-failed-isolated":
            retryFailedIsolated = true;
            break;
@@ -1893,7 +1900,7 @@
      process.exit(1);
    }
  
-@@ -749,9 +1648,11 @@
+@@ -749,9 +1656,11 @@
        case "--retry-failed-isolated":
          retryFailedIsolated = true;
          break;
@@ -1906,7 +1913,7 @@
          process.exit(1);
      }
    }
-@@ -764,35 +1665,547 @@
+@@ -764,35 +1673,547 @@
      cpId,
      connector,
      timeoutSecs,
@@ -2470,7 +2477,7 @@
    }
  
    const spec = SPECS_BY_TEMPLATE_ID.get(args.templateId);
-@@ -800,18 +2213,109 @@
+@@ -800,18 +2221,109 @@
      process.stderr.write(
        `Unknown template id: ${args.templateId} (known: ${[...SPECS_BY_TEMPLATE_ID.keys()].join(", ")})\n`,
      );

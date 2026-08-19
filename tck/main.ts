@@ -786,6 +786,14 @@ async function runScenario<D>(
 // would join `all` and get its own bucket, exactly as a second 1.6 one would,
 // rather than being folded in to keep the coincidence true.
 //
+// AND THE COINCIDENCE IS MEANT TO END. Issue #74 replaces it with the two axes
+// this bucket welds together -- `--version` filtering on what a scenario
+// DECLARES, and `--group` back to a domain -- at which point `core-201`
+// disappears into `core` and "Core" means the certification profile it means
+// in both protocols. The note below refuses a version axis on the ground that
+// it would ship before there were two values to test it with; there are two
+// now, which is what makes #74 constructible and this bucket temporary.
+//
 // DIVERGENCE FROM UPSTREAM, deliberate: "all" includes "authorize". Upstream
 // leaves the 3 TC_023 scenarios outside it, and this registry used to mirror
 // that, with a TODO saying the fix belonged upstream because fidelity was

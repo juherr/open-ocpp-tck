@@ -118,6 +118,8 @@ export function templateIdsWithStatus(
 // Making it non-optional is the move to weigh, and it is not free -- it leaves
 // SIM_OCPP_VERSION with nothing to influence, which is how issue #57 ran the
 // same scenario on both protocols and found six checks out of seven green.
+// Issue #74 owns that change and carries the costing; this opt-out is one of
+// the things it would unlock, so re-propose it there rather than here.
 //
 // So the answer is one NOT_APPLICABLE row per scenario, which is verbose and
 // says something true per row. It is not the "branch on a scenario id" that
