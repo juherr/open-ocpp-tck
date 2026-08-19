@@ -9,9 +9,9 @@ assertion gets tested.
 It reports the answer rather than flattering it.
 
 **Measured 2026-08-12 against the pinned image: 39 `PASS`, 7 `NOT APPLICABLE`,
-1 `FAIL` out of the 47 OCPP 1.6 scenarios.** The 5 OCPP 2.0.1 ones came later
-and are `CONDITIONAL` until a sweep says otherwise — see [OCPP
-2.0.1](#ocpp-201) below.
+1 `FAIL` out of the 47 OCPP 1.6 scenarios.** The 5 OCPP 2.0.1 ones came later:
+two are `DRIVABLE` because they drive no CSMS operation at all, and three are
+`CONDITIONAL` until a sweep says otherwise — see [OCPP 2.0.1](#ocpp-201) below.
 
 That run needed no isolated retry at all, which had never happened before —
 but read it as one run rather than as a property. The parallel pass is
@@ -271,40 +271,6 @@ from the action, which is the only reason a table is needed:
 | `ClearChargingProfile` | `smartcharging/clearChargingProfile` |
 | `ReserveNow`, `CancelReservation` | **none** — see the gaps below |
 
-## OCPP 2.0.1
-
-The version is a path segment, so the 2.0.1 half of the contract is the same
-three moves through the same client — `/ocpp/2.0.1/…` instead of
-`/ocpp/1.6/…`:
-
-| Contract operation | Endpoint |
-|---|---|
-| `Reset` | `configuration/reset` |
-| `GetVariables` | `monitoring/getVariables` |
-| `SetVariables` | `monitoring/setVariables` |
-
-Declared for the **v2 line only**. Nobody has pointed a 2.0.1 station at
-v1.9.1 here, and a driver declaring a surface on the strength of a version
-number is the thing `variant.ts` exists to refuse — so with `CITRINE_VARIANT=v1`
-this driver declares no `operations201` at all and every `cert201-` scenario is
-`NOT_APPLICABLE`.
-
-One CitrineOS serves both protocols on one websocket endpoint, dispatching per
-connection on the negotiated subprotocol
-([the evidence](https://github.com/juherr/open-ocpp-tck/issues/57#issuecomment-5315202272)),
-so nothing about the transport, the compose file or the station roster changes
-for a 2.0.1 scenario.
-
-**The five 2.0.1 scope rows are `CONDITIONAL`, not `DRIVABLE`**, which is the
-honest status rather than a placeholder: every 1.6 row here says "driven green
-against the pinned image" because it was, and these have never been through a
-sweep. Each row states the question the first live run must answer. Two of the
-seven selected cases — `TC_B_06` and `TC_B_09` — are not implemented at all,
-because reading or writing a variable needs a device model that
-`driver provision` does not seed; that is
-[issue #58](https://github.com/juherr/open-ocpp-tck/issues/58), and the reason
-is in `tck/specs/OCA-201-SLICE.txt`.
-
 Observations and fixtures go through the **GraphQL data API** (Hasura), because
 CitrineOS's REST data endpoints expose none of what the scenarios assert on:
 there is no "latest transaction for this station" (the one transaction route
@@ -337,6 +303,47 @@ One thing this driver does *better* than the SteVe one: `SendLocalList` is
 lossless here. SteVe's manager UI carries tag names only, so per-entry `status`,
 `expiryDate` and `parentIdTag` are silently dropped; CitrineOS's JSON endpoint
 carries all three to the wire.
+
+## OCPP 2.0.1
+
+The version is a path segment, so the 2.0.1 half of the contract is the same
+three moves through the same client — `/ocpp/2.0.1/…` instead of
+`/ocpp/1.6/…`:
+
+| Contract operation | Endpoint |
+|---|---|
+| `Reset` | `configuration/reset` |
+| `GetVariables` | `monitoring/getVariables` |
+| `SetVariables` | `monitoring/setVariables` |
+
+Declared for the **v2 line only**. Nobody has pointed a 2.0.1 station at
+v1.9.1 here, and a driver declaring a surface on the strength of a version
+number is the thing `variant.ts` exists to refuse — so with `CITRINE_VARIANT=v1`
+this driver declares no `operations201` at all and every `cert201-` scenario is
+`NOT_APPLICABLE`.
+
+One CitrineOS serves both protocols on one websocket endpoint, dispatching per
+connection on the negotiated subprotocol
+([the evidence](https://github.com/juherr/open-ocpp-tck/issues/57#issuecomment-5315202272)),
+so nothing about the transport, the compose file or the station roster changes
+for a 2.0.1 scenario.
+
+**Three of the five 2.0.1 scope rows are `CONDITIONAL` rather than
+`DRIVABLE`**, which is the honest status rather than a placeholder: every 1.6
+row here says "driven green against the pinned image" because it was, and these
+have never been through a sweep. Each of the three states the question the
+first live run must answer.
+
+The other two — cold boot and heartbeat — are `DRIVABLE`, and the difference is
+not confidence: they drive no CSMS operation at all, so there is nothing about
+this driver's API left to be conditional on. Whether they PASS is still a
+question for a sweep; whether this driver can express them is not.
+
+Two of the seven selected cases — `TC_B_06` and `TC_B_09` — are not implemented at all,
+because reading or writing a variable needs a device model that
+`driver provision` does not seed; that is
+[issue #58](https://github.com/juherr/open-ocpp-tck/issues/58), and the reason
+is in `tck/specs/OCA-201-SLICE.txt`.
 
 ## Gaps
 

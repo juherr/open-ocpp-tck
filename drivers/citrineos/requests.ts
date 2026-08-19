@@ -120,8 +120,8 @@ function profileFor(ref: ChargingProfileRef): CsChargingProfile {
 }
 
 /**
- * STAMPED ONCE PER PROTOCOL, not once per arm. Twenty-one arms each repeating
- * `ocppVersion: "1.6"` is twenty-one chances to write the other one, and the
+ * STAMPED ONCE PER PROTOCOL, not once per arm. Sixteen arms each repeating
+ * `ocppVersion: "1.6"` is sixteen chances to write the other one, and the
  * failure would be silent in the worst way: a 2.0.1 payload POSTed to a 1.6
  * route is a 404 with a hint about an unrouted action, which reads as a
  * capability gap in the CSMS rather than as a typo here.

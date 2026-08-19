@@ -26,10 +26,10 @@
  * else.
  *
  * NO SIMULATOR TEMPLATE, which is what `runsSimTemplate: false` says on every
- * scenario below. The simulator image ships a scenario template per ported
- * 1.6 scenario and none for anything else, and none of these needs one: two
- * are what a charge point does on `connect`, and three are driven entirely
- * from the CSMS side. A template would be a thing to maintain upstream before
+ * scenario below. The pinned image ships 60 templates and not one of them is
+ * `cert201-`, so the wait for `scenario_started` could only ever time out --
+ * and none of these needs one anyway: two are what a charge point does on
+ * `connect`, and three are driven entirely from the CSMS side. A template would be a thing to maintain upstream before
  * a single case could be measured here.
  *
  * A FAILING CSMS OPERATION IS NOT SWALLOWED HERE, which is where these differ
@@ -60,6 +60,7 @@ import {
   assertReceived,
   assertResponseStatus,
   assertSent,
+  UNEXERCISED_PREFIX,
   type AssertRecorder,
 } from "../assert";
 import { findCall, findResponseFor, type Frame } from "../ocpp";
@@ -197,10 +198,22 @@ const TC_B_20: ScenarioSpec = {
       { direction: "received" },
     );
     // The station reboots and boots again, and the CSMS owes that second
-    // BootNotification an answer exactly as it owed the first. Asserting the
-    // response rather than counting the requests is what makes this a check
-    // about the CSMS: with no second boot it fails naming the occurrence it
-    // could not find, which is the reboot half.
+    // BootNotification an answer exactly as it owed the first.
+    //
+    // BOTH BOOTS, AND THE ORDER MATTERS FOR A REASON THAT IS NOT TIDINESS.
+    // `occurrence: 1` is an index, so it means "the reboot" only while the
+    // first boot is the first boot: a CSMS that Rejected the cold boot would
+    // have the station retry, and occurrence 1 would silently become that
+    // RETRY -- green while no reset-triggered reboot ever happened. Pinning
+    // occurrence 0 as Accepted is what keeps the index meaning what it says.
+    assertResponseStatus(
+      rec,
+      frames,
+      "BootNotification",
+      "Accepted",
+      "the cold boot is accepted, so the next boot is the reset's",
+      { direction: "sent", occurrence: 0 },
+    );
     assertResponseStatus(
       rec,
       frames,
@@ -209,10 +222,25 @@ const TC_B_20: ScenarioSpec = {
       "the post-reset BootNotification is accepted",
       { direction: "sent", occurrence: 1 },
     );
+    // AND THE SAME PAIR THROUGH assertAllAnswered, which is not redundant:
+    // assertResponseStatus reads a CALL with no response as a flat FAIL, so a
+    // log that ends between the reboot's BootNotification and its CALLRESULT
+    // would file a non-conformance against a CSMS that was still answering.
+    // This helper's third rule forgives exactly that -- an outstanding call at
+    // the end of the window is not an unanswered one -- while `minimum: 2` is
+    // what makes the reboot itself a stated requirement rather than an index.
+    assertAllAnswered(rec, frames, "BootNotification", undefined, {
+      minimum: 2,
+    });
   },
 };
 
-const TC_B_21: ScenarioSpec = {
+/** What TC_B_21 established before it asked for the reset. */
+interface TransactionPrecondition {
+  started: boolean;
+}
+
+const TC_B_21: ScenarioSpec<TransactionPrecondition> = {
   templateId: "cert201-tcb21-reset-scheduled",
   description:
     "TC_B_21 Reset: the CSMS sends Reset(OnIdle) while a transaction is running, and the station schedules it.",
@@ -231,23 +259,46 @@ const TC_B_21: ScenarioSpec = {
       command: "start_transaction",
       params: { connector, tagId: "CERT-TAG-1" },
     });
+    // THE PRECONDITION IS REPORTED, NOT ASSUMED, and this is why the scenario
+    // returns anything at all. `OnIdle` against an idle station is answered
+    // `Accepted`, which is correct of the station and correct of a CSMS that
+    // dispatched faithfully -- so a scenario that only checked for `Scheduled`
+    // would print "expected Scheduled, got Accepted" and file a finding
+    // against a Reset that did exactly what it was asked. Threading the
+    // outcome into assert() lets the artifact name the transaction as the
+    // thing that did not happen.
+    let started = true;
     try {
       await sim.waitForLine(/Sent: \[2,.*"TransactionEvent"/, 10_000);
     } catch (err) {
-      // Warn and proceed, the shape every soft wait in this suite takes: if
-      // the transaction never started, the status this scenario is about will
-      // not be the one that comes back, and the assertions say so. The warning
-      // is what tells a reader of results/ which of the two happened.
+      started = false;
       process.stderr.write(
-        `[runner] WARN: no TransactionEvent within 10s -- proceeding anyway, the Reset will be answered as if the station were idle (${
+        `[runner] WARN: no TransactionEvent within 10s -- the Reset below will be answered as if the station were idle (${
           err instanceof Error ? err.message : String(err)
         })\n`,
       );
     }
     await sleep(2000);
     await csms201.execute(cpId, { action: "Reset", type: "OnIdle" });
+    return { started };
   },
-  assert({ frames, rec }) {
+  assert({ frames, rec, driveState }) {
+    // FIRST, so a reader of results/ meets the cause before the consequence --
+    // and SKIPPED rather than FAIL when it did not hold. `OnIdle` against an
+    // idle station is answered `Accepted`, which is correct of the station and
+    // correct of a CSMS that dispatched faithfully: red would be this harness
+    // filing a non-conformance against a CSMS that did nothing wrong, which is
+    // the one mistake a conformance tool may not make. Orange says the suite
+    // did not ask, which is what actually happened.
+    const description = "a transaction was running when the reset was asked for";
+    if (driveState.started) {
+      rec.pass(description);
+    } else {
+      rec.skip(
+        description,
+        `${UNEXERCISED_PREFIX} no TransactionEvent reached the wire within 10s, so the station was idle and OnIdle has nothing to wait for`,
+      );
+    }
     assertReceived(rec, frames, "Reset", "Reset.req received");
     assertCallPayload(
       rec,
@@ -257,14 +308,21 @@ const TC_B_21: ScenarioSpec = {
       { type: "OnIdle" },
       "Reset.req asks for type=OnIdle",
     );
-    assertResponseStatus(
-      rec,
-      frames,
-      "Reset",
-      "Scheduled",
-      "Reset scheduled until the transaction ends",
-      { direction: "received" },
-    );
+    if (driveState.started) {
+      assertResponseStatus(
+        rec,
+        frames,
+        "Reset",
+        "Scheduled",
+        "Reset scheduled until the transaction ends",
+        { direction: "received" },
+      );
+    } else {
+      rec.skip(
+        "Reset scheduled until the transaction ends",
+        `${UNEXERCISED_PREFIX} the station was idle, so this case's distinguishing outcome was never reachable`,
+      );
+    }
     // The transaction that makes the status above meaningful. It is a check
     // about the CSMS in its own right -- a TransactionEvent it never answered
     // is the failure the whole `assertAllAnswered` family exists for -- and it
@@ -359,7 +417,8 @@ const TC_F_20: ScenarioSpec = {
  * are absent, with the reason in that file rather than here -- one place per
  * fact, and the guard reads that one.
  */
-export const CORE_201_SPECS: ScenarioSpec[] = [
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
+export const CORE_201_SPECS: ScenarioSpec<any>[] = [
   TC_B_01,
   TC_B_20,
   TC_B_21,

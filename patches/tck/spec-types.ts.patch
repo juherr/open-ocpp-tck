@@ -114,11 +114,11 @@
 +   * `prepareStation` exists, which is a driver's courtesy and not this
 +   * runner's contract.
 +   *
-+   * It is not an optimisation -- the simulator image ships a template per ported
-+   * scenario and none for anything else, so a scenario with no template of its
-+   * own would otherwise spend 20s waiting for a `scenario_started` that cannot
-+   * come, and report that as a warning rather than as the misconfiguration it
-+   * would be for the 47 that do have one.
++   * It is not an optimisation -- the pinned image ships templates for the
++   * ported 1.6 scenarios and for no other certification namespace, so a
++   * scenario with no template of its own would otherwise spend 20s waiting for
++   * a `scenario_started` that cannot come, and report that as a warning rather
++   * than as the misconfiguration it would be for the 47 that do have one.
 +   *
 +   * A `simTemplateId?: string | null` -- absent meaning `templateId`, null
 +   * meaning none -- is the shape this invites, and it is declined, but not for

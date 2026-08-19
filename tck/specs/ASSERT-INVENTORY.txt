@@ -117,11 +117,18 @@ FILE core-201.ts
     assertReceived(·, ·, "Reset", "Reset.req received")
     assertCallPayload(·, ·, "received", "Reset", {type:"Immediate"}, "Reset.req asks for type=Immediate")
     assertResponseStatus(·, ·, "Reset", "Accepted", "Reset accepted", {direction:"received"})
+    assertResponseStatus(·, ·, "BootNotification", "Accepted", "the cold boot is accepted, so the next boot is the reset's", {direction:"sent",occurrence:0})
     assertResponseStatus(·, ·, "BootNotification", "Accepted", "the post-reset BootNotification is accepted", {direction:"sent",occurrence:1})
+    assertAllAnswered(·, ·, "BootNotification", ·, {minimum:2})
   SPEC cert201-tcb21-reset-scheduled connector=1 bootWaitSecs=4 holdSecs=12 ocppVersion="OCPP-2.0.1" runsSimTemplate=false
+    IF
+      ·.pass(·)
+      ·.skip(·, ·)
     assertReceived(·, ·, "Reset", "Reset.req received")
     assertCallPayload(·, ·, "received", "Reset", {type:"OnIdle"}, "Reset.req asks for type=OnIdle")
-    assertResponseStatus(·, ·, "Reset", "Scheduled", "Reset scheduled until the transaction ends", {direction:"received"})
+    IF
+      assertResponseStatus(·, ·, "Reset", "Scheduled", "Reset scheduled until the transaction ends", {direction:"received"})
+      ·.skip("Reset scheduled until the transaction ends", ·)
     assertAllAnswered(·, ·, "TransactionEvent")
   SPEC cert201-tcb22-reset-rejected connector=1 bootWaitSecs=4 holdSecs=10 ocppVersion="OCPP-2.0.1" runsSimTemplate=false
     assertReceived(·, ·, "Reset", "Reset.req received")

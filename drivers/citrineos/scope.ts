@@ -263,7 +263,7 @@ const V2_SCOPE = {
       "transaction can be started at all against a station whose device model " +
       "is not provisioned, since without one there is nothing for OnIdle to " +
       "wait for and the answer comes back Accepted rather than Scheduled. " +
-      "That is issue #58's gap, not this driver's.",
+      "That gap was assigned to issue #58 by issue #57's closing comment, section A; it is not this driver's.",
   ),
   "cert201-tcb22-reset-rejected": c(
     `${RESET_201} And whether an evseId the station does not have survives ` +

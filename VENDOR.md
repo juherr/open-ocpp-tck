@@ -45,7 +45,7 @@ strongest available demonstration that the core names no CSMS.
 
 | path | origin | upstream path @ `604054a…` | upstream sha256 | local sha256 | patch |
 |---|---|---|---|---|---|
-| `tck/spec-types.ts` | `upstream-patched` | `scripts/steve-verify/runner/spec-types.ts` | `db4b29ab5ee0c623c950a52a999ef4e4c0a916dab0b6cfebe8fa8eabc5da0d26` | `29fcc029afa0d24b15b50175d360a41951bb2b0b188cca442beeea41db1ba3b9` | `patches/tck/spec-types.ts.patch` |
+| `tck/spec-types.ts` | `upstream-patched` | `scripts/steve-verify/runner/spec-types.ts` | `db4b29ab5ee0c623c950a52a999ef4e4c0a916dab0b6cfebe8fa8eabc5da0d26` | `9020e8e6be458d37b5f3d3e61d0071caf8e885812bbf0c20df95b66d0f329994` | `patches/tck/spec-types.ts.patch` |
 | `tck/util.ts` | `upstream-verbatim` | `scripts/steve-verify/runner/util.ts` | `ba62ed29c79e04533e0725739c9c0d514caadb7bff8146e46688c867432eee9e` | `ba62ed29c79e04533e0725739c9c0d514caadb7bff8146e46688c867432eee9e` | `—` |
 | `tck/ocpp.ts` | `upstream-verbatim` | `src/cp/application/verification/ocpp.ts` | `a3f99c1b77b30d0ab0b22556b65aca05332d68f4b4b8d566a500d2036065368f` | `a3f99c1b77b30d0ab0b22556b65aca05332d68f4b4b8d566a500d2036065368f` | `—` |
 | `tsconfig.json` | `upstream-verbatim` | `scripts/steve-verify/runner/tsconfig.json` | `b632b69c836000d80209c183b57d43ac917e3a1d50f042af65112bdf234d1931` | `b632b69c836000d80209c183b57d43ac917e3a1d50f042af65112bdf234d1931` | `—` |
@@ -427,8 +427,8 @@ lane artifacts by the isolated retry, the same confirmed failure. Only the
 identity of the lane flakes differed (`tc056`+`tc044-1`, then `tc013`+`tc044-1`),
 which is the same pattern the SteVe table shows across its two versions and the
 reason `--retry-failed-isolated` is not optional in CI. Counting the isolated
-retry as the verdict, that was **38 PASS, 7 NOT APPLICABLE, 2 FAIL across all
-47**.
+retry as the verdict, that was **38 PASS, 7 NOT APPLICABLE, 2 FAIL across all 47
+OCPP 1.6 scenarios**.
 
 The third row is the same pin read through the GraphQL data API, after
 `tck/specs/firmware.ts` stopped asking for a retrieveDate the driver's rounding
@@ -438,7 +438,7 @@ APPLICABLE, 1 FAIL** — and, for the first time, a parallel pass with nothing
 for the isolated retry to reclassify.
 
 **The `v1.9.1` row is a report, not a recommendation.** 18 PASS, 13 NOT
-APPLICABLE and 16 FAIL across all 47 — against 39 / 7 / 1 on v2 — and the gap
+APPLICABLE and 16 FAIL across all 47 OCPP 1.6 scenarios — against 39 / 7 / 1 on v2 — and the gap
 is one upstream defect, not a driver limitation.
 
 Fourteen of the fifteen `all`-group failures carry an identical wire signature:

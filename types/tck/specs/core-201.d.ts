@@ -26,10 +26,10 @@
  * else.
  *
  * NO SIMULATOR TEMPLATE, which is what `runsSimTemplate: false` says on every
- * scenario below. The simulator image ships a scenario template per ported
- * 1.6 scenario and none for anything else, and none of these needs one: two
- * are what a charge point does on `connect`, and three are driven entirely
- * from the CSMS side. A template would be a thing to maintain upstream before
+ * scenario below. The pinned image ships 60 templates and not one of them is
+ * `cert201-`, so the wait for `scenario_started` could only ever time out --
+ * and none of these needs one anyway: two are what a charge point does on
+ * `connect`, and three are driven entirely from the CSMS side. A template would be a thing to maintain upstream before
  * a single case could be measured here.
  *
  * A FAILING CSMS OPERATION IS NOT SWALLOWED HERE, which is where these differ
@@ -59,4 +59,4 @@ import type { ScenarioSpec } from "../spec-types";
  * are absent, with the reason in that file rather than here -- one place per
  * fact, and the guard reads that one.
  */
-export declare const CORE_201_SPECS: ScenarioSpec[];
+export declare const CORE_201_SPECS: ScenarioSpec<any>[];

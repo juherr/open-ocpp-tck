@@ -177,7 +177,7 @@ GROUP core-201
     SIM send {"command":"start_transaction","params":{"connector":1,"tagId":"CERT-TAG-1"}}
     SIM wait-for-line Sent: \[2,.*"TransactionEvent" 10000
     OP 201:Reset [onidle]
-    -> driveState keys=[]
+    -> driveState keys=[started]
   SPEC cert201-tcb22-reset-rejected
     OP 201:Reset [9, immediate]
     -> driveState keys=[]

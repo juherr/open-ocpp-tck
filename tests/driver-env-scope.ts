@@ -29,7 +29,10 @@
  * clients without connecting.
  */
 import { csmsDriver as citrineos } from "../drivers/citrineos/index";
-import { V1_LOCAL_LIST_SCENARIOS } from "../drivers/citrineos/variant";
+import {
+  CERT_201_SCENARIOS,
+  V1_LOCAL_LIST_SCENARIOS,
+} from "../drivers/citrineos/variant";
 import { csmsDriver as steve } from "../drivers/steve/index";
 import { STEVE_SCOPE } from "../drivers/steve/scope";
 import {
@@ -178,6 +181,43 @@ for (const action of LOCAL_LIST_ACTIONS) {
   );
 }
 
+// THE SECOND ENV-DEPENDENT AXIS, and it differs from the first in the way that
+// matters here: the local-auth-list rows differ in STATUS between the two
+// lines, while these differ in whether the driver declares the protocol at
+// all. `capabilities.operations201` ABSENT is the contract's "does not speak
+// OCPP 2.0.1", so a driver that resolved the variant once at import would
+// declare a 2.0.1 surface for a line it has never been pointed at -- and the
+// scope rows and the capability set would agree with each other while both
+// described the wrong server. That is the failure this file exists for,
+// arriving through a door it did not previously watch.
+for (const id of CERT_201_SCENARIOS) {
+  check(
+    v1Scope?.[id]?.status === "NOT_APPLICABLE",
+    `${id} is ${v1Scope?.[id]?.status ?? "absent"} in the table resolved for ` +
+      "CITRINE_VARIANT=v1, where this driver declares no OCPP 2.0.1 surface.",
+  );
+  check(
+    v2Scope?.[id]?.status !== "NOT_APPLICABLE" &&
+      v2Scope?.[id] !== undefined,
+    `${id} is ${v2Scope?.[id]?.status ?? "absent"} in the table resolved for ` +
+      "CITRINE_VARIANT=v2, so the two resolutions do not differ and the " +
+      "driver's table is not a function of the environment.",
+  );
+}
+
+check(
+  v1Caps?.operations201 === undefined,
+  "capabilities resolved for v1 declare an OCPP 2.0.1 vocabulary, which no " +
+    "run has ever measured against the v1.9.1 line. Absent means 'does not " +
+    "speak it'; an empty set would claim it was measured and found nothing.",
+);
+check(
+  v2Caps?.operations201?.size === 3,
+  `capabilities resolved for v2 declare ${v2Caps?.operations201?.size ?? "no"} ` +
+    "OCPP 2.0.1 operation(s) rather than three, so the two resolutions do not " +
+    "differ as the scope rows above say they do.",
+);
+
 // This threw before the contract change: the driver resolved the variant twice
 // -- once from process.env at module load for `scope`, once from the env given
 // to create() -- and a guard compared them. One resolution means there is
@@ -214,8 +254,9 @@ if (failures.length > 0) {
 
 process.stdout.write(
   "Driver scope, capabilities and expected failures follow the resolved " +
-    `environment (${V1_LOCAL_LIST_SCENARIOS.length} rows and ` +
-    `${LOCAL_LIST_ACTIONS.length} operations differ between the two ` +
-    "CitrineOS lines; a plain table still resolves to itself, and an absent " +
+    `environment (${V1_LOCAL_LIST_SCENARIOS.length} local-auth-list rows and ` +
+    `${LOCAL_LIST_ACTIONS.length} operations differ between the two CitrineOS ` +
+    `lines, as do ${CERT_201_SCENARIOS.length} OCPP 2.0.1 rows and the whole ` +
+    "2.0.1 vocabulary; a plain table still resolves to itself, and an absent " +
     "expected-failure list still resolves to undefined).\n",
 );

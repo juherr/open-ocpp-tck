@@ -83,6 +83,6 @@ cert16-tc023-3-authorize-blocked          Authorize                      assertI
 # has no bearing on whether it has a check behind it.
 cert201-tcb01-cold-boot                   BootNotification               assertResponseStatus   TC_B_01
 cert201-tcb01-cold-boot                   StatusNotification             assertAllAnswered      TC_B_01
-cert201-tcb20-reset-accepted              BootNotification               assertResponseStatus   TC_B_20
+cert201-tcb20-reset-accepted              BootNotification               assertAllAnswered      TC_B_20
 cert201-tcb21-reset-scheduled             TransactionEvent               assertAllAnswered      TC_B_21
 cert201-tcf20-heartbeat                   Heartbeat                      assertAllAnswered      TC_F_20

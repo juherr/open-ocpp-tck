@@ -43,8 +43,8 @@ Two narrowings, and only the first is a rule: it takes Core's 364 rows to the
 104 mandatory for this role, and the slice below takes those 104 to seven.
 
 For scale: the entire OCPP 1.6 certification set has 77 `_CSMS` cases — the
-count [`OCA-COVERAGE.md`](OCA-COVERAGE.md) derives and this suite's 47 scenarios
-are measured against. One profile of 2.0.1 asks for more mandatory CSMS cases
+count [`OCA-COVERAGE.md`](OCA-COVERAGE.md) derives and this suite's 47 OCPP 1.6
+scenarios are measured against. One profile of 2.0.1 asks for more mandatory CSMS cases
 than 1.6 has cases at all. Part 6 devotes p608–p900 to 251 `*_CSMS` cases,
 which is scale rather than a term in either narrowing: it is a different
 document's count of a different population, and how it relates to the matrix's
