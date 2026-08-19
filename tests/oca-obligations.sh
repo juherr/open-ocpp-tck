@@ -18,8 +18,9 @@
 #
 # WHY THIS EXISTS. The obligations were derived once, by hand, from the OCA
 # Test Case Document, and the count was written into prose: "46 obligations, 46
-# checks". Nothing verified it, and it was wrong -- there are 53, of which 46
-# are the checks issue #11 added and 7 were already covered by other helpers.
+# checks". Nothing verified it, and it was wrong -- the OCPP 1.6 derivation has
+# 53, of which 46 are the checks issue #11 added and 7 were already covered by
+# other helpers.
 # Every other derivation in this repository is generated and guarded precisely
 # so that no reviewer has to take a number on faith (see the artifact table in
 # AGENTS.md); this one was the exception.

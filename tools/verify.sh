@@ -98,6 +98,10 @@ run "scenario invariants" bash tests/spec-invariants.sh
 # After spec-invariants: this reads the artifact that one regenerates, so a
 # stale inventory should be reported as stale, not as a coverage hole.
 run "every OCA obligation has a check" bash tests/oca-obligations.sh
+# And beside it, for the same reason and off the same artifact: the OCPP 2.0.1
+# scenarios are the ones a written selection rule governs, and the rule and the
+# scenarios are two files that can disagree.
+run "the OCPP 2.0.1 slice is the selected one" bash tests/oca-201-slice.sh
 
 # Not fatal when absent: shellcheck is a linter, and refusing to verify a
 # TypeScript repository because a shell linter is missing would push people to

@@ -173,6 +173,12 @@ jobs:
       - name: Every OCA obligation has a check
         run: bash tests/oca-obligations.sh
 
+      # Same artifact, same reason for the ordering: the OCPP 2.0.1 scenarios
+      # are the ones a written selection rule governs, and a rule and the
+      # scenarios it governs are two files that can disagree.
+      - name: The OCPP 2.0.1 slice is the selected one
+        run: bash tests/oca-201-slice.sh
+
       - name: Shell guards lint clean
         run: shellcheck tests/*.sh tools/*.sh
 

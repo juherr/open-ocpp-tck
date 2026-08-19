@@ -1,16 +1,18 @@
 # OCA-OBLIGATIONS -- every `.conf` an OCA `_CSMS` case owes a request the
 # charge point sent, and the check that covers it.
 #
-# THIS FILE IS THE TABLE. OCA-COVERAGE.md explains where these rows come from
-# and what they mean; it does not restate them, because two copies of a
-# 53-row derivation drift and the prose copy is the one nobody diffs.
+# THIS FILE IS THE TABLE, for both protocols. OCA-COVERAGE.md explains where
+# the OCPP 1.6 rows come from and what they mean; it does not restate them,
+# because two copies of a 53-row derivation drift and the prose copy is the one
+# nobody diffs. The OCPP 2.0.1 rows at the end have their own provenance, noted
+# above them.
 #
 # Hand-maintained, and guarded: tests/oca-obligations.sh cross-checks it
 # against tck/specs/ASSERT-INVENTORY.txt in both directions, so an obligation
 # with no check and a check with no obligation are both build failures. That
 # is the point -- before it, "46 obligations, 46 checks" was a number a
-# reviewer had to take on faith, and it was wrong (there are 53; 46 of them
-# are the checks issue #11 added).
+# reviewer had to take on faith, and it was wrong: the 1.6 derivation has 53,
+# of which 46 are the checks issue #11 added.
 #
 # checked-by:
 #   assertAllAnswered      the check added for this obligation
@@ -73,3 +75,14 @@ cert16-tc045-1-get-diagnostics            DiagnosticsStatusNotification  assertA
 cert16-tc023-1-authorize-invalid          Authorize                      assertIdTagInfoStatus  TC_023_1
 cert16-tc023-2-authorize-expired          Authorize                      assertIdTagInfoStatus  TC_023_2
 cert16-tc023-3-authorize-blocked          Authorize                      assertIdTagInfoStatus  TC_023_3
+
+# OCPP 2.0.1. Same table, same rule, different reference: the cases are Part
+# 5's and which of them may be here at all is OCA-201-SLICE.txt's, where
+# OCA-COVERAGE.md is the provenance for every row above. The guard reading this
+# file is namespace-agnostic on purpose -- whether a row is about 1.6 or 2.0.1
+# has no bearing on whether it has a check behind it.
+cert201-tcb01-cold-boot                   BootNotification               assertResponseStatus   TC_B_01
+cert201-tcb01-cold-boot                   StatusNotification             assertAllAnswered      TC_B_01
+cert201-tcb20-reset-accepted              BootNotification               assertResponseStatus   TC_B_20
+cert201-tcb21-reset-scheduled             TransactionEvent               assertAllAnswered      TC_B_21
+cert201-tcf20-heartbeat                   Heartbeat                      assertAllAnswered      TC_F_20
