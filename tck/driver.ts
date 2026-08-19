@@ -230,20 +230,20 @@ export type CsmsOperation16 =
 
 export type CsmsOperation16Action = CsmsOperation16["action"];
 
-// `as const satisfies readonly CsmsOperation16Action[]` -- what the first of the
-// two lists below used to say -- rejects a name that is NOT an action, and
+// `as const satisfies readonly CsmsOperation16Action[]` -- what the first of
+// the two lists below used to say -- rejects a name that is NOT an action, and
 // accepts one that MISSES an action. That is the same one-directional hole
 // tck/standing.ts records above its own list, with the measurement: deleting a
 // member type-checked clean. There the fix is to derive the type FROM the
 // list, which is not available here, because CsmsOperation16Action is derived
 // from the union's arms and the list is the second copy.
 //
-// And nothing else covers the hole. `drivers/steve/index.ts` declares
-// `new Set(CSMS_OPERATION_16_ACTIONS)` wholesale, so a short list silently shrinks
-// what SteVe claims; `drivers/citrineos/index.ts` filters the same list; and
-// check-driver's "not declared" warning is computed from it too -- so a missing
-// name is invisible from every direction at once, including the one that would
-// have printed it.
+// And nothing else covers the hole, because everything that could is computed
+// FROM the list. A driver declaring it whole -- `new Set(...)` -- claims less
+// than it meant to; a driver filtering it loses the same name a second way;
+// and check-driver's "not declared" warning is derived from it too. A missing
+// name is invisible from every direction at once, including the one direction
+// that exists to print it.
 //
 // Closed in the compiler rather than in a guard, because the compiler already
 // decides the other half and a shell guard would be re-deciding from outside
@@ -309,8 +309,8 @@ export const CSMS_OPERATION_16_ACTIONS = everyOneOf<CsmsOperation16Action>()([
 // So: a driver that speaks only OCPP 1.6 implements nothing here and compiles
 // untouched. Exhaustiveness is preserved WITHIN each union, because each
 // driver's switch still covers one closed set. Issue #25 argues the two
-// alternatives -- widening, and a version-parameterised `CsmsOperations16<V>` --
-// and rejects both; that argument is not re-run here.
+// alternatives -- widening, and a version-parameterised
+// `CsmsOperations16<V>` -- and rejects both; that argument is not re-run here.
 //
 // WHY THREE AND NOT SIX. OCA-201-SELECTION.md's v0.3 slice is seven
 // certification cases, and only three of them are CSMS-INITIATED: Reset,
@@ -397,8 +397,8 @@ export type CsmsOperation201 =
 
 export type CsmsOperation201Action = CsmsOperation201["action"];
 
-/** Every 2.0.1 action name. Same job as {@link CSMS_OPERATION_16_ACTIONS}, and a
- *  SECOND list rather than an extension of it -- see the note on
+/** Every 2.0.1 action name. Same job as {@link CSMS_OPERATION_16_ACTIONS},
+ *  and a SECOND list rather than an extension of it -- see the note on
  *  {@link CsmsOperation201}'s `Reset` arm for why the two must not merge. */
 export const CSMS_OPERATION_201_ACTIONS = everyOneOf<CsmsOperation201Action>()([
   "Reset",
@@ -487,8 +487,8 @@ export interface CsmsOperations16 {
 // to be independently OMISSIBLE -- overloads on one method are not, and the
 // runner would have nothing to replace.
 //
-// `CsmsOperations16<Op = CsmsOperation16>`, parameterised on the operation type,
-// which is what two one-method interfaces differing only in that type invite.
+// `CsmsOperations16<Op = CsmsOperation16>`, parameterised on the operation
+// type, which two one-method interfaces differing only in that type invite.
 // That is issue #25's second rejected shape, declined there rather than here;
 // the header above the 2.0.1 vocabulary says why, and the short version is
 // that it asks us to decide what the two protocols share before a second 2.0.1

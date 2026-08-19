@@ -204,6 +204,7 @@ upgrade nobody asked for.
 ```ts
 import {
   assertNever,
+  CSMS_OPERATION_201_ACTIONS,
   type CsmsOperation201,
 } from "open-ocpp-tck/driver";
 

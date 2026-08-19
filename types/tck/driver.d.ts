@@ -216,8 +216,8 @@ export type CsmsOperation201 = {
     variables: SetVariableData201[];
 };
 export type CsmsOperation201Action = CsmsOperation201["action"];
-/** Every 2.0.1 action name. Same job as {@link CSMS_OPERATION_16_ACTIONS}, and a
- *  SECOND list rather than an extension of it -- see the note on
+/** Every 2.0.1 action name. Same job as {@link CSMS_OPERATION_16_ACTIONS},
+ *  and a SECOND list rather than an extension of it -- see the note on
  *  {@link CsmsOperation201}'s `Reset` arm for why the two must not merge. */
 export declare const CSMS_OPERATION_201_ACTIONS: readonly ["Reset", "GetVariables", "SetVariables"];
 /**
