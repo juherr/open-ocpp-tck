@@ -28,7 +28,7 @@
  *
  *     steve.op("v1.6/Reset", { chargePointSelectList: …, resetType: "HARD" })
  * with
- *     csms.execute(cpId, { action: "Reset", type: "Hard" })
+ *     csms16.execute(cpId, { action: "Reset", type: "Hard" })
  *
  * so a trace that recorded method names, field names, or raw values would be
  * regenerated wholesale by the refactor and would guard nothing during it.
@@ -397,7 +397,7 @@ for (const [groupName, groupSpecs] of discoverGroups()) {
         // Both the legacy field names and the neutral ones, so a spec traces
         // identically before and after it is converted.
         steve: operationsStub,
-        csms: operationsStub,
+        csms16: operationsStub,
         csms201: operations201Stub,
         db: records,
         records,

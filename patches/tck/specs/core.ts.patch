@@ -352,14 +352,14 @@
    bootWaitSecs: 4,
    holdSecs: 25,
 -  async drive({ cpId, steve }) {
-+  async drive({ cpId, csms }) {
++  async drive({ cpId, csms16 }) {
      await sleep(3000);
      try {
 -      await steve.op("v1.6/Reset", {
 -        chargePointSelectList: steve.cpSelect(cpId),
 -        resetType: "HARD",
 -      });
-+      await csms.execute(cpId, { action: "Reset", type: "Hard" });
++      await csms16.execute(cpId, { action: "Reset", type: "Hard" });
      } catch (err) {
        process.stderr.write(
 -        `[runner] WARN: steve_op Reset(Hard) failed (continuing): ${err instanceof Error ? err.message : String(err)}\n`,
@@ -403,14 +403,14 @@
    bootWaitSecs: 4,
    holdSecs: 25,
 -  async drive({ cpId, steve }) {
-+  async drive({ cpId, csms }) {
++  async drive({ cpId, csms16 }) {
      await sleep(3000);
      try {
 -      await steve.op("v1.6/Reset", {
 -        chargePointSelectList: steve.cpSelect(cpId),
 -        resetType: "SOFT",
 -      });
-+      await csms.execute(cpId, { action: "Reset", type: "Soft" });
++      await csms16.execute(cpId, { action: "Reset", type: "Soft" });
      } catch (err) {
        process.stderr.write(
 -        `[runner] WARN: steve_op Reset(Soft) failed (continuing): ${err instanceof Error ? err.message : String(err)}\n`,
@@ -451,7 +451,7 @@
    bootWaitSecs: 4,
    holdSecs: 35,
 -  async drive({ cpId, steve }) {
-+  async drive({ cpId, csms }) {
++  async drive({ cpId, csms16 }) {
      // Timing: delay(2s) -> plug-in -> preparing -> tx-start -> charging ->
      // meter-auto(maxTime 15s, BLOCKS) -> unlock pre-arm (instant) ->
      // delay(10s window) -> tx-stop. The pre-arm window for
@@ -463,7 +463,7 @@
 -        chargePointSelectList: steve.cpSelect(cpId),
 -        connectorId: "1",
 -      });
-+      await csms.execute(cpId, { action: "UnlockConnector", connectorId: 1 });
++      await csms16.execute(cpId, { action: "UnlockConnector", connectorId: 1 });
      } catch (err) {
        process.stderr.write(
 -        `[runner] WARN: steve_op UnlockConnector failed (continuing): ${err instanceof Error ? err.message : String(err)}\n`,
@@ -499,7 +499,7 @@
    bootWaitSecs: 4,
    holdSecs: 35,
 -  async drive({ cpId, steve }) {
-+  async drive({ cpId, csms }) {
++  async drive({ cpId, csms16 }) {
      // Same timing window as TC_017 -- see that spec for the derivation.
      await sleep(20_000);
      try {
@@ -507,7 +507,7 @@
 -        chargePointSelectList: steve.cpSelect(cpId),
 -        connectorId: "1",
 -      });
-+      await csms.execute(cpId, { action: "UnlockConnector", connectorId: 1 });
++      await csms16.execute(cpId, { action: "UnlockConnector", connectorId: 1 });
      } catch (err) {
        process.stderr.write(
 -        `[runner] WARN: steve_op UnlockConnector failed (continuing): ${err instanceof Error ? err.message : String(err)}\n`,
@@ -547,13 +547,13 @@
    bootWaitSecs: 4,
    holdSecs: 12,
 -  async drive({ cpId, steve }) {
-+  async drive({ cpId, csms }) {
++  async drive({ cpId, csms16 }) {
      await sleep(2000);
      try {
 -      await steve.op("v1.6/GetConfiguration", {
 -        chargePointSelectList: steve.cpSelect(cpId),
 -      });
-+      await csms.execute(cpId, { action: "GetConfiguration" });
++      await csms16.execute(cpId, { action: "GetConfiguration" });
      } catch (err) {
        process.stderr.write(
 -        `[runner] WARN: steve_op GetConfiguration failed (continuing): ${err instanceof Error ? err.message : String(err)}\n`,
@@ -586,14 +586,14 @@
    bootWaitSecs: 4,
    holdSecs: 12,
 -  async drive({ cpId, steve }) {
-+  async drive({ cpId, csms }) {
++  async drive({ cpId, csms16 }) {
      await sleep(2000);
      try {
 -      await steve.op("v1.6/GetConfiguration", {
 -        chargePointSelectList: steve.cpSelect(cpId),
 -        confKeyList: "HeartbeatInterval",
 -      });
-+      await csms.execute(cpId, { action: "GetConfiguration", keys: ["HeartbeatInterval"] });
++      await csms16.execute(cpId, { action: "GetConfiguration", keys: ["HeartbeatInterval"] });
      } catch (err) {
        process.stderr.write(
 -        `[runner] WARN: steve_op GetConfiguration failed (continuing): ${err instanceof Error ? err.message : String(err)}\n`,
@@ -624,7 +624,7 @@
    bootWaitSecs: 4,
    holdSecs: 12,
 -  async drive({ cpId, steve }) {
-+  async drive({ cpId, csms }) {
++  async drive({ cpId, csms16 }) {
      await sleep(2000);
      try {
 -      await steve.op("v1.6/ChangeConfiguration", {
@@ -632,7 +632,7 @@
 -        keyType: "PREDEFINED",
 -        confKey: "MeterValueSampleInterval",
 -        customConfKey: "",
-+      await csms.execute(cpId, {
++      await csms16.execute(cpId, {
 +        action: "ChangeConfiguration",
 +        key: "MeterValueSampleInterval",
          value: "10",
@@ -729,14 +729,14 @@
    bootWaitSecs: 4,
    holdSecs: 10,
 -  async drive({ cpId, steve }) {
-+  async drive({ cpId, csms }) {
++  async drive({ cpId, csms16 }) {
      await sleep(2000);
      try {
 -      await steve.op("v1.6/UnlockConnector", {
 -        chargePointSelectList: steve.cpSelect(cpId),
 -        connectorId: "99",
 -      });
-+      await csms.execute(cpId, { action: "UnlockConnector", connectorId: 99 });
++      await csms16.execute(cpId, { action: "UnlockConnector", connectorId: 99 });
      } catch (err) {
        process.stderr.write(
 -        `[runner] WARN: steve_op UnlockConnector failed (continuing): ${err instanceof Error ? err.message : String(err)}\n`,
@@ -749,13 +749,13 @@
    bootWaitSecs: 4,
    holdSecs: 15,
 -  async drive({ cpId, steve }) {
-+  async drive({ cpId, csms }) {
++  async drive({ cpId, csms16 }) {
      await sleep(2000);
      try {
 -      await steve.op("v1.6/ClearCache", {
 -        chargePointSelectList: steve.cpSelect(cpId),
 -      });
-+      await csms.execute(cpId, { action: "ClearCache" });
++      await csms16.execute(cpId, { action: "ClearCache" });
      } catch (err) {
        process.stderr.write(
 -        `[runner] WARN: steve_op ClearCache failed (continuing): ${err instanceof Error ? err.message : String(err)}\n`,

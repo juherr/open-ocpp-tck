@@ -68,10 +68,10 @@ export const tc0441FirmwareUpdateSpec: ScenarioSpec<void> = {
   bootWaitSecs: 4,
   // 15s + up to 60s of rounding + ~10s train, inside a 115s window.
   holdSecs: 115,
-  async drive({ cpId, csms }) {
+  async drive({ cpId, csms16 }) {
     await sleep(2000);
     try {
-      await csms.execute(cpId, {
+      await csms16.execute(cpId, {
         action: "UpdateFirmware",
         location: "http://example.com/fw.bin",
         retrieveDate: inSeconds(15),
@@ -154,10 +154,10 @@ export const tc0442FirmwareDownloadFailedSpec: ScenarioSpec<void> = {
   connector: 1,
   bootWaitSecs: 4,
   holdSecs: 110,
-  async drive({ cpId, csms }) {
+  async drive({ cpId, csms16 }) {
     await sleep(2000);
     try {
-      await csms.execute(cpId, {
+      await csms16.execute(cpId, {
         action: "UpdateFirmware",
         location: "http://example.com/fw.bin",
         retrieveDate: inSeconds(15),
@@ -222,10 +222,10 @@ export const tc0443FirmwareInstallFailedSpec: ScenarioSpec<void> = {
   connector: 1,
   bootWaitSecs: 4,
   holdSecs: 115,
-  async drive({ cpId, csms }) {
+  async drive({ cpId, csms16 }) {
     await sleep(2000);
     try {
-      await csms.execute(cpId, {
+      await csms16.execute(cpId, {
         action: "UpdateFirmware",
         location: "http://example.com/fw.bin",
         retrieveDate: inSeconds(15),
@@ -319,10 +319,10 @@ export const tc0451GetDiagnosticsSpec: ScenarioSpec<void> = {
   connector: 1,
   bootWaitSecs: 4,
   holdSecs: 25,
-  async drive({ cpId, csms }) {
+  async drive({ cpId, csms16 }) {
     await sleep(2000);
     try {
-      await csms.execute(cpId, { action: "GetDiagnostics", location: "http://app:9/upload" });
+      await csms16.execute(cpId, { action: "GetDiagnostics", location: "http://app:9/upload" });
     } catch (err) {
       warnOpFailed("GetDiagnostics", err);
     }

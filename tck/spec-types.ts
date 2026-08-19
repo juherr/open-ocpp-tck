@@ -8,7 +8,7 @@ import type { AssertRecorder } from "./assert";
 import type { Frame } from "./ocpp";
 import type { SimProcess } from "./sim";
 import type {
-  CsmsOperations,
+  CsmsOperations16,
   CsmsOperations201,
   CsmsRecords,
 } from "./driver";
@@ -19,8 +19,8 @@ export interface DriveContext {
   sim: SimProcess;
   /** The CSMS under test, whichever driver CSMS_DRIVER selected. A spec
    *  asks for OCPP operations and never learns which CSMS carried them
-   *  out -- see driver.ts's CsmsOperation for the vocabulary. */
-  csms: CsmsOperations;
+   *  out -- see driver.ts's CsmsOperation16 for the vocabulary. */
+  csms16: CsmsOperations16;
   /** The OCPP 2.0.1 half of the same CSMS, for a cert201- scenario. NON-
    *  OPTIONAL as a spec sees it, exactly like records.reservations: a driver
    *  that speaks only 1.6 omits it and the runner substitutes a stub that

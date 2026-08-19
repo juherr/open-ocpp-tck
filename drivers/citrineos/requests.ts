@@ -1,7 +1,7 @@
 // Copyright 2026 Julien Herr
 // SPDX-License-Identifier: Apache-2.0
 /**
- * requests.ts -- one CsmsOperation, one CitrineOS message-API call.
+ * requests.ts -- one CsmsOperation16, one CitrineOS message-API call.
  *
  * CitrineOS's outbound surface is generated from the OCPP schemas themselves:
  * `AbstractModuleApi._toMessagePath` builds
@@ -26,7 +26,7 @@ import {
   UnsupportedOperationError,
   assertNever,
   type ChargingProfileRef,
-  type CsmsOperation,
+  type CsmsOperation16,
   type TransactionRef,
 } from "../../tck/driver";
 import { profileByRef, type CsChargingProfile } from "./profiles";
@@ -102,7 +102,7 @@ function profileFor(ref: ChargingProfileRef): CsChargingProfile {
 }
 
 export async function toCitrineRequest(
-  op: CsmsOperation,
+  op: CsmsOperation16,
   refs: CitrineRefs,
   variant: CitrineVariant,
 ): Promise<CitrineRequest> {

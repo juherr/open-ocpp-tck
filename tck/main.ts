@@ -48,7 +48,7 @@ import { resolve } from "node:path";
 import { AssertRecorder } from "./assert";
 import {
   CSMS_OPERATION_201_ACTIONS,
-  CSMS_OPERATION_ACTIONS,
+  CSMS_OPERATION_16_ACTIONS,
   driverCapabilities,
   driverExpectedFailures,
   driverScope,
@@ -447,7 +447,7 @@ async function runScenario<D>(
     ),
     tracePath: prepareTracePath(`${artifactStem}.jsonl`),
   };
-  const csms = parts.operations;
+  const csms16 = parts.operations16;
   // A cert201- scenario against a 1.6-only driver therefore throws out of
   // drive() and is caught below as NOT APPLICABLE.
   const csms201 = withOperationStubs201(parts);
@@ -533,7 +533,7 @@ async function runScenario<D>(
           cpId: options.cpId,
           connector,
           sim,
-          csms,
+          csms16,
           csms201,
           records,
         });
@@ -1790,7 +1790,7 @@ async function checkDriver(argv: string[]): Promise<number> {
   // is what AGENTS.md's "the gate is one list" records going wrong three
   // times: the copies drift, always in the direction of the one nobody edited.
   const checkVocabulary = (
-    field: "operations" | "operations201",
+    field: "operations16" | "operations201",
     declared: ReadonlySet<string>,
     known: readonly string[],
     throwSite: string,
@@ -1817,9 +1817,9 @@ async function checkDriver(argv: string[]): Promise<number> {
 
   if (capabilities) {
     checkVocabulary(
-      "operations",
-      capabilities.operations,
-      CSMS_OPERATION_ACTIONS,
+      "operations16",
+      capabilities.operations16,
+      CSMS_OPERATION_16_ACTIONS,
       "execute()",
     );
     // ONLY when the declaration is present, and that conditional IS the
@@ -1850,7 +1850,7 @@ async function checkDriver(argv: string[]): Promise<number> {
     // would have left a machine parsing English for it. `null` means the
     // declaration is ABSENT, which for 2.0.1 is the answer to "does this
     // driver speak it at all". Sorted, so two runs diff cleanly.
-    operations: capabilities ? [...capabilities.operations].sort() : null,
+    operations16: capabilities ? [...capabilities.operations16].sort() : null,
     operations201: capabilities?.operations201
       ? [...capabilities.operations201].sort()
       : null,

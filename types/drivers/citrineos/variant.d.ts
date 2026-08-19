@@ -32,7 +32,7 @@
  * therefore always true and always useless. The presence of
  * `ocppConnectionName` is the discriminator, and that is what verify() checks.
  */
-import type { CsmsEnv, CsmsOperationAction } from "../../tck/driver";
+import type { CsmsEnv, CsmsOperation16Action } from "../../tck/driver";
 export type CitrineVariant = "v1" | "v2";
 /** v2 by default: it is what `drivers/citrineos/compose.yaml` pins, and the
  *  only line with a complete OCPP 1.6 surface. */
@@ -56,7 +56,7 @@ export declare const NO_RESERVATIONS: string;
 /** Same, for the local auth list pair, which v1.9.1 alone lacks. */
 export declare const NO_LOCAL_LIST: string;
 /** The unrouted actions for a variant, mapped to why. */
-export declare function unroutedActions(variant: CitrineVariant): ReadonlyMap<CsmsOperationAction, string>;
+export declare function unroutedActions(variant: CitrineVariant): ReadonlyMap<CsmsOperation16Action, string>;
 /** Scenarios the local-auth-list gap costs on v1. Named here rather than in
  *  scope.ts so the two cannot drift from {@link unroutedActions}. */
 export declare const V1_LOCAL_LIST_SCENARIOS: readonly ["cert16-tc042-1-get-local-list-version-not-supported", "cert16-tc042-2-get-local-list-version-empty", "cert16-tc043-1-send-local-list-not-supported", "cert16-tc043-3-send-local-list-failed", "cert16-tc043-4-send-local-list-full", "cert16-tc043-5-send-local-list-differential"];

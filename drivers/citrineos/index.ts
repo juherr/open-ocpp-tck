@@ -40,13 +40,13 @@
  * and renames the OCPP connection column. See variant.ts.
  */
 import {
-  CSMS_OPERATION_ACTIONS,
+  CSMS_OPERATION_16_ACTIONS,
   type CsmsCapabilities,
   type CsmsDriverModule,
   type CsmsDriverParts,
   type CsmsEnv,
-  type CsmsOperation,
-  type CsmsOperations,
+  type CsmsOperation16,
+  type CsmsOperations16,
 } from "../../tck/driver";
 import { CitrineMessageApi } from "./api-client";
 import { defaultCitrineConfig } from "./config";
@@ -88,8 +88,8 @@ import {
 function capabilitiesFor(variant: CitrineVariant): CsmsCapabilities {
   const unrouted = unroutedActions(variant);
   return {
-    operations: new Set(
-      CSMS_OPERATION_ACTIONS.filter((action) => !unrouted.has(action)),
+    operations16: new Set(
+      CSMS_OPERATION_16_ACTIONS.filter((action) => !unrouted.has(action)),
     ),
     // No reservation capability at all, which is structural rather than a gap
     // in this driver: with nothing able to SEND a 1.6 ReserveNow, the
@@ -103,9 +103,9 @@ function createOperations(
   variant: CitrineVariant,
   api: CitrineMessageApi,
   records: CitrineRecords,
-): CsmsOperations {
+): CsmsOperations16 {
   return {
-    async execute(cpId: string, op: CsmsOperation): Promise<string> {
+    async execute(cpId: string, op: CsmsOperation16): Promise<string> {
       // Refs are resolved here rather than inside the mapper so that the
       // mapper stays a pure function of the operation plus one narrow lookup,
       // and so the database round-trip only happens for the two operations
@@ -133,7 +133,7 @@ export const csmsDriver: CsmsDriverModule = {
     const cfg = defaultCitrineConfig(env);
     const records = new CitrineRecords(cfg);
     return {
-      operations: createOperations(cfg.variant, new CitrineMessageApi(cfg), records),
+      operations16: createOperations(cfg.variant, new CitrineMessageApi(cfg), records),
       records,
       prepareStation: (cpId) => records.prepareStation(cpId),
       simTransport: async () => ({

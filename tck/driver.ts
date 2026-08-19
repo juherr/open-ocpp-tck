@@ -131,7 +131,7 @@ export interface LocalAuthorizationEntry {
 // switches on it. The opt-in 2.0.1 one is further down.
 // ---------------------------------------------------------------------------
 
-export type CsmsOperation =
+export type CsmsOperation16 =
   // --- Core -----------------------------------------------------------------
   | { action: "Reset"; type: ResetType }
   | { action: "UnlockConnector"; connectorId: number }
@@ -228,18 +228,18 @@ export type CsmsOperation =
     }
   | { action: "CancelReservation"; reservation: ReservationRef };
 
-export type CsmsOperationAction = CsmsOperation["action"];
+export type CsmsOperation16Action = CsmsOperation16["action"];
 
-// `as const satisfies readonly CsmsOperationAction[]` -- what the first of the
+// `as const satisfies readonly CsmsOperation16Action[]` -- what the first of the
 // two lists below used to say -- rejects a name that is NOT an action, and
 // accepts one that MISSES an action. That is the same one-directional hole
 // tck/standing.ts records above its own list, with the measurement: deleting a
 // member type-checked clean. There the fix is to derive the type FROM the
-// list, which is not available here, because CsmsOperationAction is derived
+// list, which is not available here, because CsmsOperation16Action is derived
 // from the union's arms and the list is the second copy.
 //
 // And nothing else covers the hole. `drivers/steve/index.ts` declares
-// `new Set(CSMS_OPERATION_ACTIONS)` wholesale, so a short list silently shrinks
+// `new Set(CSMS_OPERATION_16_ACTIONS)` wholesale, so a short list silently shrinks
 // what SteVe claims; `drivers/citrineos/index.ts` filters the same list; and
 // check-driver's "not declared" warning is computed from it too -- so a missing
 // name is invisible from every direction at once, including the one that would
@@ -273,7 +273,7 @@ function everyOneOf<U extends string>() {
 }
 
 /** Every action name, for capability declarations and run reporting. */
-export const CSMS_OPERATION_ACTIONS = everyOneOf<CsmsOperationAction>()([
+export const CSMS_OPERATION_16_ACTIONS = everyOneOf<CsmsOperation16Action>()([
   "Reset",
   "UnlockConnector",
   "ClearCache",
@@ -299,7 +299,7 @@ export const CSMS_OPERATION_ACTIONS = everyOneOf<CsmsOperationAction>()([
 //
 // A SECOND CLOSED UNION, not a widening of the one above, and the reason is
 // the mechanism rather than taste. `assertNever` makes every arm of
-// `CsmsOperation` compulsory in every driver that switches on it -- which is
+// `CsmsOperation16` compulsory in every driver that switches on it -- which is
 // the property worth having, and exactly why adding 2.0.1 arms there is not
 // available: it would fire in every existing driver, third-party ones
 // included, on an upgrade they did not ask for. A 1.6-only driver would have
@@ -309,7 +309,7 @@ export const CSMS_OPERATION_ACTIONS = everyOneOf<CsmsOperationAction>()([
 // So: a driver that speaks only OCPP 1.6 implements nothing here and compiles
 // untouched. Exhaustiveness is preserved WITHIN each union, because each
 // driver's switch still covers one closed set. Issue #25 argues the two
-// alternatives -- widening, and a version-parameterised `CsmsOperations<V>` --
+// alternatives -- widening, and a version-parameterised `CsmsOperations16<V>` --
 // and rejects both; that argument is not re-run here.
 //
 // WHY THREE AND NOT SIX. OCA-201-SELECTION.md's v0.3 slice is seven
@@ -373,7 +373,7 @@ export interface SetVariableData201 {
 
 export type CsmsOperation201 =
   // TRIED AND REJECTED, here because here is where it gets re-proposed:
-  // folding the two `Reset` arms -- this one and CsmsOperation's -- into one
+  // folding the two `Reset` arms -- this one and CsmsOperation16's -- into one
   // shared arm, or one shared core union the two protocols extend. They are
   // homonyms, not a duplication. OCPP 1.6's Reset carries `type: "Hard" |
   // "Soft"`; 2.0.1's carries `type: "Immediate" | "OnIdle"`. One member name in
@@ -397,7 +397,7 @@ export type CsmsOperation201 =
 
 export type CsmsOperation201Action = CsmsOperation201["action"];
 
-/** Every 2.0.1 action name. Same job as {@link CSMS_OPERATION_ACTIONS}, and a
+/** Every 2.0.1 action name. Same job as {@link CSMS_OPERATION_16_ACTIONS}, and a
  *  SECOND list rather than an extension of it -- see the note on
  *  {@link CsmsOperation201}'s `Reset` arm for why the two must not merge. */
 export const CSMS_OPERATION_201_ACTIONS = everyOneOf<CsmsOperation201Action>()([
@@ -438,7 +438,7 @@ export class UnsupportedOperationError extends Error {
 /**
  * Compile-time exhaustiveness guard for a driver's `switch (op.action)`.
  *
- * Adding an operation to {@link CsmsOperation} becomes a type error in every
+ * Adding an operation to {@link CsmsOperation16} becomes a type error in every
  * driver that has not handled it -- which is the entire reason the vocabulary
  * is a discriminated union rather than a string map.
  */
@@ -454,7 +454,7 @@ export function assertNever(value: never, context: string): never {
 // Operations
 // ---------------------------------------------------------------------------
 
-export interface CsmsOperations {
+export interface CsmsOperations16 {
   /**
    * Drives one CSMS operation against one charge point.
    *
@@ -467,7 +467,7 @@ export interface CsmsOperations {
    * Throws {@link UnsupportedOperationError} when this CSMS cannot express the
    * operation at all, and anything else for a genuine transport failure.
    */
-  execute(cpId: string, op: CsmsOperation): Promise<string>;
+  execute(cpId: string, op: CsmsOperation16): Promise<string>;
 }
 
 /**
@@ -481,13 +481,13 @@ export interface CsmsOperations {
  */
 // TWO FOLDS GET RE-PROPOSED HERE, and this is where a reader meets them.
 //
-// A second overload of `execute` on CsmsOperations, rather than a second
+// A second overload of `execute` on CsmsOperations16, rather than a second
 // interface: the objection is the substitution above, not the call sites. A
 // driver may implement one protocol and not the other, so the two halves have
 // to be independently OMISSIBLE -- overloads on one method are not, and the
 // runner would have nothing to replace.
 //
-// `CsmsOperations<Op = CsmsOperation>`, parameterised on the operation type,
+// `CsmsOperations16<Op = CsmsOperation16>`, parameterised on the operation type,
 // which is what two one-method interfaces differing only in that type invite.
 // That is issue #25's second rejected shape, declined there rather than here;
 // the header above the 2.0.1 vocabulary says why, and the short version is
@@ -606,7 +606,7 @@ export interface CsmsCapabilities {
   /** Operations this driver can express. Anything outside it MUST throw
    *  {@link UnsupportedOperationError} from `execute()`; the driver's own
    *  switch is where that is enforced, this set is what gets printed. */
-  readonly operations: ReadonlySet<CsmsOperationAction>;
+  readonly operations16: ReadonlySet<CsmsOperation16Action>;
   /**
    * The same, for {@link CsmsOperation201}. ABSENT means "this driver does not
    * speak OCPP 2.0.1 at all" -- not "it speaks it and declares nothing" -- and
@@ -718,10 +718,10 @@ export type EnvDependent<T> = T | ((env: CsmsEnv) => T);
 /**
  * What a driver hands the runner. Everything optional is a CAPABILITY that the
  * runner substitutes or skips when absent, so a minimal driver is
- * `{ operations, records }` and nothing else.
+ * `{ operations16, records }` and nothing else.
  */
 export interface CsmsDriverParts {
-  operations: CsmsOperations;
+  operations16: CsmsOperations16;
   /** OPTIONAL CAPABILITY. Omitted by a driver whose CSMS speaks only OCPP
    *  1.6; the runner substitutes a throwing stub. See
    *  {@link CsmsOperations201}. */

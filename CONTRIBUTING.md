@@ -3,7 +3,7 @@
 A driver is the only thing standing between these 47 scenarios and your CSMS.
 It answers two questions and nothing else:
 
-- **`CsmsOperations.execute(cpId, op)`** — "make the CSMS send this OCPP
+- **`CsmsOperations16.execute(cpId, op)`** — "make the CSMS send this OCPP
   operation to this charge point."
 - **`CsmsRecords`** — "what does the CSMS believe happened?"
 
@@ -37,7 +37,7 @@ import {
   assertNever,
   UnsupportedOperationError,
   type CsmsDriverModule,
-  type CsmsOperation,
+  type CsmsOperation16,
 } from "open-ocpp-tck/driver";
 import { unverifiable } from "open-ocpp-tck/unverifiable";
 import { waitForCondition } from "open-ocpp-tck/wait";
@@ -62,8 +62,8 @@ export const csmsDriver: CsmsDriverModule = {
     if (!token) throw new Error("ACME_TOKEN is not set");
 
     return {
-      operations: {
-        async execute(cpId: string, op: CsmsOperation): Promise<string> {
+      operations16: {
+        async execute(cpId: string, op: CsmsOperation16): Promise<string> {
           switch (op.action) {
             case "Reset":
               return post(`/cp/${cpId}/reset`, { type: op.type });
@@ -197,7 +197,7 @@ operation at all.
 
 It is a **separate closed union**, not an extension of the first, and the
 consequence is the point: **a 1.6-only driver implements nothing here and
-compiles untouched.** If 2.0.1 arms had been added to `CsmsOperation`, the
+compiles untouched.** If 2.0.1 arms had been added to `CsmsOperation16`, the
 `assertNever` that protects you would have broken every existing driver on an
 upgrade nobody asked for.
 
@@ -207,7 +207,7 @@ import {
   type CsmsOperation201,
 } from "open-ocpp-tck/driver";
 
-// ... inside create()'s return value, beside `operations`:
+// ... inside create()'s return value, beside `operations16`:
 operations201: {
   async execute(cpId: string, op: CsmsOperation201): Promise<string> {
     switch (op.action) {
@@ -239,7 +239,7 @@ Declare it alongside the rest, and `ocpp-tck check-driver` prints it:
 
 ```ts
 capabilities: {
-  // ... operations, reservations, chargingProfiles as above
+  // ... operations16, reservations, chargingProfiles as above
   operations201: new Set(CSMS_OPERATION_201_ACTIONS),
 },
 ```

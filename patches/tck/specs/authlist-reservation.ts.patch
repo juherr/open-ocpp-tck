@@ -35,13 +35,13 @@
    bootWaitSecs: 4,
    holdSecs: 12,
 -  async drive({ cpId, steve }) {
-+  async drive({ cpId, csms }) {
++  async drive({ cpId, csms16 }) {
      await sleep(2000);
      try {
 -      await steve.op("v1.6/GetLocalListVersion", {
 -        chargePointSelectList: steve.cpSelect(cpId),
 -      });
-+      await csms.execute(cpId, { action: "GetLocalListVersion" });
++      await csms16.execute(cpId, { action: "GetLocalListVersion" });
      } catch (err) {
        warnOpFailed("GetLocalListVersion", err);
      }
@@ -50,13 +50,13 @@
    // group sweep) leaves nothing behind here. Do not "fix" this by
    // resetting/isolating state -- there's no cross-run state to reset.
 -  async drive({ cpId, steve }) {
-+  async drive({ cpId, csms }) {
++  async drive({ cpId, csms16 }) {
      await sleep(2000);
      try {
 -      await steve.op("v1.6/GetLocalListVersion", {
 -        chargePointSelectList: steve.cpSelect(cpId),
 -      });
-+      await csms.execute(cpId, { action: "GetLocalListVersion" });
++      await csms16.execute(cpId, { action: "GetLocalListVersion" });
      } catch (err) {
        warnOpFailed("GetLocalListVersion", err);
      }
@@ -65,7 +65,7 @@
    bootWaitSecs: 4,
    holdSecs: 12,
 -  async drive({ cpId, steve }) {
-+  async drive({ cpId, csms }) {
++  async drive({ cpId, csms16 }) {
      await sleep(2000);
      try {
 -      await steve.op("v1.6/SendLocalList", {
@@ -73,7 +73,7 @@
 -        listVersion: "1",
 -        updateType: "FULL",
 -        addUpdateList: "CERT-TAG-1",
-+      await csms.execute(cpId, {
++      await csms16.execute(cpId, {
 +        action: "SendLocalList",
 +        listVersion: 1,
 +        updateType: "Full",
@@ -86,7 +86,7 @@
    bootWaitSecs: 4,
    holdSecs: 12,
 -  async drive({ cpId, steve }) {
-+  async drive({ cpId, csms }) {
++  async drive({ cpId, csms16 }) {
      await sleep(2000);
      try {
 -      await steve.op("v1.6/SendLocalList", {
@@ -94,7 +94,7 @@
 -        listVersion: "1",
 -        updateType: "FULL",
 -        addUpdateList: "CERT-TAG-1",
-+      await csms.execute(cpId, {
++      await csms16.execute(cpId, {
 +        action: "SendLocalList",
 +        listVersion: 1,
 +        updateType: "Full",
@@ -107,7 +107,7 @@
    bootWaitSecs: 4,
    holdSecs: 12,
 -  async drive({ cpId, steve }) {
-+  async drive({ cpId, csms }) {
++  async drive({ cpId, csms16 }) {
      await sleep(2000);
      try {
 -      await steve.op("v1.6/SendLocalList", {
@@ -115,7 +115,7 @@
 -        listVersion: "1",
 -        updateType: "FULL",
 -        addUpdateList: "CERT-TAG-1",
-+      await csms.execute(cpId, {
++      await csms16.execute(cpId, {
 +        action: "SendLocalList",
 +        listVersion: 1,
 +        updateType: "Full",
@@ -128,7 +128,7 @@
    bootWaitSecs: 4,
    holdSecs: 18,
 -  async drive({ cpId, steve }) {
-+  async drive({ cpId, csms }) {
++  async drive({ cpId, csms16 }) {
      await sleep(2000);
      try {
 -      await steve.op("v1.6/SendLocalList", {
@@ -136,7 +136,7 @@
 -        listVersion: "1",
 -        updateType: "FULL",
 -        addUpdateList: "CERT-TAG-1",
-+      await csms.execute(cpId, {
++      await csms16.execute(cpId, {
 +        action: "SendLocalList",
 +        listVersion: 1,
 +        updateType: "Full",
@@ -152,7 +152,7 @@
 -        listVersion: "2",
 -        updateType: "DIFFERENTIAL",
 -        addUpdateList: "CERT-TAG-2",
-+      await csms.execute(cpId, {
++      await csms16.execute(cpId, {
 +        action: "SendLocalList",
 +        listVersion: 2,
 +        updateType: "Differential",
@@ -165,14 +165,14 @@
    // settle(2) + delay-arrival(2) + bounded meter block(30) + tail.
    holdSecs: 45,
 -  async drive({ cpId, steve }) {
-+  async drive({ cpId, csms }) {
++  async drive({ cpId, csms16 }) {
      await sleep(2000);
      try {
 -      await steve.op("v1.6/ReserveNow", {
 -        chargePointSelectList: steve.cpSelect(cpId),
 -        connectorId: "1",
 -        expiry: reservationExpirySoon(),
-+      await csms.execute(cpId, {
++      await csms16.execute(cpId, {
 +        action: "ReserveNow",
 +        connectorId: 1,
          idTag: "CERT-TAG-1",
@@ -226,14 +226,14 @@
    bootWaitSecs: 4,
    holdSecs: 12,
 -  async drive({ cpId, steve }) {
-+  async drive({ cpId, csms }) {
++  async drive({ cpId, csms16 }) {
      await sleep(2000);
      try {
 -      await steve.op("v1.6/ReserveNow", {
 -        chargePointSelectList: steve.cpSelect(cpId),
 -        connectorId: "1",
 -        expiry: reservationExpirySoon(),
-+      await csms.execute(cpId, {
++      await csms16.execute(cpId, {
 +        action: "ReserveNow",
 +        connectorId: 1,
          idTag: "CERT-TAG-1",
@@ -267,14 +267,14 @@
    bootWaitSecs: 4,
    holdSecs: 12,
 -  async drive({ cpId, steve }) {
-+  async drive({ cpId, csms }) {
++  async drive({ cpId, csms16 }) {
      await sleep(2000);
      try {
 -      await steve.op("v1.6/ReserveNow", {
 -        chargePointSelectList: steve.cpSelect(cpId),
 -        connectorId: "1",
 -        expiry: reservationExpirySoon(),
-+      await csms.execute(cpId, {
++      await csms16.execute(cpId, {
 +        action: "ReserveNow",
 +        connectorId: 1,
          idTag: "CERT-TAG-1",
@@ -296,14 +296,14 @@
    bootWaitSecs: 4,
    holdSecs: 12,
 -  async drive({ cpId, steve }) {
-+  async drive({ cpId, csms }) {
++  async drive({ cpId, csms16 }) {
      await sleep(2000);
      try {
 -      await steve.op("v1.6/ReserveNow", {
 -        chargePointSelectList: steve.cpSelect(cpId),
 -        connectorId: "1",
 -        expiry: reservationExpirySoon(),
-+      await csms.execute(cpId, {
++      await csms16.execute(cpId, {
 +        action: "ReserveNow",
 +        connectorId: 1,
          idTag: "CERT-TAG-1",
@@ -325,14 +325,14 @@
    bootWaitSecs: 4,
    holdSecs: 12,
 -  async drive({ cpId, steve }) {
-+  async drive({ cpId, csms }) {
++  async drive({ cpId, csms16 }) {
      await sleep(2000);
      try {
 -      await steve.op("v1.6/ReserveNow", {
 -        chargePointSelectList: steve.cpSelect(cpId),
 -        connectorId: "1",
 -        expiry: reservationExpirySoon(),
-+      await csms.execute(cpId, {
++      await csms16.execute(cpId, {
 +        action: "ReserveNow",
 +        connectorId: 1,
          idTag: "CERT-TAG-1",
@@ -345,7 +345,7 @@
      bootWaitSecs: 4,
      holdSecs: 20,
 -    async drive({ cpId, db, steve }): Promise<CancelReservationDriveState> {
-+    async drive({ cpId, records, csms }): Promise<CancelReservationDriveState> {
++    async drive({ cpId, records, csms16 }): Promise<CancelReservationDriveState> {
        await sleep(2000);
        try {
 -        await steve.op("v1.6/ReserveNow", {
@@ -354,7 +354,7 @@
 -          expiry: reservationExpirySoon(),
 -          idTag: "CERT-TAG-1",
 -        });
-+        await csms.execute(cpId, {
++        await csms16.execute(cpId, {
 +        action: "ReserveNow",
 +        connectorId: 1,
 +        idTag: "CERT-TAG-1",
@@ -385,7 +385,7 @@
 -          chargePointSelectList: steve.cpSelect(cpId),
 -          reservationId: reservationPk,
 -        });
-+        await csms.execute(cpId, { action: "CancelReservation", reservation: reservationPk });
++        await csms16.execute(cpId, { action: "CancelReservation", reservation: reservationPk });
        } catch (err) {
          warnOpFailed("CancelReservation", err);
        }
@@ -421,7 +421,7 @@
    bootWaitSecs: 4,
    holdSecs: 12,
 -  async drive({ cpId }) {
-+  async drive({ cpId, csms }) {
++  async drive({ cpId, csms16 }) {
      await sleep(2000);
 -    // Deliberately bypasses `steve` (the ambient STEVE_DRIVER=api|ui
 -    // driver) and always uses the manager-UI client for THIS ONE call --
@@ -449,7 +449,7 @@
 -      await uiSteve.op("v1.6/CancelReservation", {
 -        chargePointSelectList: uiSteve.cpSelect(cpId),
 -        reservationId: "99999",
-+      await csms.execute(cpId, {
++      await csms16.execute(cpId, {
 +        action: "CancelReservation",
 +        reservation: "99999",
        });

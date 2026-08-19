@@ -43,10 +43,10 @@ export const tc0421GetLocalListVersionNotSupportedSpec: ScenarioSpec<void> = {
   connector: 1,
   bootWaitSecs: 4,
   holdSecs: 12,
-  async drive({ cpId, csms }) {
+  async drive({ cpId, csms16 }) {
     await sleep(2000);
     try {
-      await csms.execute(cpId, { action: "GetLocalListVersion" });
+      await csms16.execute(cpId, { action: "GetLocalListVersion" });
     } catch (err) {
       warnOpFailed("GetLocalListVersion", err);
     }
@@ -92,10 +92,10 @@ export const tc0422GetLocalListVersionEmptySpec: ScenarioSpec<void> = {
   // SendLocalList run against the same cpId (even earlier in the same
   // group sweep) leaves nothing behind here. Do not "fix" this by
   // resetting/isolating state -- there's no cross-run state to reset.
-  async drive({ cpId, csms }) {
+  async drive({ cpId, csms16 }) {
     await sleep(2000);
     try {
-      await csms.execute(cpId, { action: "GetLocalListVersion" });
+      await csms16.execute(cpId, { action: "GetLocalListVersion" });
     } catch (err) {
       warnOpFailed("GetLocalListVersion", err);
     }
@@ -126,10 +126,10 @@ export const tc0431SendLocalListNotSupportedSpec: ScenarioSpec<void> = {
   connector: 1,
   bootWaitSecs: 4,
   holdSecs: 12,
-  async drive({ cpId, csms }) {
+  async drive({ cpId, csms16 }) {
     await sleep(2000);
     try {
-      await csms.execute(cpId, {
+      await csms16.execute(cpId, {
         action: "SendLocalList",
         listVersion: 1,
         updateType: "Full",
@@ -161,10 +161,10 @@ export const tc0433SendLocalListFailedSpec: ScenarioSpec<void> = {
   connector: 1,
   bootWaitSecs: 4,
   holdSecs: 12,
-  async drive({ cpId, csms }) {
+  async drive({ cpId, csms16 }) {
     await sleep(2000);
     try {
-      await csms.execute(cpId, {
+      await csms16.execute(cpId, {
         action: "SendLocalList",
         listVersion: 1,
         updateType: "Full",
@@ -196,10 +196,10 @@ export const tc0434SendLocalListFullSpec: ScenarioSpec<void> = {
   connector: 1,
   bootWaitSecs: 4,
   holdSecs: 12,
-  async drive({ cpId, csms }) {
+  async drive({ cpId, csms16 }) {
     await sleep(2000);
     try {
-      await csms.execute(cpId, {
+      await csms16.execute(cpId, {
         action: "SendLocalList",
         listVersion: 1,
         updateType: "Full",
@@ -241,10 +241,10 @@ export const tc0435SendLocalListDifferentialSpec: ScenarioSpec<void> = {
   connector: 1,
   bootWaitSecs: 4,
   holdSecs: 18,
-  async drive({ cpId, csms }) {
+  async drive({ cpId, csms16 }) {
     await sleep(2000);
     try {
-      await csms.execute(cpId, {
+      await csms16.execute(cpId, {
         action: "SendLocalList",
         listVersion: 1,
         updateType: "Full",
@@ -255,7 +255,7 @@ export const tc0435SendLocalListDifferentialSpec: ScenarioSpec<void> = {
     }
     await sleep(3000);
     try {
-      await csms.execute(cpId, {
+      await csms16.execute(cpId, {
         action: "SendLocalList",
         listVersion: 2,
         updateType: "Differential",
@@ -315,10 +315,10 @@ export const reservationBasicSpec: ScenarioSpec<void> = {
   bootWaitSecs: 4,
   // settle(2) + delay-arrival(2) + bounded meter block(30) + tail.
   holdSecs: 45,
-  async drive({ cpId, csms }) {
+  async drive({ cpId, csms16 }) {
     await sleep(2000);
     try {
-      await csms.execute(cpId, {
+      await csms16.execute(cpId, {
         action: "ReserveNow",
         connectorId: 1,
         idTag: "CERT-TAG-1",
@@ -400,10 +400,10 @@ export const tc0481ReserveNowFaultedSpec: ScenarioSpec<void> = {
   connector: 1,
   bootWaitSecs: 4,
   holdSecs: 12,
-  async drive({ cpId, csms }) {
+  async drive({ cpId, csms16 }) {
     await sleep(2000);
     try {
-      await csms.execute(cpId, {
+      await csms16.execute(cpId, {
         action: "ReserveNow",
         connectorId: 1,
         idTag: "CERT-TAG-1",
@@ -458,10 +458,10 @@ export const tc0482ReserveNowOccupiedSpec: ScenarioSpec<void> = {
   connector: 1,
   bootWaitSecs: 4,
   holdSecs: 12,
-  async drive({ cpId, csms }) {
+  async drive({ cpId, csms16 }) {
     await sleep(2000);
     try {
-      await csms.execute(cpId, {
+      await csms16.execute(cpId, {
         action: "ReserveNow",
         connectorId: 1,
         idTag: "CERT-TAG-1",
@@ -509,10 +509,10 @@ export const tc0483ReserveNowUnavailableSpec: ScenarioSpec<void> = {
   connector: 1,
   bootWaitSecs: 4,
   holdSecs: 12,
-  async drive({ cpId, csms }) {
+  async drive({ cpId, csms16 }) {
     await sleep(2000);
     try {
-      await csms.execute(cpId, {
+      await csms16.execute(cpId, {
         action: "ReserveNow",
         connectorId: 1,
         idTag: "CERT-TAG-1",
@@ -560,10 +560,10 @@ export const tc0484ReserveNowRejectedSpec: ScenarioSpec<void> = {
   connector: 1,
   bootWaitSecs: 4,
   holdSecs: 12,
-  async drive({ cpId, csms }) {
+  async drive({ cpId, csms16 }) {
     await sleep(2000);
     try {
-      await csms.execute(cpId, {
+      await csms16.execute(cpId, {
         action: "ReserveNow",
         connectorId: 1,
         idTag: "CERT-TAG-1",
@@ -601,10 +601,10 @@ export const tc051CancelReservationSpec: ScenarioSpec<CancelReservationDriveStat
     connector: 1,
     bootWaitSecs: 4,
     holdSecs: 20,
-    async drive({ cpId, records, csms }): Promise<CancelReservationDriveState> {
+    async drive({ cpId, records, csms16 }): Promise<CancelReservationDriveState> {
       await sleep(2000);
       try {
-        await csms.execute(cpId, {
+        await csms16.execute(cpId, {
         action: "ReserveNow",
         connectorId: 1,
         idTag: "CERT-TAG-1",
@@ -630,7 +630,7 @@ export const tc051CancelReservationSpec: ScenarioSpec<CancelReservationDriveStat
       );
 
       try {
-        await csms.execute(cpId, { action: "CancelReservation", reservation: reservationPk });
+        await csms16.execute(cpId, { action: "CancelReservation", reservation: reservationPk });
       } catch (err) {
         warnOpFailed("CancelReservation", err);
       }
@@ -701,14 +701,14 @@ export const tc052CancelReservationRejectedSpec: ScenarioSpec<void> = {
   connector: 1,
   bootWaitSecs: 4,
   holdSecs: 12,
-  async drive({ cpId, csms }) {
+  async drive({ cpId, csms16 }) {
     await sleep(2000);
     // The reservationId is deliberately one the station does not have: the
     // scenario's whole point is that the CHARGE POINT answers Rejected. A CSMS
     // that validates the id server-side and never puts the request on the wire
     // cannot drive this, and says so in its scope table.
     try {
-      await csms.execute(cpId, {
+      await csms16.execute(cpId, {
         action: "CancelReservation",
         reservation: "99999",
       });

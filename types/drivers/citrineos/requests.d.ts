@@ -1,5 +1,5 @@
 /**
- * requests.ts -- one CsmsOperation, one CitrineOS message-API call.
+ * requests.ts -- one CsmsOperation16, one CitrineOS message-API call.
  *
  * CitrineOS's outbound surface is generated from the OCPP schemas themselves:
  * `AbstractModuleApi._toMessagePath` builds
@@ -20,7 +20,7 @@
  *    {@link CitrineRefs}.
  *  - RESERVATIONS DO NOT EXIST HERE AT ALL. See the two throwing cases.
  */
-import { type CsmsOperation, type TransactionRef } from "../../tck/driver";
+import { type CsmsOperation16, type TransactionRef } from "../../tck/driver";
 import { type CitrineVariant } from "./variant";
 /** The endpointPrefix values CitrineOS's shipped `docker` config declares. */
 export type CitrineModule = "configuration" | "evdriver" | "reporting" | "smartcharging";
@@ -42,4 +42,4 @@ export interface CitrineRequest {
 export interface CitrineRefs {
     ocppTransactionId(ref: TransactionRef): Promise<number>;
 }
-export declare function toCitrineRequest(op: CsmsOperation, refs: CitrineRefs, variant: CitrineVariant): Promise<CitrineRequest>;
+export declare function toCitrineRequest(op: CsmsOperation16, refs: CitrineRefs, variant: CitrineVariant): Promise<CitrineRequest>;

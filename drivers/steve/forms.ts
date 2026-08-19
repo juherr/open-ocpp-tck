@@ -1,7 +1,7 @@
 // Copyright 2026 Julien Herr
 // SPDX-License-Identifier: Apache-2.0
 /**
- * forms.ts -- renders a neutral CsmsOperation into the fields SteVe's manager
+ * forms.ts -- renders a neutral CsmsOperation16 into the fields SteVe's manager
  * UI forms expect.
  *
  * This mapping used to BE the contract: every scenario was written in these
@@ -11,7 +11,7 @@
  */
 import {
   assertNever,
-  type CsmsOperation,
+  type CsmsOperation16,
 } from "../../tck/driver";
 
 /**
@@ -75,7 +75,7 @@ export function chargingProfileForm(
   };
 }
 
-export function toSteveForm(op: CsmsOperation): {
+export function toSteveForm(op: CsmsOperation16): {
   opPath: string;
   fields: Record<string, string>;
 } {

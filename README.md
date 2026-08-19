@@ -26,7 +26,7 @@ cases may become scenarios of their own is a written rule,
 
 ```
        your CSMS  <--- REST/UI/SQL ---  your driver  ---.
-           ^                                            |  CsmsOperations
+           ^                                            |  CsmsOperations16
            |                                            |  CsmsRecords
         OCPP-J                                          v
            |                                     +--------------+
@@ -129,7 +129,7 @@ export const csmsDriver: CsmsDriverModule = {
   scope: SCOPE,                        // what your CSMS can and cannot drive
   create(env) {
     return {
-      operations: { async execute(cpId, op) { /* switch (op.action) */ } },
+      operations16: { async execute(cpId, op) { /* switch (op.action) */ } },
       records: { /* what your CSMS believes happened */ },
     };
   },
