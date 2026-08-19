@@ -29,17 +29,16 @@
  * refusal in the library is reachable only from the offline table.
  */
 
-import { readdirSync, readFileSync, statSync } from "node:fs";
+import { readdirSync, readFileSync } from "node:fs";
 import { basename, join } from "node:path";
 
 import { parseLog, type Frame } from "../tck/ocpp";
 import { readTrace } from "../tck/trace";
 import {
-  consumerView,
-  crossRecordDiagnostics,
+  checkFixtures,
+  formatResults,
   readTraceText,
   type Diagnostic,
-  type TraceRecord,
 } from "../trace-format";
 
 let failures = 0;
@@ -54,65 +53,29 @@ const show = (diagnostics: readonly Diagnostic[]): string =>
     .map((d) => `[${d.index}] ${d.code}${d.member ? `/${d.member}` : ""}`)
     .join(", ");
 
-/**
- * Structural equality through JSON.
- *
- * `expected.json` came from a parser, so a member the reference sets to
- * `undefined` is simply absent there -- and `Object.keys` counts it present on
- * an object literal. Normalising both sides through JSON is what makes
- * "reproduce it exactly" mean the same thing on both.
- */
-const normalise = (value: unknown): string => JSON.stringify(value);
-
 // --------------------------------------------------------------------------
 // 1. The specification's fixtures.
 // --------------------------------------------------------------------------
 
-function checkFixtures(fixturesDir: string): number {
-  const names = readdirSync(fixturesDir).filter((name) =>
-    statSync(join(fixturesDir, name)).isDirectory(),
-  );
-  if (names.length === 0) {
-    fail("fixtures", `no fixture directories under ${fixturesDir}`);
-    return 0;
+/**
+ * The fixture corpus, checked by the LIBRARY's own runner.
+ *
+ * Nothing is re-implemented here: `trace-format/conformance.ts` is what is
+ * meant to replace `conformance/validate.mjs` upstream, so running anything
+ * else from this script would test a third implementation and prove nothing
+ * about the one that would ship.
+ */
+function checkSpecFixtures(fixturesDir: string): number {
+  const results = checkFixtures(fixturesDir);
+  for (const line of formatResults(results)) {
+    if (line.startsWith("FAIL")) {
+      failures++;
+      process.stderr.write(`${line}\n`);
+    } else {
+      process.stdout.write(`${line}\n`);
+    }
   }
-
-  for (const name of names.sort()) {
-    const dir = join(fixturesDir, name);
-    const text = readFileSync(join(dir, "trace.jsonl"), "utf8");
-    const expected = JSON.parse(readFileSync(join(dir, "expected.json"), "utf8"));
-
-    const { records, diagnostics } = readTraceText(text);
-    const holes = records.filter((record) => record === undefined).length;
-    if (holes > 0) {
-      fail(name, `${holes} record(s) the reader refused: ${show(diagnostics)}`);
-      continue;
-    }
-    // A conformant fixture must be silent. A diagnostic here means this reader
-    // is STRICTER than the format, which is the failure that matters: it would
-    // make a conformant producer look broken.
-    const valid = records as readonly TraceRecord[];
-    const view = consumerView(valid);
-    const all = [...diagnostics, ...crossRecordDiagnostics(valid, view)];
-    if (all.length > 0) {
-      fail(name, `reader is stricter than the format: ${show(all)}`);
-      continue;
-    }
-
-    if (normalise(view) !== normalise(expected)) {
-      fail(name, "derived consumer view does not match expected.json");
-      process.stderr.write(`     got ${normalise(view)}\n`);
-      process.stderr.write(`     exp ${normalise(expected)}\n`);
-      continue;
-    }
-
-    process.stdout.write(
-      `ok   ${name} (${view.counts.records} records, ` +
-        `${view.unansweredCalls.length} unanswered, ` +
-        `${view.orphanResponses.length} orphans)\n`,
-    );
-  }
-  return names.length;
+  return results.length;
 }
 
 // --------------------------------------------------------------------------
@@ -200,7 +163,7 @@ if (!fixturesDir) {
 }
 
 process.stdout.write("== the specification's conformance fixtures\n");
-const fixtureCount = checkFixtures(fixturesDir);
+const fixtureCount = checkSpecFixtures(fixturesDir);
 
 let archive = { traces: 0, records: 0 };
 if (archiveDir) {
