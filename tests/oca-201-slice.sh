@@ -135,8 +135,17 @@ while read -r case_id scenario reason; do
   echo "    indistinguishable from an oversight, and stays that way." >&2
 done < "$work/rows"
 
+# THE SCENARIO-TO-CASE ANSWER THIS FILE GIVES, projected once and read by both
+# directions below: direction 1 needs the scenarios, direction 3 needs the
+# pairs, and spelling the `not-implemented` sentinel in two places is one place
+# too many for a value that is the same set both times. The duplicate check
+# above deliberately keeps its own raw projection -- deriving it from a
+# `sort -u` would let the very rows it looks for collapse before it ran.
+awk '$2 != "not-implemented" { print $2 "\t" $1 }' "$work/rows" | sort -u \
+  > "$work/case-of"
+
 # Direction 1: every scenario the slice claims to have is registered.
-awk '$2 != "not-implemented" { print $2 }' "$work/rows" | sort -u > "$work/claimed"
+cut -f1 "$work/case-of" | sort -u > "$work/claimed"
 
 # Direction 2: every registered scenario written for this protocol. Keyed on
 # the VERSION THE SCENARIO DECLARES, not on how it is named -- `cert201-` is a
@@ -170,28 +179,39 @@ fi
 # Direction 3: the obligations table assigns each of these scenarios to the
 # same case this list does. Only the rows about scenarios this file selects --
 # the obligations table is mostly OCPP 1.6 and none of its business here.
-awk '$2 != "not-implemented" { print $2 "\t" $1 }' "$work/rows" | sort -u \
-  > "$work/case-of"
+#
+# WHICH ROWS THOSE ARE IS READ FROM $work/claimed, not from the `cert201-`
+# prefix, for the reason direction 2 above is keyed on the declared version:
+# the prefix is a convention nothing enforces, and keying half this guard on it
+# left a 2.0.1 scenario named anything else selected by the slice, registered
+# by the inventory, and invisible to the only check that catches two tables
+# assigning it to two different cases. `claimed` is the same set direction 1
+# validates, so this door and that one now open on the same list.
+#
 # The shape check the sibling applies to this file applies here too, because
 # this guard reads it before that one has necessarily run: a truncated row
 # yields an empty case column, which renders as trailing whitespace and sends
 # the reader to edit the OTHER file. That is the sibling's own recorded lesson,
 # and it arrives here through a different door.
 if ! awk '
+  NR == FNR { claimed[$1]; next }
   { sub(/\r$/, "") }
-  $1 !~ /^cert201-/ { next }
+  !($1 in claimed) { next }
   NF == 4 { next }
   { printf "  line %d: %s\n", FNR, $0 > "/dev/stderr"; bad = 1 }
   END { exit(bad ? 1 : 0) }
-' "$obligations"; then
+' "$work/claimed" "$obligations"; then
   echo "FAIL: $obligations has an OCPP 2.0.1 row that is not four fields." >&2
   echo "  → scenario / action / checked-by / OCA case. Read as fewer, its" >&2
   echo "    case column reads empty and this guard blames the other file." >&2
   exit 1
 fi
 
-awk '{ sub(/\r$/, "") } $1 ~ /^cert201-/ { print $1 "\t" $4 }' "$obligations" \
-  | sort -u > "$work/obliged"
+awk '
+  NR == FNR { claimed[$1]; next }
+  { sub(/\r$/, "") }
+  ($1 in claimed) { print $1 "\t" $4 }
+' "$work/claimed" "$obligations" | sort -u > "$work/obliged"
 
 if disagree=$(comm -23 "$work/obliged" "$work/case-of") && [ -n "$disagree" ]; then
   status=1
