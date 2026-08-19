@@ -605,8 +605,8 @@ export interface CsmsChargingProfileRecords {
 export interface CsmsCapabilities {
   /** Operations this driver can express. Anything outside it MUST throw
    *  {@link UnsupportedOperationError} from `operations16.execute()`; the
-   *  driver's own
-   *  switch is where that is enforced, this set is what gets printed. */
+   *  driver's own switch is where that is enforced, this set is what gets
+   *  printed. */
   readonly operations16: ReadonlySet<CsmsOperation16Action>;
   /**
    * The same, for {@link CsmsOperation201}. ABSENT means "this driver does not
