@@ -277,6 +277,28 @@ const operationsStub = {
   },
 };
 
+/**
+ * The same, for DriveContext's OCPP 2.0.1 half.
+ *
+ * A SEPARATE STUB rather than reusing the one above, and the reason is the
+ * reason the two vocabularies are two unions: `Reset` is an action name in
+ * both. Sharing the stub would record a 2.0.1 Reset as `OP Reset`, which is
+ * what a 1.6 Reset records -- so this artifact, whose whole job is to make a
+ * retargeted step visible, would be blind to a scenario switching protocols.
+ *
+ * `SpecLike.drive` takes a `Record<string, unknown>` so that a spec can be
+ * traced through either the legacy or the neutral field names, which means
+ * tsc CANNOT check this context against DriveContext. A member the runner
+ * supplies and this file forgets is therefore a crash at --regenerate time,
+ * not a compile error: `csms201` was exactly that until it was added here.
+ */
+const operations201Stub = {
+  async execute(_cpId: string, operation: { action: string }): Promise<string> {
+    recordOperation(`201:${operation.action}`, leafValues(operation));
+    return "<receipt>";
+  },
+};
+
 function observationStub(): Record<string, unknown> {
   const stub: Record<string, unknown> = {};
   for (const [method, id] of Object.entries(OBSERVATION_ALIASES)) {
@@ -376,6 +398,7 @@ for (const [groupName, groupSpecs] of discoverGroups()) {
         // identically before and after it is converted.
         steve: operationsStub,
         csms: operationsStub,
+        csms201: operations201Stub,
         db: records,
         records,
       });
