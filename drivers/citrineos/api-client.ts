@@ -105,6 +105,7 @@ export class CitrineMessageApi {
    */
   async send(cpId: string, req: CitrineRequest): Promise<string> {
     const url = this.url(req, cpId);
+    const what = `citrineos: POST ${url}`;
     let res: Response;
     try {
       res = await this.fetchImpl(url, {
@@ -117,7 +118,7 @@ export class CitrineMessageApi {
       });
     } catch (err) {
       throw new CsmsNotDispatchedError(
-        `citrineos: POST ${url}`,
+        what,
         err instanceof Error ? err.message : String(err),
       );
     }
@@ -136,7 +137,7 @@ export class CitrineMessageApi {
           ? ` -- no OCPP ${req.ocppVersion} route is registered for this action on this CitrineOS version`
           : "";
       throw new CsmsNotDispatchedError(
-        `citrineos: POST ${url}`,
+        what,
         `returned ${res.status}${hint}: ${await errorBody(res)}`,
       );
     }
@@ -145,7 +146,7 @@ export class CitrineMessageApi {
     // means: the body read moved here from beside the fetch, because a 200
     // whose stream then stalls -- the timeout covers it too -- is the same
     // case as a body that will not parse.
-    const { text, parsed } = await readAnsweredBody(res, `citrineos: POST ${url}`);
+    const { text, parsed } = await readAnsweredBody(res, what);
 
     // One confirmation per identifier -- except GetConfiguration, which
     // CitrineOS splits into batches of GetConfigurationMaxKeys and confirms
@@ -161,7 +162,7 @@ export class CitrineMessageApi {
 
     if (!confirmations.every(isConfirmation)) {
       throw new Error(
-        `citrineos: POST ${url} returned a body that is not a confirmation array: ${text.slice(0, 300)}`,
+        `${what} returned a body that is not a confirmation array: ${text.slice(0, 300)}`,
       );
     }
 

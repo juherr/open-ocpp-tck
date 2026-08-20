@@ -20,7 +20,9 @@
  *     one fact about CitrineOS: it answers 200 for everything that reaches its
  *     OCPP layer, so a status is proof that nothing did. Asserted across five
  *     of them, because a rule stated for 5xx and tested on 500 is a rule about
- *     500.
+ *     500. The message survives an error body that will not stream, and is
+ *     bounded at both ends -- a preview asserted only by what it carries would
+ *     survive being widened to the whole page.
  *  3. A 404 carries the unrouted-action hint, and the OCPP version in it is the
  *     REQUEST's -- checked with a 1.6 request and a 2.0.1 one, since "which
  *     protocol did we ask for" is the half of that message a reader needs and
@@ -142,16 +144,30 @@ function json(value: unknown): FetchLike {
  * inside the `fetch` try and graphql-client outside it, so the same stall was a
  * driver error on one and a raw abort naming nothing on the other.
  */
-const stalled: FetchLike = () =>
-  Promise.resolve(
-    new Response(
-      new ReadableStream({
-        start(controller) {
-          controller.error(new Error("the response stream closed"));
-        },
-      }),
-    ),
-  );
+function stallingBody(): ReadableStream {
+  return new ReadableStream({
+    start(controller) {
+      controller.error(new Error("the response stream closed"));
+    },
+  });
+}
+
+const stalled: FetchLike = () => Promise.resolve(new Response(stallingBody()));
+
+/** Headers with a failing status, then a body that never finishes. The status
+ *  is the finding, so reading the body is best-effort and must not throw over
+ *  it -- this is the only case that reaches that fallback. */
+const stalledWithStatus = (status: number): FetchLike => () =>
+  Promise.resolve(new Response(stallingBody(), { status }));
+
+/**
+ * A body longer than the preview, marked either side of the cut.
+ *
+ * `keep-me` sits inside the first 300 bytes and `drop-me` past them, so the
+ * case fails if the preview is shortened AND if it is widened -- which is what
+ * a bound needs, and what a `carries`-only assertion cannot say.
+ */
+const LONG_BODY = `${"a".repeat(250)}keep-me${"b".repeat(100)}drop-me`;
 
 // ---------------------------------------------------------------------------
 // Running a case
@@ -171,6 +187,11 @@ interface Case {
    *  a status, a hint naming what to run -- and the conversion must not eat
    *  them. */
   readonly carries: readonly string[];
+  /** Substrings the message must NOT carry. Only a bound has two sides:
+   *  `carries` alone says a preview is long enough and never that it is short
+   *  enough, so a body limit asserted with it only would survive being raised
+   *  to the whole page. */
+  readonly omits?: readonly string[];
 }
 
 function describe(err: unknown): string {
@@ -220,6 +241,16 @@ async function check(
   }
 
   const message = err instanceof Error ? err.message : String(err);
+  for (const fragment of kase.omits ?? []) {
+    if (message.includes(fragment)) {
+      fail(
+        `${label}: ${kase.what} carried more than it should`,
+        `the message contains ${JSON.stringify(fragment)}, which sits past the ` +
+          `body preview -- a run log that pastes a whole error page is one ` +
+          `nobody reads. Got: ${message}`,
+      );
+    }
+  }
   for (const fragment of kase.carries) {
     if (!message.includes(fragment)) {
       fail(
@@ -311,6 +342,19 @@ const API_CASES: Case[] = [
       "Unknown identifier CERTCP1",
       "connectorId must be > 0",
     ],
+  },
+  {
+    what: "a 503 whose error body will not stream",
+    answer: stalledWithStatus(503),
+    expect: "not-dispatched",
+    carries: [apiUrlPrefix(REQ_16), "returned 503", "<unreadable body>"],
+  },
+  {
+    what: "a 500 with a body longer than the preview",
+    answer: answering(500, LONG_BODY),
+    expect: "not-dispatched",
+    carries: [apiUrlPrefix(REQ_16), "returned 500", "keep-me"],
+    omits: ["drop-me"],
   },
   // Part 4, the negative half.
   {
