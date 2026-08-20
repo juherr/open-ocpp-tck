@@ -312,11 +312,19 @@ export const CSMS_OPERATION_16_ACTIONS = everyOneOf<CsmsOperation16Action>()([
 // alternatives -- widening, and a version-parameterised
 // `CsmsOperations16<V>` -- and rejects both; that argument is not re-run here.
 //
-// WHY THREE AND NOT SIX. OCA-201-SELECTION.md's v0.3 slice is seven
+// WHY THREE AND NOT SIX. OCA-201-SELECTION.md's first slice was seven
 // certification cases, and only three of them are CSMS-INITIATED: Reset,
 // GetVariables, SetVariables. BootNotification and Heartbeat are observed on
 // the wire, not driven, so they need no operation at all. "As few as the first
 // slice needs" is that file's number, not this file's judgement.
+//
+// AND WHY THREE IS NOT THE FINAL ANSWER. That page's rule now selects 205
+// cases rather than seven, so this union grows. What does NOT change is how:
+// the count comes from the cases selected, derived once the identifiers behind
+// the 205 exist, and a case that only observes charge-point-initiated traffic
+// still needs no arm here. Adding the rest of the 2.0.1 messages because they
+// exist is the mistake "three, not eighteen" was written against, and it reads
+// the same whichever direction the number moves in.
 // ---------------------------------------------------------------------------
 
 /** OCPP 2.0.1 `ResetEnumType`. Not OCPP 1.6's Hard/Soft -- see the note on

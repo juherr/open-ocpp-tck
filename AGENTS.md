@@ -210,7 +210,10 @@ its header is now a false claim about what the build checks.
   reason. `OCA-201-SELECTION.md` states the rule the list was drawn against,
   and no guard can check that part: it is a reading of a specification this
   repository cannot contain. What this stops is the two drifting afterwards,
-  which is the failure a page that keeps reading well always has.
+  which is the failure a page that keeps reading well always has. It does not
+  stop the list being *short* — both directions range over the file, so seven
+  rows out of the 205 the rule now selects is a green, and where that gap is
+  owned is the selection page rather than here.
   (`tests/oca-201-slice.sh`)
 - **A scenario's assertions and its CSMS call sequence may not change.**
   Changing what a scenario measures is legitimate and moves the two committed

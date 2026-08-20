@@ -3,11 +3,18 @@
 Which OCPP 2.0.1 certification cases this suite is allowed to implement, stated
 as the rule the list is drawn from, and what a scope row about 2.0.1 may cite.
 
-OCPP 2.0.1 Part 6 is 914 pages. The milestone that introduces 2.0.1 says
-explicitly that the suite is not to be ported, and names six candidate
-messages. Six names chosen by hand is not a rule, and without a rule a
-"small representative set" is a judgement each reviewer makes differently and
-the milestone grows by a case at a time.
+OCPP 2.0.1 Part 6 is 914 pages, so the question "which of it do we owe?" needs
+an answer that is not a judgement. It was first asked in the other direction:
+the milestone that introduced 2.0.1 said explicitly that the suite was not to
+be ported and named six candidate messages, and six names chosen by hand is not
+a rule — without one, "a small representative set" is a judgement each reviewer
+makes differently and the milestone grows by a case at a time.
+
+The milestone now asks for the whole mandatory CSMS set, and the same rule
+answers the opposite question: not how little is enough, but what completeness
+*means*. It still says no — to the conditionals and to the charging-station
+cases — and it is still the only thing standing between a 914-page reference
+and a perimeter someone re-draws per review.
 
 This file is the rule. It is not a coverage table and it is not the list: the
 list is [`tck/specs/OCA-201-SLICE.txt`](tck/specs/OCA-201-SLICE.txt), one row
@@ -24,31 +31,38 @@ Part 5 §4 is a matrix with a `Conf. test for CSMS` column, where `M` means
 mandatory for the profile, `C` means conditional on a declared feature, and
 blank means the case does not address this role at all. So:
 
-> **profile = Core, role = CSMS, status = `M`.**
+> **role = CSMS, status = `M`**, on every certification profile.
 
-Everything else — the other profiles, the conditionals, the
-charging-station-only cases — is out, and out by arithmetic rather than by
-taste.
+Everything else — the conditionals and the charging-station-only cases — is
+out, and out by arithmetic rather than by taste.
+
+**This rule used to carry a third term, `profile = Core`, and dropping it is
+the change the coverage milestone makes.** The term was never part of the
+arithmetic; it was the first slice's way of saying "one profile is enough to
+prove the architecture". It was, and the proof is spent. What it selects now is
+205 cases rather than 104.
 
 ## What the rule is drawn against
 
 | Certification profile | rows | CSMS `M` | CSMS `C` | CSMS blank (CS-only) |
 |---|---|---|---|---|
 | **Core** | 364 | **104** | 83 | 177 |
-| Advanced Security | 8 | 6 | 2 | 0 |
-| Smart Charging | 40 | 36 | 4 | 0 |
-| ISO 15118 Support | 64 | 59 | 5 | 0 |
+| **Advanced Security** | 8 | **6** | 2 | 0 |
+| **Smart Charging** | 40 | **36** | 4 | 0 |
+| **ISO 15118 Support** | 64 | **59** | 5 | 0 |
+| | 476 | **205** | 94 | 177 |
 
-Two narrowings, and only the first is a rule: it takes Core's 364 rows to the
-104 mandatory for this role, and the slice below takes those 104 to seven.
+One narrowing, and it is the rule: 476 rows to the 205 mandatory for this role.
+There used to be a second, taking Core's 104 to a seven-case slice; that one was
+never a rule and is gone.
 
 For scale: the entire OCPP 1.6 certification set has 77 `_CSMS` cases — the
 count [`OCA-COVERAGE.md`](OCA-COVERAGE.md) derives and this suite's 47 OCPP 1.6
-scenarios are measured against. One profile of 2.0.1 asks for more mandatory CSMS cases
-than 1.6 has cases at all. Part 6 devotes p608–p900 to 251 `*_CSMS` cases,
-which is scale rather than a term in either narrowing: it is a different
-document's count of a different population, and how it relates to the matrix's
-rows was **not measured**.
+scenarios are measured against. One profile of 2.0.1 asks for more mandatory
+CSMS cases than 1.6 has cases at all, and all four ask for nearly three times.
+Part 6 devotes p608–p900 to 251 `*_CSMS` cases, which is scale rather than a
+term in the narrowing: it is a different document's count of a different
+population, and how it relates to the matrix's rows was **not measured**.
 
 **How the counts above were derived.** The columns cannot be recovered from PDF
 reading order, but they can be recovered from x-position: `pdftotext
@@ -87,38 +101,89 @@ correction, and it runs in both directions.
 the parse did not produce. Look it up before a status scenario is written, and
 do not read the row above as calling it mandatory.
 
-## The v0.3 slice
+## The coverage target
 
-Seven cases from the pool of 104, every one of them `M`, and they are listed
-**in [`tck/specs/OCA-201-SLICE.txt`](tck/specs/OCA-201-SLICE.txt)** rather than
-here — one row per case, naming the scenario that implements it or the reason
-there is none. That file is machine-readable and guarded in both directions;
-this page states the rule it was drawn against. The arrangement, and the reason
-for it, is [`OCA-COVERAGE.md`](OCA-COVERAGE.md)'s with
+All 205, every one of them `M`, and they are listed **in
+[`tck/specs/OCA-201-SLICE.txt`](tck/specs/OCA-201-SLICE.txt)** rather than here
+— one row per case, naming the scenario that implements it or the reason there
+is none. That file is machine-readable and guarded in both directions; this
+page states the rule it was drawn against. The arrangement, and the reason for
+it, is [`OCA-COVERAGE.md`](OCA-COVERAGE.md)'s with
 [`OCA-OBLIGATIONS.txt`](tck/specs/OCA-OBLIGATIONS.txt): a second copy of a list
 drifts, and the prose copy is the one nobody diffs.
 
-The seven are boot, reading and writing one variable, reset — three mandatory
-cases of its own — and heartbeat. Chosen because between them they touch boot,
-the device model and a CSMS-initiated operation: the three parts of the driver
-contract this milestone changes. A slice that exercised only
-charge-point-initiated messages would leave the half of the contract that is
-actually new untested.
+A case is covered when it is implemented **or declined in writing**. Declining
+a mandatory case is a decision, and the guard refuses a `not-implemented` row
+with nothing after it, so the two are not the same as "not done yet".
 
-**What this bounds, and why it is written before the contract work rather than
-after it.** Only three of the seven are CSMS-initiated: `Reset`,
-`GetVariables`, `SetVariables`. `BootNotification` and `Heartbeat` are
-observed, not driven. So the first 2.0.1 operation vocabulary needs **three
-operations**, not eighteen, and "as few as the first slice needs" is now a
-number instead of an intention.
+**The list is seven rows, not 205, and that gap is deliberate rather than
+overlooked.** Two things have to happen before the rest can be written, and
+they are the milestone's first two issues:
 
-A scenario issue may implement fewer of these seven and say why — which the
-first one did, leaving `TC_B_06` and `TC_B_09` to the device-model provisioning
-they have nothing to read or write without, with the reason in the row. It may
-not implement a case outside them without either extending the list or changing
-the rule, which is the whole point of the list existing rather than being
-re-drawn per review. That half is now checked: see
-[the guard](#the-guard).
+- the identifiers behind the 205 have never been enumerated. The per-profile
+  totals in the table above were counted; the rows were not. The method for
+  redoing the parse is [in the derivation note](#what-the-rule-is-drawn-against),
+  and this time it has to keep the case identifier per row rather than only the
+  count;
+- committing 205 rows is the thing [the licensing
+  section](#what-may-be-committed-here-and-what-may-not) currently forbids, and
+  that has to be answered before the file is produced rather than after.
+
+Until then the file still bounds what may be implemented — direction 1 of the
+guard is what does that, and it does not care how long the file is. What is
+temporarily untrue is the stronger claim, that the file **is** the pool.
+
+**What the first slice bounded, kept because it is the worked example of
+writing the number down before the work.** Its seven cases were boot, reading
+and writing one variable, reset — three mandatory cases of its own — and
+heartbeat, chosen because between them they touched boot, the device model and
+a CSMS-initiated operation: the three parts of the driver contract that
+milestone changed. Only three of the seven were CSMS-initiated, so the first
+2.0.1 operation vocabulary needed **three operations**, not eighteen, and "as
+few as the first slice needs" was a number instead of an intention before a
+line of it was written. The same arithmetic is owed for 205 and has not been
+done.
+
+A scenario issue may implement fewer than the list holds and say why — which
+the first one did, leaving `TC_B_06` and `TC_B_09` to the device-model
+provisioning they have nothing to read or write without, with the reason in the
+row. It may not implement a case outside the list without either extending it
+or changing the rule, which is the whole point of the list existing rather than
+being re-drawn per review. That half is checked: see [the guard](#the-guard).
+
+## 95 of the 205 have no attestation behind them
+
+The rule is a property of the specification, so it selects the same 205 cases
+whatever CSMS is on the other end. What is *not* uniform across those 205 is the
+thing this suite leans on when a scenario goes red.
+
+The argument runs: CitrineOS is certified, so a red is first of all information
+about *our* scenario rather than about the CSMS. Certificate
+`OCA.0201.0053.CSMS` — the same one cited below — declares **Core Pass** and
+**Advanced Security Pass**. Local Authorization List Management, Smart Charging,
+Advanced Device Management, Reservation, Advanced User Interface and ISO 15118
+Support are all **Not Tested**.
+
+| Profile | mandatory CSMS cases | attested |
+|---|---|---|
+| Core | 104 | yes |
+| Advanced Security | 6 | yes |
+| Smart Charging | 36 | **no** |
+| ISO 15118 Support | 59 | **no** |
+
+So for 95 of the 205 the argument is unavailable, and so is its converse: a
+green says the build happens to answer, not that anyone assessed the answer.
+That is not a reason to drop those cases — the rule selects them and the rule is
+about the specification — but it is a reason to say once, here, that a verdict
+in those two profiles carries less than a verdict in the other two. How it is
+reported is an open decision; the vocabulary this repository already has for
+outcomes of that shape is in `tck/standing.ts` and `tck/scope.ts`, and the
+question is whether "never assessed on this profile" is one of them or genuinely
+new.
+
+The build-level version of the same argument — that we pin neither the certified
+1.5.1 nor any release — is its own issue, and the two sharpen each other rather
+than overlap.
 
 ## `M` only, not `M` plus the conditionals a CSMS declares
 
@@ -188,21 +253,34 @@ What may be committed, and what this page is made of: **case identifiers**
 scenarios sit on.
 
 The line is drawn on **extent**, not shape: citing the handful of cases under
-discussion is a citation, while committing the 104-case column in full
+discussion is a citation, while committing the mandatory column in full
 re-renders the matrix's own selection whatever the markup around it looks like.
 So no table on this page is the pool, and the pool is not committed anywhere.
 
-## Why this is not a selection axis, yet
+**And the coverage target asks for exactly that, so this section is now an open
+question rather than a settled one.** A 205-row `OCA-201-SLICE.txt` is the
+column the paragraph above forbids. There is no version of the milestone that
+does not have to answer it, and answering it by committing the file and seeing
+whether anyone objects is answering it by default. The two readings — that a
+list of case identifiers mandatory for one role is a *fact about the
+specification* rather than a derivative of its prose, or that rows may only be
+committed as cases are handled, at the cost of the file no longer expressing a
+perimeter — are set out in the milestone issue, and the decision is the
+repository owner's. **Until it is made, this section stands as written and the
+list stays at seven rows.**
 
-Certification profiles are a ready-made way to select scenarios by domain, and
-that makes it tempting to build `--profile` here. It is not built, deliberately.
+## Why this became a selection axis
+
+Certification profiles are a ready-made way to select scenarios by domain. This
+page used to say the axis was deliberately not built, and the argument for
+waiting was a good one right up until the target changed.
 
 What the tree has today is one way to select scenarios and one way to tell them
 apart:
 
 - `--group` **selects**. Five of its six buckets mirror an upstream file's
   array membership rather than any taxonomy, which is the problem issue #34
-  opens for OCPP 1.6 in a later milestone; the sixth is the file the 2.0.1
+  opens for OCPP 1.6; the sixth is the file the 2.0.1
   scenarios are written in, which is the same kind of accident of authorship
   rather than a version axis — nothing derives a bucket from a `templateId`.
 - the **certification namespace** a `templateId` opens with — `cert16-`,
@@ -210,17 +288,26 @@ apart:
   first-class concept, deliberately without a version literal anywhere in them,
   but no flag reads it: it scopes container names and guard reach, not a sweep.
 
-That separation is enough for v0.3, because a handful of new scenarios can be
-named or swept without an axis at all. A `--profile` built now would be built
-on a **single value**, deciding blind the questions #34 exists to settle:
-whether the axis is declared in the vendored spec files (each edit costs a
-re-pin) or in a registry beside the groups (no re-pin, a second place to keep
-in step), and whether the vocabulary is closed or open.
+That separation was enough while the slice was seven scenarios: a handful can be
+named or swept without an axis at all. The objection to building `--profile`
+then was that it would be built on a **single value**, deciding blind the
+questions #34 exists to settle — whether the axis is declared in the vendored
+spec files (each edit costs a re-pin) or in a registry beside the groups (no
+re-pin, a second place to keep in step), and whether the vocabulary is closed or
+open.
 
-The rule that applies is the milestone's own (issue #25): if 2.0.1 introduces a
-selection axis it must be **the** mechanism #34 builds, not a second one beside
-it, or the milestone after inherits two ways to select the same thing.
-Building it here is precisely how that happens.
+**Four profiles and 205 cases retire that objection and replace it with the
+opposite one.** The axis now has values to be built on, and doing nothing does
+not leave the tree axis-less — it produces `smartcharging-201`,
+`security-201`, `iso15118-201` beside `core-201`, which is N×M buckets where two
+axes give N+M, and each one arrives looking like a reasonable local decision.
+
+The rule that applies is unchanged and is now satisfiable rather than
+prohibitive: if 2.0.1 introduces a selection axis it must be **the** mechanism
+#34 builds, not a second one beside it, or the milestone after inherits two ways
+to select the same thing. #34 has moved into this milestone for that reason, and
+#74 — a scenario's protocol being a declaration rather than whatever
+`SIM_OCPP_VERSION` resolved — is the other half of the same seam.
 
 ## The guard
 
@@ -241,32 +328,45 @@ from the first commit — a build that is red on purpose is a build nobody reads
 A guard that cannot be made to fail cannot be shown to fail *correctly*, and
 that demonstration is this repository's entry condition for a guard.
 
-What the guard cannot check is the thing that matters most: that the seven rows
-really are the cases the rule selects. That is a reading of a PDF this
-repository cannot contain, the method for redoing it is above, and those rows
-carry exactly the status `OCA-COVERAGE.md`'s totals carry — measured, then
-written down. What stops afterwards is the drift.
+What the guard cannot check is the thing that matters most: that the rows really
+are the cases the rule selects. That is a reading of a PDF this repository
+cannot contain, the method for redoing it is above, and those rows carry exactly
+the status `OCA-COVERAGE.md`'s totals carry — measured, then written down. What
+stops afterwards is the drift.
+
+**And it cannot check that the rows are all of them.** Direction 2 ranges over
+the file, so a file short of the pool is a file the guard finds complete. That
+is the exposure the coverage target creates and the reason the gap is named in
+[the section that owns it](#the-coverage-target) rather than left for a reader
+to notice: at seven rows out of 205 the build is green on a list that describes
+a seventh of what was promised, and nothing in the tree says so.
 
 One shape it deliberately does not have, and the precedent is exact — the
 header of `tests/oca-obligations.sh` refuses a per-namespace breakdown in the
 same terms: with one namespace in the file it would be a second spelling of the
 same number.
 
-## Not in v0.3
+## Still out of scope
 
-Written out, because 914 pages of test cases make an unwritten line slip:
+Written out, because 914 pages of test cases make an unwritten line slip. This
+list got shorter when the target grew, which is the point of keeping it: what
+leaves it leaves by a decision someone can find.
 
-- the other three certification profiles — Advanced Security, Smart Charging,
-  ISO 15118 Support — and Core's conditional rows: everything the table above
-  counts that the rule does not select;
-- the Core mandatory cases beyond the slice — all but the seven the slice list
-  names;
-- a shared 1.6 / 2.0.1 abstraction layer. One slice is not evidence;
-- a `Reusable State` fixture mechanism. Part 6 defines 13 of them for the CSMS
-  role, and this suite has timers and one-shot provisioning, which are not the
-  same thing. Named as a gap, not built;
-- charging-station-role testing;
-- any claim that passing this harness is OCA certification. Certification runs
-  through an accredited laboratory, a declaration form and the official testing
-  tool; the certificate cited above is what that produces, and it is not what
-  this produces.
+- **the 94 conditional rows** — everything the table above counts that the rule
+  does not select. The reason is [above](#m-only-not-m-plus-the-conditionals-a-csms-declares)
+  and it is not size;
+- **a shared 1.6 / 2.0.1 abstraction layer.** One slice was not evidence; 205
+  cases may become some, and that is an argument to make once the second
+  vocabulary exists rather than a reason to generalise ahead of it;
+- **charging-station-role testing** — the 177 rows the matrix marks blank for
+  this role, and a milestone of its own;
+- **any claim that passing this harness is OCA certification.** Certification
+  runs through an accredited laboratory, a declaration form and the official
+  testing tool; the certificate cited above is what that produces, and it is not
+  what this produces.
+
+A `Reusable State` fixture mechanism used to be on this list, named as a gap
+rather than built, on the grounds that inlining a state per scenario was cheaper
+than a mechanism. At seven scenarios it was. Part 6 defines 13 of them for the
+CSMS role, and at 205 cases the copies drift and each one reads reasonably, so
+it is now in scope and has an issue.

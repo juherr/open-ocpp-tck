@@ -1,6 +1,6 @@
 /**
- * specs/core-201.ts -- the OCPP 2.0.1 slice, and the first scenarios in this
- * suite that were not ported from anything.
+ * specs/core-201.ts -- the OCPP 2.0.1 scenarios, and the first in this suite
+ * that were not ported from anything.
  *
  * WHICH CASES MAY BE HERE IS NOT THIS FILE'S DECISION. `OCA-201-SELECTION.md`
  * states the rule -- profile Core, role CSMS, status `M` -- and
@@ -52,6 +52,13 @@
  * the same thing -- issue #63 says to write the setup inline and note where it
  * duplicates rather than build the mechanism from one slice's evidence. This
  * paragraph is that note.
+ *
+ * THE EVIDENCE HAS SINCE ARRIVED, so read the paragraph above as a record of
+ * why the mechanism was not built rather than as a reason to keep inlining.
+ * The rule in OCA-201-SELECTION.md now selects 205 cases, at which point five
+ * copies become a class of copies, they drift, and each one reads reasonably
+ * on its own -- which is the failure inlining was cheap enough to risk at
+ * five and is not at 205. The fixture mechanism has its own issue.
  */
 import type { ScenarioSpec } from "../spec-types";
 /**

@@ -21,11 +21,12 @@ where a disagreement about what a scenario *should* assert gets settled.
 The `cert16-` prefix is a protocol version, not decoration. Its counterpart is
 `cert201-`, and those scenarios trace the same way to OCPP 2.0.1's Parts 5 and
 6 — `cert201-tcb01-…` to `TC_B_01`. Which 2.0.1 cases may be here at all is a
-written rule, [`OCA-201-SELECTION.md`](OCA-201-SELECTION.md), and the resulting
-list is [`tck/specs/OCA-201-SLICE.txt`](tck/specs/OCA-201-SLICE.txt): 7 cases
-selected, 5 implemented. A `cert201-` scenario needs a driver that speaks the
-protocol; one that does not says so per scenario in its scope table, and
-nothing else about it changes.
+written rule, [`OCA-201-SELECTION.md`](OCA-201-SELECTION.md) — role CSMS,
+status mandatory, on every certification profile, which is 205 cases — and the
+resulting list is [`tck/specs/OCA-201-SLICE.txt`](tck/specs/OCA-201-SLICE.txt),
+where 7 of them are written down so far and 5 are implemented. A `cert201-`
+scenario needs a driver that speaks the protocol; one that does not says so per
+scenario in its scope table, and nothing else about it changes.
 
 [sim]: https://github.com/shiv3/ocpp-cp-simulator
 [octt]: https://openchargealliance.org/certificationocpp/certification-ocpp-1-6/

@@ -2,22 +2,34 @@
 # implement, and which scenario implements each.
 #
 # THIS FILE IS THE LIST. OCA-201-SELECTION.md states the RULE it is drawn from
-# -- certification profile Core, role CSMS, status M in Part 5 §4's
-# `Conf. test for CSMS` column -- and cites this file rather than restating it.
-# The same arrangement OCA-COVERAGE.md has with OCA-OBLIGATIONS.txt, for the
-# same reason: two copies of a list drift, and the prose copy is the one nobody
+# -- role CSMS, status M in Part 5 §4's `Conf. test for CSMS` column, on every
+# certification profile -- and cites this file rather than restating it. The
+# same arrangement OCA-COVERAGE.md has with OCA-OBLIGATIONS.txt, for the same
+# reason: two copies of a list drift, and the prose copy is the one nobody
 # diffs.
+#
+# THE RULE SELECTS 205 CASES AND THIS FILE HOLDS SEVEN. That gap is the
+# coverage milestone's first two issues, not an oversight, and
+# OCA-201-SELECTION.md's "The coverage target" section owns it: the identifiers
+# behind the 205 have never been enumerated (the per-profile totals were
+# counted, the rows were not), and whether a 205-row file may be committed at
+# all is an open question about the references' CC BY-ND licence. Until both
+# are answered this file still BOUNDS what may be implemented -- that is the
+# guard's direction 1, and it does not care how long the file is. What is
+# temporarily untrue is that the file IS the pool.
 #
 # Hand-maintained, and guarded: tests/oca-201-slice.sh reads it against
 # tck/specs/ASSERT-INVENTORY.txt in both directions, so a `cert201-` scenario
 # for a case that is not listed here and a case here that is neither
 # implemented nor declined are both build failures.
 #
-# WHAT NO GUARD CAN CHECK: that these seven cases ARE the Core mandatory CSMS
-# cases the rule selects. That is a reading of a PDF this repository does not
-# and cannot contain -- Parts 5 and 6 are CC BY-ND -- and the method for
-# redoing it is written down in OCA-201-SELECTION.md. What is checked is that
-# the list and the scenarios stop drifting afterwards.
+# WHAT NO GUARD CAN CHECK: that these rows ARE mandatory CSMS cases the rule
+# selects, and that they are ALL of them. That is a reading of a PDF this
+# repository does not and cannot contain -- Parts 5 and 6 are CC BY-ND -- and
+# the method for redoing it is written down in OCA-201-SELECTION.md. Note the
+# second half: the guard ranges over this file, so a file short of the pool is
+# a file it finds complete. What is checked is that the list and the scenarios
+# stop drifting afterwards.
 #
 # A row is three fields, the third free text:
 #
