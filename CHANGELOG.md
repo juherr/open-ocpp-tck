@@ -12,6 +12,10 @@ Released as `0.3.0`. The documented install ref already points at that tag, so
 
 ### Added
 
+- `FetchLike` in the core (`open-ocpp-tck/driver`) — the `fetch` seam a driver's
+  HTTP client takes so an offline guard can hand it a fake CSMS. It was declared
+  in `drivers/steve/ui-client.ts`, which still re-exports it, so nothing that
+  imported it from there has to move ([#80])
 - A second, opt-in operation vocabulary for OCPP 2.0.1 — `CsmsOperation201`
   with `Reset`, `GetVariables` and `SetVariables`; `operations201?` on
   `CsmsDriverParts` and `CsmsCapabilities`; `csms201` on `DriveContext`. A
@@ -88,6 +92,21 @@ Released as `0.3.0`. The documented install ref already points at that tag, so
 
 ### Fixed
 
+- **Behaviour change for `drivers/citrineos` consumers.** A CitrineOS request
+  that never reached the CSMS now ends the scenario with `ERROR` instead of a
+  `WARN` it carried on past. `warnOpFailed` lets `CsmsNotDispatchedError`
+  through and warns about everything else, and this driver raised it nowhere —
+  so a refused connection produced confident `FAIL`s about a charge point
+  nobody had asked anything, which is issue #77's shape on the second driver.
+  The line is drawn on one fact about CitrineOS: it answers `200` for
+  everything that reaches its OCPP layer, so a refused connection, any non-2xx
+  including `404`, and a `200` whose confirmation says `success: false` are all
+  non-dispatches. What the CSMS *answered* deliberately stays an ordinary
+  failure — a stalled body, an unparseable one, one that is not a confirmation
+  array, and anything Hasura reported in-band. **A sweep that was green because
+  it warned past one of the first group will now be red**, which is the point,
+  but it is a red to read row by row rather than to assume is new
+  ([#80])
 - `cert16-tc013-hard-reset` and `cert16-tc014-soft-reset` no longer flake on
   SteVe, at 45% and 34% of sweeps. The manager-UI client is loaded once per
   process and shared by every parallel lane, and its form post was a
@@ -172,3 +191,4 @@ releases from 141 commits would mean writing detail nobody measured.
 [#73]: https://github.com/juherr/open-ocpp-tck/pull/73
 [#75]: https://github.com/juherr/open-ocpp-tck/issues/75
 [#77]: https://github.com/juherr/open-ocpp-tck/issues/77
+[#80]: https://github.com/juherr/open-ocpp-tck/issues/80
