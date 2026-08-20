@@ -48,8 +48,11 @@ Released as `0.3.0`. The documented install ref already points at that tag, so
   that no guard could observe. They had no caller outside the class here, but
   they were exported and shipped in `types/`, so an external one stops
   compiling: same reason `SimTransportDefaults.extraArgs` was marked breaking
-  in 0.2.0 despite nothing reading it. `postForm` and `op` are unchanged, and
-  the constructor takes an optional `fetch` as a second argument ([#77])
+  in 0.2.0 despite nothing reading it. `postForm` and `op` keep their
+  signatures, so the break is confined to the three methods above — but not
+  their behaviour: `postForm` now serialises login, page fetch and submit
+  against every other call on the instance, and `op` delegates to it. The
+  constructor takes an optional `fetch` as a second argument ([#77])
 - **BREAKING** — the OCPP 1.6 operation vocabulary now says which protocol it
   is: `CsmsOperation` → `CsmsOperation16`, `CsmsOperationAction` →
   `CsmsOperation16Action`, `CsmsOperations` → `CsmsOperations16`, `ResetType` →
