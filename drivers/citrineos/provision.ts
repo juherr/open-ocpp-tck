@@ -326,7 +326,7 @@ export class CitrineProvisioner {
     this.log(
       // Counted off FIXTURES, not off VALID_TAGS: the census and the table are
       // the two spellings of one set, and that is what drifts.
-      `tags: ${FIXTURES.length} seeded, ${ISO14443_TAG} as ISO14443, ` +
+      `tags: ${FIXTURES.length} seeded, ${ISO14443_TAG} typed ISO14443, ` +
         `${EXPIRED_TAG} expired ` +
         `${EXPIRED_FIXTURE_BACKDATE_MINUTES} min before this run's provisioning, ` +
         `${BLOCKED_TAG} (${BLOCKED_TAG_CAVEAT}), ${INVALID_TAG} absent`,

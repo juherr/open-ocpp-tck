@@ -340,10 +340,11 @@ survives the schema and reaches the wire.
 other four did not.** The case needs a transaction running before the reset —
 that is what makes `Scheduled` distinguishable from `Accepted` — and until
 [issue #75](https://github.com/juherr/open-ocpp-tck/issues/75) one could not be
-started here. The simulator sends its `Authorize` idToken as `ISO14443`, which
-is a literal in the pinned image rather than a setting, and CitrineOS validates
-that type's *format* (8 or 14 hexadecimal characters) before any lookup: every
-`CERT…` fixture was rejected on its shape alone, answered with a `CALLERROR`,
+started here. The simulator sends its `Authorize` idToken with `type` set to
+`ISO14443` — a literal in the pinned image rather than a setting — and CitrineOS
+validates the idToken *value* against that type's format (8 or 14 hexadecimal
+characters) before any lookup: every `CERT…` fixture was rejected on its shape
+alone, answered with a `CALLERROR`,
 and the local start was refused. The station stayed idle, `OnIdle` was answered
 `Accepted`, and that answer was correct — so the scenario reported its
 precondition **unexercised** rather than filing a `Reset` non-conformance.

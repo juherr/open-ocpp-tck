@@ -252,9 +252,10 @@ const V2_SCOPE = {
   "cert201-tcb20-reset-accepted": d(RESET_201),
   // THE ONE ROW HERE WHOSE ANSWER DEPENDS ON STATION STATE, and the state now
   // holds. It did not until #75: the station sends its 2.0.1 Authorize idToken
-  // as ISO14443 -- a literal in the pinned simulator image, not a setting --
-  // and CitrineOS validates that type's FORMAT (8 or 14 hex characters) before
-  // any lookup, so every `CERT…` fixture was rejected on its shape alone and
+  // with type ISO14443 -- the type is a literal in the pinned simulator image,
+  // not a setting -- and CitrineOS validates the idToken VALUE against that
+  // type's format (8 or 14 hex characters) before any lookup, so every `CERT…`
+  // fixture was rejected on its shape alone and
   // answered with a CALLERROR. No Authorize, no TransactionEvent, nothing for
   // OnIdle to defer to, and `Accepted` came back -- correct of the station and
   // correct of a CSMS that dispatched faithfully, which is why the scenario
