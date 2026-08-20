@@ -25,7 +25,7 @@ error.
 
 `bun run verify` is every check CI runs before it starts a container —
 typecheck, committed declarations, three driver scope checks, eight in-process
-guards and eleven shell guards — with one exit code, and every step runs even
+guards and twelve shell guards — with one exit code, and every step runs even
 after one fails, where CI enumerates them and stops at the first.
 
 There is a third copy of that list — `bun run test`, the guards without the
@@ -135,14 +135,21 @@ a fake CSMS whose CSRF rules are modelled on the pinned image's. That model is
 the guard's one assumption, and `tools/steve-csrf-race.ts` — live, out of the
 gate — is how it gets re-checked when the pin moves.
 
-One guard builds a fixture instead of reading the tree.
+Two guards build a fixture instead of reading the tree, and they are the two
+that test the scripts under `tools/` which *write*.
 `tests/repin-refusals.sh` exercises `tools/repin-vendored.sh` in a throwaway
-git repository, because that script is the only one here that *writes* — to
-`VENDOR.md` and to `patches/` — so what is worth testing about it is which
-states it refuses to write, and that is a question about a repository, not
-about a file. It works because the script does `cd "$(dirname "$0")/.."`: a
-copy at `<fixture>/tools/` can only ever operate on the fixture, which is what
-makes running it in the gate safe.
+git repository — it writes to `VENDOR.md` and to `patches/`, so what is worth
+testing about it is which states it refuses to write, and that is a question
+about a repository, not about a file. `tests/mutate-refusals.sh` does the same
+for `tools/mutate.sh`, which edits a source file in place and restores it.
+Both work because the scripts do `cd "$(dirname "$0")/.."`: a copy at
+`<fixture>/tools/` can only ever operate on the fixture, which is what makes
+running them in the gate safe.
+
+`mutate.sh` is the one that had to be tested most, because it is the tool every
+other guard is validated with, and it is the only script here where a NON-ZERO
+exit is the good news. Every way of failing to reach a verdict therefore has to
+be told apart from "the guard went red", or it is read as it.
 
 A new guard earns its place by failing correctly, so break what it protects and
 watch it go red before committing it. `tools/mutate.sh <file> <perl-expr> --
