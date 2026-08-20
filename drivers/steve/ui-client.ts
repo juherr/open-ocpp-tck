@@ -77,11 +77,10 @@ export function defaultSteveConfig(
  * property that matters here is how concurrent callers interleave, and against
  * a real server that is a 45%-of-the-time event nobody can reproduce on demand.
  *
- * Re-exported rather than merely imported. It was declared here until the
- * second driver needed the same seam and could not import it -- a driver may
- * not name another (`tests/generic-core.sh`) -- so it moved to the core. The
- * re-export is what keeps `types/drivers/steve/ui-client.d.ts` naming it, and
- * the move from being a break for anyone importing it from this path.
+ * Declared here until a second driver needed it; {@link FetchLike} says why it
+ * moved. Re-exported rather than merely imported, which is what keeps
+ * `types/drivers/steve/ui-client.d.ts` naming it and the move from being a
+ * break for anyone importing it from this path.
  */
 export type { FetchLike };
 

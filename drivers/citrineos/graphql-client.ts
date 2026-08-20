@@ -30,13 +30,13 @@
  * -- which warns and continues on every error but {@link CsmsNotDispatchedError}.
  * Continuing past a read that never ran means asserting on a transaction nobody
  * could look up, so a failure that kept the answer out of reach must ERROR
- * rather than warn. The rule mirrors api-client.ts's: an engine that did not
- * answer, and a status from the endpoint that reports failures in-band, are
- * non-dispatches; everything the server actually answered stays a plain
- * `Error`. Issue #80.
+ * rather than warn. {@link CsmsNotDispatchedError} states the rule and both
+ * halves of it; the CitrineOS fact that decides where this file's failures fall
+ * is the endpoint asymmetry above. Issue #80.
  */
 import { CsmsNotDispatchedError, type FetchLike } from "../../tck/driver";
 import type { CitrineConfig } from "./config";
+import { errorBody, readAnsweredBody } from "./http";
 
 const HTTP_TIMEOUT_MS = 15_000;
 
@@ -81,11 +81,9 @@ interface SuggestedRelationship {
 export class CitrineGraphQL {
   private readonly headers: Record<string, string>;
 
-  /**
-   * `fetchImpl` is the seam `tests/citrineos-transport-classification.ts`
-   * drives; the branches below need an engine that refuses a chosen way, which
-   * no CSMS here can be asked for. Read per call rather than captured.
-   */
+  /** The {@link FetchLike} seam, driven by
+   *  `tests/citrineos-transport-classification.ts`: the branches below need an
+   *  engine that refuses a chosen way, which no CSMS here can be asked for. */
   constructor(
     private readonly cfg: CitrineConfig,
     private readonly fetchImpl: FetchLike = (input, init) => fetch(input, init),
@@ -253,38 +251,20 @@ export class CitrineGraphQL {
       );
     }
 
+    const what = `citrineos graphql: ${path}`;
     if (!res.ok) {
-      // Best-effort: the status is the finding, and an error body that will not
-      // stream must not replace it with a different failure.
-      const body = await res.text().catch(() => "<unreadable body>");
-      const detail = `returned ${res.status}: ${body.slice(0, 300)}`;
+      const detail = `returned ${res.status}: ${await errorBody(res)}`;
       if (path === QUERY_PATH) {
-        throw new CsmsNotDispatchedError(`citrineos graphql: ${path}`, detail);
+        throw new CsmsNotDispatchedError(what, detail);
       }
-      throw new Error(`citrineos graphql: ${path} ${detail}`);
+      throw new Error(`${what} ${detail}`);
     }
 
-    // PAST THIS POINT THE REQUEST WAS ANSWERED, so every failure below is a
-    // plain Error. Both of these used to escape unclassified -- the body read
-    // sat outside the try, and JSON.parse had no guard -- which meant a stalled
-    // stream or a non-JSON 200 arrived as a raw abort or SyntaxError naming
-    // neither the endpoint nor the URL.
-    let text: string;
-    try {
-      text = await res.text();
-    } catch (err) {
-      throw new Error(
-        `citrineos graphql: ${path} answered ${res.status} but its body could ` +
-          `not be read: ${err instanceof Error ? err.message : String(err)}`,
-      );
-    }
-    try {
-      return JSON.parse(text) as unknown;
-    } catch {
-      throw new Error(
-        `citrineos graphql: ${path} returned unparseable body: ${text.slice(0, 300)}`,
-      );
-    }
+    // Both of these used to escape unclassified -- the body read sat outside
+    // the try and JSON.parse had no guard -- so a stalled stream or a non-JSON
+    // 200 arrived as a raw abort or SyntaxError naming neither endpoint nor
+    // URL. http.ts is now the one place that says what an answered body means.
+    return (await readAnsweredBody(res, what)).parsed;
   }
 
   private expectData<T>(body: unknown, document: string): T {

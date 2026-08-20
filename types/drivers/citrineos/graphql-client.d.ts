@@ -28,10 +28,9 @@
  * -- which warns and continues on every error but {@link CsmsNotDispatchedError}.
  * Continuing past a read that never ran means asserting on a transaction nobody
  * could look up, so a failure that kept the answer out of reach must ERROR
- * rather than warn. The rule mirrors api-client.ts's: an engine that did not
- * answer, and a status from the endpoint that reports failures in-band, are
- * non-dispatches; everything the server actually answered stays a plain
- * `Error`. Issue #80.
+ * rather than warn. {@link CsmsNotDispatchedError} states the rule and both
+ * halves of it; the CitrineOS fact that decides where this file's failures fall
+ * is the endpoint asymmetry above. Issue #80.
  */
 import { type FetchLike } from "../../tck/driver";
 import type { CitrineConfig } from "./config";
@@ -39,11 +38,9 @@ export declare class CitrineGraphQL {
     private readonly cfg;
     private readonly fetchImpl;
     private readonly headers;
-    /**
-     * `fetchImpl` is the seam `tests/citrineos-transport-classification.ts`
-     * drives; the branches below need an engine that refuses a chosen way, which
-     * no CSMS here can be asked for. Read per call rather than captured.
-     */
+    /** The {@link FetchLike} seam, driven by
+     *  `tests/citrineos-transport-classification.ts`: the branches below need an
+     *  engine that refuses a chosen way, which no CSMS here can be asked for. */
     constructor(cfg: CitrineConfig, fetchImpl?: FetchLike);
     /** A query or mutation. `T` is the caller's to declare: this module owns the
      *  transport, records.ts and provision.ts own the shapes. */

@@ -23,7 +23,10 @@
  * `connectorId <= 0` on TriggerMessage, a schema rejection inside
  * sendLocalList's persistence step. Those are request failures wearing a 200,
  * and swallowing them would report a scenario as having driven an operation it
- * never drove. So `success: false` throws, and the payload travels with it.
+ * never drove. So `success: false` throws -- as a {@link CsmsNotDispatchedError},
+ * because that is the statement it has always made -- and every refused payload
+ * travels with it. It is the widest of the throws here: an unknown station id
+ * used to WARN and carry on, and now ends the scenario.
  *
  * WHICH THROWS ARE NON-DISPATCHES
  * -------------------------------
@@ -45,20 +48,15 @@
  * that as NOT APPLICABLE at exit 0, turning a wrong CITRINE_API_URL into 47
  * scenarios that quietly never ran. Issue #80 settles this.
  *
- * The `success: false` confirmation above is a non-dispatch too, and the one
- * that wears a 200. It is the same statement its message has always made --
- * "was not dispatched" -- finally in the class the runner recognises. It is
- * also the widest of these: an unknown station id or a `connectorId <= 0` used
- * to WARN and carry on, and now ends the scenario.
- *
  * The other half is what stays a plain `Error`: a 2xx whose body stalls, one
- * that will not parse, one that is not a confirmation array. THE REQUEST WAS
- * ANSWERED in all three, so whether it dispatched is unknown -- and a driver may
- * not claim what it cannot tell. That half is what stops this being a blanket
+ * that will not parse, one that is not a confirmation array. `http.ts` owns
+ * that half for both clients, and {@link CsmsNotDispatchedError} says why it is
+ * a half and not an oversight. It is what stops this being a blanket
  * conversion, and it is the half worth a guard.
  */
 import { CsmsNotDispatchedError, type FetchLike } from "../../tck/driver";
 import type { CitrineConfig } from "./config";
+import { errorBody, readAnsweredBody } from "./http";
 import type { CitrineRequest } from "./requests";
 
 const DEFAULT_TIMEOUT_MS = 15_000;
@@ -79,17 +77,11 @@ function describe(value: unknown): string {
 }
 
 export class CitrineMessageApi {
-  /**
-   * The `fetch` seam exists so `tests/citrineos-transport-classification.ts`
-   * can serve each failure above from a closure. Every branch this file
-   * classifies needs a CSMS engineered to refuse a request a chosen way -- a
-   * 503, a body that will not parse -- and neither bundled CSMS can be asked
-   * for one.
-   *
-   * The default reads the global PER CALL rather than capturing it at
-   * construction, so a driver built before something replaces `fetch` still
-   * uses the replacement.
-   */
+  /** The {@link FetchLike} seam, driven by
+   *  `tests/citrineos-transport-classification.ts`: every branch this file
+   *  classifies needs a CSMS engineered to refuse a request a chosen way -- a
+   *  503, a body that will not parse -- and neither bundled CSMS can be asked
+   *  for one. */
   constructor(
     private readonly cfg: CitrineConfig,
     private readonly fetchImpl: FetchLike = (input, init) => fetch(input, init),
@@ -143,39 +135,17 @@ export class CitrineMessageApi {
         res.status === 404
           ? ` -- no OCPP ${req.ocppVersion} route is registered for this action on this CitrineOS version`
           : "";
-      // Best-effort, because the status is the finding and an error body that
-      // will not stream must not replace it with a different failure.
-      const body = await res.text().catch(() => "<unreadable body>");
       throw new CsmsNotDispatchedError(
         `citrineos: POST ${url}`,
-        `returned ${res.status}${hint}: ${body.slice(0, 300)}`,
+        `returned ${res.status}${hint}: ${await errorBody(res)}`,
       );
     }
 
-    // PAST THIS POINT THE REQUEST WAS ANSWERED, and every failure below is a
-    // plain Error for that one reason. The body read is here rather than beside
-    // the fetch because a 200 whose stream then stalls -- the timeout covers it
-    // too -- is the same case as a body that will not parse: the CSMS began
-    // answering, so whether it dispatched is unknown, and a driver may not
-    // claim what it cannot tell.
-    let text: string;
-    try {
-      text = await res.text();
-    } catch (err) {
-      throw new Error(
-        `citrineos: POST ${url} answered ${res.status} but its body could not ` +
-          `be read: ${err instanceof Error ? err.message : String(err)}`,
-      );
-    }
-
-    let parsed: unknown;
-    try {
-      parsed = JSON.parse(text);
-    } catch {
-      throw new Error(
-        `citrineos: POST ${url} returned unparseable body: ${text.slice(0, 300)}`,
-      );
-    }
+    // Past this point the request was answered, and http.ts owns what that
+    // means: the body read moved here from beside the fetch, because a 200
+    // whose stream then stalls -- the timeout covers it too -- is the same
+    // case as a body that will not parse.
+    const { text, parsed } = await readAnsweredBody(res, `citrineos: POST ${url}`);
 
     // One confirmation per identifier -- except GetConfiguration, which
     // CitrineOS splits into batches of GetConfigurationMaxKeys and confirms

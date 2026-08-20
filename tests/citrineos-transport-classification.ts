@@ -13,7 +13,7 @@
  * is the same lie backwards, an honest finding about the CSMS refiled as a
  * finding about this client. Issue #80.
  *
- * PROPERTY, in 8 parts:
+ * PROPERTY, in 7 parts:
  *  1. A `fetch` that rejects -- refused connection, DNS, timeout -- is a
  *     non-dispatch, and the message still names the URL that was posted to.
  *  2. EVERY non-2xx is a non-dispatch, whatever the status. The rule rests on
@@ -38,18 +38,21 @@
  *     non-JSON body are all plain `Error`s -- and so is a status from
  *     `/v1/metadata`, which DOES answer a request it understood and refused
  *     with one. The provision hint survives the classification.
- *  7. `warnOpFailed` lets every non-dispatch above out BY IDENTITY and warns
- *     about every plain `Error`. Checked on the real errors the other parts
- *     produced rather than on hand-built ones: `instanceof` would also pass on
- *     a copy, and what the runner needs is the throw to reach it.
- *  8. A 200 whose confirmation says `success: false` is a non-dispatch, and
+ *  7. A 200 whose confirmation says `success: false` is a non-dispatch, and
  *     EVERY refused payload travels with it. CitrineOS answers that for an
  *     unknown station id and for a `connectorId <= 0` on TriggerMessage -- a
  *     request failure wearing a 200 -- and it is the only failure here whose
  *     message names the operation instead of the URL, because the request did
  *     reach CitrineOS. Numbered last, and last to arrive: it is the widest of
- *     the eight, so it landed in a commit of its own that lifts out with this
+ *     the seven, so it landed in a commit of its own that lifts out with this
  *     part if a sweep says it was too wide.
+ *
+ * WHAT IT DOES NOT ASSERT is what `warnOpFailed` then does about the class --
+ * that it rethrows one by identity and warns about the rest. That is a property
+ * of `tck/op-warn.ts` with no CitrineOS in it, and
+ * `tests/steve-ui-session-race.ts` already holds it. Restating it here would be
+ * one rule in two guards, free to drift; every case below pins the class, and
+ * the reaction to the class is pinned where the reaction lives.
  *
  * WHY THIS IS TYPESCRIPT AND NOT A SHELL GUARD. Every branch above needs a
  * CSMS engineered to refuse a request a chosen way, and most of them cannot be
@@ -71,7 +74,6 @@
  * nothing.
  */
 import { CsmsNotDispatchedError, type FetchLike } from "../tck/driver";
-import { warnOpFailed } from "../tck/op-warn";
 import { CitrineMessageApi } from "../drivers/citrineos/api-client";
 import { defaultCitrineConfig } from "../drivers/citrineos/config";
 import { CitrineGraphQL } from "../drivers/citrineos/graphql-client";
@@ -119,23 +121,17 @@ const REQ_201 = toCitrineRequest201({ action: "Reset", type: "OnIdle" });
 // The answers a CitrineOS deployment can give
 // ---------------------------------------------------------------------------
 
-/** A `fetch` that always answers the same way. Which URL was asked for never
- *  changes the answer here -- what varies is the failure, not the routing. */
-function serving(answer: () => Promise<Response>): FetchLike {
-  return () => answer();
-}
-
 /** A connection that never opened, or a request that timed out. Both arrive at
  *  the same place: the promise `fetch` returns rejects. */
-function refused(message: string): () => Promise<Response> {
+function refused(message: string): FetchLike {
   return () => Promise.reject(new TypeError(message));
 }
 
-function answering(status: number, body: string): () => Promise<Response> {
+function answering(status: number, body: string): FetchLike {
   return () => Promise.resolve(new Response(body, { status }));
 }
 
-function json(value: unknown): () => Promise<Response> {
+function json(value: unknown): FetchLike {
   return answering(200, JSON.stringify(value));
 }
 
@@ -146,18 +142,16 @@ function json(value: unknown): () => Promise<Response> {
  * inside the `fetch` try and graphql-client outside it, so the same stall was a
  * driver error on one and a raw abort naming nothing on the other.
  */
-function stalled(): () => Promise<Response> {
-  return () =>
-    Promise.resolve(
-      new Response(
-        new ReadableStream({
-          start(controller) {
-            controller.error(new Error("the response stream closed"));
-          },
-        }),
-      ),
-    );
-}
+const stalled: FetchLike = () =>
+  Promise.resolve(
+    new Response(
+      new ReadableStream({
+        start(controller) {
+          controller.error(new Error("the response stream closed"));
+        },
+      }),
+    ),
+  );
 
 // ---------------------------------------------------------------------------
 // Running a case
@@ -169,7 +163,9 @@ type Classification = "not-dispatched" | "answered";
 interface Case {
   /** What the CSMS did, in the words the failure report would use. */
   readonly what: string;
-  readonly answer: () => Promise<Response>;
+  /** The whole fake server: which URL was asked for never changes it, because
+   *  what varies between cases is the failure, not the routing. */
+  readonly answer: FetchLike;
   readonly expect: Classification;
   /** Substrings the message must still carry. These are the diagnosis -- a URL,
    *  a status, a hint naming what to run -- and the conversion must not eat
@@ -180,9 +176,6 @@ interface Case {
 function describe(err: unknown): string {
   return err instanceof Error ? `${err.name}: ${err.message}` : String(err);
 }
-
-/** Every error a case produced, kept for part 7. */
-const produced: { err: unknown; expect: Classification; what: string }[] = [];
 
 /**
  * `run` receives the seam rather than building it, so `kase.answer` is used
@@ -195,20 +188,19 @@ async function check(
   kase: Case,
   run: (fetchImpl: FetchLike) => Promise<unknown>,
 ) {
-  const settled = await Promise.allSettled([run(serving(kase.answer))]);
-  const outcome = settled[0]!;
-  if (outcome.status === "fulfilled") {
+  let err: unknown;
+  try {
+    const value = await run(kase.answer);
     fail(
       `${label}: ${kase.what} did not fail at all`,
-      `it resolved with ${JSON.stringify(outcome.value)} -- a client that ` +
-        `returns a receipt for a request that failed reports the scenario as ` +
-        `having driven an operation it never drove`,
+      `it resolved with ${JSON.stringify(value)} -- a client that returns a ` +
+        `receipt for a request that failed reports the scenario as having ` +
+        `driven an operation it never drove`,
     );
     return;
+  } catch (caught) {
+    err = caught;
   }
-
-  const err = outcome.reason;
-  produced.push({ err, expect: kase.expect, what: `${label}: ${kase.what}` });
 
   const isTyped = err instanceof CsmsNotDispatchedError;
   if (isTyped && kase.expect === "answered") {
@@ -251,7 +243,7 @@ const sending =
 const apiUrlPrefix = (req: CitrineRequest) =>
   `${API_BASE}/ocpp/${req.ocppVersion}/${req.module}/${req.action}`;
 
-// ---- 1, 2, 3, 4, 8. The message API.
+// ---- 1, 2, 3, 4, 7. The message API.
 
 const API_CASES: Case[] = [
   {
@@ -303,7 +295,7 @@ const API_CASES: Case[] = [
     expect: "not-dispatched",
     carries: [apiUrlPrefix(REQ_16), "returned 503"],
   },
-  // Part 8. Two confirmations, because CitrineOS answers one per identifier
+  // Part 7. Two confirmations, because CitrineOS answers one per identifier
   // and batches GetConfiguration -- so the message has to carry every refusal,
   // not the first.
   {
@@ -323,7 +315,7 @@ const API_CASES: Case[] = [
   // Part 4, the negative half.
   {
     what: "a 200 whose body stalls",
-    answer: stalled(),
+    answer: stalled,
     expect: "answered",
     carries: [apiUrlPrefix(REQ_16), "could not"],
   },
@@ -374,7 +366,7 @@ if (REQ_16.ocppVersion === REQ_201.ocppVersion) {
 {
   const receipt = await new CitrineMessageApi(
     CFG,
-    serving(json([{ success: true }])),
+    json([{ success: true }]),
   ).send(CP_ID, REQ_16);
   if (!receipt.includes('"success":true')) {
     fail(
@@ -431,7 +423,7 @@ const GQL_QUERY_CASES: Case[] = [
   },
   {
     what: "a 200 whose body stalls",
-    answer: stalled(),
+    answer: stalled,
     expect: "answered",
     carries: ["/v1/graphql", "could not"],
   },
@@ -463,73 +455,6 @@ await check(
   },
   (fetchImpl) => new CitrineGraphQL(CFG, fetchImpl).ensureTracked(),
 );
-
-// ---- 7. What warnOpFailed does with each of them.
-
-// The two cases that sit outside a table: the 2.0.1 404 and the metadata 400,
-// each of which needs a different caller from the list it belongs to.
-const STANDALONE_CASES = 2;
-
-if (
-  produced.length !==
-  API_CASES.length + GQL_QUERY_CASES.length + STANDALONE_CASES
-) {
-  fail(
-    "part 7 did not see every failure",
-    `${produced.length} error(s) reached it -- a case that stopped failing ` +
-      `leaves this part asserting about a shorter list than it reads as`,
-  );
-}
-
-for (const { err, expect, what } of produced) {
-  const written: string[] = [];
-  const realWrite = process.stderr.write.bind(process.stderr);
-  process.stderr.write = ((chunk: string | Uint8Array) => {
-    written.push(typeof chunk === "string" ? chunk : Buffer.from(chunk).toString());
-    return true;
-  }) as typeof process.stderr.write;
-
-  let escaped: unknown;
-  let threw = false;
-  try {
-    warnOpFailed("Reset(Soft)", err);
-  } catch (caught) {
-    threw = true;
-    escaped = caught;
-  } finally {
-    process.stderr.write = realWrite;
-  }
-
-  if (expect === "not-dispatched") {
-    if (!threw) {
-      fail(
-        `warnOpFailed swallowed ${what}`,
-        "the scenario would carry on past a request that never reached the " +
-          "CSMS, which is the whole failure issues #77 and #80 exist for",
-      );
-    } else if (escaped !== err) {
-      fail(
-        `warnOpFailed re-wrapped ${what}`,
-        `the runner has no handler for this class and reports it as ERROR by ` +
-          `letting it out unchanged; a copy would still satisfy instanceof ` +
-          `while losing the throw the runner needs`,
-      );
-    }
-  } else if (threw) {
-    fail(
-      `warnOpFailed let ${what} out`,
-      `it is a plain Error -- the CSMS answered, so the assertions below the ` +
-        `call are still the finding and a refusal is worth a WARN and nothing ` +
-        `more. Got ${describe(escaped)}`,
-    );
-  } else if (!written.join("").includes("CSMS operation Reset(Soft) failed")) {
-    fail(
-      `warnOpFailed said nothing about ${what}`,
-      `a failure that neither ends the scenario nor appears on stderr is a ` +
-        `finding nobody can read. Wrote: ${JSON.stringify(written.join(""))}`,
-    );
-  }
-}
 
 if (failures > 0) {
   process.stderr.write(
