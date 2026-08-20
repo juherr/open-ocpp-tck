@@ -333,10 +333,16 @@ export class SteveUiOps {
     if (!location) {
       const body = await res.text().catch(() => "<unreadable body>");
       const detail = `status ${res.status}: ${body.slice(0, 300)}`;
-      // 4xx is the transport refusing the request -- it never became an OCPP
-      // CALL, so nothing downstream can be a finding about the CSMS. Anything
-      // else with no Location is SteVe answering: the form came back carrying
-      // validation errors, which IS a finding about the CSMS.
+      // Any error status -- 4xx refused, 5xx failed -- means the form never
+      // became an OCPP CALL, so nothing downstream can be a finding about the
+      // CSMS. 5xx belongs here and not on the line below, which is the easy
+      // one to get wrong: SteVe answers the operation form with a redirect to
+      // the task it created, so a handler that threw created nothing to
+      // redirect to and asked no charge point anything. Sending it down the
+      // warn-and-continue path is the failure #77 was.
+      //
+      // A 2xx with no Location IS the CSMS answering: the form came back
+      // carrying validation errors, which is a finding about the CSMS.
       if (res.status >= 400) {
         throw new CsmsNotDispatchedError(path, detail);
       }

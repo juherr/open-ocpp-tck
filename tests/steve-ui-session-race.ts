@@ -17,9 +17,10 @@
  *     defect itself rather than a wasted round trip.
  *  3. Every POST carries the cookies of the session whose GET issued its token.
  *  4. A signin that fails is reported, not swallowed.
- *  5. A request the transport refused is a `CsmsNotDispatchedError`; a form that
- *     came back with validation errors is not. Those are different findings --
- *     one is about this client, the other about the CSMS.
+ *  5. A request that failed with a status -- 4xx refused, 5xx errored -- is a
+ *     `CsmsNotDispatchedError`; a 2xx form that came back carrying validation
+ *     errors is not. Those are different findings: one is about this client,
+ *     the other about the CSMS.
  *  6. `warnOpFailed` lets a `CsmsNotDispatchedError` out and warns about
  *     everything else. Swallowing the first is what turned one undispatched
  *     Reset into five confident FAILs about an idle charge point.
@@ -349,6 +350,22 @@ function describe(err: unknown): string {
       `got ${describe(a.reason)} -- the runner recognises the class with ` +
         `instanceof, so a plain Error is a scenario reporting confident FAILs ` +
         `about a charge point that was never asked anything`,
+    );
+  }
+
+  // 5xx is a non-dispatch too, and it is the one a reader re-opens: SteVe
+  // redirects to the task it created, so a handler that threw created none.
+  const [c] = await post(() => new Response("Boom", { status: 500 }));
+  if (!isRejected(c!)) {
+    fail(
+      "a 500 form post was reported as success",
+      "postForm resolved on a request the server failed",
+    );
+  } else if (!(c.reason instanceof CsmsNotDispatchedError)) {
+    fail(
+      "a 500 was not classified as never dispatched",
+      `got ${describe(c.reason)} -- warning and continuing past it is the ` +
+        `failure #77 was, on a status that reaches no charge point either`,
     );
   }
 
