@@ -250,22 +250,25 @@ const V2_SCOPE = {
       "currentTime is the measurement.",
   ),
   "cert201-tcb20-reset-accepted": d(RESET_201),
-  // DRIVABLE AND RED, and the finding is against neither side. This driver
-  // dispatches OnIdle faithfully and the station answers correctly for the
-  // state it is in; the state is what fails. The simulator sends its Authorize
-  // idToken as ISO14443, and CitrineOS validates that type's FORMAT -- 8 or 14
-  // hex characters -- before any lookup, which no fixture `driver provision`
-  // seeds satisfies. So no transaction starts, OnIdle has nothing to wait for,
-  // and Accepted comes back. The scenario reports its precondition as
-  // unexercised rather than filing a Reset non-conformance; see
-  // tck/specs/core-201.ts, and note this is NOT the device-model gap the row
-  // predicted before the run.
+  // THE ONE ROW HERE WHOSE ANSWER DEPENDS ON STATION STATE, and the state now
+  // holds. It did not until #75: the station sends its 2.0.1 Authorize idToken
+  // as ISO14443 -- a literal in the pinned simulator image, not a setting --
+  // and CitrineOS validates that type's FORMAT (8 or 14 hex characters) before
+  // any lookup, so every `CERT…` fixture was rejected on its shape alone and
+  // answered with a CALLERROR. No Authorize, no TransactionEvent, nothing for
+  // OnIdle to defer to, and `Accepted` came back -- correct of the station and
+  // correct of a CSMS that dispatched faithfully, which is why the scenario
+  // reported its precondition unexercised instead of filing a non-conformance.
+  // provision.ts now seeds an ISO14443-shaped tag typed ISO14443, which the
+  // 2.0.1 lookup needs BOTH of: it matches the pair where the 1.6 handler
+  // matches the idToken alone. Note this was never the device-model gap this
+  // row predicted before it was first run.
   "cert201-tcb21-reset-scheduled": d(
-    `${RESET_201} Its own precondition is what fails: a 2.0.1 transaction ` +
-      "cannot be started against this CSMS with the fixtures this driver " +
-      "provisions, because the Authorize idToken travels as ISO14443 and is " +
-      "rejected on format before any lookup. Provisioning an ISO14443-shaped " +
-      "idToken is what would make the case measurable.",
+    `${RESET_201} This row adds what the others cannot ask: with a transaction ` +
+      "running, the reset is answered Scheduled rather than Accepted, so the " +
+      "CSMS is measured relaying a deferred reset and answering the " +
+      "TransactionEvents that make the deferral meaningful -- the only 2.0.1 " +
+      "transaction traffic this suite puts to it.",
   ),
   "cert201-tcb22-reset-rejected": d(
     `${RESET_201} And an evseId the station does not have survives the CSMS ` +

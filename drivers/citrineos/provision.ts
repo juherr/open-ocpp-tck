@@ -52,6 +52,9 @@ import { stationColumn } from "./variant";
  * yields a set that looks complete and silently fails TC_013/014/017/018.
  * Ground truth is the pinned simulator image; drivers/steve/provision.ts
  * carries the one-liner that re-extracts it, and tck/sim.ts owns the digest.
+ *
+ * All of them are 1.6 tags. The 2.0.1 scenarios authorize with
+ * {@link ISO14443_TAG}, which no `CERT…` spelling could stand in for.
  */
 const VALID_TAGS = [
   // Sent by the charge point, from the simulator's own templates.
@@ -130,15 +133,53 @@ function expiryOf(expiry: FixtureExpiry): string | null {
 const BLOCKED_TAG_CAVEAT =
   "stored status Blocked; CitrineOS's 1.6 Authorize handler maps it to Invalid";
 
-/** CitrineOS looks tags up by idToken alone, so at most one row may exist per
- *  tag: the handler answers Invalid outright when the lookup returns more than
- *  one. `Central` rather than NULL so the value is greppable in the table. */
-const ID_TOKEN_TYPE = "Central";
+/**
+ * The idToken the 2.0.1 scenarios authorize with, and the one fixture here
+ * whose SHAPE is load-bearing rather than arbitrary.
+ *
+ * Eight hexadecimal characters, because the charge point sends its 2.0.1
+ * `Authorize` idToken as `ISO14443` -- the type is a literal in the pinned
+ * simulator image, not a setting -- and CitrineOS validates that type's format
+ * (8 or 14 hex characters, `validateIdToken` in packages/core) BEFORE any
+ * lookup. Every `CERT…` tag above fails on its shape alone, and the answer is
+ * a CALLERROR rather than an AuthorizeResponse, so no transaction can start.
+ *
+ * It is deliberately not spelled `CERT…`: `CERT` is not hexadecimal, so no tag
+ * of the existing vocabulary can carry this shape. The price is that
+ * `tools/extract-fixture-tags.sh` cannot see it -- all three of its greps are
+ * anchored on `CERT` -- and widening them to a hex pattern was rejected rather
+ * than skipped: `[0-9A-Fa-f]{8}` matches ids, colours and digest prefixes all
+ * over the simulator's sources, which is the class of false positive that
+ * script's own header already warns about. The tag is covered by `verify()`
+ * below instead, which is the check that runs against the CSMS anyway.
+ */
+const ISO14443_TAG = "CE712001";
+
+/**
+ * The type every `CERT…` fixture is stored with, and the reason a fixture may
+ * now override it.
+ *
+ * THE TWO HANDLERS DISAGREE, which is the whole reason this is a field and not
+ * a constant. CitrineOS's 1.6 Authorize handler looks a tag up by idToken
+ * alone (`readAllByQuerystring({ idToken })`) and errors outright when that
+ * returns more than one row, so at most one row may exist per 1.6 tag whatever
+ * its type. The 2.0.1 handler matches the PAIR
+ * (`readOnlyOneByQuerystring(tenantId, { idToken, type })`, which becomes
+ * `where.idTokenType = …`), so a row of the wrong type is simply not found --
+ * silently, with the same `Unknown` a missing row would produce.
+ *
+ * `Central` rather than NULL for the 1.6 tags so the value is greppable in the
+ * table; `ISO14443` for {@link ISO14443_TAG} because nothing else can match.
+ */
+type IdTokenType = "Central" | "ISO14443";
+
+const DEFAULT_ID_TOKEN_TYPE: IdTokenType = "Central";
 
 interface TagFixture {
   idToken: string;
   status: string;
   expiry: FixtureExpiry;
+  idTokenType: IdTokenType;
 }
 
 const FIXTURES: readonly TagFixture[] = [
@@ -146,21 +187,44 @@ const FIXTURES: readonly TagFixture[] = [
     idToken,
     status: "Accepted",
     expiry: "never" as const,
+    idTokenType: DEFAULT_ID_TOKEN_TYPE,
   })),
-  { idToken: EXPIRED_TAG, status: "Accepted", expiry: "at-run-start" },
-  { idToken: BLOCKED_TAG, status: "Blocked", expiry: "never" },
+  {
+    idToken: ISO14443_TAG,
+    status: "Accepted",
+    expiry: "never",
+    idTokenType: "ISO14443",
+  },
+  {
+    idToken: EXPIRED_TAG,
+    status: "Accepted",
+    expiry: "at-run-start",
+    idTokenType: DEFAULT_ID_TOKEN_TYPE,
+  },
+  {
+    idToken: BLOCKED_TAG,
+    status: "Blocked",
+    expiry: "never",
+    idTokenType: DEFAULT_ID_TOKEN_TYPE,
+  },
 ];
+
+/** Tags that must be present, Accepted and unexpired. VALID_TAGS is the 1.6
+ *  vocabulary; the 2.0.1 fixture answers to the same three conditions and only
+ *  differs in its type, so verify() asks the question once. */
+const ACCEPTED_TAGS = [...VALID_TAGS, ISO14443_TAG];
 
 /** Every tag this driver owns. Spelled once so that a fixture added to
  *  provision but not to teardown cannot leave rows behind that verify still
  *  demands. */
-const ALL_TAGS = [...VALID_TAGS, BLOCKED_TAG, EXPIRED_TAG, INVALID_TAG];
+const ALL_TAGS = [...ACCEPTED_TAGS, BLOCKED_TAG, EXPIRED_TAG, INVALID_TAG];
 
 interface AuthorizationRow {
   id: number;
   idToken: string;
   status: string | null;
   cacheExpiryDateTime: string | null;
+  idTokenType: string | null;
 }
 
 export class CitrineProvisioner {
@@ -205,6 +269,14 @@ export class CitrineProvisioner {
    * and the table would quietly grow the second row that makes the 1.6
    * Authorize handler answer Invalid.
    *
+   * FOUND IN ORDER TO BE REPAIRED, which is the half that used to be missing.
+   * The update below rewrites idTokenType too, so a row whose type has drifted
+   * from the fixture is corrected rather than merely not duplicated -- and the
+   * distinction is not academic now that a fixture carries a type the 2.0.1
+   * lookup filters on. teardown() KEEPS a row a Transactions row still points
+   * at, so a wrong-typed row can outlive a teardown, and nothing short of
+   * `compose down -v` would otherwise get rid of it.
+   *
    * One request per fixture, where the SQL sent one script for twenty. The
    * batching existed to amortise a ~350 ms `docker exec` spawn; over HTTP the
    * round trip is milliseconds, and a mutation per fixture keeps the failure
@@ -225,7 +297,7 @@ export class CitrineProvisioner {
           {
             object: {
               idToken: fixture.idToken,
-              idTokenType: ID_TOKEN_TYPE,
+              idTokenType: fixture.idTokenType,
               status: fixture.status,
               cacheExpiryDateTime: expiry,
               tenantId: this.tenant,
@@ -248,6 +320,12 @@ export class CitrineProvisioner {
           id: row.id,
           set: {
             status: fixture.status,
+            // Rewritten, not left alone: see the note on the match key above.
+            // If the drifted row's counterpart of the RIGHT type also exists,
+            // this raises the (idToken, idTokenType, tenantId) violation
+            // instead of leaving two rows for verify() to find later, which is
+            // the diagnosable failure of the two.
+            idTokenType: fixture.idTokenType,
             cacheExpiryDateTime: expiry,
             updatedAt: now,
           },
@@ -257,7 +335,8 @@ export class CitrineProvisioner {
 
     await this.removeInvalidTag();
     this.log(
-      `tags: ${VALID_TAGS.length} valid, ${EXPIRED_TAG} expired ` +
+      `tags: ${VALID_TAGS.length} valid, ${ISO14443_TAG} valid as ISO14443, ` +
+        `${EXPIRED_TAG} expired ` +
         `${EXPIRED_FIXTURE_BACKDATE_MINUTES} min before this run's provisioning, ` +
         `${BLOCKED_TAG} (${BLOCKED_TAG_CAVEAT}), ${INVALID_TAG} absent`,
     );
@@ -276,6 +355,7 @@ export class CitrineProvisioner {
            idToken
            status
            cacheExpiryDateTime
+           idTokenType
          }
        }`,
       { tags: ALL_TAGS, tenant: this.tenant },
@@ -403,17 +483,35 @@ export class CitrineProvisioner {
       if (!tags.has(row.idToken)) tags.set(row.idToken, row);
     }
 
-    // A duplicate is not cosmetic: the 1.6 Authorize handler answers Invalid
-    // outright when an idToken resolves to more than one row, so this check is
-    // the difference between a diagnosable environment fault and twelve
-    // scenarios failing on an unexplained denial.
+    // A duplicate is not cosmetic, and it is not cosmetic in two different
+    // ways: the 1.6 Authorize handler answers Invalid outright when an idToken
+    // resolves to more than one row, and 2.0.1's readOnlyOneByQuery THROWS on
+    // the same condition. Either way this check is the difference between a
+    // diagnosable environment fault and twelve scenarios failing on an
+    // unexplained denial.
     for (const [idToken, count] of counts) {
       if (count !== 1) {
         problems.push(`${idToken}: ${count} rows, expected 1 (the handler answers Invalid for more)`);
       }
     }
 
-    for (const idTag of VALID_TAGS) {
+    // The type each fixture was declared with, checked rather than assumed.
+    // provisionTags writes it on insert AND on update, so a mismatch here means
+    // something outside this driver wrote the row -- and the 2.0.1 lookup
+    // filters on the pair, so it would answer Unknown exactly as a missing row
+    // does. That is the failure worth naming: it is invisible in every other
+    // column.
+    for (const fixture of FIXTURES) {
+      const row = tags.get(fixture.idToken);
+      if (row && row.idTokenType !== fixture.idTokenType) {
+        problems.push(
+          `${fixture.idToken}: idTokenType ${row.idTokenType ?? "<null>"}, expected ` +
+            `${fixture.idTokenType} (the 2.0.1 lookup matches idToken AND type)`,
+        );
+      }
+    }
+
+    for (const idTag of ACCEPTED_TAGS) {
       const row = tags.get(idTag);
       if (!row) {
         problems.push(`${idTag}: missing`);
