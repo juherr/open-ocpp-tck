@@ -264,11 +264,11 @@ const V2_SCOPE = {
   // matches the idToken alone. Note this was never the device-model gap this
   // row predicted before it was first run.
   "cert201-tcb21-reset-scheduled": d(
-    `${RESET_201} This row adds what the others cannot ask: with a transaction ` +
-      "running, the reset is answered Scheduled rather than Accepted, so the " +
-      "CSMS is measured relaying a deferred reset and answering the " +
-      "TransactionEvents that make the deferral meaningful -- the only 2.0.1 " +
-      "transaction traffic this suite puts to it.",
+    `${RESET_201} This row adds what the others cannot ask, and it answered ` +
+      "too: with a transaction running the reset comes back Scheduled rather " +
+      "than Accepted, and the TransactionEvent that makes the deferral " +
+      "meaningful is answered -- the only 2.0.1 transaction traffic this suite " +
+      "puts to this CSMS, and until now never exercised.",
   ),
   "cert201-tcb22-reset-rejected": d(
     `${RESET_201} And an evseId the station does not have survives the CSMS ` +

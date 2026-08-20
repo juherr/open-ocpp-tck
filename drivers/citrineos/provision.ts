@@ -149,15 +149,15 @@ const BLOCKED_TAG_CAVEAT =
  * `tools/extract-fixture-tags.sh` cannot see it -- all three of its greps are
  * anchored on `CERT` -- and widening them to a hex pattern was rejected rather
  * than skipped: `[0-9A-Fa-f]{8}` matches ids, colours and digest prefixes all
- * over the simulator's sources, which is the class of false positive that
- * script's own header already warns about. The tag is covered by `verify()`
- * below instead, which is the check that runs against the CSMS anyway.
+ * over the simulator's sources, which is the class of false positive the note
+ * on that script's image grep already warns about. The tag is covered by
+ * `verify()` below instead, which is the check that runs against the CSMS
+ * anyway.
  */
 const ISO14443_TAG = "CE712001";
 
 /**
- * The type every `CERT…` fixture is stored with, and the reason a fixture may
- * now override it.
+ * How a fixture is typed, and why the type is a field rather than a constant.
  *
  * THE TWO HANDLERS DISAGREE, which is the whole reason this is a field and not
  * a constant. CitrineOS's 1.6 Authorize handler looks a tag up by idToken
@@ -173,13 +173,18 @@ const ISO14443_TAG = "CE712001";
  */
 type IdTokenType = "Central" | "ISO14443";
 
-const DEFAULT_ID_TOKEN_TYPE: IdTokenType = "Central";
+/** Omitted is `Central`, the same shape `expiryOf` gives `FixtureExpiry`: the
+ *  table declares what is exceptional about a fixture, and one fixture's type
+ *  is the exception. */
+function typeOf(fixture: TagFixture): IdTokenType {
+  return fixture.idTokenType ?? "Central";
+}
 
 interface TagFixture {
   idToken: string;
   status: string;
   expiry: FixtureExpiry;
-  idTokenType: IdTokenType;
+  idTokenType?: IdTokenType;
 }
 
 const FIXTURES: readonly TagFixture[] = [
@@ -187,7 +192,6 @@ const FIXTURES: readonly TagFixture[] = [
     idToken,
     status: "Accepted",
     expiry: "never" as const,
-    idTokenType: DEFAULT_ID_TOKEN_TYPE,
   })),
   {
     idToken: ISO14443_TAG,
@@ -195,29 +199,14 @@ const FIXTURES: readonly TagFixture[] = [
     expiry: "never",
     idTokenType: "ISO14443",
   },
-  {
-    idToken: EXPIRED_TAG,
-    status: "Accepted",
-    expiry: "at-run-start",
-    idTokenType: DEFAULT_ID_TOKEN_TYPE,
-  },
-  {
-    idToken: BLOCKED_TAG,
-    status: "Blocked",
-    expiry: "never",
-    idTokenType: DEFAULT_ID_TOKEN_TYPE,
-  },
+  { idToken: EXPIRED_TAG, status: "Accepted", expiry: "at-run-start" },
+  { idToken: BLOCKED_TAG, status: "Blocked", expiry: "never" },
 ];
 
-/** Tags that must be present, Accepted and unexpired. VALID_TAGS is the 1.6
- *  vocabulary; the 2.0.1 fixture answers to the same three conditions and only
- *  differs in its type, so verify() asks the question once. */
-const ACCEPTED_TAGS = [...VALID_TAGS, ISO14443_TAG];
-
-/** Every tag this driver owns. Spelled once so that a fixture added to
- *  provision but not to teardown cannot leave rows behind that verify still
- *  demands. */
-const ALL_TAGS = [...ACCEPTED_TAGS, BLOCKED_TAG, EXPIRED_TAG, INVALID_TAG];
+/** Every tag this driver owns: every fixture, plus the one that must be
+ *  ABSENT. Derived rather than spelled, so a fixture added to provision but
+ *  not to teardown cannot leave rows behind that verify still demands. */
+const ALL_TAGS = [...FIXTURES.map((fixture) => fixture.idToken), INVALID_TAG];
 
 interface AuthorizationRow {
   id: number;
@@ -297,7 +286,7 @@ export class CitrineProvisioner {
           {
             object: {
               idToken: fixture.idToken,
-              idTokenType: fixture.idTokenType,
+              idTokenType: typeOf(fixture),
               status: fixture.status,
               cacheExpiryDateTime: expiry,
               tenantId: this.tenant,
@@ -325,7 +314,7 @@ export class CitrineProvisioner {
             // this raises the (idToken, idTokenType, tenantId) violation
             // instead of leaving two rows for verify() to find later, which is
             // the diagnosable failure of the two.
-            idTokenType: fixture.idTokenType,
+            idTokenType: typeOf(fixture),
             cacheExpiryDateTime: expiry,
             updatedAt: now,
           },
@@ -335,7 +324,9 @@ export class CitrineProvisioner {
 
     await this.removeInvalidTag();
     this.log(
-      `tags: ${VALID_TAGS.length} valid, ${ISO14443_TAG} valid as ISO14443, ` +
+      // Counted off FIXTURES, not off VALID_TAGS: the census and the table are
+      // the two spellings of one set, and that is what drifts.
+      `tags: ${FIXTURES.length} seeded, ${ISO14443_TAG} as ISO14443, ` +
         `${EXPIRED_TAG} expired ` +
         `${EXPIRED_FIXTURE_BACKDATE_MINUTES} min before this run's provisioning, ` +
         `${BLOCKED_TAG} (${BLOCKED_TAG_CAVEAT}), ${INVALID_TAG} absent`,
@@ -491,66 +482,60 @@ export class CitrineProvisioner {
     // unexplained denial.
     for (const [idToken, count] of counts) {
       if (count !== 1) {
-        problems.push(`${idToken}: ${count} rows, expected 1 (the handler answers Invalid for more)`);
-      }
-    }
-
-    // The type each fixture was declared with, checked rather than assumed.
-    // provisionTags writes it on insert AND on update, so a mismatch here means
-    // something outside this driver wrote the row -- and the 2.0.1 lookup
-    // filters on the pair, so it would answer Unknown exactly as a missing row
-    // does. That is the failure worth naming: it is invisible in every other
-    // column.
-    for (const fixture of FIXTURES) {
-      const row = tags.get(fixture.idToken);
-      if (row && row.idTokenType !== fixture.idTokenType) {
         problems.push(
-          `${fixture.idToken}: idTokenType ${row.idTokenType ?? "<null>"}, expected ` +
-            `${fixture.idTokenType} (the 2.0.1 lookup matches idToken AND type)`,
+          `${idToken}: ${count} rows, expected 1 (1.6 answers Invalid for more, 2.0.1 throws)`,
         );
       }
     }
 
-    for (const idTag of ACCEPTED_TAGS) {
-      const row = tags.get(idTag);
+    // ONE PASS, AND THE TABLE IS WHAT IT CHECKS AGAINST. Every column FIXTURES
+    // declares is read back from the row that carries it, so a fixture added
+    // there is verified by having been declared -- where three per-constant
+    // blocks used to check the tags someone had remembered to write a block
+    // for, and a fourth field (the type) would have needed a fourth block.
+    //
+    // The status is the subtle one, and expiredAtRunStart's comment has the
+    // argument: the 1.6 handler consults cacheExpiryDateTime only INSIDE its
+    // `status === Accepted` branch, so a row stored `Expired` answers Invalid
+    // and its expiry is never looked at. That is why the expired fixture is
+    // declared Accepted and only its instant makes it expired -- and why a
+    // drifted status has to be reported before the instant is judged.
+    for (const fixture of FIXTURES) {
+      const row = tags.get(fixture.idToken);
       if (!row) {
-        problems.push(`${idTag}: missing`);
+        problems.push(`${fixture.idToken}: missing`);
         continue;
       }
-      if (row.status !== "Accepted") {
-        problems.push(`${idTag}: status ${row.status ?? "<null>"}, expected Accepted`);
+      if (row.status !== fixture.status) {
+        problems.push(
+          `${fixture.idToken}: status ${row.status ?? "<null>"}, expected ${fixture.status}`,
+        );
       }
-      if (row.cacheExpiryDateTime !== null) {
-        problems.push(`${idTag}: has cacheExpiryDateTime ${row.cacheExpiryDateTime}, expected none`);
+      // Invisible in every other column: the 2.0.1 lookup filters on the pair,
+      // so a wrong type answers the same Unknown a missing row does.
+      if (row.idTokenType !== typeOf(fixture)) {
+        problems.push(
+          `${fixture.idToken}: idTokenType ${row.idTokenType ?? "<null>"}, expected ` +
+            `${typeOf(fixture)} (the 2.0.1 lookup matches idToken AND type)`,
+        );
+      }
+      if (fixture.expiry === "never") {
+        if (row.cacheExpiryDateTime !== null) {
+          problems.push(
+            `${fixture.idToken}: has cacheExpiryDateTime ${row.cacheExpiryDateTime}, expected none`,
+          );
+        }
+      } else if (!row.cacheExpiryDateTime) {
+        problems.push(`${fixture.idToken}: has no cacheExpiryDateTime, expected one in the past`);
+      } else if (!(Date.parse(row.cacheExpiryDateTime) < Date.now())) {
+        problems.push(
+          `${fixture.idToken}: expiry ${row.cacheExpiryDateTime} is not in the past`,
+        );
       }
     }
 
     if (tags.has(INVALID_TAG)) {
       problems.push(`${INVALID_TAG}: present, must be absent for TC_023.1`);
-    }
-
-    const expired = tags.get(EXPIRED_TAG);
-    if (!expired?.cacheExpiryDateTime) {
-      problems.push(`${EXPIRED_TAG}: missing or has no cacheExpiryDateTime`);
-    } else if (expired.status !== "Accepted") {
-      // The trap expiredAtRunStart's comment describes, checked rather than
-      // merely documented: any other status makes the handler answer Invalid
-      // and the expiry is never consulted.
-      problems.push(
-        `${EXPIRED_TAG}: status ${expired.status}, expected Accepted -- only the ` +
-          "Accepted branch consults cacheExpiryDateTime",
-      );
-    } else if (!(Date.parse(expired.cacheExpiryDateTime) < Date.now())) {
-      problems.push(
-        `${EXPIRED_TAG}: expiry ${expired.cacheExpiryDateTime} is not in the past`,
-      );
-    }
-
-    const blocked = tags.get(BLOCKED_TAG);
-    if (!blocked) {
-      problems.push(`${BLOCKED_TAG}: missing`);
-    } else if (blocked.status !== "Blocked") {
-      problems.push(`${BLOCKED_TAG}: status ${blocked.status ?? "<null>"}, expected Blocked`);
     }
 
     return problems;
