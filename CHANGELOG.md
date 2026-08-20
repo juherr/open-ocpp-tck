@@ -77,6 +77,16 @@ Released as `0.3.0`. The documented install ref already points at that tag, so
 
 ### Fixed
 
+- `cert201-tcb21-reset-scheduled` measures its case instead of reporting its
+  precondition. The station sends its OCPP 2.0.1 `Authorize` idToken with `type`
+  set to `ISO14443`, and CitrineOS validates the idToken value against that
+  type's format — 8 or 14 hexadecimal characters — before any lookup, so no tag
+  `drivers/citrineos` seeded could start a transaction and the reset was always
+  answered against an idle station. The driver now seeds `CE712001`, hexadecimal
+  and stored with that type, `driver verify` checks the stored type, and
+  `driver provision` repairs a row whose type has drifted. The scenario's
+  `SKIPPED` path is unchanged, so a CSMS that still cannot start a transaction
+  is not accused of a `Reset` non-conformance ([#75])
 - An operation-name list that omits a member is now a compile error. Both
   vocabularies are covered; the 1.6 list had the same hole, and everything able
   to notice a missing name was computed from the list itself ([#70])
@@ -132,3 +142,4 @@ releases from 141 commits would mean writing detail nobody measured.
 [#68]: https://github.com/juherr/open-ocpp-tck/pull/68
 [#70]: https://github.com/juherr/open-ocpp-tck/pull/70
 [#73]: https://github.com/juherr/open-ocpp-tck/pull/73
+[#75]: https://github.com/juherr/open-ocpp-tck/issues/75

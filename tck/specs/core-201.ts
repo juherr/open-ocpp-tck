@@ -257,9 +257,19 @@ const TC_B_21: ScenarioSpec<TransactionPrecondition> = {
     // distinguishable from `Immediate` when there is a transaction to wait
     // for. This is the setup Part 6 would take from a `Reusable State`, and
     // the file header says why it is written out here instead.
+    //
+    // THE TAG'S SHAPE IS PART OF THE SETUP, and it is why this is not the
+    // `CERT-TAG-1` every 1.6 scenario authorizes with. The station sends a
+    // 2.0.1 `Authorize` idToken typed `ISO14443` -- the simulator spells that
+    // type in its own sources, so no command here can change it -- and a CSMS
+    // is entitled to validate the type's format before looking anything up.
+    // ISO 14443 is a card UID: 4 or 7 bytes, so 8 or 14 hexadecimal
+    // characters, which no `CERT…` spelling can be. A driver that wants this
+    // case measured provisions this tag; one that does not still reaches the
+    // SKIPPED path below rather than a false Reset finding.
     await sim.send({
       command: "start_transaction",
-      params: { connector, tagId: "CERT-TAG-1" },
+      params: { connector, tagId: "CE712001" },
     });
     // THE PRECONDITION IS REPORTED, NOT ASSUMED, and this is why the scenario
     // returns anything at all. `OnIdle` against an idle station is answered

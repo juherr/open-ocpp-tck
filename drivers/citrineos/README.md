@@ -336,16 +336,36 @@ taken — and the run answered it: CitrineOS v2.0.0-beta1 *does* dispatch a 2.0.
 device model is not provisioned, and an `evseId` the station does not have
 survives the schema and reaches the wire.
 
-**`cert201-tcb21-reset-scheduled` is the fifth, and it is red against neither
-side.** The case needs a transaction running before the reset — that is what
-makes `Scheduled` distinguishable from `Accepted` — and one cannot be started
-here: the simulator sends its `Authorize` idToken as `ISO14443`, and CitrineOS
-validates that type's *format* (8 or 14 hex characters) before any lookup, which
-no fixture `driver provision` seeds satisfies. So the station stays idle,
-`OnIdle` is answered `Accepted`, and that answer is correct. The scenario
-reports its precondition as **unexercised** rather than filing a `Reset`
-non-conformance; provisioning an `ISO14443`-shaped idToken is what would make
-the case measurable.
+**`cert201-tcb21-reset-scheduled` is the fifth, and it needed a fixture the
+other four did not.** The case needs a transaction running before the reset —
+that is what makes `Scheduled` distinguishable from `Accepted` — and until
+[issue #75](https://github.com/juherr/open-ocpp-tck/issues/75) one could not be
+started here. The simulator sends its `Authorize` idToken with `type` set to
+`ISO14443` — a literal in the pinned image rather than a setting — and CitrineOS
+validates the idToken *value* against that type's format (8 or 14 hexadecimal
+characters) before any lookup: every `CERT…` fixture was rejected on its shape
+alone, answered with a `CALLERROR`,
+and the local start was refused. The station stayed idle, `OnIdle` was answered
+`Accepted`, and that answer was correct — so the scenario reported its
+precondition **unexercised** rather than filing a `Reset` non-conformance.
+
+`driver provision` now seeds `CE712001`, hexadecimal *and* stored with
+`idTokenType = ISO14443`. Both halves are load-bearing, and for different
+reasons: the shape gets it past the format check, and the type gets it found at
+all — CitrineOS's 2.0.1 `Authorize` handler matches on `(idToken, idTokenType)`
+where its 1.6 handler matches on the idToken alone. A hexadecimal tag stored
+`Central` would pass validation and still answer `Unknown`. `driver verify`
+checks the stored type for that reason.
+
+**Measured 2026-08-20 with that fixture in place: `PASS`, five checks, none
+skipped** — the transaction started, the reset came back `Scheduled` rather than
+`Accepted`, and CitrineOS answered the `TransactionEvent` that makes the
+deferral meaningful. That last one had never been asked of it before: this is
+the only 2.0.1 transaction traffic the suite sends.
+
+The scenario keeps its `SKIPPED` path: a third-party CSMS may still fail to
+start a transaction for its own reasons, and the honest verdict there remains
+"the suite did not ask".
 
 Two of the seven selected cases — `TC_B_06` and `TC_B_09` — are not implemented at all,
 because reading or writing a variable needs a device model that
@@ -444,13 +464,21 @@ CitrineOS defect, because the evidence does not support the second reading.
 
 ### Smaller traps, handled
 
-Neither is listed as a gap, because they cost nothing once known:
+None is listed as a gap, because they cost nothing once known:
 
-- **More than one `Authorizations` row for an idToken makes the handler answer
-  `Invalid` outright.** The unique index is on `(idToken, idTokenType,
+- **More than one `Authorizations` row for an idToken breaks both handlers, in
+  different ways.** 1.6 answers `Invalid` outright; 2.0.1's
+  `readOnlyOneByQuery` throws. The unique index is on `(idToken, idTokenType,
   tenantId)` and Postgres treats NULLs as distinct, so `ON CONFLICT` would not
   protect the invariant that matters. `provision` upserts on `(idToken,
   tenantId)` and `verify` counts rows per tag.
+- **The two `Authorize` handlers disagree about the type, and only one of them
+  reads it.** 1.6 looks a tag up by `idToken` alone; 2.0.1 matches the pair
+  `(idToken, idTokenType)`. A row of the wrong type is therefore not "wrong"
+  in any visible column — it is simply not found, and answers the same
+  `Unknown` a missing row does. `provision` writes the type on update as well
+  as on insert, so a drifted row is repaired rather than merely tolerated, and
+  `verify` reads it back.
 - **A tag stored as `status = 'Expired'` answers `Invalid`, not `Expired`.**
   The expiry is consulted only inside the `Accepted` branch, so `CERT023-EXP`
   is provisioned as `Accepted` with a past `cacheExpiryDateTime`.

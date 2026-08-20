@@ -66,6 +66,14 @@ export declare class CitrineProvisioner {
      * and the table would quietly grow the second row that makes the 1.6
      * Authorize handler answer Invalid.
      *
+     * FOUND IN ORDER TO BE REPAIRED, which is the half that used to be missing.
+     * The update below rewrites idTokenType too, so a row whose type has drifted
+     * from the fixture is corrected rather than merely not duplicated -- and the
+     * distinction is not academic now that a fixture carries a type the 2.0.1
+     * lookup filters on. teardown() KEEPS a row a Transactions row still points
+     * at, so a wrong-typed row can outlive a teardown, and nothing short of
+     * `compose down -v` would otherwise get rid of it.
+     *
      * One request per fixture, where the SQL sent one script for twenty. The
      * batching existed to amortise a ~350 ms `docker exec` spawn; over HTTP the
      * round trip is milliseconds, and a mutation per fixture keeps the failure
