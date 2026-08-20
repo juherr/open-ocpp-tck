@@ -25,6 +25,7 @@ import {
   type AssertRecorder,
 } from "../assert";
 import { findAllCalls, findResponseFor, type Frame } from "../ocpp";
+import { warnOpFailed } from "../op-warn";
 import type { ScenarioSpec } from "../spec-types";
 import { sleep } from "../util";
 
@@ -97,12 +98,6 @@ function assertCompositeSchedulePeriodLimit(
   rec.fail(
     description,
     `no GetCompositeSchedule.conf carried limit ${limit}: ${seen.join("; ")}`,
-  );
-}
-
-function warnOpFailed(op: string, err: unknown): void {
-  process.stderr.write(
-    `[runner] WARN: CSMS operation ${op} failed (continuing): ${err instanceof Error ? err.message : String(err)}\n`,
   );
 }
 

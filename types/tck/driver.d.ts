@@ -245,6 +245,32 @@ export declare class UnsupportedOperationError extends Error {
     constructor(operation: string, reason: string);
 }
 /**
+ * "The operation never reached the CSMS's OCPP layer."
+ *
+ * The transport refused it -- a rejected form post, an unauthenticated
+ * request, a connection that never opened -- so the CSMS was never asked and
+ * nothing went on the wire. Distinct from every other failure a driver can
+ * report, and the distinction is the point: a CSMS answering wrongly is a
+ * finding about the CSMS, while an operation that was never dispatched is a
+ * finding about the client, and any assertion downstream of it is measuring
+ * the wrong thing.
+ *
+ * A scenario that swallows this and carries on reports a handful of confident
+ * FAILs about a charge point that was never asked to do anything -- which is
+ * exactly what issue #77 cost to diagnose, and why `warnOpFailed` in
+ * `tck/op-warn.ts` lets this one class through instead of warning and
+ * continuing.
+ *
+ * Lives in the core for the same reason {@link UnsupportedOperationError}
+ * does: the recogniser and the thrower sit on opposite sides of the driver
+ * boundary and must share one class, or `instanceof` quietly stops matching.
+ */
+export declare class CsmsNotDispatchedError extends Error {
+    readonly operation: string;
+    readonly reason: string;
+    constructor(operation: string, reason: string);
+}
+/**
  * Compile-time exhaustiveness guard for a driver's `switch (op.action)`.
  *
  * Adding an operation to {@link CsmsOperation16} becomes a type error in every
@@ -263,7 +289,13 @@ export interface CsmsOperations16 {
      * on the simulator's captured wire log.
      *
      * Throws {@link UnsupportedOperationError} when this CSMS cannot express the
-     * operation at all, and anything else for a genuine transport failure.
+     * operation at all, and {@link CsmsNotDispatchedError} when the transport
+     * refused the request so that it never became an OCPP CALL -- a refused form
+     * post, a connection that never opened. Prefer the second over a plain
+     * `Error` wherever a driver can tell: a scenario warns and continues on
+     * anything else, and continuing past an operation the charge point was never
+     * asked to perform is how one lost dispatch becomes several confident
+     * findings about an idle station.
      */
     execute(cpId: string, op: CsmsOperation16): Promise<string>;
 }

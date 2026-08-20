@@ -42,6 +42,17 @@ Released as `0.3.0`. The documented install ref already points at that tag, so
 
 ### Changed
 
+- **BREAKING** — `SteveUiOps.isLoggedIn`, `.login` and `.ensureLogin` are
+  private. None of them is serialised — they run under the lock `postForm`
+  takes — so a second entry point into the session was a way to reopen the race
+  that no guard could observe. They had no caller outside the class here, but
+  they were exported and shipped in `types/`, so an external one stops
+  compiling: same reason `SimTransportDefaults.extraArgs` was marked breaking
+  in 0.2.0 despite nothing reading it. `postForm` and `op` keep their
+  signatures, so the break is confined to the three methods above — but not
+  their behaviour: `postForm` now serialises login, page fetch and submit
+  against every other call on the instance, and `op` delegates to it. The
+  constructor takes an optional `fetch` as a second argument ([#77])
 - **BREAKING** — the OCPP 1.6 operation vocabulary now says which protocol it
   is: `CsmsOperation` → `CsmsOperation16`, `CsmsOperationAction` →
   `CsmsOperation16Action`, `CsmsOperations` → `CsmsOperations16`, `ResetType` →
@@ -77,6 +88,23 @@ Released as `0.3.0`. The documented install ref already points at that tag, so
 
 ### Fixed
 
+- `cert16-tc013-hard-reset` and `cert16-tc014-soft-reset` no longer flake on
+  SteVe, at 45% and 34% of sweeps. The manager-UI client is loaded once per
+  process and shared by every parallel lane, and its form post was a
+  read-modify-write over one cookie jar: log in — which clears the jar — then
+  GET a page for its CSRF token, then POST it back. Two lanes interleaving meant
+  one spent a token against a session that had replaced its own, Spring answered
+  `403`, and the `Reset` never reached the wire, so the scenario reported
+  failures about a charge point that was never asked. The post is now serialised
+  on the instance, login included, which keeps the single session the class is
+  built around. A failed signin is also reported instead of silently leaving an
+  unauthenticated session behind ([#77])
+- A CSMS operation the transport refused is no longer indistinguishable from one
+  the CSMS answered wrongly. Drivers raise `CsmsNotDispatchedError` when a
+  request never became an OCPP CALL, and scenarios let it out as an `ERROR`
+  rather than warning and continuing into assertions about a charge point that
+  was never asked. Twelve inline copies of that warning became one helper
+  ([#77])
 - `cert201-tcb21-reset-scheduled` measures its case instead of reporting its
   precondition. The station sends its OCPP 2.0.1 `Authorize` idToken with `type`
   set to `ISO14443`, and CitrineOS validates the idToken value against that
@@ -143,3 +171,4 @@ releases from 141 commits would mean writing detail nobody measured.
 [#70]: https://github.com/juherr/open-ocpp-tck/pull/70
 [#73]: https://github.com/juherr/open-ocpp-tck/pull/73
 [#75]: https://github.com/juherr/open-ocpp-tck/issues/75
+[#77]: https://github.com/juherr/open-ocpp-tck/issues/77

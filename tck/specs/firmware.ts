@@ -12,15 +12,10 @@ import {
   assertNoLineMatches,
   assertReceived,
 } from "../assert";
+import { warnOpFailed } from "../op-warn";
 import type { ScenarioSpec } from "../spec-types";
 import { inSeconds } from "../time";
 import { sleep } from "../util";
-
-function warnOpFailed(op: string, err: unknown): void {
-  process.stderr.write(
-    `[runner] WARN: CSMS operation ${op} failed (continuing): ${err instanceof Error ? err.message : String(err)}\n`,
-  );
-}
 
 // ---------------------------------------------------------------------------
 // The assertAllAnswered calls below are the whole of issue #11, and this file

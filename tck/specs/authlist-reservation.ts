@@ -20,16 +20,11 @@ import {
   assertResponseStatus,
   assertSent,
 } from "../assert";
+import { warnOpFailed } from "../op-warn";
 import type { ScenarioSpec } from "../spec-types";
 import { inMinutes } from "../time";
 import { sleep } from "../util";
 import { waitForCondition } from "../wait";
-
-function warnOpFailed(op: string, err: unknown): void {
-  process.stderr.write(
-    `[runner] WARN: CSMS operation ${op} failed (continuing): ${err instanceof Error ? err.message : String(err)}\n`,
-  );
-}
 
 // ---------------------------------------------------------------------------
 // TC_042.1 Get Local List Version -- Not Supported. Local list disabled via

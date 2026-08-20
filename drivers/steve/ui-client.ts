@@ -13,7 +13,20 @@
  * the wire; the UI path does not, which matters for any scenario whose point
  * is that the CHARGE POINT produces the answer.
  */
+import { CsmsNotDispatchedError } from "../../tck/driver";
+
 const DEFAULT_TIMEOUT_MS = 10_000;
+
+/**
+ * How long one `postForm` may hold the instance lock, whatever it is doing.
+ *
+ * Deliberately not a multiple of {@link DEFAULT_TIMEOUT_MS}: a post is up to
+ * five requests, so per-request timeouts alone would let one stalled lane hold
+ * the lock for fifty seconds, and the median scenario watches for twelve. This
+ * caps the wait a queued lane can inherit while leaving every individual
+ * request its full allowance.
+ */
+const SECTION_TIMEOUT_MS = 20_000;
 
 export interface SteveConfig {
   /** e.g. http://steve:8180/steve/manager (container-internal: the
@@ -58,7 +71,31 @@ export function defaultSteveConfig(
 }
 
 
-const CSRF_RE = /name="_csrf"\s+value="([^"]*)"/;
+/**
+ * The subset of `fetch` this client uses.
+ *
+ * A seam, not a policy. Every request below goes through it so that
+ * `tests/steve-ui-session-race.ts` can hand this class a fake SteVe: the
+ * property that matters here is how concurrent callers interleave, and against
+ * a real server that is a 45%-of-the-time event nobody can reproduce on
+ * demand. The default is the global, resolved per call rather than captured,
+ * on the same default-parameter principle as {@link defaultSteveConfig}.
+ */
+export type FetchLike = (
+  input: string,
+  init?: RequestInit,
+) => Promise<Response>;
+
+/**
+ * How SteVe renders the CSRF token into a manager page.
+ *
+ * Exported because `tools/steve-csrf-race.ts` scrapes the same field to report
+ * whether the token varied between GETs, and that observation is the whole
+ * point of the tool. A second copy of this pattern would keep matching nothing
+ * after a markup change and report "0 distinct tokens", which reads as "no
+ * rotation, the fix holds" -- failing open on exactly the question asked.
+ */
+export const CSRF_RE = /name="_csrf"\s+value="([^"]*)"/;
 
 function extractCsrf(html: string): string {
   const match = CSRF_RE.exec(html);
@@ -74,14 +111,62 @@ function extractCsrf(html: string): string {
  * SteVe manager-UI client: login, CSRF, form POST -- one cookie jar per
  * instance. It is SteVe-specific and cannot drive any other CSMS.
  *
- * Two callers: the operations path (index.ts) and provisioning
- * (provision.ts), which posts the charging-profile form through the same
- * session rather than opening a second one.
+ * Two callers, each with an instance and therefore a session of its own: the
+ * operations path (index.ts) and provisioning (provision.ts, which posts the
+ * charging-profile form -- the one manager form with no REST equivalent, since
+ * SteVe exposes REST controllers for OCPP tags, transactions and operations
+ * but none for stored charging profiles).
+ *
+ * ONE SESSION, SHARED BY EVERY LANE, AND THEREFORE LOCKED. `tck/main.ts` loads
+ * the driver once per process, so the operations instance is a singleton that
+ * every parallel lane posts through, and `postForm` is a read-modify-write over
+ * `cookies`: it may log in (clearing the jar), then GET a page for a CSRF
+ * token, then POST it back. Interleave two of those and a lane spends a token
+ * against a session that replaced its own, which Spring answers 403 -- so the
+ * operation never reaches the wire and the scenario reports failures about a
+ * charge point nobody asked. That was issue #77, at 45% of sweeps.
+ *
+ * REJECTED, having been measured: one instance per lane. It is the obvious way
+ * to delete the lock, and it costs a login per lane and gives up the single
+ * session this class exists to hold -- while fixing nothing the lock does not,
+ * since provisioning posts through the same method. Serialising also survives
+ * the part that is easy to get wrong: what rotates on SteVe is the SESSION, not
+ * the token. Spring Security's default `HttpSessionCsrfTokenRepository` keeps
+ * one token per session and never rotates it per request; the default
+ * `XorCsrfTokenRequestAttributeHandler` re-masks it on every render, so the
+ * string in the HTML changes each GET while unmasking to the same token. Only
+ * `login()` moves the session, via `changeSessionId`. A fix aimed at the token
+ * would have addressed the illusion.
  */
 export class SteveUiOps {
   private cookies = new Map<string, string>();
 
-  constructor(private readonly cfg: SteveConfig) {}
+  /** Tail of the queue of `postForm` calls. Never rejects -- see serialise(). */
+  private gate: Promise<void> = Promise.resolve();
+
+  constructor(
+    private readonly cfg: SteveConfig,
+    private readonly fetchImpl: FetchLike = (input, init) => fetch(input, init),
+  ) {}
+
+  /**
+   * Run `work` after every call already queued, and before every later one.
+   *
+   * A promise chain rather than a dependency: this package has no runtime
+   * dependencies, and `tck/main.ts` memoises its driver with the same
+   * `promise ??=` shape. The caller's failure is the caller's -- `run` rejects
+   * for whoever owns it, while the chain itself is left resolved, because a
+   * rejected `gate` would fail every lane queued behind the first one to
+   * stumble.
+   */
+  private serialise<T>(work: () => Promise<T>): Promise<T> {
+    const run = this.gate.then(work);
+    this.gate = run.then(
+      () => {},
+      () => {},
+    );
+    return run;
+  }
 
   private cookieHeader(): string {
     return [...this.cookies.entries()].map(([k, v]) => `${k}=${v}`).join("; ");
@@ -101,23 +186,45 @@ export class SteveUiOps {
     }
   }
 
-  async isLoggedIn(): Promise<boolean> {
-    if (this.cookies.size === 0) return false;
-    const res = await fetch(`${this.cfg.baseUrl}/home`, {
+  /**
+   * One request, carrying the caller's cookies and two deadlines: its own, and
+   * the one bounding the whole critical section it runs in.
+   *
+   * The section deadline is the load-bearing half. Every request used to carry
+   * only its own timeout, which composes rather than caps: five of them in a
+   * row is fifty seconds, and holding the lock that long would push a queued
+   * lane past its scenario's observation window -- reintroducing "the operation
+   * never reached the wire", relocated from the CSRF race to the queue behind
+   * it. Neither budget is shortened by combining them.
+   */
+  private async request(
+    path: string,
+    deadline: AbortSignal,
+    init: RequestInit = {},
+  ): Promise<Response> {
+    return this.fetchImpl(`${this.cfg.baseUrl}/${path}`, {
       redirect: "manual",
+      ...init,
+      signal: AbortSignal.any([
+        deadline,
+        AbortSignal.timeout(DEFAULT_TIMEOUT_MS),
+      ]),
+    });
+  }
+
+  private async isLoggedIn(deadline: AbortSignal): Promise<boolean> {
+    if (this.cookies.size === 0) return false;
+    const res = await this.request("home", deadline, {
       headers: { cookie: this.cookieHeader() },
-      signal: AbortSignal.timeout(DEFAULT_TIMEOUT_MS),
     });
     return res.status === 200;
   }
 
-  async login(): Promise<void> {
+  private async login(deadline: AbortSignal): Promise<void> {
     this.cookies.clear();
+    const signin = `${this.cfg.baseUrl}/signin`;
 
-    let res = await fetch(`${this.cfg.baseUrl}/signin`, {
-      redirect: "manual",
-      signal: AbortSignal.timeout(DEFAULT_TIMEOUT_MS),
-    });
+    let res = await this.request("signin", deadline);
     this.absorbSetCookie(res);
     const csrf = extractCsrf(await res.text());
 
@@ -126,22 +233,51 @@ export class SteveUiOps {
       password: this.cfg.password,
       _csrf: csrf,
     });
-    res = await fetch(`${this.cfg.baseUrl}/signin`, {
+    res = await this.request("signin", deadline, {
       method: "POST",
-      redirect: "manual",
       headers: {
         "content-type": "application/x-www-form-urlencoded",
         cookie: this.cookieHeader(),
       },
       body: form.toString(),
-      signal: AbortSignal.timeout(DEFAULT_TIMEOUT_MS),
     });
     this.absorbSetCookie(res);
+
+    // Check, rather than assume. An unchecked signin is why issue #77 read as
+    // "could not find _csrf token in response body" from a GET three steps
+    // later: the failure that mattered had already happened and said nothing.
+    if (res.status >= 400) {
+      throw new CsmsNotDispatchedError(
+        signin,
+        `signin was answered ${res.status}; nothing this client posts will be ` +
+          "accepted until it holds an authenticated session",
+      );
+    }
+    // Spring's form login redirects to loginPage + "?error" on bad credentials,
+    // which is a 302 like success and leaves an unauthenticated session behind.
+    // Matched narrowly, on both halves: a success redirect that merely passed
+    // through this path would otherwise break every run rather than the one
+    // that is actually misconfigured.
+    const location = res.headers.get("location") ?? "";
+    if (/\/signin\b/.test(location) && /[?&]error\b/.test(location)) {
+      throw new CsmsNotDispatchedError(
+        signin,
+        `signin bounced back to ${location} -- STEVE_USER/STEVE_PASS were refused`,
+      );
+    }
   }
 
-  async ensureLogin(): Promise<void> {
-    if (await this.isLoggedIn()) return;
-    await this.login();
+  /**
+   * NOT SERIALISED, and neither are isLoggedIn() or login() -- which is why all
+   * three are private. They run only from postFormExclusive(), which already
+   * holds the gate, so taking it again here would deadlock on the first call.
+   * The invariant is "postForm is the only entry point", and `private` is what
+   * enforces it: a second door into the session is not a wrong answer that some
+   * guard could catch, it is a caller no guard ever sees.
+   */
+  private async ensureLogin(deadline: AbortSignal): Promise<void> {
+    if (await this.isLoggedIn(deadline)) return;
+    await this.login(deadline);
   }
 
   /**
@@ -153,17 +289,28 @@ export class SteveUiOps {
    * `path` is relative to the manager base, so it spans more than operations:
    * provisioning posts to `chargingProfiles/add` through this same method,
    * which is the point of it being separate from op().
+   *
+   * Serialised against every other call on this instance, login included: the
+   * three steps below are one read-modify-write over the cookie jar, and the
+   * class comment says what interleaving two of them costs.
    */
   async postForm(
     path: string,
     fields: Record<string, string>,
   ): Promise<string> {
-    await this.ensureLogin();
+    return this.serialise(() => this.postFormExclusive(path, fields));
+  }
 
-    let res = await fetch(`${this.cfg.baseUrl}/${path}`, {
-      redirect: "manual",
+  /** {@link postForm}'s body, which assumes it already holds the lock. */
+  private async postFormExclusive(
+    path: string,
+    fields: Record<string, string>,
+  ): Promise<string> {
+    const deadline = AbortSignal.timeout(SECTION_TIMEOUT_MS);
+    await this.ensureLogin(deadline);
+
+    let res = await this.request(path, deadline, {
       headers: { cookie: this.cookieHeader() },
-      signal: AbortSignal.timeout(DEFAULT_TIMEOUT_MS),
     });
     this.absorbSetCookie(res);
     const csrf = extractCsrf(await res.text());
@@ -172,23 +319,35 @@ export class SteveUiOps {
     for (const [key, value] of Object.entries(fields)) form.set(key, value);
     form.set("_csrf", csrf);
 
-    res = await fetch(`${this.cfg.baseUrl}/${path}`, {
+    res = await this.request(path, deadline, {
       method: "POST",
-      redirect: "manual",
       headers: {
         "content-type": "application/x-www-form-urlencoded",
         cookie: this.cookieHeader(),
       },
       body: form.toString(),
-      signal: AbortSignal.timeout(DEFAULT_TIMEOUT_MS),
     });
     this.absorbSetCookie(res);
 
     const location = res.headers.get("location");
     if (!location) {
       const body = await res.text().catch(() => "<unreadable body>");
+      const detail = `status ${res.status}: ${body.slice(0, 300)}`;
+      // Any error status -- 4xx refused, 5xx failed -- means the form never
+      // became an OCPP CALL, so nothing downstream can be a finding about the
+      // CSMS. 5xx belongs here and not on the line below, which is the easy
+      // one to get wrong: SteVe answers the operation form with a redirect to
+      // the task it created, so a handler that threw created nothing to
+      // redirect to and asked no charge point anything. Sending it down the
+      // warn-and-continue path is the failure #77 was.
+      //
+      // A 2xx with no Location IS the CSMS answering: the form came back
+      // carrying validation errors, which is a finding about the CSMS.
+      if (res.status >= 400) {
+        throw new CsmsNotDispatchedError(path, detail);
+      }
       throw new Error(
-        `steve postForm: no redirect Location header for ${path} (status ${res.status}): ${body.slice(0, 300)}`,
+        `steve postForm: no redirect Location header for ${path} (${detail})`,
       );
     }
     return location;
