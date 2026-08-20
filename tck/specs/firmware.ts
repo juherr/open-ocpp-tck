@@ -17,7 +17,6 @@ import type { ScenarioSpec } from "../spec-types";
 import { inSeconds } from "../time";
 import { sleep } from "../util";
 
-
 // ---------------------------------------------------------------------------
 // The assertAllAnswered calls below are the whole of issue #11, and this file
 // is where it was found. OCA TC_044_{1,2,3}_CSMS put "The Central responds

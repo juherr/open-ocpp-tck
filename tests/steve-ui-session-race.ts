@@ -56,8 +56,8 @@
 import { CsmsNotDispatchedError } from "../tck/driver";
 import { warnOpFailed } from "../tck/op-warn";
 import {
+  defaultSteveConfig,
   type FetchLike,
-  type SteveConfig,
   SteveUiOps,
 } from "../drivers/steve/ui-client";
 
@@ -70,18 +70,10 @@ function fail(what: string, detail: string): void {
 
 const BASE = "http://steve.test/manager";
 
-const CFG: SteveConfig = {
-  baseUrl: BASE,
-  username: "admin",
-  password: "1234",
-  dbContainer: "steve-db",
-  dbUser: "steve",
-  dbPass: "changeme",
-  dbName: "stevedb",
-  appContainer: "steve",
-  wsBaseUrl: "ws://steve.test/websocket",
-  dockerNetwork: "steve_steve-internal",
-};
+/** Resolved, not hand-built: a literal here would be a second declaration of
+ *  what the driver actually uses, and a changed default would leave this guard
+ *  exercising a configuration no run produces. */
+const CFG = defaultSteveConfig({ STEVE_URL: BASE });
 
 // ---------------------------------------------------------------------------
 // The fake SteVe
@@ -93,30 +85,20 @@ interface Session {
   authenticated: boolean;
 }
 
-/** Spring's BREACH masking, in miniature: fresh salt per render, same token. */
+/**
+ * Spring's BREACH masking, in miniature: a fresh salt on every render, the same
+ * token underneath. Only the shape matters here -- that the rendered string
+ * differs per GET while unmasking to one session-scoped token -- so the salt is
+ * prefixed rather than XORed in. Reproducing the real encoding would add
+ * arithmetic no assertion below can observe.
+ */
 function maskToken(raw: string, salt: string): string {
-  const xored = [...raw]
-    .map((ch, i) =>
-      (ch.charCodeAt(0) ^ salt.charCodeAt(i % salt.length))
-        .toString(16)
-        .padStart(2, "0"),
-    )
-    .join("");
-  return `${salt}.${xored}`;
+  return `${salt}.${raw}`;
 }
 
 function unmaskToken(masked: string): string | undefined {
   const dot = masked.indexOf(".");
-  if (dot < 1) return undefined;
-  const salt = masked.slice(0, dot);
-  const hex = masked.slice(dot + 1);
-  if (hex.length % 2 !== 0) return undefined;
-  let out = "";
-  for (let i = 0; i < hex.length / 2; i++) {
-    const byte = Number.parseInt(hex.slice(i * 2, i * 2 + 2), 16);
-    out += String.fromCharCode(byte ^ salt.charCodeAt(i % salt.length));
-  }
-  return out;
+  return dot < 1 ? undefined : masked.slice(dot + 1);
 }
 
 interface Observation {
@@ -134,18 +116,14 @@ interface Fake {
   seen: Observation;
 }
 
-/**
- * `rejectPost` makes one path answer 403 unconditionally, so part 5 can tell a
- * refused request from a rejected form without racing anything.
- */
-function makeFake(opts: { rejectPost?: string; errorPost?: string } = {}): Fake {
+function makeFake(): Fake {
   const sessions = new Map<string, Session>();
   const seen: Observation = { posts: [], loginAttempts: 0, rendered: new Set() };
   let ids = 0;
 
   function newSession(authenticated: boolean): string {
     const id = `S${++ids}`;
-    sessions.set(id, { raw: `token-${id}-${ids}`, authenticated });
+    sessions.set(id, { raw: `token-${id}`, authenticated });
     return id;
   }
 
@@ -207,15 +185,6 @@ function makeFake(opts: { rejectPost?: string; errorPost?: string } = {}): Fake 
     }
 
     // POST to a manager page.
-    if (opts.rejectPost === path) {
-      seen.posts.push({ path, status: 403, tokenMatchedSession: false });
-      return new Response("Forbidden", { status: 403 });
-    }
-    if (opts.errorPost === path) {
-      // A form that came back with validation errors: answered, not refused.
-      seen.posts.push({ path, status: 200, tokenMatchedSession: true });
-      return new Response("<form>field is required</form>", { status: 200 });
-    }
     const sent = new URLSearchParams(String(init?.body ?? "")).get("_csrf");
     const matched = !!session && unmaskToken(sent ?? "") === session.raw;
     const ok = !!session?.authenticated && matched;
@@ -231,12 +200,40 @@ function makeFake(opts: { rejectPost?: string; errorPost?: string } = {}): Fake 
   return { fetch: fetchImpl, seen };
 }
 
-function settle<T>(p: Promise<T>): Promise<{ ok: true; value: T } | { ok: false; err: unknown }> {
-  return p.then(
-    (value) => ({ ok: true as const, value }),
-    (err) => ({ ok: false as const, err }),
-  );
+/** True for a POST to `path`, which is the only request any part below rigs. */
+function isPostTo(path: string): (input: string, init?: RequestInit) => boolean {
+  return (input, init) =>
+    input === `${BASE}/${path}` && (init?.method ?? "GET").toUpperCase() === "POST";
 }
+
+/**
+ * A fake with one request answered by hand.
+ *
+ * `once` is what parts 4, 5 and 7 differ by: whether the rigged answer stands
+ * for every matching request or only the first. Doing this as a wrapper rather
+ * than an option on makeFake keeps the fake a model of SteVe, with nothing in
+ * it that exists only for a test.
+ */
+function intercept(
+  fake: Fake,
+  matches: (input: string, init?: RequestInit) => boolean,
+  answer: () => Response,
+  opts: { once?: boolean } = {},
+): FetchLike {
+  let spent = false;
+  return async (input, init) => {
+    if (matches(input, init) && !spent) {
+      if (opts.once) spent = true;
+      return answer();
+    }
+    return fake.fetch(input, init);
+  };
+}
+
+const forbidden = (): Response => new Response("Forbidden", { status: 403 });
+
+const isRejected = (r: PromiseSettledResult<unknown>): r is PromiseRejectedResult =>
+  r.status === "rejected";
 
 function describe(err: unknown): string {
   return err instanceof Error ? `${err.name}: ${err.message}` : String(err);
@@ -248,18 +245,18 @@ function describe(err: unknown): string {
   const fake = makeFake();
   const ui = new SteveUiOps(CFG, fake.fetch);
 
-  const results = await Promise.all(
+  const results = await Promise.allSettled(
     Array.from({ length: lanes }, (_, i) =>
-      settle(ui.postForm("operations/v1.6/Reset", { chargePointSelectList: `CP${i}` })),
+      ui.postForm("operations/v1.6/Reset", { chargePointSelectList: `CP${i}` }),
     ),
   );
 
-  const rejected = results.filter((r) => !r.ok);
+  const rejected = results.filter(isRejected);
   if (rejected.length > 0) {
     fail(
       `${lanes} concurrent postForms: ${rejected.length} of them failed`,
       `expected every lane to get its redirect; first failure was ` +
-        `${describe((rejected[0] as { err: unknown }).err)}\n  ` +
+        `${describe(rejected[0]!.reason)}\n  ` +
         `(the GET that reads a CSRF token and the POST that spends it must be ` +
         `atomic against the other lanes sharing this instance)`,
     );
@@ -282,10 +279,10 @@ function describe(err: unknown): string {
     );
   }
 
-  const forbidden = fake.seen.posts.filter((p) => p.status === 403);
-  if (forbidden.length > 0) {
+  const refused = fake.seen.posts.filter((p) => p.status === 403);
+  if (refused.length > 0) {
     fail(
-      `${forbidden.length} POST(s) were answered 403`,
+      `${refused.length} POST(s) were answered 403`,
       `a 403 here means Spring rejected a _csrf that no longer matched its ` +
         `cookie -- the operation never reached the wire`,
     );
@@ -304,30 +301,27 @@ function describe(err: unknown): string {
 
 // ---- 4. A signin that fails is reported, not swallowed
 {
-  const fake = makeFake();
   // The fake accepts any password on a valid token, so refuse the signin POST
   // outright -- which is what SteVe does to the loser of the session race.
-  const refusing: FetchLike = async (input, init) => {
-    if (input.endsWith("/signin") && (init?.method ?? "GET").toUpperCase() === "POST") {
-      return new Response("Forbidden", { status: 403 });
-    }
-    return fake.fetch(input, init);
-  };
-
-  const result = await settle(
-    new SteveUiOps(CFG, refusing).postForm("operations/v1.6/Reset", {}),
+  const ui = new SteveUiOps(
+    CFG,
+    intercept(makeFake(), isPostTo("signin"), forbidden),
   );
-  if (result.ok) {
+
+  const [result] = await Promise.allSettled([
+    ui.postForm("operations/v1.6/Reset", {}),
+  ]);
+  if (!isRejected(result!)) {
     fail(
       "a refused signin was swallowed",
       "postForm resolved even though the signin POST was answered 403; " +
         "login() must check its own result, or the real failure surfaces later " +
         "as an unrelated-looking error",
     );
-  } else if (!/signin/i.test(describe(result.err))) {
+  } else if (!/signin/i.test(describe(result.reason))) {
     fail(
       "a refused signin was reported as something else",
-      `expected the error to name the signin step, got ${describe(result.err)}`,
+      `expected the error to name the signin step, got ${describe(result.reason)}`,
     );
   }
 }
@@ -335,31 +329,39 @@ function describe(err: unknown): string {
 // ---- 5. Refused-before-dispatch vs answered-with-errors are different findings
 {
   const path = "operations/v1.6/Reset";
+  const post = (answer: () => Response): Promise<PromiseSettledResult<string>[]> =>
+    Promise.allSettled([
+      new SteveUiOps(
+        CFG,
+        intercept(makeFake(), isPostTo(path), answer),
+      ).postForm(path, {}),
+    ]);
 
-  const refused = makeFake({ rejectPost: path });
-  const a = await settle(new SteveUiOps(CFG, refused.fetch).postForm(path, {}));
-  if (a.ok) {
+  const [a] = await post(forbidden);
+  if (!isRejected(a!)) {
     fail(
       "a 403 form post was reported as success",
       "postForm resolved on a request the transport refused",
     );
-  } else if (!(a.err instanceof CsmsNotDispatchedError)) {
+  } else if (!(a.reason instanceof CsmsNotDispatchedError)) {
     fail(
       "a refused request was not a CsmsNotDispatchedError",
-      `got ${describe(a.err)} -- the runner recognises the class with ` +
+      `got ${describe(a.reason)} -- the runner recognises the class with ` +
         `instanceof, so a plain Error is a scenario reporting confident FAILs ` +
         `about a charge point that was never asked anything`,
     );
   }
 
-  const errored = makeFake({ errorPost: path });
-  const b = await settle(new SteveUiOps(CFG, errored.fetch).postForm(path, {}));
-  if (b.ok) {
+  // A form that came back carrying validation errors: answered, not refused.
+  const [b] = await post(
+    () => new Response("<form>field is required</form>", { status: 200 }),
+  );
+  if (!isRejected(b!)) {
     fail(
       "a form returned with validation errors was reported as success",
       "a 200 with no Location means the form came back rejected",
     );
-  } else if (b.err instanceof CsmsNotDispatchedError) {
+  } else if (b.reason instanceof CsmsNotDispatchedError) {
     fail(
       "a rejected form was classified as never dispatched",
       "the request reached the CSMS and was answered; calling that a " +
@@ -431,39 +433,29 @@ function describe(err: unknown): string {
 // ---- 7. A rejected call does not poison the queue behind it
 {
   const path = "operations/v1.6/Reset";
-  let refuseNext = true;
-  const fake = makeFake();
   // Refuse exactly the first form POST, then behave.
-  const flaky: FetchLike = async (input, init) => {
-    if (
-      input.endsWith(path) &&
-      (init?.method ?? "GET").toUpperCase() === "POST" &&
-      refuseNext
-    ) {
-      refuseNext = false;
-      return new Response("Forbidden", { status: 403 });
-    }
-    return fake.fetch(input, init);
-  };
-  const ui = new SteveUiOps(CFG, flaky);
+  const ui = new SteveUiOps(
+    CFG,
+    intercept(makeFake(), isPostTo(path), forbidden, { once: true }),
+  );
 
-  const [first, second, third] = await Promise.all([
-    settle(ui.postForm(path, {})),
-    settle(ui.postForm(path, {})),
-    settle(ui.postForm(path, {})),
+  const [first, ...later] = await Promise.allSettled([
+    ui.postForm(path, {}),
+    ui.postForm(path, {}),
+    ui.postForm(path, {}),
   ]);
 
-  if (first!.ok) {
+  if (!isRejected(first!)) {
     fail(
       "the rigged first call was expected to fail",
       "part 7 cannot say anything unless the call it queues behind actually failed",
     );
   }
-  for (const [n, later] of [second, third].entries()) {
-    if (!later!.ok) {
+  for (const [n, result] of later.entries()) {
+    if (isRejected(result)) {
       fail(
         `the call queued behind a failure also failed (queue position ${n + 2})`,
-        `a lane's failure must stay that lane's; got ${describe((later as { err: unknown }).err)}`,
+        `a lane's failure must stay that lane's; got ${describe(result.reason)}`,
       );
     }
   }

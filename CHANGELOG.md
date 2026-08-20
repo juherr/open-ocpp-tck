@@ -42,6 +42,12 @@ Released as `0.3.0`. The documented install ref already points at that tag, so
 
 ### Changed
 
+- `SteveUiOps.isLoggedIn`, `.login` and `.ensureLogin` are private. They had no
+  caller outside the class, and none of them is serialised — they run under the
+  lock `postForm` takes — so a second entry point into the session was a way to
+  reopen the race that no guard could observe. `postForm` and `op` are
+  unchanged, and the constructor takes an optional `fetch` as a second argument
+  ([#77])
 - **BREAKING** — the OCPP 1.6 operation vocabulary now says which protocol it
   is: `CsmsOperation` → `CsmsOperation16`, `CsmsOperationAction` →
   `CsmsOperation16Action`, `CsmsOperations` → `CsmsOperations16`, `ResetType` →

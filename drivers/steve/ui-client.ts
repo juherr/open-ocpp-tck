@@ -17,6 +17,17 @@ import { CsmsNotDispatchedError } from "../../tck/driver";
 
 const DEFAULT_TIMEOUT_MS = 10_000;
 
+/**
+ * How long one `postForm` may hold the instance lock, whatever it is doing.
+ *
+ * Deliberately not a multiple of {@link DEFAULT_TIMEOUT_MS}: a post is up to
+ * five requests, so per-request timeouts alone would let one stalled lane hold
+ * the lock for fifty seconds, and the median scenario watches for twelve. This
+ * caps the wait a queued lane can inherit while leaving every individual
+ * request its full allowance.
+ */
+const SECTION_TIMEOUT_MS = 20_000;
+
 export interface SteveConfig {
   /** e.g. http://steve:8180/steve/manager (container-internal: the
    *  public host is behind a forward-auth proxy this client cannot pass). */
@@ -75,7 +86,16 @@ export type FetchLike = (
   init?: RequestInit,
 ) => Promise<Response>;
 
-const CSRF_RE = /name="_csrf"\s+value="([^"]*)"/;
+/**
+ * How SteVe renders the CSRF token into a manager page.
+ *
+ * Exported because `tools/steve-csrf-race.ts` scrapes the same field to report
+ * whether the token varied between GETs, and that observation is the whole
+ * point of the tool. A second copy of this pattern would keep matching nothing
+ * after a markup change and report "0 distinct tokens", which reads as "no
+ * rotation, the fix holds" -- failing open on exactly the question asked.
+ */
+export const CSRF_RE = /name="_csrf"\s+value="([^"]*)"/;
 
 function extractCsrf(html: string): string {
   const match = CSRF_RE.exec(html);
@@ -166,23 +186,45 @@ export class SteveUiOps {
     }
   }
 
-  async isLoggedIn(): Promise<boolean> {
-    if (this.cookies.size === 0) return false;
-    const res = await this.fetchImpl(`${this.cfg.baseUrl}/home`, {
+  /**
+   * One request, carrying the caller's cookies and two deadlines: its own, and
+   * the one bounding the whole critical section it runs in.
+   *
+   * The section deadline is the load-bearing half. Every request used to carry
+   * only its own timeout, which composes rather than caps: five of them in a
+   * row is fifty seconds, and holding the lock that long would push a queued
+   * lane past its scenario's observation window -- reintroducing "the operation
+   * never reached the wire", relocated from the CSRF race to the queue behind
+   * it. Neither budget is shortened by combining them.
+   */
+  private async request(
+    path: string,
+    deadline: AbortSignal,
+    init: RequestInit = {},
+  ): Promise<Response> {
+    return this.fetchImpl(`${this.cfg.baseUrl}/${path}`, {
       redirect: "manual",
+      ...init,
+      signal: AbortSignal.any([
+        deadline,
+        AbortSignal.timeout(DEFAULT_TIMEOUT_MS),
+      ]),
+    });
+  }
+
+  private async isLoggedIn(deadline: AbortSignal): Promise<boolean> {
+    if (this.cookies.size === 0) return false;
+    const res = await this.request("home", deadline, {
       headers: { cookie: this.cookieHeader() },
-      signal: AbortSignal.timeout(DEFAULT_TIMEOUT_MS),
     });
     return res.status === 200;
   }
 
-  async login(): Promise<void> {
+  private async login(deadline: AbortSignal): Promise<void> {
     this.cookies.clear();
+    const signin = `${this.cfg.baseUrl}/signin`;
 
-    let res = await this.fetchImpl(`${this.cfg.baseUrl}/signin`, {
-      redirect: "manual",
-      signal: AbortSignal.timeout(DEFAULT_TIMEOUT_MS),
-    });
+    let res = await this.request("signin", deadline);
     this.absorbSetCookie(res);
     const csrf = extractCsrf(await res.text());
 
@@ -191,22 +233,19 @@ export class SteveUiOps {
       password: this.cfg.password,
       _csrf: csrf,
     });
-    res = await this.fetchImpl(`${this.cfg.baseUrl}/signin`, {
+    res = await this.request("signin", deadline, {
       method: "POST",
-      redirect: "manual",
       headers: {
         "content-type": "application/x-www-form-urlencoded",
         cookie: this.cookieHeader(),
       },
       body: form.toString(),
-      signal: AbortSignal.timeout(DEFAULT_TIMEOUT_MS),
     });
     this.absorbSetCookie(res);
 
     // Check, rather than assume. An unchecked signin is why issue #77 read as
     // "could not find _csrf token in response body" from a GET three steps
     // later: the failure that mattered had already happened and said nothing.
-    const signin = `${this.cfg.baseUrl}/signin`;
     if (res.status >= 400) {
       throw new CsmsNotDispatchedError(
         signin,
@@ -229,16 +268,16 @@ export class SteveUiOps {
   }
 
   /**
-   * NOT SERIALISED, and neither are isLoggedIn() or login(). They are reachable
-   * only from postFormExclusive(), which already holds the gate, so locking
-   * them here would deadlock on the first call. The invariant is therefore
-   * "postForm is the only entry point": anything new that calls these directly
-   * from outside puts the session race back, and no guard can see it happen,
-   * because a second entry point is not a wrong answer -- it is a second door.
+   * NOT SERIALISED, and neither are isLoggedIn() or login() -- which is why all
+   * three are private. They run only from postFormExclusive(), which already
+   * holds the gate, so taking it again here would deadlock on the first call.
+   * The invariant is "postForm is the only entry point", and `private` is what
+   * enforces it: a second door into the session is not a wrong answer that some
+   * guard could catch, it is a caller no guard ever sees.
    */
-  async ensureLogin(): Promise<void> {
-    if (await this.isLoggedIn()) return;
-    await this.login();
+  private async ensureLogin(deadline: AbortSignal): Promise<void> {
+    if (await this.isLoggedIn(deadline)) return;
+    await this.login(deadline);
   }
 
   /**
@@ -262,18 +301,16 @@ export class SteveUiOps {
     return this.serialise(() => this.postFormExclusive(path, fields));
   }
 
-  /** {@link postForm}'s body, which assumes it already holds the lock. Nothing
-   *  reachable from here may call postForm again: the gate is not reentrant. */
+  /** {@link postForm}'s body, which assumes it already holds the lock. */
   private async postFormExclusive(
     path: string,
     fields: Record<string, string>,
   ): Promise<string> {
-    await this.ensureLogin();
+    const deadline = AbortSignal.timeout(SECTION_TIMEOUT_MS);
+    await this.ensureLogin(deadline);
 
-    let res = await this.fetchImpl(`${this.cfg.baseUrl}/${path}`, {
-      redirect: "manual",
+    let res = await this.request(path, deadline, {
       headers: { cookie: this.cookieHeader() },
-      signal: AbortSignal.timeout(DEFAULT_TIMEOUT_MS),
     });
     this.absorbSetCookie(res);
     const csrf = extractCsrf(await res.text());
@@ -282,15 +319,13 @@ export class SteveUiOps {
     for (const [key, value] of Object.entries(fields)) form.set(key, value);
     form.set("_csrf", csrf);
 
-    res = await this.fetchImpl(`${this.cfg.baseUrl}/${path}`, {
+    res = await this.request(path, deadline, {
       method: "POST",
-      redirect: "manual",
       headers: {
         "content-type": "application/x-www-form-urlencoded",
         cookie: this.cookieHeader(),
       },
       body: form.toString(),
-      signal: AbortSignal.timeout(DEFAULT_TIMEOUT_MS),
     });
     this.absorbSetCookie(res);
 

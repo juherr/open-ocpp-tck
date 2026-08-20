@@ -8,7 +8,7 @@
    assertEq,
    assertLineAfter,
    assertLineMatches,
-@@ -21,16 +22,86 @@
+@@ -21,13 +22,82 @@
    assertReceived,
    assertResponseStatus,
    assertSent,
@@ -94,11 +94,7 @@
    );
  }
  
-+
- // ---------------------------------------------------------------------------
- // TC_010 Remote Start Transaction -- parks waiting for RemoteStartTransaction;
- // on Accepted, StatusNotification(Preparing) -> StartTransaction ->
-@@ -46,14 +117,13 @@
+@@ -46,14 +116,13 @@
    connector: 1,
    bootWaitSecs: 4,
    holdSecs: 25,
@@ -117,7 +113,7 @@
        });
      } catch (err) {
        warnOpFailed("RemoteStartTransaction", err);
-@@ -65,19 +135,16 @@
+@@ -65,19 +134,16 @@
      // first increment, producing a false FAIL on "MeterValues sent while
      // charging").
      await sleep(8000);
@@ -140,7 +136,7 @@
      assertReceived(
        rec,
        frames,
-@@ -104,8 +171,21 @@
+@@ -104,8 +170,21 @@
        "StartTransaction sent with CSMS-supplied idTag (overrides scenario's hardcoded CERT010 fallback)",
      );
      assertSent(rec, frames, "MeterValues", "MeterValues sent while charging");
@@ -163,7 +159,7 @@
      if (!txPk) {
        rec.fail(
          `DB: transaction row exists for ${cpId} with id_tag CERT-TAG-1`,
-@@ -119,7 +199,7 @@
+@@ -119,7 +198,7 @@
      // thing (and reports a more useful mismatch on failure).
      assertEq(
        rec,
@@ -172,7 +168,7 @@
        "CERT-TAG-1",
        `DB: transaction row exists for ${cpId} with id_tag CERT-TAG-1`,
      );
-@@ -139,35 +219,31 @@
+@@ -139,35 +218,31 @@
    connector: 1,
    bootWaitSecs: 4,
    holdSecs: 20,
@@ -215,7 +211,7 @@
      assertResponseStatus(
        rec,
        frames,
-@@ -194,8 +270,14 @@
+@@ -194,8 +269,14 @@
        /Sent: \[2,.*"StopTransaction".*"reason":"Remote"/,
        "StopTransaction sent with reason Remote",
      );
@@ -231,7 +227,7 @@
      if (!txPk) {
        rec.fail(
          "DB: transaction is closed (stop_timestamp set)",
-@@ -205,7 +287,7 @@
+@@ -205,7 +286,7 @@
      }
      assertNonEmpty(
        rec,
@@ -240,7 +236,7 @@
        "DB: transaction is closed (stop_timestamp set)",
      );
    },
-@@ -223,21 +305,18 @@
+@@ -223,21 +304,18 @@
    connector: 1,
    bootWaitSecs: 4,
    holdSecs: 18,
@@ -266,7 +262,7 @@
      assertLineMatches(
        rec,
        lines,
-@@ -257,8 +336,11 @@
+@@ -257,8 +335,11 @@
        /Sent: \[2,.*"StopTransaction".*"reason":"Remote"/,
        "StopTransaction sent with reason Remote",
      );
@@ -279,7 +275,7 @@
      if (!txPk) {
        rec.fail("DB: id_tag is CERT012", "no transaction found");
        rec.fail(
-@@ -267,10 +349,10 @@
+@@ -267,10 +348,10 @@
        );
        return;
      }
@@ -292,7 +288,7 @@
        "DB: transaction is closed (stop_timestamp set)",
      );
    },
-@@ -298,19 +380,18 @@
+@@ -298,19 +379,18 @@
      connector: 1,
      bootWaitSecs: 4,
      holdSecs: 15,
@@ -319,7 +315,7 @@
        } catch (err) {
          // Mirror the bash spec's `|| true`: a failed queue POST doesn't
          // abort drive() -- assert() below fails loudly on its own if the
-@@ -319,7 +400,7 @@
+@@ -319,7 +399,7 @@
        }
        return { baselineTxPk };
      },
@@ -328,7 +324,7 @@
        assertReceived(
          rec,
          frames,
-@@ -345,7 +426,7 @@
+@@ -345,7 +425,7 @@
          "no StartTransaction sent",
        );
  
@@ -337,7 +333,7 @@
        assertEq(
          rec,
          after,
-@@ -373,9 +454,9 @@
+@@ -373,9 +453,9 @@
      connector: 1,
      bootWaitSecs: 4,
      holdSecs: 20,
@@ -349,7 +345,7 @@
        // -- on a reused charge point that could silently pick up a stale
        // closed transaction from an earlier run instead. Mirrors the bash
        // spec's `db_wait_active_tx_pk ... || true`: waitActiveTxPk rejects
-@@ -383,23 +464,20 @@
+@@ -383,23 +463,20 @@
        // empty txPk, same as the bash `|| true` swallowing a timeout.
        let txPk = "";
        try {
@@ -376,7 +372,7 @@
        assertLineMatches(
          rec,
          lines,
-@@ -429,7 +507,7 @@
+@@ -429,7 +506,7 @@
        }
        assertNonEmpty(
          rec,
@@ -385,7 +381,7 @@
          "DB: transaction is closed (stop_timestamp set)",
        );
      },
-@@ -447,14 +525,10 @@
+@@ -447,14 +524,10 @@
    connector: 1,
    bootWaitSecs: 4,
    holdSecs: 12,
@@ -402,7 +398,7 @@
      } catch (err) {
        warnOpFailed("TriggerMessage", err);
      }
-@@ -486,6 +560,17 @@
+@@ -486,6 +559,17 @@
        /Sent: \[2,.*"Heartbeat"/,
        "requested Heartbeat sent after TriggerMessage",
      );
@@ -420,7 +416,7 @@
    },
  };
  
-@@ -501,14 +586,10 @@
+@@ -501,14 +585,10 @@
    connector: 1,
    bootWaitSecs: 4,
    holdSecs: 12,
@@ -437,7 +433,7 @@
      } catch (err) {
        warnOpFailed("TriggerMessage", err);
      }
-@@ -560,25 +641,24 @@
+@@ -560,25 +640,24 @@
      bootWaitSecs: 4,
      // tx-start settle(3s) + csmsCallTrigger + 10s delay-before-stop + tail.
      holdSecs: 25,
@@ -472,7 +468,7 @@
        assertLineMatches(
          rec,
          lines,
-@@ -609,7 +689,7 @@
+@@ -609,7 +688,7 @@
        // drive()'s captured pk if non-empty, else fall back to a fresh
        // lookup (defensive: TX_PK could be empty if drive() raced the DB
        // write before the profile-set op).
@@ -481,7 +477,7 @@
        if (!txPk) {
          rec.fail(
            "DB: transaction is closed (stop_timestamp set)",
-@@ -619,7 +699,7 @@
+@@ -619,7 +698,7 @@
        }
        assertNonEmpty(
          rec,
@@ -490,7 +486,7 @@
          "DB: transaction is closed (stop_timestamp set)",
        );
      },
-@@ -646,33 +726,33 @@
+@@ -646,33 +725,33 @@
      connector: 1,
      bootWaitSecs: 4,
      holdSecs: 25,
@@ -535,7 +531,7 @@
        assertLineMatches(
          rec,
          lines,
-@@ -708,7 +788,7 @@
+@@ -708,7 +787,7 @@
        }
        assertNonEmpty(
          rec,
@@ -544,7 +540,7 @@
          "DB: transaction is closed (stop_timestamp set)",
        );
      },
-@@ -739,25 +819,25 @@
+@@ -739,25 +818,25 @@
      holdSecs: 40,
      async drive({
        cpId,
@@ -580,7 +576,7 @@
        assertResponseStatus(
          rec,
          frames,
-@@ -791,8 +871,14 @@
+@@ -791,8 +870,14 @@
          /Sent: \[2,.*"StopTransaction"/,
          "StopTransaction eventually sent",
        );
@@ -596,7 +592,7 @@
        if (!txPk) {
          rec.fail(
            "DB: transaction is closed (stop_timestamp set)",
-@@ -802,7 +888,7 @@
+@@ -802,7 +887,7 @@
        }
        assertNonEmpty(
          rec,
@@ -605,7 +601,7 @@
          "DB: transaction is closed (stop_timestamp set)",
        );
      },
-@@ -822,26 +908,25 @@
+@@ -822,26 +907,25 @@
    connector: 1,
    bootWaitSecs: 4,
    holdSecs: 15,
@@ -639,7 +635,7 @@
      // here isn't a completion barrier. Wait for the CP's own confirmation
      // that it actually applied the profile (the log literal is
      // SmartChargingHandlers.ts's "Applied charging profile #<id> to
-@@ -862,17 +947,17 @@
+@@ -862,17 +946,17 @@
      }
  
      try {
@@ -662,7 +658,7 @@
      assertResponseStatus(
        rec,
        frames,
-@@ -887,10 +972,10 @@
+@@ -887,10 +971,10 @@
        "Accepted",
        "GetCompositeSchedule accepted",
      );
@@ -676,7 +672,7 @@
        "returned schedule reflects the applied profile's period (limit 11000)",
      );
    },
-@@ -908,20 +993,19 @@
+@@ -908,20 +992,19 @@
    connector: 1,
    bootWaitSecs: 4,
    holdSecs: 15,
@@ -703,7 +699,7 @@
        });
      } catch (err) {
        warnOpFailed("SetChargingProfile", err);
-@@ -944,10 +1028,7 @@
+@@ -944,10 +1027,7 @@
      }
  
      try {

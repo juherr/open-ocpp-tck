@@ -1,7 +1,9 @@
 // Copyright 2026 Julien Herr
 // SPDX-License-Identifier: Apache-2.0
 /**
- * op-warn.ts -- what a scenario does when a CSMS operation it asked for fails.
+ * op-warn.ts -- what a scenario does when something it asked the CSMS for
+ * fails. Mostly an operation, and twice a records wait, which is why `op` is a
+ * label rather than an action.
  *
  * Most scenarios drive an operation and then measure what the CHARGE POINT did
  * about it. A CSMS that refuses the operation is therefore not automatically

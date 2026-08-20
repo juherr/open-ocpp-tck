@@ -509,7 +509,13 @@ export interface CsmsOperations16 {
    * on the simulator's captured wire log.
    *
    * Throws {@link UnsupportedOperationError} when this CSMS cannot express the
-   * operation at all, and anything else for a genuine transport failure.
+   * operation at all, and {@link CsmsNotDispatchedError} when the transport
+   * refused the request so that it never became an OCPP CALL -- a refused form
+   * post, a connection that never opened. Prefer the second over a plain
+   * `Error` wherever a driver can tell: a scenario warns and continues on
+   * anything else, and continuing past an operation the charge point was never
+   * asked to perform is how one lost dispatch becomes several confident
+   * findings about an idle station.
    */
   execute(cpId: string, op: CsmsOperation16): Promise<string>;
 }

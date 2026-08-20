@@ -26,7 +26,6 @@ import { inMinutes } from "../time";
 import { sleep } from "../util";
 import { waitForCondition } from "../wait";
 
-
 // ---------------------------------------------------------------------------
 // TC_042.1 Get Local List Version -- Not Supported. Local list disabled via
 // the scenario template's configSet; CP must answer listVersion -1.

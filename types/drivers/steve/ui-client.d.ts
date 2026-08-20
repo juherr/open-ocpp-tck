@@ -33,6 +33,16 @@ export declare function defaultSteveConfig(env?: NodeJS.ProcessEnv): SteveConfig
  */
 export type FetchLike = (input: string, init?: RequestInit) => Promise<Response>;
 /**
+ * How SteVe renders the CSRF token into a manager page.
+ *
+ * Exported because `tools/steve-csrf-race.ts` scrapes the same field to report
+ * whether the token varied between GETs, and that observation is the whole
+ * point of the tool. A second copy of this pattern would keep matching nothing
+ * after a markup change and report "0 distinct tokens", which reads as "no
+ * rotation, the fix holds" -- failing open on exactly the question asked.
+ */
+export declare const CSRF_RE: RegExp;
+/**
  * SteVe manager-UI client: login, CSRF, form POST -- one cookie jar per
  * instance. It is SteVe-specific and cannot drive any other CSMS.
  *
@@ -83,17 +93,29 @@ export declare class SteveUiOps {
     private serialise;
     private cookieHeader;
     private absorbSetCookie;
-    isLoggedIn(): Promise<boolean>;
-    login(): Promise<void>;
     /**
-     * NOT SERIALISED, and neither are isLoggedIn() or login(). They are reachable
-     * only from postFormExclusive(), which already holds the gate, so locking
-     * them here would deadlock on the first call. The invariant is therefore
-     * "postForm is the only entry point": anything new that calls these directly
-     * from outside puts the session race back, and no guard can see it happen,
-     * because a second entry point is not a wrong answer -- it is a second door.
+     * One request, carrying the caller's cookies and two deadlines: its own, and
+     * the one bounding the whole critical section it runs in.
+     *
+     * The section deadline is the load-bearing half. Every request used to carry
+     * only its own timeout, which composes rather than caps: five of them in a
+     * row is fifty seconds, and holding the lock that long would push a queued
+     * lane past its scenario's observation window -- reintroducing "the operation
+     * never reached the wire", relocated from the CSRF race to the queue behind
+     * it. Neither budget is shortened by combining them.
      */
-    ensureLogin(): Promise<void>;
+    private request;
+    private isLoggedIn;
+    private login;
+    /**
+     * NOT SERIALISED, and neither are isLoggedIn() or login() -- which is why all
+     * three are private. They run only from postFormExclusive(), which already
+     * holds the gate, so taking it again here would deadlock on the first call.
+     * The invariant is "postForm is the only entry point", and `private` is what
+     * enforces it: a second door into the session is not a wrong answer that some
+     * guard could catch, it is a caller no guard ever sees.
+     */
+    private ensureLogin;
     /**
      * GET a manager page for its CSRF token, then POST the form back to the same
      * path. Returns the redirect `Location`, which is how SteVe signals success;
@@ -109,8 +131,7 @@ export declare class SteveUiOps {
      * class comment says what interleaving two of them costs.
      */
     postForm(path: string, fields: Record<string, string>): Promise<string>;
-    /** {@link postForm}'s body, which assumes it already holds the lock. Nothing
-     *  reachable from here may call postForm again: the gate is not reentrant. */
+    /** {@link postForm}'s body, which assumes it already holds the lock. */
     private postFormExclusive;
     /**
      * steve_op OP_PATH FIELDS equivalent. POSTs one CSMS operation,

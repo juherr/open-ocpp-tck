@@ -32,6 +32,7 @@
  */
 import { chargingProfileForm } from "../drivers/steve/forms";
 import {
+  CSRF_RE,
   defaultSteveConfig,
   type FetchLike,
   SteveUiOps,
@@ -94,7 +95,7 @@ function instrument(seen: Seen): FetchLike {
     if ((init?.method ?? "GET").toUpperCase() === "GET") {
       seen.gets++;
       const body = await res.clone().text().catch(() => "");
-      const found = /name="_csrf"\s+value="([^"]*)"/.exec(body);
+      const found = CSRF_RE.exec(body);
       if (found) seen.tokens.add(found[1]!);
     }
     return res;
@@ -148,7 +149,8 @@ async function main(argv: readonly string[]): Promise<number> {
       `  accepted ${ok}\n` +
       `  refused  ${refused}   <- never reached the wire (CsmsNotDispatchedError)\n` +
       `  other    ${others.length}\n` +
-      `wall       ${wall}ms (${Math.round(wall / total)}ms/post)\n\n` +
+      `wall       ${wall}ms (${Math.round(wall / total)}ms/post, serialised by\n` +
+      `           design -- a latency figure, not a throughput one)\n\n` +
       `sessions   ${seen.sessions.size} distinct JSESSIONID(s) over ${seen.gets} GETs\n` +
       `tokens     ${seen.tokens.size} distinct _csrf string(s)\n` +
       `           more tokens than sessions is BREACH re-masking, not rotation:\n` +

@@ -101,7 +101,6 @@ function assertCompositeSchedulePeriodLimit(
   );
 }
 
-
 // ---------------------------------------------------------------------------
 // TC_010 Remote Start Transaction -- parks waiting for RemoteStartTransaction;
 // on Accepted, StatusNotification(Preparing) -> StartTransaction ->

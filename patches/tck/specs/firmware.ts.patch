@@ -1,6 +1,6 @@
 --- a/scripts/steve-verify/runner/specs/firmware.ts (upstream @ 604054adb0d7d7129a26a5f1ad2d5fdc290d1ca1)
 +++ b/scripts/ocpp-verify/tck/specs/firmware.ts
-@@ -6,27 +6,54 @@
+@@ -6,20 +6,33 @@
   */
  
  import {
@@ -21,8 +21,7 @@
 -    `[runner] WARN: steve_op ${op} failed (continuing): ${err instanceof Error ? err.message : String(err)}\n`,
 -  );
 -}
- 
- // ---------------------------------------------------------------------------
++// ---------------------------------------------------------------------------
 +// The assertAllAnswered calls below are the whole of issue #11, and this file
 +// is where it was found. OCA TC_044_{1,2,3}_CSMS put "The Central responds
 +// with a FirmwareStatusNotification.conf" on the Central System at steps 4, 6,
@@ -38,10 +37,10 @@
 +//
 +// OCA-COVERAGE.md is the table these come from.
 +// ---------------------------------------------------------------------------
-+
-+// ---------------------------------------------------------------------------
+ 
+ // ---------------------------------------------------------------------------
  // TC_044.1 Firmware Update -- Download and Install -- CSMS sends
- // UpdateFirmware.req; the CP genuinely waits until wall-clock retrieveDate
+@@ -27,6 +40,19 @@
  // before starting the FirmwareStatusNotification train (confirmed live in
  // the bash suite: this is correct OCPP 1.6 semantics, not a bug), then
  // progresses Downloading -> Downloaded -> Installing -> Installed.
@@ -61,7 +60,7 @@
  // ---------------------------------------------------------------------------
  
  export const tc0441FirmwareUpdateSpec: ScenarioSpec<void> = {
-@@ -35,21 +62,21 @@
+@@ -35,21 +61,21 @@
      "TC_044.1 Firmware Update: full Downloading -> Downloaded -> Installing -> Installed train.",
    connector: 1,
    bootWaitSecs: 4,
@@ -89,7 +88,7 @@
      assertLineMatches(
        rec,
        lines,
-@@ -101,6 +128,10 @@
+@@ -101,6 +127,10 @@
        /"status":"Installed"/,
        "Installing precedes Installed",
      );
@@ -100,7 +99,7 @@
    },
  };
  
-@@ -119,19 +150,19 @@
+@@ -119,19 +149,19 @@
    connector: 1,
    bootWaitSecs: 4,
    holdSecs: 110,
@@ -125,7 +124,7 @@
      assertLineMatches(
        rec,
        lines,
-@@ -166,6 +197,9 @@
+@@ -166,6 +196,9 @@
        /"status":"Installed"/,
        "Installed never reached",
      );
@@ -135,7 +134,7 @@
    },
  };
  
-@@ -184,19 +218,19 @@
+@@ -184,19 +217,19 @@
    connector: 1,
    bootWaitSecs: 4,
    holdSecs: 115,
@@ -160,7 +159,7 @@
      assertLineMatches(
        rec,
        lines,
-@@ -251,6 +285,10 @@
+@@ -251,6 +284,10 @@
        /"status":"Installed"/,
        "Installed (success terminal state) never reached",
      );
@@ -171,7 +170,7 @@
    },
  };
  
-@@ -277,13 +315,10 @@
+@@ -277,13 +314,10 @@
    connector: 1,
    bootWaitSecs: 4,
    holdSecs: 25,
@@ -187,7 +186,7 @@
      } catch (err) {
        warnOpFailed("GetDiagnostics", err);
      }
-@@ -320,6 +355,8 @@
+@@ -320,6 +354,8 @@
        /"status":"UploadFailed"/,
        "Uploading precedes UploadFailed",
      );
