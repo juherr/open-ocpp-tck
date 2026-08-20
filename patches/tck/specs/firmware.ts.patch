@@ -1,6 +1,6 @@
 --- a/scripts/steve-verify/runner/specs/firmware.ts (upstream @ 604054adb0d7d7129a26a5f1ad2d5fdc290d1ca1)
 +++ b/scripts/ocpp-verify/tck/specs/firmware.ts
-@@ -6,27 +6,58 @@
+@@ -6,27 +6,54 @@
   */
  
  import {
@@ -10,17 +10,17 @@
    assertNoLineMatches,
    assertReceived,
  } from "../assert";
++import { warnOpFailed } from "../op-warn";
  import type { ScenarioSpec } from "../spec-types";
 -import { retrieveDatetimeSoon } from "../steve";
 +import { inSeconds } from "../time";
  import { sleep } from "../util";
  
- function warnOpFailed(op: string, err: unknown): void {
-   process.stderr.write(
+-function warnOpFailed(op: string, err: unknown): void {
+-  process.stderr.write(
 -    `[runner] WARN: steve_op ${op} failed (continuing): ${err instanceof Error ? err.message : String(err)}\n`,
-+    `[runner] WARN: CSMS operation ${op} failed (continuing): ${err instanceof Error ? err.message : String(err)}\n`,
-   );
- }
+-  );
+-}
  
  // ---------------------------------------------------------------------------
 +// The assertAllAnswered calls below are the whole of issue #11, and this file
@@ -61,7 +61,7 @@
  // ---------------------------------------------------------------------------
  
  export const tc0441FirmwareUpdateSpec: ScenarioSpec<void> = {
-@@ -35,21 +66,21 @@
+@@ -35,21 +62,21 @@
      "TC_044.1 Firmware Update: full Downloading -> Downloaded -> Installing -> Installed train.",
    connector: 1,
    bootWaitSecs: 4,
@@ -89,7 +89,7 @@
      assertLineMatches(
        rec,
        lines,
-@@ -101,6 +132,10 @@
+@@ -101,6 +128,10 @@
        /"status":"Installed"/,
        "Installing precedes Installed",
      );
@@ -100,7 +100,7 @@
    },
  };
  
-@@ -119,19 +154,19 @@
+@@ -119,19 +150,19 @@
    connector: 1,
    bootWaitSecs: 4,
    holdSecs: 110,
@@ -125,7 +125,7 @@
      assertLineMatches(
        rec,
        lines,
-@@ -166,6 +201,9 @@
+@@ -166,6 +197,9 @@
        /"status":"Installed"/,
        "Installed never reached",
      );
@@ -135,7 +135,7 @@
    },
  };
  
-@@ -184,19 +222,19 @@
+@@ -184,19 +218,19 @@
    connector: 1,
    bootWaitSecs: 4,
    holdSecs: 115,
@@ -160,7 +160,7 @@
      assertLineMatches(
        rec,
        lines,
-@@ -251,6 +289,10 @@
+@@ -251,6 +285,10 @@
        /"status":"Installed"/,
        "Installed (success terminal state) never reached",
      );
@@ -171,7 +171,7 @@
    },
  };
  
-@@ -277,13 +319,10 @@
+@@ -277,13 +315,10 @@
    connector: 1,
    bootWaitSecs: 4,
    holdSecs: 25,
@@ -187,7 +187,7 @@
      } catch (err) {
        warnOpFailed("GetDiagnostics", err);
      }
-@@ -320,6 +359,8 @@
+@@ -320,6 +355,8 @@
        /"status":"UploadFailed"/,
        "Uploading precedes UploadFailed",
      );

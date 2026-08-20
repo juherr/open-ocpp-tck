@@ -24,6 +24,7 @@ import {
   type AssertRecorder,
 } from "../assert";
 import { findAllCalls, findCall, findResponseFor, type Frame } from "../ocpp";
+import { warnOpFailed } from "../op-warn";
 import type { ScenarioSpec } from "../spec-types";
 import { sleep } from "../util";
 
@@ -478,9 +479,7 @@ export const tc013HardResetSpec: ScenarioSpec<void> = {
     try {
       await csms16.execute(cpId, { action: "Reset", type: "Hard" });
     } catch (err) {
-      process.stderr.write(
-        `[runner] WARN: CSMS operation Reset(Hard) failed (continuing): ${err instanceof Error ? err.message : String(err)}\n`,
-      );
+      warnOpFailed("Reset(Hard)", err);
     }
   },
   async assert({ cpId, frames, lines, rec, records }) {
@@ -570,9 +569,7 @@ export const tc014SoftResetSpec: ScenarioSpec<void> = {
     try {
       await csms16.execute(cpId, { action: "Reset", type: "Soft" });
     } catch (err) {
-      process.stderr.write(
-        `[runner] WARN: CSMS operation Reset(Soft) failed (continuing): ${err instanceof Error ? err.message : String(err)}\n`,
-      );
+      warnOpFailed("Reset(Soft)", err);
     }
   },
   async assert({ cpId, frames, lines, rec, records }) {
@@ -643,9 +640,7 @@ export const tc017UnlockOccupiedSpec: ScenarioSpec<void> = {
     try {
       await csms16.execute(cpId, { action: "UnlockConnector", connectorId: 1 });
     } catch (err) {
-      process.stderr.write(
-        `[runner] WARN: CSMS operation UnlockConnector failed (continuing): ${err instanceof Error ? err.message : String(err)}\n`,
-      );
+      warnOpFailed("UnlockConnector", err);
     }
   },
   async assert({ cpId, records, frames, rec }) {
@@ -702,9 +697,7 @@ export const tc018UnlockFailureSpec: ScenarioSpec<void> = {
     try {
       await csms16.execute(cpId, { action: "UnlockConnector", connectorId: 1 });
     } catch (err) {
-      process.stderr.write(
-        `[runner] WARN: CSMS operation UnlockConnector failed (continuing): ${err instanceof Error ? err.message : String(err)}\n`,
-      );
+      warnOpFailed("UnlockConnector", err);
     }
   },
   async assert({ cpId, records, frames, rec }) {
@@ -763,9 +756,7 @@ export const tc019GetConfigurationAllSpec: ScenarioSpec<void> = {
     try {
       await csms16.execute(cpId, { action: "GetConfiguration" });
     } catch (err) {
-      process.stderr.write(
-        `[runner] WARN: CSMS operation GetConfiguration failed (continuing): ${err instanceof Error ? err.message : String(err)}\n`,
-      );
+      warnOpFailed("GetConfiguration", err);
     }
   },
   assert({ frames, lines, rec }) {
@@ -811,9 +802,7 @@ export const tc019GetConfigurationKeySpec: ScenarioSpec<void> = {
     try {
       await csms16.execute(cpId, { action: "GetConfiguration", keys: ["HeartbeatInterval"] });
     } catch (err) {
-      process.stderr.write(
-        `[runner] WARN: CSMS operation GetConfiguration failed (continuing): ${err instanceof Error ? err.message : String(err)}\n`,
-      );
+      warnOpFailed("GetConfiguration", err);
     }
   },
   assert({ frames, lines, rec }) {
@@ -852,9 +841,7 @@ export const tc021ChangeConfigurationSpec: ScenarioSpec<void> = {
         value: "10",
       });
     } catch (err) {
-      process.stderr.write(
-        `[runner] WARN: CSMS operation ChangeConfiguration failed (continuing): ${err instanceof Error ? err.message : String(err)}\n`,
-      );
+      warnOpFailed("ChangeConfiguration", err);
     }
   },
   assert({ frames, rec }) {
@@ -963,9 +950,7 @@ export const tc031UnlockUnknownConnectorSpec: ScenarioSpec<void> = {
     try {
       await csms16.execute(cpId, { action: "UnlockConnector", connectorId: 99 });
     } catch (err) {
-      process.stderr.write(
-        `[runner] WARN: CSMS operation UnlockConnector failed (continuing): ${err instanceof Error ? err.message : String(err)}\n`,
-      );
+      warnOpFailed("UnlockConnector", err);
     }
   },
   assert({ frames, lines, rec }) {
@@ -1000,9 +985,7 @@ export const tc061ClearCacheSpec: ScenarioSpec<void> = {
     try {
       await csms16.execute(cpId, { action: "ClearCache" });
     } catch (err) {
-      process.stderr.write(
-        `[runner] WARN: CSMS operation ClearCache failed (continuing): ${err instanceof Error ? err.message : String(err)}\n`,
-      );
+      warnOpFailed("ClearCache", err);
     }
   },
   assert({ frames, rec }) {
