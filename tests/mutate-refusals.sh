@@ -64,12 +64,19 @@ status=0
 pass() { echo "  ok   $1"; }
 fail() { status=1; echo "  FAIL $1" >&2; }
 
-TARGET_CONTENT='const answer = 42;'
 target=target.ts
+reference=$fixture/target.expected
+printf '%s\n' 'const answer = 42;' > "$reference"
+
+# A command that is GREEN and leaves a trace, for the one case that has to show
+# the command never ran rather than infer it from an exit code.
+marker=command-ran
+printf '#!/usr/bin/env bash\ntouch %s\n' "$marker" > "$fixture/green-with-marker.sh"
+chmod +x "$fixture/green-with-marker.sh"
 
 # Each case starts from the same file, so none can read as passing because a
 # previous one left the fixture in a helpful shape.
-reset_target() { printf '%s\n' "$TARGET_CONTENT" > "$fixture/$target"; }
+reset_target() { cp "$reference" "$fixture/$target"; rm -f "$fixture/$marker"; }
 
 # Runs the fixture's copy and captures output and exit code together.
 run_mutate() {
@@ -77,9 +84,13 @@ run_mutate() {
   echo $?
 }
 
-target_unchanged() {
-  [ "$(cat "$fixture/$target")" = "$TARGET_CONTENT" ]
-}
+# `cmp`, not `[ "$(cat f)" = ... ]`: command substitution strips trailing
+# newlines, so a restore that dropped or doubled one would compare equal. Part
+# 3 claims BYTE-identical, and an assertion weaker than the claim above it is
+# how a guard ends up certifying less than its header says.
+target_unchanged() { cmp -s "$fixture/$target" "$reference"; }
+
+command_ran() { [ -e "$fixture/$marker" ]; }
 
 said_red() { grep -q "the guard went red" "$fixture/out"; }
 
@@ -107,15 +118,23 @@ if [ "$code" != "2" ]; then
   fail "a non-executable command exited $code, expected 2"
 elif said_red; then
   fail "a non-executable command was reported as the guard going red"
+elif ! target_unchanged; then
+  fail "a non-executable command left the mutation in the file"
 else
   pass "a command that is not executable -- refused the same way"
 fi
 
 # ---- 2. a mutation that matches nothing
+# The command here is green and leaves a marker, so this asserts what the
+# property is actually about -- that it never ran at all. `-- false` could only
+# show an exit code, and 1 is what "did not apply" and "applied and stayed
+# green" both produce, so it would pass either way.
 reset_target
-code=$(run_mutate "$target" 's/no-such-text/x/' -- false)
+code=$(run_mutate "$target" 's/no-such-text/x/' -- ./green-with-marker.sh)
 if [ "$code" != "1" ]; then
   fail "a mutation matching nothing exited $code, expected 1"
+elif command_ran; then
+  fail "a mutation matching nothing still ran the command against unmutated code"
 elif said_red; then
   fail "a mutation that never applied was reported as the guard going red"
 elif ! target_unchanged; then
