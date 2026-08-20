@@ -40,9 +40,9 @@ export declare class CitrineGraphQL {
     private readonly fetchImpl;
     private readonly headers;
     /**
-     * `fetchImpl` is the seam an offline guard drives; the branches below need an
-     * engine that refuses a chosen way, which no CSMS here can be asked for. Read
-     * per call rather than captured.
+     * `fetchImpl` is the seam `tests/citrineos-transport-classification.ts`
+     * drives; the branches below need an engine that refuses a chosen way, which
+     * no CSMS here can be asked for. Read per call rather than captured.
      */
     constructor(cfg: CitrineConfig, fetchImpl?: FetchLike);
     /** A query or mutation. `T` is the caller's to declare: this module owns the

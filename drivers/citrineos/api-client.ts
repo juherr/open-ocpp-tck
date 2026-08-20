@@ -74,10 +74,11 @@ function describe(value: unknown): string {
 
 export class CitrineMessageApi {
   /**
-   * The `fetch` seam exists so an offline guard can serve each failure above
-   * from a Map. Every branch this file classifies needs a CSMS engineered to
-   * refuse a request a chosen way -- a 503, a body that will not parse -- and
-   * neither bundled CSMS can be asked for one.
+   * The `fetch` seam exists so `tests/citrineos-transport-classification.ts`
+   * can serve each failure above from a closure. Every branch this file
+   * classifies needs a CSMS engineered to refuse a request a chosen way -- a
+   * 503, a body that will not parse -- and neither bundled CSMS can be asked
+   * for one.
    *
    * The default reads the global PER CALL rather than capturing it at
    * construction, so a driver built before something replaces `fetch` still

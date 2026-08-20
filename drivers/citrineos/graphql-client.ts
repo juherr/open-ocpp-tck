@@ -82,9 +82,9 @@ export class CitrineGraphQL {
   private readonly headers: Record<string, string>;
 
   /**
-   * `fetchImpl` is the seam an offline guard drives; the branches below need an
-   * engine that refuses a chosen way, which no CSMS here can be asked for. Read
-   * per call rather than captured.
+   * `fetchImpl` is the seam `tests/citrineos-transport-classification.ts`
+   * drives; the branches below need an engine that refuses a chosen way, which
+   * no CSMS here can be asked for. Read per call rather than captured.
    */
   constructor(
     private readonly cfg: CitrineConfig,
