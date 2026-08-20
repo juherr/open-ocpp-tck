@@ -89,6 +89,12 @@ export declare class CitrineGraphQL {
     /** What the source already exposes: the tracked tables and, per table, the
      *  relationships someone has defined on them. */
     private trackedTables;
+    /**
+     * `path` is the union rather than `string` on purpose: the status branch
+     * below reads it as a classification, and a third endpoint typed in as
+     * `string` would quietly take the "the server answered" side without anyone
+     * deciding that it should.
+     */
     private post;
     private expectData;
 }

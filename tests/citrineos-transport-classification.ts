@@ -184,8 +184,18 @@ function describe(err: unknown): string {
 /** Every error a case produced, kept for part 7. */
 const produced: { err: unknown; expect: Classification; what: string }[] = [];
 
-async function check(label: string, kase: Case, run: () => Promise<unknown>) {
-  const settled = await Promise.allSettled([run()]);
+/**
+ * `run` receives the seam rather than building it, so `kase.answer` is used
+ * exactly once. Passing the answer twice -- once to declare the case, once to
+ * drive it -- let the two drift, which is a case whose description and
+ * behaviour disagree.
+ */
+async function check(
+  label: string,
+  kase: Case,
+  run: (fetchImpl: FetchLike) => Promise<unknown>,
+) {
+  const settled = await Promise.allSettled([run(serving(kase.answer))]);
   const outcome = settled[0]!;
   if (outcome.status === "fulfilled") {
     fail(
@@ -230,10 +240,10 @@ async function check(label: string, kase: Case, run: () => Promise<unknown>) {
   }
 }
 
-const sendWith =
-  (answer: () => Promise<Response>, req: CitrineRequest = REQ_16) =>
-  () =>
-    new CitrineMessageApi(CFG, serving(answer)).send(CP_ID, req);
+const sending =
+  (req: CitrineRequest = REQ_16) =>
+  (fetchImpl: FetchLike) =>
+    new CitrineMessageApi(CFG, fetchImpl).send(CP_ID, req);
 
 /** Where every message-API failure names its request. Derived, not spelled:
  *  the client builds the URL and this guard must not declare it a second
@@ -332,7 +342,7 @@ const API_CASES: Case[] = [
 ];
 
 for (const kase of API_CASES) {
-  await check("message API", kase, sendWith(kase.answer));
+  await check("message API", kase, sending());
 }
 
 // Part 3, second half: the same 404 on a 2.0.1 request names 2.0.1. A constant
@@ -348,7 +358,7 @@ await check(
       `no OCPP ${REQ_201.ocppVersion} route is registered`,
     ],
   },
-  sendWith(answering(404, "Not Found"), REQ_201),
+  sending(REQ_201),
 );
 
 if (REQ_16.ocppVersion === REQ_201.ocppVersion) {
@@ -434,8 +444,8 @@ const GQL_QUERY_CASES: Case[] = [
 ];
 
 for (const kase of GQL_QUERY_CASES) {
-  await check("graphql query", kase, () =>
-    new CitrineGraphQL(CFG, serving(kase.answer)).query(QUERY),
+  await check("graphql query", kase, (fetchImpl) =>
+    new CitrineGraphQL(CFG, fetchImpl).query(QUERY),
   );
 }
 
@@ -451,16 +461,19 @@ await check(
     expect: "answered",
     carries: ["/v1/metadata", "returned 400", "unknown table"],
   },
-  () =>
-    new CitrineGraphQL(
-      CFG,
-      serving(answering(400, '{"error":"unknown table"}')),
-    ).ensureTracked(),
+  (fetchImpl) => new CitrineGraphQL(CFG, fetchImpl).ensureTracked(),
 );
 
 // ---- 7. What warnOpFailed does with each of them.
 
-if (produced.length !== API_CASES.length + GQL_QUERY_CASES.length + 2) {
+// The two cases that sit outside a table: the 2.0.1 404 and the metadata 400,
+// each of which needs a different caller from the list it belongs to.
+const STANDALONE_CASES = 2;
+
+if (
+  produced.length !==
+  API_CASES.length + GQL_QUERY_CASES.length + STANDALONE_CASES
+) {
   fail(
     "part 7 did not see every failure",
     `${produced.length} error(s) reached it -- a case that stopped failing ` +

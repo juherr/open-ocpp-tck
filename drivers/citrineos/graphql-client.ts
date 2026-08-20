@@ -226,7 +226,16 @@ export class CitrineGraphQL {
     return source?.tables ?? [];
   }
 
-  private async post(path: string, payload: unknown): Promise<unknown> {
+  /**
+   * `path` is the union rather than `string` on purpose: the status branch
+   * below reads it as a classification, and a third endpoint typed in as
+   * `string` would quietly take the "the server answered" side without anyone
+   * deciding that it should.
+   */
+  private async post(
+    path: typeof QUERY_PATH | typeof METADATA_PATH,
+    payload: unknown,
+  ): Promise<unknown> {
     let res: Response;
     try {
       res = await this.fetchImpl(`${this.cfg.graphqlUrl}${path}`, {
