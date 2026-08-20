@@ -56,7 +56,7 @@
  */
 import { CsmsNotDispatchedError, type FetchLike } from "../../tck/driver";
 import type { CitrineConfig } from "./config";
-import { errorBody, readAnsweredBody } from "./http";
+import { errorBody, preview, readAnsweredBody } from "./http";
 import type { CitrineRequest } from "./requests";
 
 const DEFAULT_TIMEOUT_MS = 15_000;
@@ -162,7 +162,7 @@ export class CitrineMessageApi {
 
     if (!confirmations.every(isConfirmation)) {
       throw new Error(
-        `${what} returned a body that is not a confirmation array: ${text.slice(0, 300)}`,
+        `${what} returned a body that is not a confirmation array: ${preview(text)}`,
       );
     }
 

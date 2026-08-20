@@ -140,34 +140,39 @@ function json(value: unknown): FetchLike {
 /**
  * Headers, then a body that never finishes.
  *
- * The one case the two clients used to disagree about: api-client read the body
- * inside the `fetch` try and graphql-client outside it, so the same stall was a
- * driver error on one and a raw abort naming nothing on the other.
+ * On a 2xx it is the case the two clients used to disagree about -- api-client
+ * read the body inside the `fetch` try and graphql-client outside it, so the
+ * same stall was a driver error on one and a raw abort naming nothing on the
+ * other. On a failing status it is the only case that reaches `errorBody`'s
+ * fallback, where the read must not throw over the status that IS the finding.
  */
-function stallingBody(): ReadableStream {
-  return new ReadableStream({
-    start(controller) {
-      controller.error(new Error("the response stream closed"));
-    },
-  });
+function stalled(status: number): FetchLike {
+  return () =>
+    Promise.resolve(
+      new Response(
+        new ReadableStream({
+          start(controller) {
+            controller.error(new Error("the response stream closed"));
+          },
+        }),
+        { status },
+      ),
+    );
 }
-
-const stalled: FetchLike = () => Promise.resolve(new Response(stallingBody()));
-
-/** Headers with a failing status, then a body that never finishes. The status
- *  is the finding, so reading the body is best-effort and must not throw over
- *  it -- this is the only case that reaches that fallback. */
-const stalledWithStatus = (status: number): FetchLike => () =>
-  Promise.resolve(new Response(stallingBody(), { status }));
 
 /**
  * A body longer than the preview, marked either side of the cut.
  *
- * `keep-me` sits inside the first 300 bytes and `drop-me` past them, so the
- * case fails if the preview is shortened AND if it is widened -- which is what
- * a bound needs, and what a `carries`-only assertion cannot say.
+ * `keep-me` sits inside the first 300 bytes and `drop-me` past them, so a case
+ * using it fails if the preview is shortened AND if it is widened -- which is
+ * what a bound needs, and what a `carries`-only assertion cannot say. `head`
+ * lets a case keep its own recognisable opening and still be bounded: all
+ * three preview sites are reachable, and each needs a differently-shaped body
+ * to reach it.
  */
-const LONG_BODY = `${"a".repeat(250)}keep-me${"b".repeat(100)}drop-me`;
+function longBody(head: string): string {
+  return `${head}${"a".repeat(250)}keep-me${"b".repeat(100)}drop-me`;
+}
 
 // ---------------------------------------------------------------------------
 // Running a case
@@ -208,7 +213,7 @@ async function check(
   label: string,
   kase: Case,
   run: (fetchImpl: FetchLike) => Promise<unknown>,
-) {
+): Promise<void> {
   let err: unknown;
   try {
     const value = await run(kase.answer);
@@ -263,16 +268,22 @@ async function check(
   }
 }
 
-const sending =
-  (req: CitrineRequest = REQ_16) =>
-  (fetchImpl: FetchLike) =>
-    new CitrineMessageApi(CFG, fetchImpl).send(CP_ID, req);
+function sending(req: CitrineRequest): (fetchImpl: FetchLike) => Promise<string> {
+  return (fetchImpl) => new CitrineMessageApi(CFG, fetchImpl).send(CP_ID, req);
+}
 
-/** Where every message-API failure names its request. Derived, not spelled:
- *  the client builds the URL and this guard must not declare it a second
- *  time. */
+/** Where a message-API failure names its request.
+ *
+ *  The three SEGMENTS are derived -- they come off the request the driver's own
+ *  mapper built, which is what makes part 3 able to tell a hint naming the
+ *  request's protocol from one naming a constant. The path SHAPE is spelled,
+ *  deliberately: an expectation computed by calling the code under test
+ *  asserts nothing. */
 const apiUrlPrefix = (req: CitrineRequest) =>
   `${API_BASE}/ocpp/${req.ocppVersion}/${req.module}/${req.action}`;
+
+/** Eleven cases name it; computing it once keeps the table about the answers. */
+const URL_16 = apiUrlPrefix(REQ_16);
 
 // ---- 1, 2, 3, 4, 7. The message API.
 
@@ -281,13 +292,13 @@ const API_CASES: Case[] = [
     what: "a connection that never opened",
     answer: refused("Unable to connect. Is the computer able to access the url?"),
     expect: "not-dispatched",
-    carries: [apiUrlPrefix(REQ_16), "Unable to connect"],
+    carries: [URL_16, "Unable to connect"],
   },
   {
     what: "a request that timed out",
     answer: refused("The operation timed out."),
     expect: "not-dispatched",
-    carries: [apiUrlPrefix(REQ_16), "timed out"],
+    carries: [URL_16, "timed out"],
   },
   // Part 2. Five statuses, not one: the rule is "every non-2xx", and a rule
   // tested on a single status is a rule about that status.
@@ -295,20 +306,20 @@ const API_CASES: Case[] = [
     what: "a 400",
     answer: answering(400, "bad request"),
     expect: "not-dispatched",
-    carries: [apiUrlPrefix(REQ_16), "returned 400", "bad request"],
+    carries: [URL_16, "returned 400", "bad request"],
   },
   {
     what: "a 401",
     answer: answering(401, "unauthorized"),
     expect: "not-dispatched",
-    carries: [apiUrlPrefix(REQ_16), "returned 401"],
+    carries: [URL_16, "returned 401"],
   },
   {
     what: "a 404 on an unrouted action",
     answer: answering(404, "Not Found"),
     expect: "not-dispatched",
     carries: [
-      apiUrlPrefix(REQ_16),
+      URL_16,
       "returned 404",
       // Part 3, first half: the version named is this request's.
       `no OCPP ${REQ_16.ocppVersion} route is registered`,
@@ -318,13 +329,13 @@ const API_CASES: Case[] = [
     what: "a 500",
     answer: answering(500, "boom"),
     expect: "not-dispatched",
-    carries: [apiUrlPrefix(REQ_16), "returned 500"],
+    carries: [URL_16, "returned 500"],
   },
   {
     what: "a 503",
     answer: answering(503, "unavailable"),
     expect: "not-dispatched",
-    carries: [apiUrlPrefix(REQ_16), "returned 503"],
+    carries: [URL_16, "returned 503"],
   },
   // Part 7. Two confirmations, because CitrineOS answers one per identifier
   // and batches GetConfiguration -- so the message has to carry every refusal,
@@ -345,40 +356,42 @@ const API_CASES: Case[] = [
   },
   {
     what: "a 503 whose error body will not stream",
-    answer: stalledWithStatus(503),
+    answer: stalled(503),
     expect: "not-dispatched",
-    carries: [apiUrlPrefix(REQ_16), "returned 503", "<unreadable body>"],
+    carries: [URL_16, "returned 503", "<unreadable body>"],
   },
   {
     what: "a 500 with a body longer than the preview",
-    answer: answering(500, LONG_BODY),
+    answer: answering(500, longBody("")),
     expect: "not-dispatched",
-    carries: [apiUrlPrefix(REQ_16), "returned 500", "keep-me"],
+    carries: [URL_16, "returned 500", "keep-me"],
     omits: ["drop-me"],
   },
   // Part 4, the negative half.
   {
     what: "a 200 whose body stalls",
-    answer: stalled,
+    answer: stalled(200),
     expect: "answered",
-    carries: [apiUrlPrefix(REQ_16), "could not"],
+    carries: [URL_16, "could not"],
   },
   {
     what: "a 200 whose body will not parse",
-    answer: answering(200, "<html>a proxy answered instead</html>"),
+    answer: answering(200, longBody("<html>a proxy answered instead")),
     expect: "answered",
-    carries: [apiUrlPrefix(REQ_16), "unparseable body", "a proxy answered"],
+    carries: [URL_16, "unparseable body", "a proxy answered", "keep-me"],
+    omits: ["drop-me"],
   },
   {
     what: "a 200 carrying a scalar instead of a confirmation",
-    answer: json(42),
+    answer: json(longBody("")),
     expect: "answered",
-    carries: [apiUrlPrefix(REQ_16), "not a confirmation array"],
+    carries: [URL_16, "not a confirmation array", "keep-me"],
+    omits: ["drop-me"],
   },
 ];
 
 for (const kase of API_CASES) {
-  await check("message API", kase, sending());
+  await check("message API", kase, sending(REQ_16));
 }
 
 // Part 3, second half: the same 404 on a 2.0.1 request names 2.0.1. A constant
@@ -430,7 +443,7 @@ const GQL_QUERY_CASES: Case[] = [
     what: "an engine that does not answer",
     answer: refused("Unable to connect. Is the computer able to access the url?"),
     expect: "not-dispatched",
-    carries: [GQL_BASE, "graphql-engine", "CITRINE_GRAPHQL_URL"],
+    carries: ["/v1/graphql", GQL_BASE, "graphql-engine", "CITRINE_GRAPHQL_URL"],
   },
   {
     what: "a 401 from the query endpoint",
@@ -467,7 +480,7 @@ const GQL_QUERY_CASES: Case[] = [
   },
   {
     what: "a 200 whose body stalls",
-    answer: stalled,
+    answer: stalled(200),
     expect: "answered",
     carries: ["/v1/graphql", "could not"],
   },

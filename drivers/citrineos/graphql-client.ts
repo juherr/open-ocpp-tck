@@ -234,6 +234,7 @@ export class CitrineGraphQL {
     path: typeof QUERY_PATH | typeof METADATA_PATH,
     payload: unknown,
   ): Promise<unknown> {
+    const what = `citrineos graphql: ${path}`;
     let res: Response;
     try {
       res = await this.fetchImpl(`${this.cfg.graphqlUrl}${path}`, {
@@ -244,14 +245,13 @@ export class CitrineGraphQL {
       });
     } catch (err) {
       throw new CsmsNotDispatchedError(
-        `citrineos graphql: ${path}`,
+        what,
         `${this.cfg.graphqlUrl} did not answer ` +
           `(${err instanceof Error ? err.message : String(err)}). ` +
           `Is the graphql-engine service up? CITRINE_GRAPHQL_URL points at it.`,
       );
     }
 
-    const what = `citrineos graphql: ${path}`;
     if (!res.ok) {
       const detail = `returned ${res.status}: ${await errorBody(res)}`;
       if (path === QUERY_PATH) {

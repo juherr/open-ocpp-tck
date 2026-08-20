@@ -23,6 +23,14 @@
  *  page or a stack trace, short enough to read in a run log. */
 const BODY_PREVIEW = 300;
 
+/** That bound, applied. Exported because api-client.ts has a third failure
+ *  message built from a body it already holds, and a `slice(0, 300)` there
+ *  would be this number written down twice -- with nothing to notice when one
+ *  of them moves. */
+export function preview(text: string): string {
+  return text.slice(0, BODY_PREVIEW);
+}
+
 function reason(err: unknown): string {
   return err instanceof Error ? err.message : String(err);
 }
@@ -33,10 +41,19 @@ function reason(err: unknown): string {
  * Best-effort on purpose: an error body that will not stream must not replace
  * the status with a different failure, so a read that fails yields a name for
  * what was there rather than throwing over the finding.
+ *
+ * NOT SHARED WITH THE OTHER DRIVER, and this is where that gets re-proposed.
+ * `drivers/steve/ui-client.ts` holds the same two lines inline, and
+ * `drivers/steve/api-client.ts` holds them WITHOUT the `.catch` -- the drift
+ * this function exists to stop, live in the tree. Unifying is not a
+ * simplification but a deliverable: `tests/generic-core.sh` forbids one driver
+ * importing another, so it needs a core home, and a core module owes an
+ * `exports` subpath before a third-party driver can reach it at all. Issue #83
+ * is where the second consumer arrives; that is the moment to move it, not
+ * this branch.
  */
 export async function errorBody(res: Response): Promise<string> {
-  const text = await res.text().catch(() => "<unreadable body>");
-  return text.slice(0, BODY_PREVIEW);
+  return preview(await res.text().catch(() => "<unreadable body>"));
 }
 
 /**
@@ -66,8 +83,6 @@ export async function readAnsweredBody(
   try {
     return { text, parsed: JSON.parse(text) as unknown };
   } catch {
-    throw new Error(
-      `${what} returned unparseable body: ${text.slice(0, BODY_PREVIEW)}`,
-    );
+    throw new Error(`${what} returned unparseable body: ${preview(text)}`);
   }
 }
