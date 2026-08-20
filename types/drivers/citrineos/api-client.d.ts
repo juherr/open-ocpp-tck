@@ -43,6 +43,12 @@
  * that as NOT APPLICABLE at exit 0, turning a wrong CITRINE_API_URL into 47
  * scenarios that quietly never ran. Issue #80 settles this.
  *
+ * The `success: false` confirmation above is a non-dispatch too, and the one
+ * that wears a 200. It is the same statement its message has always made --
+ * "was not dispatched" -- finally in the class the runner recognises. It is
+ * also the widest of these: an unknown station id or a `connectorId <= 0` used
+ * to WARN and carry on, and now ends the scenario.
+ *
  * The other half is what stays a plain `Error`: a 2xx whose body stalls, one
  * that will not parse, one that is not a confirmation array. THE REQUEST WAS
  * ANSWERED in all three, so whether it dispatched is unknown -- and a driver may

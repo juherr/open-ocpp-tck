@@ -13,7 +13,7 @@
  * is the same lie backwards, an honest finding about the CSMS refiled as a
  * finding about this client. Issue #80.
  *
- * PROPERTY, in 7 parts:
+ * PROPERTY, in 8 parts:
  *  1. A `fetch` that rejects -- refused connection, DNS, timeout -- is a
  *     non-dispatch, and the message still names the URL that was posted to.
  *  2. EVERY non-2xx is a non-dispatch, whatever the status. The rule rests on
@@ -39,9 +39,17 @@
  *     `/v1/metadata`, which DOES answer a request it understood and refused
  *     with one. The provision hint survives the classification.
  *  7. `warnOpFailed` lets every non-dispatch above out BY IDENTITY and warns
- *     about every plain `Error`. Checked on the real errors parts 1-6 produced
- *     rather than on hand-built ones: `instanceof` would also pass on a copy,
- *     and what the runner needs is the throw to reach it.
+ *     about every plain `Error`. Checked on the real errors the other parts
+ *     produced rather than on hand-built ones: `instanceof` would also pass on
+ *     a copy, and what the runner needs is the throw to reach it.
+ *  8. A 200 whose confirmation says `success: false` is a non-dispatch, and
+ *     EVERY refused payload travels with it. CitrineOS answers that for an
+ *     unknown station id and for a `connectorId <= 0` on TriggerMessage -- a
+ *     request failure wearing a 200 -- and it is the only failure here whose
+ *     message names the operation instead of the URL, because the request did
+ *     reach CitrineOS. Numbered last, and last to arrive: it is the widest of
+ *     the eight, so it landed in a commit of its own that lifts out with this
+ *     part if a sweep says it was too wide.
  *
  * WHY THIS IS TYPESCRIPT AND NOT A SHELL GUARD. Every branch above needs a
  * CSMS engineered to refuse a request a chosen way, and most of them cannot be
@@ -233,7 +241,7 @@ const sendWith =
 const apiUrlPrefix = (req: CitrineRequest) =>
   `${API_BASE}/ocpp/${req.ocppVersion}/${req.module}/${req.action}`;
 
-// ---- 1, 2, 3, 4. The message API.
+// ---- 1, 2, 3, 4, 8. The message API.
 
 const API_CASES: Case[] = [
   {
@@ -284,6 +292,23 @@ const API_CASES: Case[] = [
     answer: answering(503, "unavailable"),
     expect: "not-dispatched",
     carries: [apiUrlPrefix(REQ_16), "returned 503"],
+  },
+  // Part 8. Two confirmations, because CitrineOS answers one per identifier
+  // and batches GetConfiguration -- so the message has to carry every refusal,
+  // not the first.
+  {
+    what: "a 200 confirming success: false",
+    answer: json([
+      { success: false, payload: "Unknown identifier CERTCP1" },
+      { success: false, payload: { reason: "connectorId must be > 0" } },
+    ]),
+    expect: "not-dispatched",
+    carries: [
+      // The operation, not the URL: the request reached CitrineOS.
+      `${REQ_16.module}/${REQ_16.action} for ${CP_ID}`,
+      "Unknown identifier CERTCP1",
+      "connectorId must be > 0",
+    ],
   },
   // Part 4, the negative half.
   {
