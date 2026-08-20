@@ -1,3 +1,13 @@
+/**
+ * ui-client.ts -- SteVe's manager UI, driven exactly as a browser would drive
+ * it: log in, read the CSRF token out of the operation page, POST the form.
+ *
+ * This is the transport of last resort and the transport of record. SteVe's
+ * REST API pre-validates some operations server-side and never puts them on
+ * the wire; the UI path does not, which matters for any scenario whose point
+ * is that the CHARGE POINT produces the answer.
+ */
+import { type FetchLike } from "../../tck/driver";
 export interface SteveConfig {
     /** e.g. http://steve:8180/steve/manager (container-internal: the
      *  public host is behind a forward-auth proxy this client cannot pass). */
@@ -22,16 +32,18 @@ export interface SteveConfig {
 }
 export declare function defaultSteveConfig(env?: NodeJS.ProcessEnv): SteveConfig;
 /**
- * The subset of `fetch` this client uses.
- *
- * A seam, not a policy. Every request below goes through it so that
+ * The seam every request below goes through, so that
  * `tests/steve-ui-session-race.ts` can hand this class a fake SteVe: the
  * property that matters here is how concurrent callers interleave, and against
- * a real server that is a 45%-of-the-time event nobody can reproduce on
- * demand. The default is the global, resolved per call rather than captured,
- * on the same default-parameter principle as {@link defaultSteveConfig}.
+ * a real server that is a 45%-of-the-time event nobody can reproduce on demand.
+ *
+ * Re-exported rather than merely imported. It was declared here until the
+ * second driver needed the same seam and could not import it -- a driver may
+ * not name another (`tests/generic-core.sh`) -- so it moved to the core. The
+ * re-export is what keeps `types/drivers/steve/ui-client.d.ts` naming it, and
+ * the move from being a break for anyone importing it from this path.
  */
-export type FetchLike = (input: string, init?: RequestInit) => Promise<Response>;
+export type { FetchLike };
 /**
  * How SteVe renders the CSRF token into a manager page.
  *

@@ -480,6 +480,30 @@ export class CsmsNotDispatchedError extends Error {
 }
 
 /**
+ * The subset of `fetch` a driver's HTTP client needs.
+ *
+ * A seam, not a policy. A client that routes every request through this can be
+ * handed a fake CSMS by an offline guard, which is the only way to reach the
+ * branches that matter: what a client does when the transport refuses it is a
+ * 45%-of-the-time event on a real server at best, and on most branches -- a
+ * 503, an unparseable body -- something no CSMS here can be asked to produce.
+ * Each bundled driver's client guard is built on it; the guards name themselves
+ * in the clients, which is where a reader of one of them is standing.
+ *
+ * Lives in the core because more than one driver needs it and
+ * `tests/generic-core.sh` forbids one driver from naming another, so the only
+ * alternative was a second copy. It is a shape, not behaviour: the core neither
+ * calls it nor recognises it, unlike {@link CsmsNotDispatchedError}.
+ *
+ * The default is always the global, resolved PER CALL rather than captured at
+ * construction -- the same principle the `defaultXConfig` resolvers follow.
+ */
+export type FetchLike = (
+  input: string,
+  init?: RequestInit,
+) => Promise<Response>;
+
+/**
  * Compile-time exhaustiveness guard for a driver's `switch (op.action)`.
  *
  * Adding an operation to {@link CsmsOperation16} becomes a type error in every
