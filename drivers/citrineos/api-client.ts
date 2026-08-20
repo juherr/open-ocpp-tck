@@ -24,7 +24,34 @@
  * sendLocalList's persistence step. Those are request failures wearing a 200,
  * and swallowing them would report a scenario as having driven an operation it
  * never drove. So `success: false` throws, and the payload travels with it.
+ *
+ * WHICH THROWS ARE NON-DISPATCHES
+ * -------------------------------
+ * `warnOpFailed` warns and continues on every error but
+ * {@link CsmsNotDispatchedError}, which it lets out so the scenario ERRORs, and
+ * the line between the two runs through this file. The rule here is one fact
+ * about CitrineOS: IT ANSWERS 200 FOR EVERYTHING THAT REACHES ITS OCPP LAYER --
+ * an Accepted, a Rejected, a CALLERROR, silence. So a non-2xx means nothing
+ * went on the wire, whatever the status, and no per-status arbitration is
+ * needed or would be honest.
+ *
+ * That includes 404, which is the one worth saying out loud, because it is also
+ * what an action with no route looks like. It is NOT
+ * `UnsupportedOperationError`: requests.ts already throws that for the actions
+ * this driver knows are unrouted, BEFORE the request is built, and scope.ts
+ * declares them where `check-driver` reads them offline. A 404 that survives
+ * both is not a statement about an API surface -- it is evidence that the route
+ * model or the deployment is wrong, and `UnsupportedOperationError` would file
+ * that as NOT APPLICABLE at exit 0, turning a wrong CITRINE_API_URL into 47
+ * scenarios that quietly never ran. Issue #80 settles this.
+ *
+ * The other half is what stays a plain `Error`: a 2xx whose body stalls, one
+ * that will not parse, one that is not a confirmation array. THE REQUEST WAS
+ * ANSWERED in all three, so whether it dispatched is unknown -- and a driver may
+ * not claim what it cannot tell. That half is what stops this being a blanket
+ * conversion, and it is the half worth a guard.
  */
+import { CsmsNotDispatchedError, type FetchLike } from "../../tck/driver";
 import type { CitrineConfig } from "./config";
 import type { CitrineRequest } from "./requests";
 
@@ -46,7 +73,20 @@ function describe(value: unknown): string {
 }
 
 export class CitrineMessageApi {
-  constructor(private readonly cfg: CitrineConfig) {}
+  /**
+   * The `fetch` seam exists so an offline guard can serve each failure above
+   * from a Map. Every branch this file classifies needs a CSMS engineered to
+   * refuse a request a chosen way -- a 503, a body that will not parse -- and
+   * neither bundled CSMS can be asked for one.
+   *
+   * The default reads the global PER CALL rather than capturing it at
+   * construction, so a driver built before something replaces `fetch` still
+   * uses the replacement.
+   */
+  constructor(
+    private readonly cfg: CitrineConfig,
+    private readonly fetchImpl: FetchLike = (input, init) => fetch(input, init),
+  ) {}
 
   private url(req: CitrineRequest, cpId: string): string {
     const query = new URLSearchParams({
@@ -67,9 +107,8 @@ export class CitrineMessageApi {
   async send(cpId: string, req: CitrineRequest): Promise<string> {
     const url = this.url(req, cpId);
     let res: Response;
-    let text: string;
     try {
-      res = await fetch(url, {
+      res = await this.fetchImpl(url, {
         method: "POST",
         headers: { "content-type": "application/json" },
         // JSON.stringify preserves insertion order, which requests.ts relies
@@ -77,13 +116,10 @@ export class CitrineMessageApi {
         body: JSON.stringify(req.body),
         signal: AbortSignal.timeout(DEFAULT_TIMEOUT_MS),
       });
-      // Inside the try, because the timeout above covers the body stream too:
-      // a CSMS that answers its headers and then stalls aborts here, not at
-      // fetch, and that failure deserves the same URL-bearing message.
-      text = await res.text();
     } catch (err) {
-      throw new Error(
-        `citrineos: POST ${url} failed: ${err instanceof Error ? err.message : String(err)}`,
+      throw new CsmsNotDispatchedError(
+        `citrineos: POST ${url}`,
+        err instanceof Error ? err.message : String(err),
       );
     }
 
@@ -100,8 +136,28 @@ export class CitrineMessageApi {
         res.status === 404
           ? ` -- no OCPP ${req.ocppVersion} route is registered for this action on this CitrineOS version`
           : "";
+      // Best-effort, because the status is the finding and an error body that
+      // will not stream must not replace it with a different failure.
+      const body = await res.text().catch(() => "<unreadable body>");
+      throw new CsmsNotDispatchedError(
+        `citrineos: POST ${url}`,
+        `returned ${res.status}${hint}: ${body.slice(0, 300)}`,
+      );
+    }
+
+    // PAST THIS POINT THE REQUEST WAS ANSWERED, and every failure below is a
+    // plain Error for that one reason. The body read is here rather than beside
+    // the fetch because a 200 whose stream then stalls -- the timeout covers it
+    // too -- is the same case as a body that will not parse: the CSMS began
+    // answering, so whether it dispatched is unknown, and a driver may not
+    // claim what it cannot tell.
+    let text: string;
+    try {
+      text = await res.text();
+    } catch (err) {
       throw new Error(
-        `citrineos: POST ${url} returned ${res.status}${hint}: ${text.slice(0, 300)}`,
+        `citrineos: POST ${url} answered ${res.status} but its body could not ` +
+          `be read: ${err instanceof Error ? err.message : String(err)}`,
       );
     }
 

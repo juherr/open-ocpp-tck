@@ -449,7 +449,7 @@ export class UnsupportedOperationError extends Error {
 }
 
 /**
- * "The operation never reached the CSMS's OCPP layer."
+ * "The request never reached the CSMS."
  *
  * The transport refused it -- a rejected form post, an unauthenticated
  * request, a connection that never opened -- so the CSMS was never asked and
@@ -458,6 +458,18 @@ export class UnsupportedOperationError extends Error {
  * finding about the CSMS, while an operation that was never dispatched is a
  * finding about the client, and any assertion downstream of it is measuring
  * the wrong thing.
+ *
+ * AN OBSERVATION COUNTS TOO, which is why the sentence above says "the CSMS"
+ * rather than "its OCPP layer" -- as the constructed message always has.
+ * `warnOpFailed` guards two records waits alongside the operations, and a read
+ * whose transport refused it leaves the scenario asserting on a record nobody
+ * could look up: the same wrong measurement, reached from the other side.
+ *
+ * WHAT IT IS NOT is a request the CSMS answered and refused. A driver that
+ * cannot tell the two apart must throw a plain `Error` -- claiming a
+ * non-dispatch it did not observe converts an honest finding about the CSMS
+ * into a false one about the client, which is this class's own failure mode
+ * run backwards.
  *
  * A scenario that swallows this and carries on reports a handful of confident
  * FAILs about a charge point that was never asked to do anything -- which is

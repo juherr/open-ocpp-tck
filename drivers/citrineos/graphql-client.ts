@@ -20,11 +20,37 @@
  * ERRORS. GraphQL answers HTTP 200 with an `errors` array, so a caller that
  * only checks the status code reads a failed query as an empty result -- and
  * an empty result is exactly what several assertions treat as "not set". Every
- * response therefore goes through `expectData`.
+ * `/v1/graphql` response therefore goes through `expectData`. The metadata
+ * calls do not, and do not need to: that endpoint reports a failure with a
+ * status rather than in-band, which is the same difference {@link QUERY_PATH}
+ * turns into a classification below.
+ *
+ * WHICH THROWS ARE NON-DISPATCHES. Two of the reads here are wrapped in
+ * `warnOpFailed` by the specs -- `waitForActiveTransaction`, in TC028 and TC057
+ * -- which warns and continues on every error but {@link CsmsNotDispatchedError}.
+ * Continuing past a read that never ran means asserting on a transaction nobody
+ * could look up, so a failure that kept the answer out of reach must ERROR
+ * rather than warn. The rule mirrors api-client.ts's: an engine that did not
+ * answer, and a status from the endpoint that reports failures in-band, are
+ * non-dispatches; everything the server actually answered stays a plain
+ * `Error`. Issue #80.
  */
+import { CsmsNotDispatchedError, type FetchLike } from "../../tck/driver";
 import type { CitrineConfig } from "./config";
 
 const HTTP_TIMEOUT_MS = 15_000;
+
+/**
+ * The two endpoints, as constants because `post` classifies a status by which
+ * one answered it.
+ *
+ * `/v1/graphql` reports everything it understood in-band -- HTTP 200 with an
+ * `errors` array -- so a status from it means the query never ran: auth, or an
+ * engine that cannot serve. `/v1/metadata` reports a request it understood and
+ * refused WITH a status, so the same 400 there is the server answering.
+ */
+const QUERY_PATH = "/v1/graphql";
+const METADATA_PATH = "/v1/metadata";
 
 interface GraphQLResponse<T> {
   data?: T;
@@ -55,7 +81,15 @@ interface SuggestedRelationship {
 export class CitrineGraphQL {
   private readonly headers: Record<string, string>;
 
-  constructor(private readonly cfg: CitrineConfig) {
+  /**
+   * `fetchImpl` is the seam an offline guard drives; the branches below need an
+   * engine that refuses a chosen way, which no CSMS here can be asked for. Read
+   * per call rather than captured.
+   */
+  constructor(
+    private readonly cfg: CitrineConfig,
+    private readonly fetchImpl: FetchLike = (input, init) => fetch(input, init),
+  ) {
     this.headers = {
       "content-type": "application/json",
       // Omitted rather than sent empty: Hasura treats a present but wrong
@@ -73,7 +107,7 @@ export class CitrineGraphQL {
     document: string,
     variables: Record<string, unknown> = {},
   ): Promise<T> {
-    const body = await this.post("/v1/graphql", { query: document, variables });
+    const body = await this.post(QUERY_PATH, { query: document, variables });
     return this.expectData<T>(body, document);
   }
 
@@ -111,7 +145,7 @@ export class CitrineGraphQL {
       // One request for the lot. `pg_track_tables` answers "all tables failed"
       // if none can be tracked, which is why only the difference is sent --
       // an already-tracked table is not in it.
-      await this.post("/v1/metadata", {
+      await this.post(METADATA_PATH, {
         type: "pg_track_tables",
         args: {
           tables: untracked.map((table) => ({ source: "default", table })),
@@ -131,7 +165,7 @@ export class CitrineGraphQL {
     }
     for (const rel of RELATIONSHIPS) {
       if (defined.has(`${rel.on}.${rel.name}`)) continue;
-      await this.post("/v1/metadata", {
+      await this.post(METADATA_PATH, {
         type:
           rel.kind === "object"
             ? "pg_create_object_relationship"
@@ -162,7 +196,7 @@ export class CitrineGraphQL {
     // Asked about the one table, not the whole source: the answer is the same
     // -- suggestions are rooted at the table given -- and it comes back as a
     // handful rather than the hundred-odd the source carries.
-    const suggestions = (await this.post("/v1/metadata", {
+    const suggestions = (await this.post(METADATA_PATH, {
       type: "pg_suggest_relationships",
       args: { source: "default", tables: [{ schema: "public", name: target }] },
     })) as { relationships?: SuggestedRelationship[] };
@@ -174,7 +208,7 @@ export class CitrineGraphQL {
   /** Every table in the source, tracked or not -- the catalog, asked through
    *  the API rather than through a connection to Postgres. */
   private async sourceTables(): Promise<SourceTable[]> {
-    const body = (await this.post("/v1/metadata", {
+    const body = (await this.post(METADATA_PATH, {
       type: "pg_get_source_tables",
       args: { source: "default" },
     })) as SourceTable[];
@@ -184,7 +218,7 @@ export class CitrineGraphQL {
   /** What the source already exposes: the tracked tables and, per table, the
    *  relationships someone has defined on them. */
   private async trackedTables(): Promise<TrackedTable[]> {
-    const body = (await this.post("/v1/metadata", {
+    const body = (await this.post(METADATA_PATH, {
       type: "export_metadata",
       args: {},
     })) as { sources?: { name: string; tables?: TrackedTable[] }[] };
@@ -195,26 +229,53 @@ export class CitrineGraphQL {
   private async post(path: string, payload: unknown): Promise<unknown> {
     let res: Response;
     try {
-      res = await fetch(`${this.cfg.graphqlUrl}${path}`, {
+      res = await this.fetchImpl(`${this.cfg.graphqlUrl}${path}`, {
         method: "POST",
         headers: this.headers,
         body: JSON.stringify(payload),
         signal: AbortSignal.timeout(HTTP_TIMEOUT_MS),
       });
     } catch (err) {
-      throw new Error(
-        `citrineos graphql: ${path} unreachable at ${this.cfg.graphqlUrl} ` +
+      throw new CsmsNotDispatchedError(
+        `citrineos graphql: ${path}`,
+        `${this.cfg.graphqlUrl} did not answer ` +
           `(${err instanceof Error ? err.message : String(err)}). ` +
           `Is the graphql-engine service up? CITRINE_GRAPHQL_URL points at it.`,
       );
     }
-    const text = await res.text();
+
     if (!res.ok) {
+      // Best-effort: the status is the finding, and an error body that will not
+      // stream must not replace it with a different failure.
+      const body = await res.text().catch(() => "<unreadable body>");
+      const detail = `returned ${res.status}: ${body.slice(0, 300)}`;
+      if (path === QUERY_PATH) {
+        throw new CsmsNotDispatchedError(`citrineos graphql: ${path}`, detail);
+      }
+      throw new Error(`citrineos graphql: ${path} ${detail}`);
+    }
+
+    // PAST THIS POINT THE REQUEST WAS ANSWERED, so every failure below is a
+    // plain Error. Both of these used to escape unclassified -- the body read
+    // sat outside the try, and JSON.parse had no guard -- which meant a stalled
+    // stream or a non-JSON 200 arrived as a raw abort or SyntaxError naming
+    // neither the endpoint nor the URL.
+    let text: string;
+    try {
+      text = await res.text();
+    } catch (err) {
       throw new Error(
-        `citrineos graphql: ${path} returned ${res.status}: ${text.slice(0, 300)}`,
+        `citrineos graphql: ${path} answered ${res.status} but its body could ` +
+          `not be read: ${err instanceof Error ? err.message : String(err)}`,
       );
     }
-    return JSON.parse(text) as unknown;
+    try {
+      return JSON.parse(text) as unknown;
+    } catch {
+      throw new Error(
+        `citrineos graphql: ${path} returned unparseable body: ${text.slice(0, 300)}`,
+      );
+    }
   }
 
   private expectData<T>(body: unknown, document: string): T {
