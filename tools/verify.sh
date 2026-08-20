@@ -98,6 +98,10 @@ run "documented install ref resolves" bash tests/documented-install-ref.sh
 # script will not corrupt. Builds a throwaway git repository; touches nothing
 # here.
 run "repin refuses what it promises to" bash tests/repin-refusals.sh
+# The other writing script, and the one every other guard is validated with:
+# a non-zero exit is its good news, so a command that never ran reads as a
+# guard going red unless something tells the two apart.
+run "mutate concludes nothing when nothing ran" bash tests/mutate-refusals.sh
 run "vendored files match VENDOR.md" bash tests/vendor-integrity.sh
 run "scenario invariants" bash tests/spec-invariants.sh
 # After spec-invariants: this reads the artifact that one regenerates, so a

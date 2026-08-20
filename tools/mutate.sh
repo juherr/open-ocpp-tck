@@ -26,9 +26,11 @@
 # Exit 0 means the guard did its job: the mutation applied AND the command went
 # red. Exit 1 means either the mutation did not apply, or it applied and the
 # guard stayed green -- both are the guard failing to protect its property, and
-# the message says which. Exit 2 is a usage or setup error, 3 a failed restore
-# (read that one: the mutation is still in the tree), and 130/131/143 an
-# interrupted run, which concludes nothing either way.
+# the message says which. Exit 2 is a usage or setup error -- including a
+# command that could not be launched at all, which exits 126/127 and is a
+# mistake in the invocation, not a verdict -- 3 a failed restore (read that
+# one: the mutation is still in the tree), and 130/131/143 an interrupted run.
+# Everything but 0 and 1 concludes nothing either way.
 #
 # READ THE OUTPUT, do not just trust the exit code. "Goes red" is necessary but
 # not sufficient: the rule is red *for that reason and no other*, and no script
@@ -135,6 +137,21 @@ case "$status" in
     echo "INTERRUPTED: the command was killed (exit $status), not run to a" >&2
     echo "  verdict. Nothing is verified; $file is being restored." >&2
     exit "$status"
+    ;;
+  # A command that never STARTED is the same class as one that was killed, and
+  # it is the easier one to misread: 127 looks like any other non-zero, so the
+  # branch below would call it a guard going red. The usual cause is passing
+  # the command through a shell variable -- `-- $CMD` arrives here as one word,
+  # which is not the name of any program -- and the report then says a guard
+  # caught a mutation that was never run against it.
+  126 | 127)
+    echo >&2
+    echo "REFUSED: the command could not be run (exit $status), so it never" >&2
+    echo "  reached a verdict. Nothing is verified; $file is being restored." >&2
+    echo "  → 127 is \"command not found\", 126 \"found but not executable\"." >&2
+    echo "  → spell the command out after \`--\`; a \$VARIABLE holding it is" >&2
+    echo "    passed as a single argument and cannot be found." >&2
+    exit 2
     ;;
 esac
 

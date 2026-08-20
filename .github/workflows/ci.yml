@@ -166,6 +166,12 @@ jobs:
       - name: Re-pin refuses what it promises to
         run: bash tests/repin-refusals.sh
 
+      # The other writing script, and the one every other guard is validated
+      # with: a non-zero exit is its good news, so a command that never ran
+      # reads as a guard going red unless something tells the two apart.
+      - name: Mutate concludes nothing when nothing ran
+        run: bash tests/mutate-refusals.sh
+
       - name: Vendored files match VENDOR.md
         run: bash tests/vendor-integrity.sh
 
