@@ -13,6 +13,8 @@
  * the wire; the UI path does not, which matters for any scenario whose point
  * is that the CHARGE POINT produces the answer.
  */
+import { CsmsNotDispatchedError } from "../../tck/driver";
+
 const DEFAULT_TIMEOUT_MS = 10_000;
 
 export interface SteveConfig {
@@ -58,6 +60,21 @@ export function defaultSteveConfig(
 }
 
 
+/**
+ * The subset of `fetch` this client uses.
+ *
+ * A seam, not a policy. Every request below goes through it so that
+ * `tests/steve-ui-session-race.ts` can hand this class a fake SteVe: the
+ * property that matters here is how concurrent callers interleave, and against
+ * a real server that is a 45%-of-the-time event nobody can reproduce on
+ * demand. The default is the global, resolved per call rather than captured,
+ * on the same default-parameter principle as {@link defaultSteveConfig}.
+ */
+export type FetchLike = (
+  input: string,
+  init?: RequestInit,
+) => Promise<Response>;
+
 const CSRF_RE = /name="_csrf"\s+value="([^"]*)"/;
 
 function extractCsrf(html: string): string {
@@ -74,14 +91,62 @@ function extractCsrf(html: string): string {
  * SteVe manager-UI client: login, CSRF, form POST -- one cookie jar per
  * instance. It is SteVe-specific and cannot drive any other CSMS.
  *
- * Two callers: the operations path (index.ts) and provisioning
- * (provision.ts), which posts the charging-profile form through the same
- * session rather than opening a second one.
+ * Two callers, each with an instance and therefore a session of its own: the
+ * operations path (index.ts) and provisioning (provision.ts, which posts the
+ * charging-profile form -- the one manager form with no REST equivalent, since
+ * SteVe exposes REST controllers for OCPP tags, transactions and operations
+ * but none for stored charging profiles).
+ *
+ * ONE SESSION, SHARED BY EVERY LANE, AND THEREFORE LOCKED. `tck/main.ts` loads
+ * the driver once per process, so the operations instance is a singleton that
+ * every parallel lane posts through, and `postForm` is a read-modify-write over
+ * `cookies`: it may log in (clearing the jar), then GET a page for a CSRF
+ * token, then POST it back. Interleave two of those and a lane spends a token
+ * against a session that replaced its own, which Spring answers 403 -- so the
+ * operation never reaches the wire and the scenario reports failures about a
+ * charge point nobody asked. That was issue #77, at 45% of sweeps.
+ *
+ * REJECTED, having been measured: one instance per lane. It is the obvious way
+ * to delete the lock, and it costs a login per lane and gives up the single
+ * session this class exists to hold -- while fixing nothing the lock does not,
+ * since provisioning posts through the same method. Serialising also survives
+ * the part that is easy to get wrong: what rotates on SteVe is the SESSION, not
+ * the token. Spring Security's default `HttpSessionCsrfTokenRepository` keeps
+ * one token per session and never rotates it per request; the default
+ * `XorCsrfTokenRequestAttributeHandler` re-masks it on every render, so the
+ * string in the HTML changes each GET while unmasking to the same token. Only
+ * `login()` moves the session, via `changeSessionId`. A fix aimed at the token
+ * would have addressed the illusion.
  */
 export class SteveUiOps {
   private cookies = new Map<string, string>();
 
-  constructor(private readonly cfg: SteveConfig) {}
+  /** Tail of the queue of `postForm` calls. Never rejects -- see serialise(). */
+  private gate: Promise<void> = Promise.resolve();
+
+  constructor(
+    private readonly cfg: SteveConfig,
+    private readonly fetchImpl: FetchLike = (input, init) => fetch(input, init),
+  ) {}
+
+  /**
+   * Run `work` after every call already queued, and before every later one.
+   *
+   * A promise chain rather than a dependency: this package has no runtime
+   * dependencies, and `tck/main.ts` memoises its driver with the same
+   * `promise ??=` shape. The caller's failure is the caller's -- `run` rejects
+   * for whoever owns it, while the chain itself is left resolved, because a
+   * rejected `gate` would fail every lane queued behind the first one to
+   * stumble.
+   */
+  private serialise<T>(work: () => Promise<T>): Promise<T> {
+    const run = this.gate.then(work);
+    this.gate = run.then(
+      () => {},
+      () => {},
+    );
+    return run;
+  }
 
   private cookieHeader(): string {
     return [...this.cookies.entries()].map(([k, v]) => `${k}=${v}`).join("; ");
@@ -103,7 +168,7 @@ export class SteveUiOps {
 
   async isLoggedIn(): Promise<boolean> {
     if (this.cookies.size === 0) return false;
-    const res = await fetch(`${this.cfg.baseUrl}/home`, {
+    const res = await this.fetchImpl(`${this.cfg.baseUrl}/home`, {
       redirect: "manual",
       headers: { cookie: this.cookieHeader() },
       signal: AbortSignal.timeout(DEFAULT_TIMEOUT_MS),
@@ -114,7 +179,7 @@ export class SteveUiOps {
   async login(): Promise<void> {
     this.cookies.clear();
 
-    let res = await fetch(`${this.cfg.baseUrl}/signin`, {
+    let res = await this.fetchImpl(`${this.cfg.baseUrl}/signin`, {
       redirect: "manual",
       signal: AbortSignal.timeout(DEFAULT_TIMEOUT_MS),
     });
@@ -126,7 +191,7 @@ export class SteveUiOps {
       password: this.cfg.password,
       _csrf: csrf,
     });
-    res = await fetch(`${this.cfg.baseUrl}/signin`, {
+    res = await this.fetchImpl(`${this.cfg.baseUrl}/signin`, {
       method: "POST",
       redirect: "manual",
       headers: {
@@ -137,8 +202,40 @@ export class SteveUiOps {
       signal: AbortSignal.timeout(DEFAULT_TIMEOUT_MS),
     });
     this.absorbSetCookie(res);
+
+    // Check, rather than assume. An unchecked signin is why issue #77 read as
+    // "could not find _csrf token in response body" from a GET three steps
+    // later: the failure that mattered had already happened and said nothing.
+    const signin = `${this.cfg.baseUrl}/signin`;
+    if (res.status >= 400) {
+      throw new CsmsNotDispatchedError(
+        signin,
+        `signin was answered ${res.status}; nothing this client posts will be ` +
+          "accepted until it holds an authenticated session",
+      );
+    }
+    // Spring's form login redirects to loginPage + "?error" on bad credentials,
+    // which is a 302 like success and leaves an unauthenticated session behind.
+    // Matched narrowly, on both halves: a success redirect that merely passed
+    // through this path would otherwise break every run rather than the one
+    // that is actually misconfigured.
+    const location = res.headers.get("location") ?? "";
+    if (/\/signin\b/.test(location) && /[?&]error\b/.test(location)) {
+      throw new CsmsNotDispatchedError(
+        signin,
+        `signin bounced back to ${location} -- STEVE_USER/STEVE_PASS were refused`,
+      );
+    }
   }
 
+  /**
+   * NOT SERIALISED, and neither are isLoggedIn() or login(). They are reachable
+   * only from postFormExclusive(), which already holds the gate, so locking
+   * them here would deadlock on the first call. The invariant is therefore
+   * "postForm is the only entry point": anything new that calls these directly
+   * from outside puts the session race back, and no guard can see it happen,
+   * because a second entry point is not a wrong answer -- it is a second door.
+   */
   async ensureLogin(): Promise<void> {
     if (await this.isLoggedIn()) return;
     await this.login();
@@ -153,14 +250,27 @@ export class SteveUiOps {
    * `path` is relative to the manager base, so it spans more than operations:
    * provisioning posts to `chargingProfiles/add` through this same method,
    * which is the point of it being separate from op().
+   *
+   * Serialised against every other call on this instance, login included: the
+   * three steps below are one read-modify-write over the cookie jar, and the
+   * class comment says what interleaving two of them costs.
    */
   async postForm(
     path: string,
     fields: Record<string, string>,
   ): Promise<string> {
+    return this.serialise(() => this.postFormExclusive(path, fields));
+  }
+
+  /** {@link postForm}'s body, which assumes it already holds the lock. Nothing
+   *  reachable from here may call postForm again: the gate is not reentrant. */
+  private async postFormExclusive(
+    path: string,
+    fields: Record<string, string>,
+  ): Promise<string> {
     await this.ensureLogin();
 
-    let res = await fetch(`${this.cfg.baseUrl}/${path}`, {
+    let res = await this.fetchImpl(`${this.cfg.baseUrl}/${path}`, {
       redirect: "manual",
       headers: { cookie: this.cookieHeader() },
       signal: AbortSignal.timeout(DEFAULT_TIMEOUT_MS),
@@ -172,7 +282,7 @@ export class SteveUiOps {
     for (const [key, value] of Object.entries(fields)) form.set(key, value);
     form.set("_csrf", csrf);
 
-    res = await fetch(`${this.cfg.baseUrl}/${path}`, {
+    res = await this.fetchImpl(`${this.cfg.baseUrl}/${path}`, {
       method: "POST",
       redirect: "manual",
       headers: {
@@ -187,8 +297,16 @@ export class SteveUiOps {
     const location = res.headers.get("location");
     if (!location) {
       const body = await res.text().catch(() => "<unreadable body>");
+      const detail = `status ${res.status}: ${body.slice(0, 300)}`;
+      // 4xx is the transport refusing the request -- it never became an OCPP
+      // CALL, so nothing downstream can be a finding about the CSMS. Anything
+      // else with no Location is SteVe answering: the form came back carrying
+      // validation errors, which IS a finding about the CSMS.
+      if (res.status >= 400) {
+        throw new CsmsNotDispatchedError(path, detail);
+      }
       throw new Error(
-        `steve postForm: no redirect Location header for ${path} (status ${res.status}): ${body.slice(0, 300)}`,
+        `steve postForm: no redirect Location header for ${path} (${detail})`,
       );
     }
     return location;

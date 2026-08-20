@@ -120,6 +120,13 @@ jobs:
       - name: The wire trace reads as the frames the log would have given
         run: bun tests/trace-frames.ts
 
+      # In-process because what it pins is an interleaving between lanes that
+      # share one driver instance. From a shell that is a whole sweep, and there
+      # the property is a 45%-of-the-time event: issue #77 took 91 archived
+      # artifacts and a preserved wire trace to see it once.
+      - name: The manager-UI client survives concurrent lanes
+        run: bun tests/steve-ui-session-race.ts
+
       - name: Core names no CSMS
         run: bash tests/generic-core.sh
 

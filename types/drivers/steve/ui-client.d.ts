@@ -22,21 +22,77 @@ export interface SteveConfig {
 }
 export declare function defaultSteveConfig(env?: NodeJS.ProcessEnv): SteveConfig;
 /**
+ * The subset of `fetch` this client uses.
+ *
+ * A seam, not a policy. Every request below goes through it so that
+ * `tests/steve-ui-session-race.ts` can hand this class a fake SteVe: the
+ * property that matters here is how concurrent callers interleave, and against
+ * a real server that is a 45%-of-the-time event nobody can reproduce on
+ * demand. The default is the global, resolved per call rather than captured,
+ * on the same default-parameter principle as {@link defaultSteveConfig}.
+ */
+export type FetchLike = (input: string, init?: RequestInit) => Promise<Response>;
+/**
  * SteVe manager-UI client: login, CSRF, form POST -- one cookie jar per
  * instance. It is SteVe-specific and cannot drive any other CSMS.
  *
- * Two callers: the operations path (index.ts) and provisioning
- * (provision.ts), which posts the charging-profile form through the same
- * session rather than opening a second one.
+ * Two callers, each with an instance and therefore a session of its own: the
+ * operations path (index.ts) and provisioning (provision.ts, which posts the
+ * charging-profile form -- the one manager form with no REST equivalent, since
+ * SteVe exposes REST controllers for OCPP tags, transactions and operations
+ * but none for stored charging profiles).
+ *
+ * ONE SESSION, SHARED BY EVERY LANE, AND THEREFORE LOCKED. `tck/main.ts` loads
+ * the driver once per process, so the operations instance is a singleton that
+ * every parallel lane posts through, and `postForm` is a read-modify-write over
+ * `cookies`: it may log in (clearing the jar), then GET a page for a CSRF
+ * token, then POST it back. Interleave two of those and a lane spends a token
+ * against a session that replaced its own, which Spring answers 403 -- so the
+ * operation never reaches the wire and the scenario reports failures about a
+ * charge point nobody asked. That was issue #77, at 45% of sweeps.
+ *
+ * REJECTED, having been measured: one instance per lane. It is the obvious way
+ * to delete the lock, and it costs a login per lane and gives up the single
+ * session this class exists to hold -- while fixing nothing the lock does not,
+ * since provisioning posts through the same method. Serialising also survives
+ * the part that is easy to get wrong: what rotates on SteVe is the SESSION, not
+ * the token. Spring Security's default `HttpSessionCsrfTokenRepository` keeps
+ * one token per session and never rotates it per request; the default
+ * `XorCsrfTokenRequestAttributeHandler` re-masks it on every render, so the
+ * string in the HTML changes each GET while unmasking to the same token. Only
+ * `login()` moves the session, via `changeSessionId`. A fix aimed at the token
+ * would have addressed the illusion.
  */
 export declare class SteveUiOps {
     private readonly cfg;
+    private readonly fetchImpl;
     private cookies;
-    constructor(cfg: SteveConfig);
+    /** Tail of the queue of `postForm` calls. Never rejects -- see serialise(). */
+    private gate;
+    constructor(cfg: SteveConfig, fetchImpl?: FetchLike);
+    /**
+     * Run `work` after every call already queued, and before every later one.
+     *
+     * A promise chain rather than a dependency: this package has no runtime
+     * dependencies, and `tck/main.ts` memoises its driver with the same
+     * `promise ??=` shape. The caller's failure is the caller's -- `run` rejects
+     * for whoever owns it, while the chain itself is left resolved, because a
+     * rejected `gate` would fail every lane queued behind the first one to
+     * stumble.
+     */
+    private serialise;
     private cookieHeader;
     private absorbSetCookie;
     isLoggedIn(): Promise<boolean>;
     login(): Promise<void>;
+    /**
+     * NOT SERIALISED, and neither are isLoggedIn() or login(). They are reachable
+     * only from postFormExclusive(), which already holds the gate, so locking
+     * them here would deadlock on the first call. The invariant is therefore
+     * "postForm is the only entry point": anything new that calls these directly
+     * from outside puts the session race back, and no guard can see it happen,
+     * because a second entry point is not a wrong answer -- it is a second door.
+     */
     ensureLogin(): Promise<void>;
     /**
      * GET a manager page for its CSRF token, then POST the form back to the same
@@ -47,8 +103,15 @@ export declare class SteveUiOps {
      * `path` is relative to the manager base, so it spans more than operations:
      * provisioning posts to `chargingProfiles/add` through this same method,
      * which is the point of it being separate from op().
+     *
+     * Serialised against every other call on this instance, login included: the
+     * three steps below are one read-modify-write over the cookie jar, and the
+     * class comment says what interleaving two of them costs.
      */
     postForm(path: string, fields: Record<string, string>): Promise<string>;
+    /** {@link postForm}'s body, which assumes it already holds the lock. Nothing
+     *  reachable from here may call postForm again: the gate is not reentrant. */
+    private postFormExclusive;
     /**
      * steve_op OP_PATH FIELDS equivalent. POSTs one CSMS operation,
      * form-encoded, exactly like the manager UI would. Returns the redirect
