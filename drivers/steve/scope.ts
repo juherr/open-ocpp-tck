@@ -234,6 +234,14 @@ export const STEVE_SCOPE: ScopeTable = {
     status: "NOT_APPLICABLE",
     reason: NO_OCPP_201,
   },
+  "cert201-tcb06-get-variables": {
+    status: "NOT_APPLICABLE",
+    reason: NO_OCPP_201,
+  },
+  "cert201-tcb09-set-variables": {
+    status: "NOT_APPLICABLE",
+    reason: NO_OCPP_201,
+  },
   "cert201-tcb20-reset-accepted": {
     status: "NOT_APPLICABLE",
     reason: NO_OCPP_201,

@@ -24,6 +24,13 @@ Released as `0.3.0`. The documented install ref already points at that tag, so
   `cert201-tcb20-reset-accepted`, `cert201-tcb21-reset-scheduled`,
   `cert201-tcb22-reset-rejected` and `cert201-tcf20-heartbeat` — in a
   `core-201` group that `run-all` sweeps like any other ([#73])
+- `cert201-tcb06-get-variables` and `cert201-tcb09-set-variables`, which
+  complete the seven selected OCPP 2.0.1 cases. Both were declined as blocked
+  on CSMS device-model provisioning; measurement says they were not. The device
+  model that answers a `GetVariables` is the *station's* — the pinned simulator
+  resolves the pair through a component/variable map of its own — and CitrineOS
+  reads its own only for optional batching limits, which fall back when it is
+  empty. Driven green against an unprovisioned device model ([#25])
 - A scenario can declare the OCPP version it is written for, and whether the
   simulator runs a scenario template of its name. Neither field is set by the
   47 scenarios that predate them ([#73])

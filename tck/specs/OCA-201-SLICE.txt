@@ -45,8 +45,8 @@
 #
 # case / scenario / why not
 TC_B_01    cert201-tcb01-cold-boot
-TC_B_06    not-implemented    Reading a variable needs a device model to read it from, and the CSMS this suite drives seeds authorizations only -- no station, no EVSE, no component. Blocked on the device-model provisioning assigned to issue #58 by issue #57's closing comment, section A -- #58's own text is about pinning a certified build, so the assignment is what to read. The per-case measurement is in issue #61's comment on #63.
-TC_B_09    not-implemented    Writing a variable, same gap and the same issue: there is nothing provisioned to write to.
+TC_B_06    cert201-tcb06-get-variables
+TC_B_09    cert201-tcb09-set-variables
 TC_B_20    cert201-tcb20-reset-accepted
 TC_B_21    cert201-tcb21-reset-scheduled
 TC_B_22    cert201-tcb22-reset-rejected
