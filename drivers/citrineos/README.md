@@ -367,11 +367,20 @@ The scenario keeps its `SKIPPED` path: a third-party CSMS may still fail to
 start a transaction for its own reasons, and the honest verdict there remains
 "the suite did not ask".
 
-Two of the seven selected cases — `TC_B_06` and `TC_B_09` — are not implemented at all,
-because reading or writing a variable needs a device model that
-`driver provision` does not seed; that is
-[issue #58](https://github.com/juherr/open-ocpp-tck/issues/58), and the reason
-is in `tck/specs/OCA-201-SLICE.txt`.
+All seven selected cases are implemented. `TC_B_06` and `TC_B_09` were the last
+two, and they arrived by a correction worth keeping here rather than only in
+the commit that made it: both were declined for a year on the ground that
+reading or writing a variable needs a device model `driver provision` does not
+seed. That reason was about the wrong side of the wire. `GetVariables` is
+CSMS-initiated, so the device model that *answers* it is the station's — the
+pinned simulator resolves the pair through a component/variable map of its own
+— and CitrineOS reads its own here only for `bytesPerMessage` and
+`itemsPerMessage`, which fall back when it is empty. Both drive green against a
+station whose device model was never provisioned.
+
+The device-model gap itself is real and unrelated to those two: a 2.0.1
+`StatusNotification` still never reaches the device model. That is its own
+issue, and the four `StatusNotificationService` warnings are what measures it.
 
 ## Gaps
 

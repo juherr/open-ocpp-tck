@@ -115,7 +115,6 @@ FILE core-201.ts
     IF
       ·.fail(·, ·)
       RETURN
-    RETURN
     IF
       ·.fail(·, ·)
       RETURN
@@ -144,7 +143,7 @@ FILE core-201.ts
     ·.pass(·)
   HELPER assertVariableValueSent
     IF
-      ·.fail(·, "no Received CALL found for action=SetVariables")
+      ·.fail(·, ·)
       RETURN
     IF
       OR
@@ -161,7 +160,7 @@ FILE core-201.ts
   SPEC cert201-tcb09-set-variables connector=1 bootWaitSecs=4 holdSecs=12 ocppVersion="OCPP-2.0.1" runsSimTemplate=false
     assertReceived(·, ·, "SetVariables", "SetVariables.req received")
     assertVariableRequested(·, ·, "SetVariables", "setVariableData", ·, ·, ·)
-    assertVariableValueSent(·, ·, ·, ·)
+    assertVariableValueSent(·, ·, "SetVariables", "setVariableData", ·, ·)
     assertVariableResultStatus(·, ·, "SetVariables", "setVariableResult", "Accepted", "the variable was written")
   SPEC cert201-tcb01-cold-boot connector=1 bootWaitSecs=4 holdSecs=10 ocppVersion="OCPP-2.0.1" runsSimTemplate=false
     assertSent(·, ·, "BootNotification", "BootNotification.req sent")

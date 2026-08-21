@@ -129,6 +129,42 @@ function assertResponseTimestamp(
 }
 
 /**
+ * One entry of a `getVariableData` / `setVariableData` array, read as loosely
+ * as the wire allows: every member optional and `unknown`, because what the
+ * assertions below are for is precisely the case where the CSMS sent
+ * something other than what was asked for.
+ */
+interface VariableSubject {
+  component?: { name?: unknown };
+  variable?: { name?: unknown };
+}
+
+/**
+ * Renders a subject array for a failure message.
+ *
+ * FAILURE PATH ONLY, which is why it is a function rather than a `const`
+ * computed before the checks: the passing call is the common one and has no
+ * message to build. It also removes the empty-array ternary that an eagerly
+ * joined string needed, because `[].join()` is `""` and `""` reads as though
+ * the array had one nameless entry.
+ *
+ * NOT NAMED `assert*`, and that is safe here rather than the hole
+ * tools/extract-assert-inventory.ts warns about: the warning is about a
+ * non-`assert*` helper that WRAPS ASSERTIONS, and this one takes no recorder
+ * and makes no `rec` call. It formats.
+ */
+function describeSubjects(rows: readonly VariableSubject[]): string {
+  return rows.length === 0
+    ? "an empty array"
+    : rows
+        .map(
+          (row) =>
+            `${JSON.stringify(row?.component?.name)}/${JSON.stringify(row?.variable?.name)}`,
+        )
+        .join(", ");
+}
+
+/**
  * The CSMS put a request on the wire asking about exactly one
  * `component`/`variable` pair, inside `member`.
  *
@@ -184,32 +220,19 @@ function assertVariableRequested(
     );
     return;
   }
-  const seen = entries
-    .map((entry) => {
-      const row = entry as {
-        component?: { name?: unknown };
-        variable?: { name?: unknown };
-      } | null;
-      return `${JSON.stringify(row?.component?.name)}/${JSON.stringify(row?.variable?.name)}`;
-    })
-    .join(", ");
-  if (entries.length !== 1) {
+  const rows = entries as readonly VariableSubject[];
+  if (rows.length !== 1) {
     rec.fail(
       description,
-      `${member} carries ${entries.length} entries where the driver asked for 1: ${
-        entries.length === 0 ? "an empty array" : seen
-      }`,
+      `${member} carries ${rows.length} entries where the driver asked for 1: ${describeSubjects(rows)}`,
     );
     return;
   }
-  const row = entries[0] as {
-    component?: { name?: unknown };
-    variable?: { name?: unknown };
-  } | null;
+  const row = rows[0];
   if (row?.component?.name !== component || row?.variable?.name !== variable) {
     rec.fail(
       description,
-      `${member}[0] asks about ${seen}, expected ${component}/${variable}`,
+      `${member}[0] asks about ${describeSubjects(rows)}, expected ${component}/${variable}`,
     );
     return;
   }
@@ -287,37 +310,44 @@ function assertVariableResultStatus(
 }
 
 /**
- * The sole `setVariableData` entry carries `expected`, AS A STRING.
+ * The sole entry of `member` carries `expected`, AS A STRING.
  *
  * Separate from `assertVariableRequested` rather than a fourth argument to it,
  * because the two say different things: that one is about the subject and is
  * shared with `GetVariables`, which has no value to carry. Folding them would
  * give the read scenario a parameter it must pass as undefined.
  *
- * SetVariables-only, and spelled rather than parameterised, because there is
- * no second message whose subject is an array carrying a value -- the day
- * there is, the action and member become arguments the way they already are
- * next door. Reading `[0]` rests on the same assertion the helper above makes
- * and this one does not repeat.
+ * ACTION AND MEMBER ARE PARAMETERS, not the literals an earlier draft spelled
+ * inline, and the reason is the guarded artifact rather than reuse. The
+ * extractor renders every non-literal argument as `·`, so a fully spelled-out
+ * version recorded as `assertVariableValueSent(·, ·, ·, ·)` -- every argument
+ * blind. Repointing it at another action or member would then move nothing in
+ * ASSERT-INVENTORY.txt, where the identical change one line above moves a
+ * literal. Passing them costs two arguments the caller already has and buys
+ * back the pinning; `assert.ts`'s rejected-refactor note states the same rule
+ * from the other direction.
+ *
+ * Reading `[0]` rests on the same exactly-one assertion the helper above
+ * makes, and this one does not repeat it.
  */
 function assertVariableValueSent(
   rec: AssertRecorder,
   frames: readonly Frame[],
+  action: string,
+  member: string,
   expected: string,
   description: string,
 ): void {
-  const call = findCall(frames, "received", "SetVariables");
+  const call = findCall(frames, "received", action);
   if (!call) {
-    rec.fail(description, "no Received CALL found for action=SetVariables");
+    rec.fail(description, `no Received CALL found for action=${action}`);
     return;
   }
-  const entries = (call.payload as Record<string, unknown> | null)?.[
-    "setVariableData"
-  ];
+  const entries = (call.payload as Record<string, unknown> | null)?.[member];
   if (!Array.isArray(entries) || entries.length === 0) {
     rec.fail(
       description,
-      `setVariableData is ${JSON.stringify(entries)}, so there is no value to read`,
+      `${member} is ${JSON.stringify(entries)}, so there is no value to read`,
     );
     return;
   }
@@ -376,6 +406,13 @@ const TC_B_06: ScenarioSpec = {
   runsSimTemplate: false,
   connector: 1,
   bootWaitSecs: 4,
+  // 12 BECAUSE IT WAS MEASURED, not because it was reasoned to. What this
+  // waits for is one CSMS-initiated command and one station answer -- the
+  // shape TC_B_22 below holds at 10 -- so 12 has two seconds of margin over
+  // the closest precedent and no argument of its own. Both values are
+  // guesses about contention; this one is a guess that has since run green
+  // in CI, and TC_B_20's history is a number that passed isolated and failed
+  // under three lanes. Lowering it is a sweep, not an edit.
   holdSecs: 12,
   async drive({ cpId, csms201 }) {
     await csms201.execute(cpId, {
@@ -451,6 +488,8 @@ const TC_B_09: ScenarioSpec = {
     assertVariableValueSent(
       rec,
       frames,
+      "SetVariables",
+      "setVariableData",
       WRITTEN_INTERVAL,
       `SetVariables.req carries attributeValue="${WRITTEN_INTERVAL}" as a string`,
     );

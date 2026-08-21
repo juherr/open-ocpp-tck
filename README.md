@@ -24,7 +24,7 @@ The `cert16-` prefix is a protocol version, not decoration. Its counterpart is
 written rule, [`OCA-201-SELECTION.md`](OCA-201-SELECTION.md) — role CSMS,
 status mandatory, on every certification profile, which is 205 cases — and the
 resulting list is [`tck/specs/OCA-201-SLICE.txt`](tck/specs/OCA-201-SLICE.txt),
-where 7 of them are written down so far and 5 are implemented. A `cert201-`
+where 7 of them are written down so far, all implemented. A `cert201-`
 scenario needs a driver that speaks the protocol; one that does not says so per
 scenario in its scope table, and nothing else about it changes.
 

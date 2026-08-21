@@ -323,7 +323,7 @@ It is the failure `OCA-COVERAGE.md` records under its own obligation count.
 
 **It could not have existed before the first scenario**, which is why this page
 carried its absence as a decision rather than an omission. Direction 1 had
-nothing to range over, and direction 2 would have been red on all seven rows
+nothing to range over, and direction 2 would have been red on every row
 from the first commit — a build that is red on purpose is a build nobody reads.
 A guard that cannot be made to fail cannot be shown to fail *correctly*, and
 that demonstration is this repository's entry condition for a guard.
