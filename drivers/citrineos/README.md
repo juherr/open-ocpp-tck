@@ -9,9 +9,10 @@ assertion gets tested.
 It reports the answer rather than flattering it.
 
 **Measured 2026-08-12 against the pinned image: 39 `PASS`, 7 `NOT APPLICABLE`,
-1 `FAIL` out of the 47 OCPP 1.6 scenarios.** The 5 OCPP 2.0.1 ones came later
-and were measured 2026-08-19: **4 `PASS`, 1 unable to establish its
-precondition** — see [OCPP 2.0.1](#ocpp-201) below.
+1 `FAIL` out of the 47 OCPP 1.6 scenarios.** The 7 OCPP 2.0.1 ones came later
+and in three measurements: four `PASS` on 2026-08-19, `TC_B_21` on 2026-08-20
+once its fixture existed, and `TC_B_06` / `TC_B_09` on 2026-08-21. **All 7
+`PASS`** — see [OCPP 2.0.1](#ocpp-201) below.
 
 That run needed no isolated retry at all, which had never happened before —
 but read it as one run rather than as a property. The parallel pass is
@@ -72,14 +73,14 @@ bun bin/ocpp-tck.ts driver provision      # seed the idTags TC_023 needs
 bun bin/ocpp-tck.ts driver verify         # read-only: are they there?
 bun bin/ocpp-tck.ts driver selftest       # seconds: every record query, once
 
-bun run e2e                               # the whole suite: 52 scenarios
+bun run e2e                               # the whole suite: 54 scenarios
 
 docker compose -f drivers/citrineos/compose.yaml down -v
 ```
 
 `bun run e2e` and not `run-all`, for the retry pass: `--retry-failed-isolated`
 re-runs a parallel lane's failures sequentially, which is the mode the runner
-calls reliable. Both cover the same 52 scenarios — the `authorize` group used
+calls reliable. Both cover the same 54 scenarios — the `authorize` group used
 to sit outside `all`, so a bare `run-all` reported 44/47 as "no failures" and
 skipped exactly the three scenarios that prove `driver provision` seeded
 anything. `bun run e2e:smoke` is the short loop while iterating.

@@ -313,10 +313,14 @@ export const CSMS_OPERATION_16_ACTIONS = everyOneOf<CsmsOperation16Action>()([
 // `CsmsOperations16<V>` -- and rejects both; that argument is not re-run here.
 //
 // WHY THREE AND NOT SIX. OCA-201-SELECTION.md's first slice was seven
-// certification cases, and only three of them are CSMS-INITIATED: Reset,
-// GetVariables, SetVariables. BootNotification and Heartbeat are observed on
-// the wire, not driven, so they need no operation at all. "As few as the first
-// slice needs" is that file's number, not this file's judgement.
+// certification cases, and CASES ARE NOT OPERATION KINDS -- the distinction is
+// the whole of this note. FIVE of the seven are CSMS-INITIATED: TC_B_20,
+// TC_B_21 and TC_B_22 all drive Reset, and TC_B_06 and TC_B_09 drive
+// GetVariables and SetVariables. Between them those five spell THREE kinds of
+// operation, which is what this union counts. TC_B_01 and TC_F_20 are
+// BootNotification and Heartbeat, observed on the wire rather than driven, so
+// they need no operation at all. "As few as the first slice needs" is that
+// file's number, not this file's judgement.
 //
 // AND WHY THREE IS NOT THE FINAL ANSWER. That page's rule now selects 205
 // cases rather than seven, so this union grows. What does NOT change is how:

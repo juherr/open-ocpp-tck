@@ -103,12 +103,14 @@ do not read the row above as calling it mandatory.
 
 ## The coverage target
 
-All 205, every one of them `M`, and they are listed **in
+The rule selects 205 cases, every one of them `M`. They belong **in
 [`tck/specs/OCA-201-SLICE.txt`](tck/specs/OCA-201-SLICE.txt)** rather than here
 — one row per case, naming the scenario that implements it or the reason there
-is none. That file is machine-readable and guarded in both directions; this
-page states the rule it was drawn against. The arrangement, and the reason for
-it, is [`OCA-COVERAGE.md`](OCA-COVERAGE.md)'s with
+is none — and that file currently enumerates **seven** of them, which the
+paragraph below owns rather than glosses. It is machine-readable and guarded in
+both directions; this page states the rule it was drawn against. The
+arrangement, and the reason for it, is [`OCA-COVERAGE.md`](OCA-COVERAGE.md)'s
+with
 [`OCA-OBLIGATIONS.txt`](tck/specs/OCA-OBLIGATIONS.txt): a second copy of a list
 drifts, and the prose copy is the one nobody diffs.
 
@@ -138,8 +140,10 @@ writing the number down before the work.** Its seven cases were boot, reading
 and writing one variable, reset — three mandatory cases of its own — and
 heartbeat, chosen because between them they touched boot, the device model and
 a CSMS-initiated operation: the three parts of the driver contract that
-milestone changed. Only three of the seven were CSMS-initiated, so the first
-2.0.1 operation vocabulary needed **three operations**, not eighteen, and "as
+milestone changed. Five of the seven are CSMS-initiated — the three Reset
+cases, plus reading and writing a variable — but between them they spell only
+**three kinds of operation**, which is the count a vocabulary is measured in.
+So the first 2.0.1 vocabulary needed three, not eighteen, and "as
 few as the first slice needs" was a number instead of an intention before a
 line of it was written. The same arithmetic is owed for 205 and has not been
 done.

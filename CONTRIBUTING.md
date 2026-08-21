@@ -1,6 +1,6 @@
 # Writing a CSMS driver
 
-A driver is the only thing standing between these 52 scenarios and your CSMS.
+A driver is the only thing standing between these 54 scenarios and your CSMS.
 It answers two questions and nothing else:
 
 - **`CsmsOperations16.execute(cpId, op)`** — "make the CSMS send this OCPP
