@@ -9,9 +9,10 @@ assertion gets tested.
 It reports the answer rather than flattering it.
 
 **Measured 2026-08-12 against the pinned image: 39 `PASS`, 7 `NOT APPLICABLE`,
-1 `FAIL` out of the 47 OCPP 1.6 scenarios.** The 5 OCPP 2.0.1 ones came later
-and were measured 2026-08-19: **4 `PASS`, 1 unable to establish its
-precondition** — see [OCPP 2.0.1](#ocpp-201) below.
+1 `FAIL` out of the 47 OCPP 1.6 scenarios.** The 7 OCPP 2.0.1 ones came later
+and in three measurements: four `PASS` on 2026-08-19, `TC_B_21` on 2026-08-20
+once its fixture existed, and `TC_B_06` / `TC_B_09` on 2026-08-21. **All 7
+`PASS`** — see [OCPP 2.0.1](#ocpp-201) below.
 
 That run needed no isolated retry at all, which had never happened before —
 but read it as one run rather than as a property. The parallel pass is
@@ -72,14 +73,14 @@ bun bin/ocpp-tck.ts driver provision      # seed the idTags TC_023 needs
 bun bin/ocpp-tck.ts driver verify         # read-only: are they there?
 bun bin/ocpp-tck.ts driver selftest       # seconds: every record query, once
 
-bun run e2e                               # the whole suite: 52 scenarios
+bun run e2e                               # the whole suite: 54 scenarios
 
 docker compose -f drivers/citrineos/compose.yaml down -v
 ```
 
 `bun run e2e` and not `run-all`, for the retry pass: `--retry-failed-isolated`
 re-runs a parallel lane's failures sequentially, which is the mode the runner
-calls reliable. Both cover the same 52 scenarios — the `authorize` group used
+calls reliable. Both cover the same 54 scenarios — the `authorize` group used
 to sit outside `all`, so a bare `run-all` reported 44/47 as "no failures" and
 skipped exactly the three scenarios that prove `driver provision` seeded
 anything. `bun run e2e:smoke` is the short loop while iterating.
@@ -367,11 +368,20 @@ The scenario keeps its `SKIPPED` path: a third-party CSMS may still fail to
 start a transaction for its own reasons, and the honest verdict there remains
 "the suite did not ask".
 
-Two of the seven selected cases — `TC_B_06` and `TC_B_09` — are not implemented at all,
-because reading or writing a variable needs a device model that
-`driver provision` does not seed; that is
-[issue #58](https://github.com/juherr/open-ocpp-tck/issues/58), and the reason
-is in `tck/specs/OCA-201-SLICE.txt`.
+All seven selected cases are implemented. `TC_B_06` and `TC_B_09` were the last
+two, and they arrived by a correction worth keeping here rather than only in
+the commit that made it: both were declined for a year on the ground that
+reading or writing a variable needs a device model `driver provision` does not
+seed. That reason was about the wrong side of the wire. `GetVariables` is
+CSMS-initiated, so the device model that *answers* it is the station's — the
+pinned simulator resolves the pair through a component/variable map of its own
+— and CitrineOS reads its own here only for `bytesPerMessage` and
+`itemsPerMessage`, which fall back when it is empty. Both drive green against a
+station whose device model was never provisioned.
+
+The device-model gap itself is real and unrelated to those two: a 2.0.1
+`StatusNotification` still never reaches the device model. That is its own
+issue, and the four `StatusNotificationService` warnings are what measures it.
 
 ## Gaps
 

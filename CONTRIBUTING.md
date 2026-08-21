@@ -1,6 +1,6 @@
 # Writing a CSMS driver
 
-A driver is the only thing standing between these 52 scenarios and your CSMS.
+A driver is the only thing standing between these 54 scenarios and your CSMS.
 It answers two questions and nothing else:
 
 - **`CsmsOperations16.execute(cpId, op)`** — "make the CSMS send this OCPP
@@ -190,10 +190,16 @@ Everything above is OCPP 1.6. If your CSMS also speaks 2.0.1, there is a
 `Reset`, `GetVariables`, `SetVariables`.
 
 Three, not eighteen and not six, because
-[`OCA-201-SELECTION.md`](OCA-201-SELECTION.md)'s first slice is seven
+[`OCA-201-SELECTION.md`](OCA-201-SELECTION.md)'s first slice was seven
 certification cases and only those three are CSMS-*initiated*.
 `BootNotification` and `Heartbeat` are watched on the wire, so they need no
 operation at all.
+
+The rule that page states now selects 205 cases rather than seven, so this
+vocabulary will grow — in tranches sized by what unblocks the most cases, and
+still by counting rather than by adding the rest of the protocol. **Three is
+what it is today**; check the union in `tck/driver.ts` rather than this
+sentence before writing a driver against it.
 
 It is a **separate closed union**, not an extension of the first, and the
 consequence is the point: **a 1.6-only driver implements nothing here and

@@ -416,6 +416,17 @@ export function assertIdTagInfoStatus(
  * a measurement rather than as a nuisance: a rejection recorded with its
  * reason stops being re-argued and starts being re-proposed, and a shape three
  * callers spell out is no longer being declined for scope.
+ *
+ * IT IS FOUR. `assertVariableResultStatus` in specs/core-201.ts spells the
+ * spine out again, and three of the four review angles run over the branch
+ * that added it named this note without being pointed at it -- so the count
+ * above is now the second measurement of the same thing, not a restatement.
+ * The refactor was NOT done there, and the reason is this note's own: that
+ * branch already moves ASSERT-INVENTORY.txt twice for checks that genuinely
+ * changed, and folding a pure refactor into the same diff is exactly what it
+ * warns makes such a diff unreadable. What is owed is the commit whose only
+ * job is that refactor; what is recorded here is that nothing is waiting on
+ * more evidence.
  */
 
 export interface AnsweredOptions {

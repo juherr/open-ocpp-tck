@@ -28,6 +28,13 @@ Released as `0.3.0`. The documented install ref already points at that tag, so
   `cert201-tcb20-reset-accepted`, `cert201-tcb21-reset-scheduled`,
   `cert201-tcb22-reset-rejected` and `cert201-tcf20-heartbeat` — in a
   `core-201` group that `run-all` sweeps like any other ([#73])
+- `cert201-tcb06-get-variables` and `cert201-tcb09-set-variables`, which
+  complete the seven selected OCPP 2.0.1 cases. Both were declined as blocked
+  on CSMS device-model provisioning; measurement says they were not. The device
+  model that answers a `GetVariables` is the *station's* — the pinned simulator
+  resolves the pair through a component/variable map of its own — and CitrineOS
+  reads its own only for optional batching limits, which fall back when it is
+  empty. Driven green against an unprovisioned device model ([#25])
 - A scenario can declare the OCPP version it is written for, and whether the
   simulator runs a scenario template of its name. Neither field is set by the
   47 scenarios that predate them ([#73])
@@ -68,6 +75,17 @@ Released as `0.3.0`. The documented install ref already points at that tag, so
 - **BREAKING** — the OCPP version moved from the driver's transport defaults to
   `SimConfig`, where it is a property of the scenario rather than of the CSMS
   ([#64])
+- The OCPP 2.0.1 selection rule drops its `profile = Core` term and its
+  seven-case slice. It now reads `role = CSMS, status = M` on every
+  certification profile, which selects **205 cases** rather than 104 or seven —
+  Core 104, Advanced Security 6, Smart Charging 36, ISO 15118 Support 59 — and
+  a case is covered when it is implemented *or declined in writing*. No
+  scenario, guard or type changes shape: what moves is what the suite says it
+  owes. Two things the new target has to answer before the list can be
+  completed are written down where they bite rather than left implicit — that
+  committing 205 rows is what `OCA-201-SELECTION.md`'s own CC BY-ND reasoning
+  currently forbids, and that only 110 of the 205 run against a profile the
+  CitrineOS certificate attests ([#25])
 - `OCA-201-SELECTION.md` cites the slice list instead of restating it, the way
   `OCA-COVERAGE.md` cites `OCA-OBLIGATIONS.txt` ([#73])
 - The runner refuses a run where `SIM_EXTRA_ARGS` would silently replace a
@@ -189,6 +207,7 @@ releases from 141 commits would mean writing detail nobody measured.
 [0.2.1-notes]: https://github.com/juherr/open-ocpp-tck/releases/tag/v0.2.1
 [0.2.0-notes]: https://github.com/juherr/open-ocpp-tck/releases/tag/v0.2.0
 [0.1.0-notes]: https://github.com/juherr/open-ocpp-tck/releases/tag/v0.1.0
+[#25]: https://github.com/juherr/open-ocpp-tck/issues/25
 [#55]: https://github.com/juherr/open-ocpp-tck/pull/55
 [#64]: https://github.com/juherr/open-ocpp-tck/pull/64
 [#65]: https://github.com/juherr/open-ocpp-tck/pull/65

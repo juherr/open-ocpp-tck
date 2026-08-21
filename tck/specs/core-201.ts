@@ -1,10 +1,10 @@
 /**
- * specs/core-201.ts -- the OCPP 2.0.1 slice, and the first scenarios in this
- * suite that were not ported from anything.
+ * specs/core-201.ts -- the OCPP 2.0.1 scenarios, and the first in this suite
+ * that were not ported from anything.
  *
  * WHICH CASES MAY BE HERE IS NOT THIS FILE'S DECISION. `OCA-201-SELECTION.md`
- * states the rule -- profile Core, role CSMS, status `M` -- and
- * `OCA-201-SLICE.txt` is the resulting list, one row per case, guarded by
+ * states the rule -- role CSMS, status `M`, on every certification profile --
+ * and `OCA-201-SLICE.txt` is the resulting list, one row per case, guarded by
  * tests/oca-201-slice.sh in both directions. Adding a scenario here for a case
  * that is not in that file fails the build, which is the point: "a small
  * representative set" was a judgement each reviewer made differently.
@@ -29,8 +29,9 @@
  * scenario below. The pinned image ships 60 templates and not one of them is
  * `cert201-`, so the wait for `scenario_started` could only ever time out --
  * and none of these needs one anyway: two are what a charge point does on
- * `connect`, and three are driven entirely from the CSMS side. A template would be a thing to maintain upstream before
- * a single case could be measured here.
+ * `connect`, and the rest are driven entirely from the CSMS side. A template
+ * would be a thing to maintain upstream before a single case could be measured
+ * here.
  *
  * A FAILING CSMS OPERATION IS NOT SWALLOWED HERE, which is where these differ
  * from the 1.6 scenarios: those wrap `execute` in a try/catch that warns and
@@ -45,13 +46,20 @@
  * "no Received CALL found", which is true and says nothing.
  *
  * THE SETUP IS INLINE, AND IT DUPLICATES. `ocppVersion` plus
- * `runsSimTemplate: false` is five copies of the same two lines, and the three
+ * `runsSimTemplate: false` is repeated once per scenario, and the three
  * Reset scenarios repeat the same drive-then-check shape with one member
  * changed. That is deliberate: OCPP 2.0.1 Part 6 defines 13 `Reusable State`
  * fixtures and this suite has timers and one-shot provisioning, which are not
  * the same thing -- issue #63 says to write the setup inline and note where it
  * duplicates rather than build the mechanism from one slice's evidence. This
  * paragraph is that note.
+ *
+ * THE EVIDENCE HAS SINCE ARRIVED, so read the paragraph above as a record of
+ * why the mechanism was not built rather than as a reason to keep inlining.
+ * The rule in OCA-201-SELECTION.md now selects 205 cases, at which point a
+ * handful of copies becomes a class of copies, they drift, and each one reads
+ * reasonably on its own -- which is the failure inlining was cheap enough to
+ * risk at five and is not at 205. The fixture mechanism has its own issue.
  */
 
 import {
@@ -119,6 +127,382 @@ function assertResponseTimestamp(
   }
   rec.pass(description);
 }
+
+/**
+ * One entry of a `getVariableData` / `setVariableData` array, read as loosely
+ * as the wire allows: every member optional and `unknown`, because what the
+ * assertions below are for is precisely the case where the CSMS sent
+ * something other than what was asked for.
+ */
+interface VariableSubject {
+  component?: { name?: unknown };
+  variable?: { name?: unknown };
+}
+
+/**
+ * Renders a subject array for a failure message.
+ *
+ * FAILURE PATH ONLY, which is why it is a function rather than a `const`
+ * computed before the checks: the passing call is the common one and has no
+ * message to build. It also removes the empty-array ternary that an eagerly
+ * joined string needed, because `[].join()` is `""` and `""` reads as though
+ * the array had one nameless entry.
+ *
+ * NOT NAMED `assert*`, and that is safe here rather than the hole
+ * tools/extract-assert-inventory.ts warns about: the warning is about a
+ * non-`assert*` helper that WRAPS ASSERTIONS, and this one takes no recorder
+ * and makes no `rec` call. It formats.
+ */
+function describeSubjects(rows: readonly VariableSubject[]): string {
+  return rows.length === 0
+    ? "an empty array"
+    : rows
+        .map(
+          (row) =>
+            `${JSON.stringify(row?.component?.name)}/${JSON.stringify(row?.variable?.name)}`,
+        )
+        .join(", ");
+}
+
+/**
+ * The CSMS put a request on the wire asking about exactly one
+ * `component`/`variable` pair, inside `member`.
+ *
+ * HERE AND NOT IN assert.ts, for `assertResponseTimestamp`'s reason one step
+ * further out. `assertCallPayload` is the shape next door and cannot be made
+ * to fit: it compares members with `Object.is`, so every value it can check is
+ * a scalar, and `getVariableData` is an array of objects. Widening it to walk
+ * nested structures would give every 1.6 scenario a matcher none of them asked
+ * for, and the knowledge being applied here -- that a GetVariables request
+ * carries its subject in an array rather than in a member -- is message
+ * knowledge, which assert.ts is built not to hold.
+ *
+ * WHAT THIS MEASURES IS THE CSMS, not the station. The driver asked for one
+ * pair; a CSMS that dropped it, renamed it or added an entry of its own has
+ * reshaped an operation on the way to the wire, and that is the finding. It is
+ * the same measurement `Reset.req asks for type=Immediate` makes, against a
+ * request whose subject is not a scalar.
+ *
+ * EXACTLY ONE ENTRY, ASSERTED, and it is the load-bearing half. An earlier
+ * draft matched ANY entry so that a CSMS batching legally would not be filed
+ * against -- which read reasonably and was wrong twice over. `itemsPerMessage`
+ * can only SPLIT a batch, never add to one, so no legal batching decision
+ * produces an entry the driver did not ask for; and matching any entry made
+ * "added a second entry of its own" a claim in the paragraph above that the
+ * code did not check, which is the shape of silent pass this suite exists to
+ * refuse. It also makes the reads at `[0]` in the two helpers below sound,
+ * where before they rested on a count nothing enforced.
+ *
+ * A SCENARIO SENDING SEVERAL VARIABLES therefore may not use this helper as
+ * it stands. That is deliberate rather than a limitation to route around: it
+ * would need a different assertion -- a set comparison, or a per-pair one --
+ * and getting there by relaxing this one puts the silent pass straight back.
+ */
+function assertVariableRequested(
+  rec: AssertRecorder,
+  frames: readonly Frame[],
+  action: string,
+  member: string,
+  component: string,
+  variable: string,
+  description: string,
+): void {
+  const call = findCall(frames, "received", action);
+  if (!call) {
+    rec.fail(description, `no Received CALL found for action=${action}`);
+    return;
+  }
+  const entries = (call.payload as Record<string, unknown> | null)?.[member];
+  if (!Array.isArray(entries)) {
+    rec.fail(
+      description,
+      `${member} is ${JSON.stringify(entries)}, which is not the array the wire calls for`,
+    );
+    return;
+  }
+  const rows = entries as readonly VariableSubject[];
+  if (rows.length !== 1) {
+    rec.fail(
+      description,
+      `${member} carries ${rows.length} entries where the driver asked for 1: ${describeSubjects(rows)}`,
+    );
+    return;
+  }
+  const row = rows[0];
+  if (row?.component?.name !== component || row?.variable?.name !== variable) {
+    rec.fail(
+      description,
+      `${member}[0] asks about ${describeSubjects(rows)}, expected ${component}/${variable}`,
+    );
+    return;
+  }
+  rec.pass(description);
+}
+
+/**
+ * The station answered `action` with a `member` whose first result carries
+ * `attributeStatus`.
+ *
+ * `assertResponseStatus` is again the shape next door and again does not fit:
+ * it reads `payload.status`, and a GetVariablesResponse has none -- its
+ * outcome is per requested variable, one `attributeStatus` per result.
+ *
+ * READING `[0]` IS SOUND ONLY BECAUSE `assertVariableRequested` RAN, and both
+ * scenarios call it first. The results correlate with the request
+ * positionally, so `[0]` is ours exactly as long as the request carried one
+ * entry -- which that helper asserts rather than assumes. Dropping it from a
+ * scenario, or relaxing it, silently turns this into "some result was
+ * Accepted".
+ *
+ * WHAT A NON-`Accepted` STATUS MEANS IS NOT THIS ASSERTION'S BUSINESS, and the
+ * reason is worth having: `UnknownComponent` and `UnknownVariable` are
+ * statements about the STATION's device model, so a red here is only a finding
+ * against the CSMS once the pair is known to be one the station has. That is
+ * what picking a pair the pinned simulator's own map spells buys, and it is
+ * the assumption to re-check when the simulator digest moves.
+ */
+function assertVariableResultStatus(
+  rec: AssertRecorder,
+  frames: readonly Frame[],
+  action: string,
+  member: string,
+  expectedStatus: string,
+  description: string,
+): void {
+  const call = findCall(frames, "received", action);
+  if (!call) {
+    rec.fail(description, `no Received CALL found for action=${action}`);
+    return;
+  }
+  const response = findResponseFor(frames, call);
+  if (!response) {
+    rec.fail(
+      description,
+      `no response frame found for uniqueId=${call.uniqueId} (${action})`,
+    );
+    return;
+  }
+  if (response.kind !== "callresult") {
+    rec.fail(
+      description,
+      `expected CALLRESULT, got CALLERROR ${response.errorCode}: ${response.errorDescription}`,
+    );
+    return;
+  }
+  const results = (response.payload as Record<string, unknown> | null)?.[member];
+  if (!Array.isArray(results) || results.length === 0) {
+    rec.fail(
+      description,
+      `${member} is ${JSON.stringify(results)}, so the answer names no result to read`,
+    );
+    return;
+  }
+  const status = (results[0] as { attributeStatus?: unknown } | null)
+    ?.attributeStatus;
+  if (status !== expectedStatus) {
+    rec.fail(
+      description,
+      `${member}[0].attributeStatus is ${JSON.stringify(status)}, expected ${expectedStatus}`,
+    );
+    return;
+  }
+  rec.pass(description);
+}
+
+/**
+ * The sole entry of `member` carries `expected`, AS A STRING.
+ *
+ * Separate from `assertVariableRequested` rather than a fourth argument to it,
+ * because the two say different things: that one is about the subject and is
+ * shared with `GetVariables`, which has no value to carry. Folding them would
+ * give the read scenario a parameter it must pass as undefined.
+ *
+ * ACTION AND MEMBER ARE PARAMETERS, not the literals an earlier draft spelled
+ * inline, and the reason is the guarded artifact rather than reuse. The
+ * extractor renders every non-literal argument as `·`, so a fully spelled-out
+ * version recorded as `assertVariableValueSent(·, ·, ·, ·)` -- every argument
+ * blind. Repointing it at another action or member would then move nothing in
+ * ASSERT-INVENTORY.txt, where the identical change one line above moves a
+ * literal. Passing them costs two arguments the caller already has and buys
+ * back the pinning; `assert.ts`'s rejected-refactor note states the same rule
+ * from the other direction.
+ *
+ * Reading `[0]` rests on the same exactly-one assertion the helper above
+ * makes, and this one does not repeat it.
+ */
+function assertVariableValueSent(
+  rec: AssertRecorder,
+  frames: readonly Frame[],
+  action: string,
+  member: string,
+  expected: string,
+  description: string,
+): void {
+  const call = findCall(frames, "received", action);
+  if (!call) {
+    rec.fail(description, `no Received CALL found for action=${action}`);
+    return;
+  }
+  const entries = (call.payload as Record<string, unknown> | null)?.[member];
+  if (!Array.isArray(entries) || entries.length === 0) {
+    rec.fail(
+      description,
+      `${member} is ${JSON.stringify(entries)}, so there is no value to read`,
+    );
+    return;
+  }
+  const value = (entries[0] as { attributeValue?: unknown } | null)
+    ?.attributeValue;
+  if (value !== expected) {
+    rec.fail(
+      description,
+      `attributeValue is ${JSON.stringify(value)}, expected the string ${JSON.stringify(expected)}`,
+    );
+    return;
+  }
+  rec.pass(description);
+}
+
+/**
+ * The pair TC_B_06 and TC_B_09 operate on.
+ *
+ * NOT AN ARBITRARY CHOICE, and the constraint is the STATION's rather than the
+ * CSMS's. The pinned simulator answers 2.0.1 variable traffic out of a 12-entry
+ * map from `<Component>/<Variable>` onto an OCPP 1.6 configuration key
+ * (`deviceModelMap.ts` in its own sources); anything outside that map is
+ * answered `UnknownComponent` or `UnknownVariable`, which would make both
+ * scenarios red for a reason that is not about the CSMS at all.
+ *
+ * `HeartbeatInterval` specifically because it is the one entry that is both
+ * readable and writable with no side effect worth having: it is `readonly:
+ * false` and absent from the simulator's reboot-required set, so a write is
+ * answered `Accepted` rather than `RebootRequired`, and the value below is
+ * raised rather than lowered so that a station left running after the write
+ * emits LESS traffic, not more.
+ *
+ * WHEN THE SIMULATOR DIGEST MOVES, this is the assumption to re-check. Both
+ * scenarios go red together if it stops holding, which is the loudest way for
+ * it to fail.
+ *
+ * WHICH COMMITTED ARTIFACT PINS THESE, because it is not the obvious one.
+ * Passing them as identifiers rather than literals means ASSERT-INVENTORY.txt
+ * renders them `·` -- the same blindness a callback argument has there -- so
+ * the assertion side records only that SOMETHING was asked about. DRIVE-TRACE
+ * .txt is what holds them: `OP 201:GetVariables [heartbeatinterval,
+ * ocppcommctrlr]`. Editing either constant therefore still moves a guarded
+ * artifact, just the other one. Inlining the strings at all four call sites
+ * would put them in both, and duplicate the pair the drive and the assert must
+ * agree on -- which is the coupling these constants exist to make impossible.
+ */
+const VARIABLE_COMPONENT = "OCPPCommCtrlr";
+const VARIABLE_NAME = "HeartbeatInterval";
+const WRITTEN_INTERVAL = "600";
+
+const TC_B_06: ScenarioSpec = {
+  templateId: "cert201-tcb06-get-variables",
+  description:
+    "TC_B_06 Get Variables: the CSMS reads one variable and the station answers it.",
+  ocppVersion: "OCPP-2.0.1",
+  runsSimTemplate: false,
+  connector: 1,
+  bootWaitSecs: 4,
+  // 12 BECAUSE IT WAS MEASURED, not because it was reasoned to. What this
+  // waits for is one CSMS-initiated command and one station answer -- the
+  // shape TC_B_22 below holds at 10 -- so 12 has two seconds of margin over
+  // the closest precedent and no argument of its own. Both values are
+  // guesses about contention; this one is a guess that has since run green
+  // in CI, and TC_B_20's history is a number that passed isolated and failed
+  // under three lanes. Lowering it is a sweep, not an edit.
+  holdSecs: 12,
+  async drive({ cpId, csms201 }) {
+    await csms201.execute(cpId, {
+      action: "GetVariables",
+      variables: [
+        {
+          component: { name: VARIABLE_COMPONENT },
+          variable: { name: VARIABLE_NAME },
+        },
+      ],
+    });
+  },
+  assert({ frames, rec }) {
+    assertReceived(rec, frames, "GetVariables", "GetVariables.req received");
+    assertVariableRequested(
+      rec,
+      frames,
+      "GetVariables",
+      "getVariableData",
+      VARIABLE_COMPONENT,
+      VARIABLE_NAME,
+      `GetVariables.req asks about ${VARIABLE_COMPONENT}/${VARIABLE_NAME}`,
+    );
+    assertVariableResultStatus(
+      rec,
+      frames,
+      "GetVariables",
+      "getVariableResult",
+      "Accepted",
+      "the variable was read",
+    );
+  },
+};
+
+const TC_B_09: ScenarioSpec = {
+  templateId: "cert201-tcb09-set-variables",
+  description:
+    "TC_B_09 Set Variables: the CSMS writes one variable and the station accepts it.",
+  ocppVersion: "OCPP-2.0.1",
+  runsSimTemplate: false,
+  connector: 1,
+  bootWaitSecs: 4,
+  holdSecs: 12,
+  async drive({ cpId, csms201 }) {
+    await csms201.execute(cpId, {
+      action: "SetVariables",
+      variables: [
+        {
+          component: { name: VARIABLE_COMPONENT },
+          variable: { name: VARIABLE_NAME },
+          attributeValue: WRITTEN_INTERVAL,
+        },
+      ],
+    });
+  },
+  assert({ frames, rec }) {
+    assertReceived(rec, frames, "SetVariables", "SetVariables.req received");
+    assertVariableRequested(
+      rec,
+      frames,
+      "SetVariables",
+      "setVariableData",
+      VARIABLE_COMPONENT,
+      VARIABLE_NAME,
+      `SetVariables.req asks about ${VARIABLE_COMPONENT}/${VARIABLE_NAME}`,
+    );
+    // THE VALUE IS THE HALF THAT ONLY THIS CASE CAN CHECK. Reading measures
+    // that the CSMS relayed a subject; writing measures that it relayed a
+    // PAYLOAD, and `attributeValue` is the one member a CSMS could plausibly
+    // reshape on the way out -- 2.0.1 carries every value as text whatever the
+    // variable's declared type, so a CSMS that helpfully sent 600 rather than
+    // "600" would be spelling a schema violation the station may still accept.
+    assertVariableValueSent(
+      rec,
+      frames,
+      "SetVariables",
+      "setVariableData",
+      WRITTEN_INTERVAL,
+      `SetVariables.req carries attributeValue="${WRITTEN_INTERVAL}" as a string`,
+    );
+    assertVariableResultStatus(
+      rec,
+      frames,
+      "SetVariables",
+      "setVariableResult",
+      "Accepted",
+      "the variable was written",
+    );
+  },
+};
 
 const TC_B_01: ScenarioSpec = {
   templateId: "cert201-tcb01-cold-boot",
@@ -435,6 +819,8 @@ const TC_F_20: ScenarioSpec = {
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
 export const CORE_201_SPECS: ScenarioSpec<any>[] = [
   TC_B_01,
+  TC_B_06,
+  TC_B_09,
   TC_B_20,
   TC_B_21,
   TC_B_22,

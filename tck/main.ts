@@ -827,6 +827,15 @@ async function runScenario<D>(
 // the namespace a templateId opens with separates the protocols, but no flag
 // reads it, so it is not the second axis already in place.
 // OCA-201-SELECTION.md records that decision.
+//
+// THE SECOND HALF OF THAT ARGUMENT HAS EXPIRED, and the first half has not.
+// "Before there were two values to test it with" was true of a seven-case
+// slice in one profile; the rule now selects all four, so the values exist.
+// What still holds -- and holds harder -- is that it must be ONE axis: doing
+// nothing here does not leave the runner axis-less, it grows
+// `smartcharging-201`, `security-201`, `iso15118-201` beside `core-201`, each
+// arriving as a reasonable local decision. #34 moved into the same milestone
+// for that reason, and it is still the issue that owns the shape.
 // ---------------------------------------------------------------------------
 
 // eslint-disable-next-line @typescript-eslint/no-explicit-any

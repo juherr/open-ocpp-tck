@@ -170,6 +170,12 @@ GROUP authorize
 GROUP core-201
   SPEC cert201-tcb01-cold-boot
     <no drive>
+  SPEC cert201-tcb06-get-variables
+    OP 201:GetVariables [heartbeatinterval, ocppcommctrlr]
+    -> driveState keys=[]
+  SPEC cert201-tcb09-set-variables
+    OP 201:SetVariables [600, heartbeatinterval, ocppcommctrlr]
+    -> driveState keys=[]
   SPEC cert201-tcb20-reset-accepted
     OP 201:Reset [immediate]
     -> driveState keys=[]

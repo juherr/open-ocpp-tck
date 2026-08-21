@@ -654,7 +654,7 @@
          30_000,
        );
      } catch (err) {
-@@ -159,103 +566,267 @@
+@@ -159,103 +566,276 @@
        );
      }
      await sleep(bootWaitSecs * 1000);
@@ -958,10 +958,19 @@
 +// the namespace a templateId opens with separates the protocols, but no flag
 +// reads it, so it is not the second axis already in place.
 +// OCA-201-SELECTION.md records that decision.
++//
++// THE SECOND HALF OF THAT ARGUMENT HAS EXPIRED, and the first half has not.
++// "Before there were two values to test it with" was true of a seven-case
++// slice in one profile; the rule now selects all four, so the values exist.
++// What still holds -- and holds harder -- is that it must be ONE axis: doing
++// nothing here does not leave the runner axis-less, it grows
++// `smartcharging-201`, `security-201`, `iso15118-201` beside `core-201`, each
++// arriving as a reasonable local decision. #34 moved into the same milestone
++// for that reason, and it is still the issue that owns the shape.
  // ---------------------------------------------------------------------------
  
  // eslint-disable-next-line @typescript-eslint/no-explicit-any
-@@ -265,20 +836,23 @@
+@@ -265,20 +845,23 @@
    "remotetrigger-smartcharging": REMOTETRIGGER_SMARTCHARGING_SPECS,
    firmware: FIRMWARE_SPECS,
    authorize: AUTHORIZE_SPECS,
@@ -991,7 +1000,7 @@
  // eslint-disable-next-line @typescript-eslint/no-explicit-any
  const SPECS_BY_TEMPLATE_ID = new Map<string, ScenarioSpec<any>>(
    Object.values(GROUPS)
-@@ -286,66 +860,228 @@
+@@ -286,66 +869,228 @@
      .map((spec) => [spec.templateId, spec]),
  );
  
@@ -1259,7 +1268,7 @@
      };
    } catch (err) {
      const message =
-@@ -353,64 +1089,47 @@
+@@ -353,64 +1098,47 @@
      process.stderr.write(
        `[runner] ERROR: ${spec.templateId} on ${cpId} threw before completing: ${message}\n`,
      );
@@ -1348,7 +1357,7 @@
    );
  
    for (const outcome of toRetry) {
-@@ -427,18 +1146,19 @@
+@@ -427,18 +1155,19 @@
      process.stderr.write(
        `[runner] isolated retry: ${outcome.templateId} on ${outcome.cpId} (parallel verdict was ${outcome.verdict})\n`,
      );
@@ -1371,7 +1380,7 @@
            : " -- CONFIRMED (fails isolated too, not a parallel-lane artifact)\n"),
      );
    }
-@@ -446,64 +1166,158 @@
+@@ -446,64 +1175,158 @@
  
  function timestampUtc(): string {
    // date -u +%FT%TZ equivalent: ISO-8601 down to the second, "Z" suffix
@@ -1559,7 +1568,7 @@
        "",
        header,
        separator,
-@@ -518,54 +1332,54 @@
+@@ -518,54 +1341,54 @@
  }
  
  /** Sequential or parallel group sweep. Writes results/summary.md and exits
@@ -1640,7 +1649,7 @@
      );
    } else {
      for (let i = 0; i < specs.length; i++) {
-@@ -574,11 +1388,11 @@
+@@ -574,11 +1397,11 @@
    }
  
    if (retryFailedIsolated) {
@@ -1654,7 +1663,7 @@
            "(a sequential sweep is already isolated).\n",
        );
      }
-@@ -588,45 +1402,87 @@
+@@ -588,45 +1411,87 @@
    for (const o of outcomes) {
      const retrySuffix = o.isolatedRetry
        ? ` [isolated retry: ${o.isolatedRetry.verdict}${
@@ -1764,7 +1773,7 @@
  }
  
  // ---------------------------------------------------------------------------
-@@ -642,6 +1498,8 @@
+@@ -642,6 +1507,8 @@
    cpId: string;
    connector?: number;
    timeoutSecs?: number;
@@ -1773,7 +1782,7 @@
  }
  
  function requireValue(argv: string[], index: number, flag: string): string {
-@@ -663,37 +1521,82 @@
+@@ -663,37 +1530,82 @@
    return n;
  }
  
@@ -1874,7 +1883,7 @@
  
    if (argv[0] === "run-all") {
      group = "all";
-@@ -708,18 +1611,27 @@
+@@ -708,18 +1620,27 @@
          case "--retry-failed-isolated":
            retryFailedIsolated = true;
            break;
@@ -1905,7 +1914,7 @@
      process.exit(1);
    }
  
-@@ -749,9 +1661,11 @@
+@@ -749,9 +1670,11 @@
        case "--retry-failed-isolated":
          retryFailedIsolated = true;
          break;
@@ -1918,7 +1927,7 @@
          process.exit(1);
      }
    }
-@@ -764,35 +1678,547 @@
+@@ -764,35 +1687,547 @@
      cpId,
      connector,
      timeoutSecs,
@@ -2482,7 +2491,7 @@
    }
  
    const spec = SPECS_BY_TEMPLATE_ID.get(args.templateId);
-@@ -800,18 +2226,109 @@
+@@ -800,18 +2235,109 @@
      process.stderr.write(
        `Unknown template id: ${args.templateId} (known: ${[...SPECS_BY_TEMPLATE_ID.keys()].join(", ")})\n`,
      );

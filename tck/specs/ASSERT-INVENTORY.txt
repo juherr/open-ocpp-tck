@@ -108,6 +108,60 @@ FILE core-201.ts
       ·.fail(·, ·)
       RETURN
     ·.pass(·)
+  HELPER assertVariableRequested
+    IF
+      ·.fail(·, ·)
+      RETURN
+    IF
+      ·.fail(·, ·)
+      RETURN
+    IF
+      ·.fail(·, ·)
+      RETURN
+    IF
+      OR
+      ·.fail(·, ·)
+      RETURN
+    ·.pass(·)
+  HELPER assertVariableResultStatus
+    IF
+      ·.fail(·, ·)
+      RETURN
+    IF
+      ·.fail(·, ·)
+      RETURN
+    IF
+      ·.fail(·, ·)
+      RETURN
+    IF
+      OR
+      ·.fail(·, ·)
+      RETURN
+    IF
+      ·.fail(·, ·)
+      RETURN
+    ·.pass(·)
+  HELPER assertVariableValueSent
+    IF
+      ·.fail(·, ·)
+      RETURN
+    IF
+      OR
+      ·.fail(·, ·)
+      RETURN
+    IF
+      ·.fail(·, ·)
+      RETURN
+    ·.pass(·)
+  SPEC cert201-tcb06-get-variables connector=1 bootWaitSecs=4 holdSecs=12 ocppVersion="OCPP-2.0.1" runsSimTemplate=false
+    assertReceived(·, ·, "GetVariables", "GetVariables.req received")
+    assertVariableRequested(·, ·, "GetVariables", "getVariableData", ·, ·, ·)
+    assertVariableResultStatus(·, ·, "GetVariables", "getVariableResult", "Accepted", "the variable was read")
+  SPEC cert201-tcb09-set-variables connector=1 bootWaitSecs=4 holdSecs=12 ocppVersion="OCPP-2.0.1" runsSimTemplate=false
+    assertReceived(·, ·, "SetVariables", "SetVariables.req received")
+    assertVariableRequested(·, ·, "SetVariables", "setVariableData", ·, ·, ·)
+    assertVariableValueSent(·, ·, "SetVariables", "setVariableData", ·, ·)
+    assertVariableResultStatus(·, ·, "SetVariables", "setVariableResult", "Accepted", "the variable was written")
   SPEC cert201-tcb01-cold-boot connector=1 bootWaitSecs=4 holdSecs=10 ocppVersion="OCPP-2.0.1" runsSimTemplate=false
     assertSent(·, ·, "BootNotification", "BootNotification.req sent")
     assertCallPayload(·, ·, "sent", "BootNotification", {reason:"PowerUp"}, "BootNotification.req is the OCPP 2.0.1 request (reason=PowerUp)")

@@ -46,15 +46,19 @@
 #
 # WHY IT EXISTS AT ALL, AND WHY ONLY NOW. OCA-201-SELECTION.md records that it
 # owed this guard from the day it was written and could not have it: direction
-# one had nothing to range over, and direction two would have been red on all
-# seven rows from the first commit -- a build red on purpose is a build nobody
-# reads. The first `cert201-` scenario is what makes both directions
-# satisfiable, and that page names writing it as the moment this arrives.
+# one had nothing to range over, and direction two would have been red on every
+# row from the first commit -- a build red on purpose is a build nobody reads.
+# The first `cert201-` scenario is what makes both directions satisfiable, and
+# that page names writing it as the moment this arrives.
 #
-# WHAT IT CANNOT CHECK: that the seven rows are the right seven -- that they
-# are what the rule selects from Part 5 §4. That is a reading of a PDF this
-# repository cannot contain; the method is written down where the rule is. What
-# this stops is the set drifting afterwards.
+# WHAT IT CANNOT CHECK, IN TWO PARTS. First, that the rows are the right rows
+# -- that they are what the rule selects from Part 5 §4. That is a reading of a
+# PDF this repository cannot contain; the method is written down where the rule
+# is. Second, and this is the one the coverage target creates: that the rows
+# are ALL of them. Both directions range over this file, so a file short of the
+# pool is a file this guard finds complete, and it will report a green on seven
+# rows exactly as readily as on 205. What this stops is the set drifting
+# afterwards, not the set being small.
 set -uo pipefail
 
 cd "$(dirname "$0")/.." || exit 1

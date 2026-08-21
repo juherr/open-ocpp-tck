@@ -249,6 +249,28 @@ const V2_SCOPE = {
       "charge point on request, and the CSMS answering it with a parseable " +
       "currentTime is the measurement.",
   ),
+  // THE TWO ROWS #63 PREDICTED WOULD NEED A DEVICE MODEL, and the prediction
+  // was wrong in a way worth keeping written down. It read #57 §A's four
+  // StatusNotificationService warnings -- real, and still open -- as covering
+  // variable traffic too. It does not: GetVariables is CSMS-INITIATED, so the
+  // device model that answers it is the STATION's. The pinned simulator has
+  // one, a 12-entry component/variable map onto OCPP 1.6 configuration keys in
+  // its own sources, and CitrineOS reads its own device model here only for
+  // `bytesPerMessage` and `itemsPerMessage`, both of which fall back when it is
+  // empty. Measured 2026-08-21 against an unprovisioned device model: both
+  // green.
+  "cert201-tcb06-get-variables": d(
+    "Driven green. v2.0.0-beta1 forwards a single-entry getVariableData " +
+      "intact -- component and variable reach the wire as the driver spelled " +
+      "them, and the station answers Accepted -- against a station whose " +
+      "EVSEs and device model CitrineOS never provisioned.",
+  ),
+  "cert201-tcb09-set-variables": d(
+    "Driven green, one member further than the row above: attributeValue " +
+      "survives as the STRING 2.0.1 requires whatever the variable's declared " +
+      "type, so the CSMS does not re-type it on the way out, and the write is " +
+      "answered Accepted.",
+  ),
   "cert201-tcb20-reset-accepted": d(RESET_201),
   // THE ONE ROW HERE WHOSE ANSWER DEPENDS ON STATION STATE, and the state now
   // holds. It did not until #75: the station sends its 2.0.1 Authorize idToken

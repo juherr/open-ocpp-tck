@@ -1,10 +1,10 @@
 /**
- * specs/core-201.ts -- the OCPP 2.0.1 slice, and the first scenarios in this
- * suite that were not ported from anything.
+ * specs/core-201.ts -- the OCPP 2.0.1 scenarios, and the first in this suite
+ * that were not ported from anything.
  *
  * WHICH CASES MAY BE HERE IS NOT THIS FILE'S DECISION. `OCA-201-SELECTION.md`
- * states the rule -- profile Core, role CSMS, status `M` -- and
- * `OCA-201-SLICE.txt` is the resulting list, one row per case, guarded by
+ * states the rule -- role CSMS, status `M`, on every certification profile --
+ * and `OCA-201-SLICE.txt` is the resulting list, one row per case, guarded by
  * tests/oca-201-slice.sh in both directions. Adding a scenario here for a case
  * that is not in that file fails the build, which is the point: "a small
  * representative set" was a judgement each reviewer made differently.
@@ -29,8 +29,9 @@
  * scenario below. The pinned image ships 60 templates and not one of them is
  * `cert201-`, so the wait for `scenario_started` could only ever time out --
  * and none of these needs one anyway: two are what a charge point does on
- * `connect`, and three are driven entirely from the CSMS side. A template would be a thing to maintain upstream before
- * a single case could be measured here.
+ * `connect`, and the rest are driven entirely from the CSMS side. A template
+ * would be a thing to maintain upstream before a single case could be measured
+ * here.
  *
  * A FAILING CSMS OPERATION IS NOT SWALLOWED HERE, which is where these differ
  * from the 1.6 scenarios: those wrap `execute` in a try/catch that warns and
@@ -45,13 +46,20 @@
  * "no Received CALL found", which is true and says nothing.
  *
  * THE SETUP IS INLINE, AND IT DUPLICATES. `ocppVersion` plus
- * `runsSimTemplate: false` is five copies of the same two lines, and the three
+ * `runsSimTemplate: false` is repeated once per scenario, and the three
  * Reset scenarios repeat the same drive-then-check shape with one member
  * changed. That is deliberate: OCPP 2.0.1 Part 6 defines 13 `Reusable State`
  * fixtures and this suite has timers and one-shot provisioning, which are not
  * the same thing -- issue #63 says to write the setup inline and note where it
  * duplicates rather than build the mechanism from one slice's evidence. This
  * paragraph is that note.
+ *
+ * THE EVIDENCE HAS SINCE ARRIVED, so read the paragraph above as a record of
+ * why the mechanism was not built rather than as a reason to keep inlining.
+ * The rule in OCA-201-SELECTION.md now selects 205 cases, at which point a
+ * handful of copies becomes a class of copies, they drift, and each one reads
+ * reasonably on its own -- which is the failure inlining was cheap enough to
+ * risk at five and is not at 205. The fixture mechanism has its own issue.
  */
 import type { ScenarioSpec } from "../spec-types";
 /**
