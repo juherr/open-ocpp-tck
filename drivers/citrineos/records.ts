@@ -38,10 +38,16 @@
  */
 import {
   type CsmsChargingProfileRecords,
+  type CsmsDeviceModelRecords,
   type CsmsRecords,
 } from "../../tck/driver";
 import { waitForCondition } from "../../tck/wait";
 import type { CitrineConfig } from "./config";
+import {
+  COMPONENT_NAME,
+  VARIABLE_NAME,
+  componentInstance,
+} from "./device-model";
 import { CitrineGraphQL } from "./graphql-client";
 import { stationColumn } from "./variant";
 import { refByDescription } from "./profiles";
@@ -366,5 +372,91 @@ export class CitrineRecords implements Omit<CsmsRecords, "reservations"> {
     // Resolved from this driver's own fixture catalogue, not from the CSMS.
     // profiles.ts explains why CitrineOS has nothing to look this up in.
     refByDescription: async (description: string) => refByDescription(description),
+  };
+
+  /**
+   * What the CSMS did with a 2.0.1 StatusNotification, which the wire cannot
+   * say. device-model.ts holds the two conditions these two reads correspond
+   * to, and provision.ts writes the rows that satisfy them.
+   *
+   * THE TWO READS DO NOT ADDRESS THE CONNECTOR THE SAME WAY, and the asymmetry
+   * is measured rather than stylistic.
+   *
+   * `connectorStatus` walks `Connectors.Evse.evseTypeId`, which is what makes
+   * its `evseId` argument load-bearing instead of decorative: a connector id is
+   * unique per station, so filtering on it alone would answer the same for
+   * every EVSE and quietly turn a three-argument method into a two-argument
+   * one.
+   *
+   * `availabilityState` does NOT walk `Component.EvseType`, which is the join
+   * the CSMS's own handler filters on and therefore the obvious one to use. It
+   * cannot: `findOrCreateEvseAndComponent` in the pinned image repoints a
+   * component's EVSE type through `evse.connectorId ? … : null`, and `0` is
+   * falsy, so the moment the STATION-SCOPE status is filed the component that
+   * holds it points at an EVSE type with a null connector. The row is there and
+   * correct; only that join stops leading to it. So the component is addressed
+   * the way this driver provisioned it -- by name and instance, both from
+   * device-model.ts, which owns that spelling for the writer too.
+   *
+   * The relationships both queries do use are declared in graphql-client.ts,
+   * spelled out so a rename upstream fails with the name in the message.
+   */
+  readonly deviceModel: CsmsDeviceModelRecords = {
+    connectorStatus: async (
+      cpId: string,
+      evseId: number,
+      connectorId: number,
+    ) => {
+      const data = await this.gql.query<{
+        Connectors: { status: string | null }[];
+      }>(
+        `query ConnectorState($where: Connectors_bool_exp!) {
+           Connectors(where: $where, limit: 1) { status }
+         }`,
+        {
+          where: {
+            ...this.stationFilter(cpId),
+            connectorId: { _eq: connectorId },
+            Evse: { evseTypeId: { _eq: evseId } },
+          },
+        },
+      );
+      return data.Connectors[0]?.status ?? "";
+    },
+
+    availabilityState: async (
+      cpId: string,
+      evseId: number,
+      connectorId: number,
+    ) => {
+      const data = await this.gql.query<{
+        VariableAttributes: { value: string | null }[];
+      }>(
+        `query DeviceModelState($where: VariableAttributes_bool_exp!) {
+           VariableAttributes(where: $where, order_by: { id: desc }, limit: 1) { value }
+         }`,
+        {
+          where: {
+            ...this.stationFilter(cpId),
+            // MEASURED, not assumed: the attribute CitrineOS writes from a
+            // status notification comes back typed `Actual`. Left unfiltered,
+            // a `Target` row -- a setpoint somebody asked for -- would answer a
+            // question about what the station REPORTED.
+            type: { _eq: "Actual" },
+            Variable: {
+              name: { _eq: VARIABLE_NAME },
+              instance: { _is_null: true },
+            },
+            Component: {
+              name: { _eq: COMPONENT_NAME },
+              instance: {
+                _eq: componentInstance({ evseId, connectorId }),
+              },
+            },
+          },
+        },
+      );
+      return data.VariableAttributes[0]?.value ?? "";
+    },
   };
 }

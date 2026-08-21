@@ -12,13 +12,14 @@
  * 2.0.1, and absence produces a NOT APPLICABLE verdict through the normal
  * escape rather than an `if` inside a vendored scenario.
  */
-import { type CsmsChargingProfileRecords, type CsmsOperations201, type CsmsReservationRecords } from "./driver";
+import { type CsmsChargingProfileRecords, type CsmsDeviceModelRecords, type CsmsOperations201, type CsmsReservationRecords } from "./driver";
 export declare function unsupportedReservations(reason: string): CsmsReservationRecords;
 export declare function unsupportedChargingProfiles(reason: string): CsmsChargingProfileRecords;
+export declare function unsupportedDeviceModel(reason: string): CsmsDeviceModelRecords;
 /**
  * The stand-in for a driver that declares no OCPP 2.0.1 operations.
  *
- * It reports `operations201.<action>`: QUALIFIED like the two above, whose
+ * It reports `operations201.<action>`: QUALIFIED like the three above, whose
  * names are also the sub-interface they stand in for, and carrying the ACTION
  * because that is what the runner prints when it degrades the scenario and
  * what becomes the NOT APPLICABLE reason in the summary -- "driver reported

@@ -86,6 +86,10 @@ export class CitrineGraphQL {
    *  engine that refuses a chosen way, which no CSMS here can be asked for. */
   constructor(
     private readonly cfg: CitrineConfig,
+    // Defaulted rather than optional-and-branched, which is what lets a caller
+    // FORWARD an undefined it was handed without restating the default: a
+    // default parameter applies to `undefined` as much as to an absent
+    // argument, so `new CitrineGraphQL(cfg, maybeFetch)` is correct for both.
     private readonly fetchImpl: FetchLike = (input, init) => fetch(input, init),
   ) {
     this.headers = {
@@ -294,10 +298,18 @@ export class CitrineGraphQL {
  * recording: several are one-to-one shapes whose key lives on the OTHER table,
  * which needs a different `using` form, so the batch failed on
  * `Transactions.StartTransaction` with "no foreign constraint exists on the
- * given column(s)". Nothing in this driver reads those. Three relationships
- * carry every query below, they are the three the SQL used to JOIN, and
- * spelling them out means a rename upstream fails here with the name in the
- * message rather than somewhere inside a generated batch.
+ * given column(s)". Nothing in this driver reads those. Six relationships carry
+ * every query below -- the three the SQL used to JOIN, and the three the 2.0.1
+ * device-model reads walk -- and spelling them out means a rename upstream
+ * fails here with the name in the message rather than somewhere inside a
+ * generated batch.
+ *
+ * THE LIST IS MEANT TO GROW, which is the answer to "why not derive them": a
+ * query that needs a join names the relationship it needs, here, and the three
+ * added for the device model are what that looks like. Each is an `object`
+ * relationship on the MANY side, so all three take the plain
+ * `foreign_key_constraint_on: "<column>"` form rather than the table/column
+ * shape the one array relationship below needs.
  *
  * Teardown's guard does NOT go through this list -- it reads the foreign keys
  * themselves, through `referencesTo`, so a fifth referencing table is still
@@ -336,6 +348,33 @@ const RELATIONSHIPS: readonly {
         column: "authorizationId",
       },
     },
+  },
+  // The 2.0.1 device-model reads. `Connectors.Evse` is what makes the caller's
+  // evseId mean something -- a connector id alone is unique per station and
+  // would answer the same for every EVSE -- and the other two walk from a
+  // stored variable attribute back to the component and variable it was filed
+  // under.
+  //
+  // `Components.EvseType` is NOT here, and its absence is the finding rather
+  // than an omission: it is the join the CSMS's own handler filters on, and
+  // records.ts explains why a reader cannot use it on this image.
+  {
+    on: "Connectors",
+    name: "Evse",
+    kind: "object",
+    using: { foreign_key_constraint_on: "evseId" },
+  },
+  {
+    on: "VariableAttributes",
+    name: "Component",
+    kind: "object",
+    using: { foreign_key_constraint_on: "componentId" },
+  },
+  {
+    on: "VariableAttributes",
+    name: "Variable",
+    kind: "object",
+    using: { foreign_key_constraint_on: "variableId" },
   },
 ];
 

@@ -69,7 +69,7 @@ export CSMS_DRIVER=./drivers/citrineos/index.ts
 export OCPP_CP_IDS=CERTCP1,CERTCP2,CERTCP3
 
 bun bin/ocpp-tck.ts check-driver          # offline: no CSMS, no docker
-bun bin/ocpp-tck.ts driver provision      # seed the idTags TC_023 needs
+bun bin/ocpp-tck.ts driver provision      # idTags + the 2.0.1 device model
 bun bin/ocpp-tck.ts driver verify         # read-only: are they there?
 bun bin/ocpp-tck.ts driver selftest       # seconds: every record query, once
 
@@ -379,9 +379,32 @@ pinned simulator resolves the pair through a component/variable map of its own
 `itemsPerMessage`, which fall back when it is empty. Both drive green against a
 station whose device model was never provisioned.
 
-The device-model gap itself is real and unrelated to those two: a 2.0.1
-`StatusNotification` still never reaches the device model. That is its own
-issue, and the four `StatusNotificationService` warnings are what measures it.
+The device-model gap itself was real and unrelated to those two, and it is now
+closed. A 2.0.1 `StatusNotification` used to reach nothing: CitrineOS answered
+each one with an empty `StatusNotificationResponse` and logged four
+`StatusNotificationService` warnings, so the failure was invisible from the
+wire — which is where every other verdict in this suite comes from.
+
+What it needs is written in [`device-model.ts`](device-model.ts) and comes in
+two scopes, because the schema does:
+
+- **tenant-scoped**, written by `driver provision` and checked by
+  `driver verify` — an `EvseTypes` row per `(evseId, connectorId)` the station
+  reports, a `Connector` component per pair carrying an `AvailabilityState`
+  variable;
+- **station-scoped**, written by `prepareStation` — the `Evses` and
+  `Connectors` rows, which hang off a charging station row that does not exist
+  until a station connects, and a charge point id is something only the
+  per-scenario hook is handed.
+
+The pairs are not a list written here: they come from the simulator's own
+projection, a station-scope `(0, 0)` plus `(N, 1)` per connector. That first
+one is the one that looks skippable and is not — half the warnings are its.
+
+`cert201-tcb01-cold-boot` asserts the repair rather than trusting it: for every
+status the station reported, it reads the CSMS back through the contract's
+`records.deviceModel`. `driver verify` covers the tenant half only, and says so
+— it has no roster to check a station against.
 
 ## Gaps
 
@@ -397,6 +420,8 @@ a `reason` that cannot name the limitation is `CONDITIONAL`, not
 | **`Blocked` is unreachable from the 1.6 `Authorize` path.** The handler reaches its status mapper only through the `status === Accepted` branch, so a stored `Blocked` falls through to the default `Invalid`. The only route to a real `Blocked` is an `IAuthorizer`, and the container registers `authorizers: asValue([])` with no setting that changes it. | **TC_023.3 fails**, deterministically: CitrineOS answers `{"idTagInfo":{"status":"Invalid"}}` where the scenario requires `Blocked`. Observed 3 runs out of 3. `scope.ts` keeps the row DRIVABLE and `expected.ts` declares the red, so the sweep reports it as `EXPECTED FAIL` and the job stays blocking — and `UNEXPECTED PASS` the day it is fixed. | `AuthorizeRequestOcpp16Handler.ts`, `apps/ocpp-server/src/container.ts` |
 | **No REST for `Authorizations`.** `EVDriverDataApi` exposes exactly one route, a read-only local-list-version GET. | `driver provision` writes fixtures through GraphQL. | [`provision.ts`](provision.ts) |
 | **Four foreign keys reference `Authorizations`, none cascading**: `Transactions.authorizationId`, `LocalListAuthorizations.authorizationId`, `LocalListAuthorizations.groupAuthorizationId`, and the self-reference `Authorizations.groupAuthorizationId`. | `teardown` derives its guards from the foreign keys Hasura reports instead of listing them, so a fifth on a future CitrineOS is picked up rather than aborting the whole delete. Guarding only the first was measured to leave *every* fixture in place, because psql ran the script in one implicit transaction. | Read from the foreign keys Hasura derives; see `references()` in [`provision.ts`](provision.ts). |
+| **A 2.0.1 `StatusNotification` needs a device model the CSMS will not create.** `processStatusNotification` wants an `Evse` whose `evseTypeId` matches the request's `evseId` with a `Connector` under it, and a `Connector` component joined to an `EvseType` with `id = evseId` **and** `connectorId = connectorId` carrying an `AvailabilityState` variable. Neither is created on demand — the 1.6 path in the same class auto-commissions, the 2.0.1 path does not. | Four `StatusNotificationService` warnings per run, and nothing stored, while every request is still answered. `driver provision` and `prepareStation` seed both halves; [issue #86](https://github.com/juherr/open-ocpp-tck/issues/86) carries the log either side. | `packages/core/src/modules/Transactions/src/module/StatusNotificationService.ts` |
+| **`0` is falsy where an `evseId` may be `0`.** `findOrCreateEvseAndComponent` resolves a component's EVSE with `connectorId ? connectorId : null`, so filing the station-scope status — `(evseId 0, connectorId 0)` — creates a *second* EVSE type numbered 0 with a null connector and repoints the component at it. The next status's lookup filters on the pair and no longer matches. | The fixture cannot be provisioned once: `prepareStation` re-asserts the join before every scenario, and the device-model read addresses the component by name and instance rather than through it. Without the repair the warning is back on the second scenario. Measured, twice. | `packages/core/src/dal/layers/sequelize/repository/DeviceModel.ts` |
 | **No 1.6 request handler for `FirmwareStatusNotification`.** Every one the charge point sends is answered with `[4,…,"NotSupported","No handler found for action: FirmwareStatusNotification at module configuration"]` — 10 across the three TC_044 logs, and the only CALLERROR the CSMS emits anywhere in the suite. | **A non-conformance, and the suite now detects it.** OCA `TC_044_{1,2,3}_CSMS` put steps 4 and 6 on the Central System — *"The Central responds with a FirmwareStatusNotification.conf"* — and a CALLERROR is not that conf. **TC_044.1/.2/.3 fail**, each on that check alone. Until issue #11 they passed, because they asserted only the statuses the charge point *sent*. | `packages/core/src/handlers/requests/1.6/` — `DiagnosticsStatusNotification` has one, `FirmwareStatusNotification` does not. No ticket upstream. |
 | **An unhandled promise rejection kills the process.** `WebhookDispatcher.dispatchMessageReceived` persists every message; a `SequelizeForeignKeyConstraintError` on `OCPPMessages_requestMessageId_fkey` escapes as an uncaught rejection and Node exits. | Compose's `restart: unless-stopped` restarts it, so from the charge point's side it is a 1006 followed by a reconnect and a reboot — which is what `scope.ts` recorded as unexplained on TC_044.2. Observed 21 restarts across one 26h session and 2 more inside a single sequential sweep; scenarios caught mid-restart fail for reasons that have nothing to do with what they assert. **Run sequentially and re-run any isolated failure before believing it.** | Stack in the container log: `router.js onMessage` → `webhook.dispatcher.js:103` → `Base.js:57`. Whether the CALLERROR above is the trigger is *not* established — the violated key is `requestMessageId`. |
 | **No 1.6 response handler for `UnlockConnector` or `UpdateFirmware`.** The Calls are routed and sent; the CallResults are answered with the same `NotSupported` CALLERROR. | Harmless — the six affected scenarios all pass. | `packages/core/src/handlers/responses/1.6/` |

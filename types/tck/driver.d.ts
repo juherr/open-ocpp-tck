@@ -406,6 +406,8 @@ export interface CsmsRecords {
     reservations: CsmsReservationRecords;
     /** Charging-profile registry. See {@link CsmsChargingProfileRecords}. */
     chargingProfiles: CsmsChargingProfileRecords;
+    /** What the CSMS stored about a connector. See {@link CsmsDeviceModelRecords}. */
+    deviceModel: CsmsDeviceModelRecords;
 }
 /**
  * OPTIONAL CAPABILITY. A CSMS with no reservation resource at all -- no
@@ -439,6 +441,39 @@ export interface CsmsChargingProfileRecords {
     refByDescription(description: string): Promise<ChargingProfileRef>;
 }
 /**
+ * OPTIONAL CAPABILITY, same substitution rule as the two above: what the CSMS
+ * RECORDED when a `StatusNotification` arrived.
+ *
+ * THE ONLY PART OF THIS INTERFACE THAT IS NOT VISIBLE FROM THE WIRE, and that
+ * is why it exists. A CSMS answers a 2.0.1 `StatusNotification` with an empty
+ * `StatusNotificationResponse` whatever it did with the payload -- there is no
+ * status member to be wrong -- so a charge point cannot tell "stored" from
+ * "dropped on the floor", and neither can a suite whose every other verdict
+ * comes off the frames. Issue #86 is the worked example: a CSMS that logged
+ * four warnings and answered four times.
+ *
+ * TWO METHODS, BECAUSE A CSMS CAN FAIL AT EITHER OF TWO PLACES and answering
+ * with one string would hide which. {@link connectorStatus} is the connector
+ * ENTITY -- what an operator's list of connectors shows -- and
+ * {@link availabilityState} is the DEVICE MODEL, the (component, variable)
+ * store `GetVariables` reads and `NotifyReport` fills. The same status reaches
+ * both by different code paths, and a CSMS that updates one and not the other
+ * is a real shape rather than a hypothetical one.
+ *
+ * ADDRESSED THE WAY OCPP 2.0.1 ADDRESSES A CONNECTOR, `(evseId, connectorId)`,
+ * because that is what the request carries. `evseId` 0 is the station itself
+ * and is a legitimate argument: a station reports its own availability that
+ * way, and a CSMS that has nowhere to put it is exactly the finding here.
+ */
+export interface CsmsDeviceModelRecords {
+    /** Connector state the CSMS recorded for `(evseId, connectorId)`, in the
+     *  CSMS's own vocabulary. `""` = the CSMS has no such connector. */
+    connectorStatus(cpId: string, evseId: number, connectorId: number): Promise<string>;
+    /** The same connector's availability as the CSMS stored it in its DEVICE
+     *  MODEL. `""` = nothing was stored. */
+    availabilityState(cpId: string, evseId: number, connectorId: number): Promise<string>;
+}
+/**
  * Coarse capability declaration, for the run report and a driver's own
  * load-time self-check.
  *
@@ -466,6 +501,20 @@ export interface CsmsCapabilities {
     readonly operations201?: ReadonlySet<CsmsOperation201Action>;
     readonly reservations: boolean;
     readonly chargingProfiles: boolean;
+    /**
+     * Whether this driver can read back what the CSMS stored about a connector.
+     * See {@link CsmsDeviceModelRecords} for why that is not the same question as
+     * "does the CSMS speak 2.0.1".
+     *
+     * REQUIRED, not `deviceModel?`, and the asymmetry with `operations201?` above
+     * is deliberate rather than an oversight. That one is opt-in because its
+     * absence has a second meaning -- a 1.6-only driver would otherwise draw
+     * "operation not declared" warnings for three operations it never claimed.
+     * This is a plain boolean beside `reservations` and `chargingProfiles`, its
+     * two siblings, and a driver that forgets it gets a compiler error naming the
+     * field instead of a printed capability list that quietly says `false`.
+     */
+    readonly deviceModel: boolean;
 }
 /**
  * Transport defaults a driver contributes for the simulator container. An
@@ -561,9 +610,10 @@ export interface CsmsDriverParts {
      *  1.6; the runner substitutes a throwing stub. See
      *  {@link CsmsOperations201}. */
     operations201?: CsmsOperations201;
-    records: Omit<CsmsRecords, "reservations" | "chargingProfiles"> & {
+    records: Omit<CsmsRecords, "reservations" | "chargingProfiles" | "deviceModel"> & {
         reservations?: CsmsReservationRecords;
         chargingProfiles?: CsmsChargingProfileRecords;
+        deviceModel?: CsmsDeviceModelRecords;
     };
     /** Runs before the simulator container starts -- where a CSMS closes a stale
      *  transaction left by a previous scenario. It is a WRITE, which is why it
