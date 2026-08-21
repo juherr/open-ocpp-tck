@@ -470,6 +470,16 @@ export class UnsupportedOperationError extends Error {
  * into a false one about the client, which is this class's own failure mode
  * run backwards.
  *
+ * WHAT IT CLAIMS, EXACTLY: the driver has no evidence the request became an
+ * OCPP CALL. That is weaker than "nothing was sent", and deliberately so,
+ * because a TIMEOUT belongs here and is not literally a connection that never
+ * opened -- bytes went out and no answer came back, so whether the charge
+ * point was asked is precisely what nobody knows. Reporting that as an
+ * ordinary failure would warn and carry on into assertions about a station
+ * that may never have been asked, which is issue #77 again; reporting it here
+ * gets the verdict the uncertainty deserves. What a driver may NOT do is come
+ * here from an answer it received and understood.
+ *
  * A scenario that swallows this and carries on reports a handful of confident
  * FAILs about a charge point that was never asked to do anything -- which is
  * exactly what issue #77 cost to diagnose, and why `warnOpFailed` in

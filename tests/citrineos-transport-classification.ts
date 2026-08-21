@@ -178,7 +178,12 @@ function longBody(head: string): string {
 // Running a case
 // ---------------------------------------------------------------------------
 
-/** What a failure is claimed to be. `answered` is the negative half. */
+/** What a failure is claimed to be.
+ *
+ *  `answered` is the negative half, and it is a claim in its own right rather
+ *  than the absence of the other: the client must have built a plain `Error`
+ *  saying which request failed. An exception that escaped the client
+ *  unclassified is neither. */
 type Classification = "not-dispatched" | "answered";
 
 interface Case {
@@ -229,14 +234,29 @@ async function check(
   }
 
   const isTyped = err instanceof CsmsNotDispatchedError;
-  if (isTyped && kase.expect === "answered") {
-    fail(
-      `${label}: ${kase.what} was reported as a non-dispatch`,
-      `the request WAS answered, so whether it dispatched is unknown -- ` +
-        `claiming otherwise ERRORs the scenario and refiles a finding about ` +
-        `the CSMS as one about this client. Got ${describe(err)}`,
-    );
-  } else if (!isTyped && kase.expect === "not-dispatched") {
+  if (kase.expect === "answered") {
+    if (isTyped) {
+      fail(
+        `${label}: ${kase.what} was reported as a non-dispatch`,
+        `the request WAS answered, so whether it dispatched is unknown -- ` +
+          `claiming otherwise ERRORs the scenario and refiles a finding about ` +
+          `the CSMS as one about this client. Got ${describe(err)}`,
+      );
+    } else if (!(err instanceof Error) || err.constructor !== Error) {
+      // `answered` is a claim about what the client BUILT, not merely about
+      // what it did not build. A raw SyntaxError from an unguarded JSON.parse,
+      // or a TypeError off a body nobody checked, satisfies "not a
+      // CsmsNotDispatchedError" while being the failure of classifying at all
+      // -- it names neither the endpoint nor the URL, and `carries` catches it
+      // only because those fragments happen to be missing.
+      fail(
+        `${label}: ${kase.what} escaped unclassified`,
+        `got ${describe(err)} -- an answered failure must be an Error this ` +
+          `driver constructed. This one is not a non-dispatch by accident ` +
+          `rather than by decision`,
+      );
+    }
+  } else if (!isTyped) {
     fail(
       `${label}: ${kase.what} was reported as an ordinary failure`,
       `got ${describe(err)} -- warnOpFailed warns and continues on anything ` +

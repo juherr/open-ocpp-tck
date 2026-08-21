@@ -98,15 +98,22 @@ Released as `0.3.0`. The documented install ref already points at that tag, so
   through and warns about everything else, and this driver raised it nowhere —
   so a refused connection produced confident `FAIL`s about a charge point
   nobody had asked anything, which is issue #77's shape on the second driver.
-  The line is drawn on one fact about CitrineOS: it answers `200` for
-  everything that reaches its OCPP layer, so a refused connection, any non-2xx
-  including `404`, and a `200` whose confirmation says `success: false` are all
-  non-dispatches. What the CSMS *answered* deliberately stays an ordinary
-  failure — a stalled body, an unparseable one, one that is not a confirmation
-  array, and anything Hasura reported in-band. **A sweep that was green because
-  it warned past one of the first group will now be red**, which is the point,
-  but it is a red to read row by row rather than to assume is new
-  ([#80])
+  The test is whether the request became an OCPP CALL — not whether it reached
+  the host. A `200` carrying `success: false` reached CitrineOS and was
+  understood by it; what it never became is a message to the charge point, and
+  that is what makes it a non-dispatch alongside a refused connection, a
+  timeout, and any non-2xx from the message API. The last of those rests on one
+  fact about CitrineOS: it answers `200` for everything that reaches its OCPP
+  layer, so a status is proof that nothing did. For a records read the same
+  test reads "never reached the data API".
+  What the CSMS *answered* deliberately stays an ordinary failure: a stalled
+  body, an unparseable one, one that is not a confirmation array, anything
+  Hasura reported in-band, and a non-2xx from `/v1/metadata` — that endpoint
+  reports a request it understood and refused *with* a status, where
+  `/v1/graphql` reports in-band, so the same code means opposite things on the
+  two. **A sweep that was green because it warned past one of the first group
+  will now be red**, which is the point, but it is a red to read row by row
+  rather than to assume is new ([#80])
 - `cert16-tc013-hard-reset` and `cert16-tc014-soft-reset` no longer flake on
   SteVe, at 45% and 34% of sweeps. The manager-UI client is loaded once per
   process and shared by every parallel lane, and its form post was a
