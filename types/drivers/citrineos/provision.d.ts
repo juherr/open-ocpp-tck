@@ -55,6 +55,25 @@ export declare class CitrineProvisioner {
     constructor(cfg: CitrineConfig, log?: (msg: string) => void, fetchImpl?: FetchLike);
     private get tenant();
     /**
+     * Whether the device-model fixture belongs on the line this driver is
+     * pointed at. THE SAME PREDICATE THE CAPABILITY USES, and for a reason that
+     * is not symmetry.
+     *
+     * The v1.9.1 line has no `ocppConnectionName`: it never got the rename
+     * migration, and its `Connector.stationId` is a STRING holding the OCPP
+     * name. Every write below spells `ocppConnectionName` literally -- correctly
+     * for v2, and as a field the v1 schema does not expose -- so an ungated
+     * `ensureStationTopology` fails on every scenario of a line where eighteen
+     * of them are still drivable. Nothing offline sees it: the scope check is
+     * static, and no CI lane sweeps v1.
+     *
+     * There is also nothing for the fixture to buy there. `capabilities` declares
+     * no OCPP 2.0.1 surface for v1 and every `cert201-` row is NOT_APPLICABLE,
+     * so seeding a 2.0.1 device model would be claiming a measurement nobody
+     * took -- which is what variant.ts exists to refuse.
+     */
+    private get speaks201();
+    /**
      * Makes the data API able to answer at all.
      *
      * Hasura exposes no table until one is tracked, and this compose starts it
@@ -308,9 +327,21 @@ export declare class CitrineProvisioner {
      */
     ensureStationTopology(cpId: string): Promise<void>;
     private ensureChargingStation;
-    /** Matched on `(stationId, evseTypeId)`, which is the unique index -- and NOT
-     *  on the marker, so a station that already has an EVSE numbered this way is
-     *  adopted rather than duplicated. The marker is what teardown reads. */
+    /**
+     * Matched on `(stationId, evseTypeId)`, which is the unique index -- and NOT
+     * on the marker, so a station that already has an EVSE numbered this way is
+     * adopted rather than duplicated.
+     *
+     * AN ADOPTED ROW IS MARKED, which makes the marker mean "this fixture owns
+     * it" rather than "this fixture created it", and the difference is a leak
+     * rather than a nuance. CitrineOS creates an EVSE of its own accord -- the
+     * transaction repository does `readOrCreateByQuery` on
+     * `(ocppConnectionName, evseTypeId)` -- so on a database that saw traffic
+     * before this fixture existed, the row is already there and unmarked. The
+     * connector written under it would then be invisible to teardown, which
+     * finds connectors only through marked EVSEs, and would survive every
+     * teardown until a `down -v`.
+     */
     private ensureEvse;
     /**
      * The connector under it.

@@ -185,6 +185,10 @@ export const csmsDriver: CsmsDriverModule = {
     const cfg = defaultCitrineConfig(env);
     const records = new CitrineRecords(cfg);
     const api = new CitrineMessageApi(cfg);
+    // Built once rather than per scenario, and the log is a no-op: a hook that
+    // runs before every scenario has nothing to announce, and
+    // `driver provision` is where the fixture speaks.
+    const topology = new CitrineProvisioner(cfg, () => {});
     return {
       operations16: createOperations(cfg.variant, api, records),
       // Present exactly when `capabilities.operations201` is declared, and the
@@ -201,12 +205,10 @@ export const csmsDriver: CsmsDriverModule = {
       // than in `driver provision` because this is the only point in the
       // contract where a driver is handed a charge point id, and those rows
       // hang off a charging station row -- see the note on
-      // ensureStationTopology. The log is a no-op: a hook that runs before
-      // every scenario has nothing to announce, and `driver provision` is where
-      // the fixture speaks.
+      // ensureStationTopology, which is also where the v1 line opts out.
       prepareStation: async (cpId) => {
         await records.prepareStation(cpId);
-        await new CitrineProvisioner(cfg, () => {}).ensureStationTopology(cpId);
+        await topology.ensureStationTopology(cpId);
       },
       simTransport: async () => ({
         // CitrineOS takes the charge point id as the LAST path segment

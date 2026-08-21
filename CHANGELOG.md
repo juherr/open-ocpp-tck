@@ -18,8 +18,11 @@ Released as `0.3.0`. The documented install ref already points at that tag, so
   empty response whatever it did with the payload, so "stored" and "dropped"
   look identical from the charge point. Two methods, the connector entity and
   the device model, because a CSMS can lose a status at either. An optional
-  capability like `reservations`: a driver that omits it gets the throwing stub
-  and its scenarios report NOT APPLICABLE ([#86])
+  capability like `reservations` — a driver that omits it gets the throwing
+  stub — but note that a status is only observable after the run, so every call
+  site is in `assert()`, where the runner's NOT APPLICABLE net does not reach.
+  A driver without it declares the scenario NOT_APPLICABLE in its scope table
+  ([#86])
 - `drivers/citrineos` provisions the OCPP 2.0.1 device model, which is what
   makes a station's `StatusNotification`s land anywhere. `driver provision`
   seeds the tenant-scoped half — an EVSE type, a `Connector` component and an

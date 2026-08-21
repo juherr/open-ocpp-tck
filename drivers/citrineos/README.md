@@ -171,7 +171,7 @@ bun bin/ocpp-tck.ts driver provision && bun run e2e
 ghcr.io/citrineos/citrineos-server:v1.9.1@sha256:4f8791510686af47d5a5cbb55bf69eea7435734836e858d8cc983c0a4edaa884
 ```
 
-Two differences, both read off the running images rather than inferred:
+Three differences, all read off the running images rather than inferred:
 
 1. **16 `/ocpp/1.6/` routes instead of 18** — no `evdriver/sendLocalList`, no
    `evdriver/getLocalListVersion`. Six local-auth-list scenarios become
@@ -179,8 +179,18 @@ Two differences, both read off the running images rather than inferred:
    where v2 reports 40 / 7.
 2. **The OCPP connection column is `stationId`**, where v2 names it
    `ocppConnectionName` — on `Transactions`, `LocalListVersions` and
-   `SendLocalLists`. `Authorizations` is untouched, which is why `provision`
-   was already version-agnostic; only the record reads needed it.
+   `SendLocalLists`, and on `Evses`, `Connectors` and `VariableAttributes` too:
+   v1.9.1 never got the rename migration, and its `Connector.stationId` is a
+   *string* holding the OCPP name. `Authorizations` is untouched, which is why
+   the **tag** half of `provision` is version-agnostic.
+
+3. **The 2.0.1 device model is not provisioned here**, and that follows from
+   the two facts above rather than from caution. Every write in it spells
+   `ocppConnectionName`, which this schema does not expose; and this driver
+   declares no OCPP 2.0.1 surface for the line, so every `cert201-` scenario is
+   already `NOT APPLICABLE` and there is nothing for the fixture to enable.
+   `provision`, `verify`, `teardown` and the prepare hook all say so and do
+   nothing. Set `CITRINE_VARIANT=v2` for a v2 server.
 
 **Measured, 2026-08-11: 18 `PASS`, 13 `NOT APPLICABLE`, 16 `FAIL` out of the 47
 OCPP 1.6 scenarios**,

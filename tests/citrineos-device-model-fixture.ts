@@ -5,7 +5,7 @@
  * prepare hook write so a 2.0.1 StatusNotification reaches the CSMS's device
  * model, and the rows they refuse to remove.
  *
- * PROPERTY, in 6 parts:
+ * PROPERTY, in 8 parts:
  *  1. THE STATION-SCOPE TARGET IS PROVISIONED. A station reports `(evseId 0,
  *     connectorId 0)` for itself as well as one pair per connector, and a
  *     fixture covering only the connectors leaves half the failure exactly
@@ -42,6 +42,20 @@
  *     fail. The row it wanted exists; it is simply not the one it wrote. An
  *     insert that fails for any OTHER reason must still be reported, or the
  *     fixture silently does not exist, so both directions are asserted.
+ *  7. NOTHING IS WRITTEN ON A LINE THAT DECLARES NO OCPP 2.0.1 SURFACE. The
+ *     v1.9.1 line never got the column rename: it has no `ocppConnectionName`
+ *     and its `Connector.stationId` is a STRING holding the OCPP name, so
+ *     every write here would fail against a schema that does not expose the
+ *     field. The prepare hook runs before EVERY scenario, so that is one
+ *     failure per scenario on a line where eighteen of them still run -- and
+ *     no offline check sees it, because the scope check is static and no CI
+ *     lane sweeps v1.
+ *  8. AN ADOPTED EVSE IS MARKED. CitrineOS creates EVSEs of its own accord, so
+ *     on a database that saw traffic before this fixture existed the row is
+ *     already there, unmarked. Teardown finds connectors only through marked
+ *     EVSEs, so the connector written under an unmarked one would survive
+ *     every teardown. The marker therefore means "this fixture owns it", not
+ *     "this fixture created it".
  *
  * WHAT IT DOES NOT ASSERT is that these rows make CitrineOS behave -- that the
  * four warnings stop. No offline guard can: it is a property of a CSMS reading
@@ -293,6 +307,13 @@ class FakeCitrine {
               row.stationId === vars.station && row.evseTypeId === vars.evseTypeId,
           ),
         };
+      case "AdoptEvse": {
+        const set = vars.set as Row;
+        for (const row of this.evses) {
+          if (row.id === vars.id) row.evseId = set.evseId;
+        }
+        return { update_Evses: { affected_rows: 1 } };
+      }
       case "SeedEvse": {
         const row = { ...(vars.object as Row), id: this.id() };
         this.evses.push(row);
@@ -704,6 +725,96 @@ const TARGETS = statusTargets();
     "provisioning swallowed a refused insert and reported success. The " +
       "fixture would then not exist, and the only thing that would say so is " +
       "a scenario failing several minutes later.",
+  );
+}
+
+// ---------------------------------------------------------------------------
+// Part 7: the v1.9.1 line is left alone
+// ---------------------------------------------------------------------------
+
+{
+  const csms = new FakeCitrine();
+  const v1 = new CitrineProvisioner(
+    defaultCitrineConfig({
+      CITRINE_GRAPHQL_URL: "http://citrine.test:8090",
+      CITRINE_VARIANT: "v1",
+    }),
+    () => {},
+    csms.fetch,
+  );
+  await v1.provisionDeviceModel();
+  await v1.ensureStationTopology(CP_ID);
+  await v1.teardown();
+
+  const written =
+    csms.evseTypes.length +
+    csms.variables.length +
+    csms.components.length +
+    csms.componentVariables.length +
+    csms.stations.length +
+    csms.evses.length +
+    csms.connectors.length;
+  check(
+    "part 7: nothing is written on the line that declares no 2.0.1 surface",
+    written === 0,
+    "the v1.9.1 schema exposes no ocppConnectionName and spells its station " +
+      "column differently, so these writes fail there -- once per scenario, " +
+      "because the prepare hook runs before every one of them. " +
+      `Wrote ${written} row(s): ${JSON.stringify({
+        evseTypes: csms.evseTypes,
+        evses: csms.evses,
+        connectors: csms.connectors,
+      })}`,
+  );
+  check(
+    "part 7: and verify reports it as correct rather than as unprovisioned",
+    deviceModelProblems(await v1.verify()).length === 0,
+    "verify reported a missing device model on a line that must not have " +
+      `one: ${JSON.stringify(deviceModelProblems(await v1.verify()))}`,
+  );
+}
+
+// ---------------------------------------------------------------------------
+// Part 8: an EVSE the CSMS already created is adopted AND marked
+// ---------------------------------------------------------------------------
+
+{
+  const csms = new FakeCitrine();
+  const provisioner = provisionerOn(csms);
+  await provisioner.provisionDeviceModel();
+
+  // The station and one EVSE already exist, unmarked -- what a database that
+  // saw a transaction before this fixture existed looks like.
+  const stationId = 900;
+  csms.stations.push({ id: stationId, ocppConnectionName: CP_ID, tenantId: TENANT });
+  const strayEvseId = 901;
+  csms.evses.push({
+    id: strayEvseId,
+    stationId,
+    ocppConnectionName: CP_ID,
+    evseTypeId: TARGETS[TARGETS.length - 1]!.evseId,
+    evseId: "US*TST*C*00000001*0",
+    tenantId: TENANT,
+  });
+
+  await provisioner.ensureStationTopology(CP_ID);
+
+  const adopted = csms.evses.find((row) => row.id === strayEvseId);
+  check(
+    "part 8: the CSMS's own EVSE is adopted rather than duplicated",
+    csms.evses.filter(
+      (row) =>
+        row.stationId === stationId &&
+        row.evseTypeId === TARGETS[TARGETS.length - 1]!.evseId,
+    ).length === 1,
+    `duplicated: ${JSON.stringify(csms.evses)}`,
+  );
+  check(
+    "part 8: and it carries the marker afterwards",
+    String(adopted?.evseId).startsWith(FIXTURE_EVSE_PREFIX),
+    "teardown finds a connector only through a marked EVSE, so the connector " +
+      "written under this one would survive every teardown. " +
+      `Marker is now ${JSON.stringify(adopted?.evseId)}`,
   );
 }
 

@@ -117,6 +117,7 @@ FILE core-201.ts
         OR
           OR
         ·.fail("StatusNotification.req addresses a connector and names a status", ·)
+    FOROF
       assertNonEmpty(·, ·, ·)
       assertEq(·, ·, ·, ·)
   HELPER assertVariableRequested
