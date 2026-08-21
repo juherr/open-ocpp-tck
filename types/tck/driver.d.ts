@@ -245,7 +245,7 @@ export declare class UnsupportedOperationError extends Error {
     constructor(operation: string, reason: string);
 }
 /**
- * "The operation never reached the CSMS's OCPP layer."
+ * "The request never reached the CSMS."
  *
  * The transport refused it -- a rejected form post, an unauthenticated
  * request, a connection that never opened -- so the CSMS was never asked and
@@ -254,6 +254,27 @@ export declare class UnsupportedOperationError extends Error {
  * finding about the CSMS, while an operation that was never dispatched is a
  * finding about the client, and any assertion downstream of it is measuring
  * the wrong thing.
+ *
+ * AN OBSERVATION COUNTS TOO. `warnOpFailed` guards two records waits alongside
+ * the operations, and a read whose transport refused it leaves the scenario
+ * asserting on a record nobody could look up: the same wrong measurement,
+ * reached from the other side.
+ *
+ * WHAT IT IS NOT is a request the CSMS answered and refused. A driver that
+ * cannot tell the two apart must throw a plain `Error` -- claiming a
+ * non-dispatch it did not observe converts an honest finding about the CSMS
+ * into a false one about the client, which is this class's own failure mode
+ * run backwards.
+ *
+ * WHAT IT CLAIMS, EXACTLY: the driver has no evidence the request became an
+ * OCPP CALL. That is weaker than "nothing was sent", and deliberately so,
+ * because a TIMEOUT belongs here and is not literally a connection that never
+ * opened -- bytes went out and no answer came back, so whether the charge
+ * point was asked is precisely what nobody knows. Reporting that as an
+ * ordinary failure would warn and carry on into assertions about a station
+ * that may never have been asked, which is issue #77 again; reporting it here
+ * gets the verdict the uncertainty deserves. What a driver may NOT do is come
+ * here from an answer it received and understood.
  *
  * A scenario that swallows this and carries on reports a handful of confident
  * FAILs about a charge point that was never asked to do anything -- which is
@@ -270,6 +291,37 @@ export declare class CsmsNotDispatchedError extends Error {
     readonly reason: string;
     constructor(operation: string, reason: string);
 }
+/**
+ * The subset of `fetch` a driver's HTTP client needs.
+ *
+ * A seam, not a policy. A client that routes every request through this can be
+ * handed a fake CSMS by an offline guard, which is the only way to reach the
+ * branches that matter: what a client does when the transport refuses it is a
+ * 45%-of-the-time event on a real server at best, and on most branches -- a
+ * 503, an unparseable body -- something no CSMS here can be asked to produce.
+ * Each bundled driver's client guard is built on it; the guards name themselves
+ * in the clients, which is where a reader of one of them is standing.
+ *
+ * Lives in the core because more than one driver needs it and
+ * `tests/generic-core.sh` forbids one driver from naming another. It is a
+ * shape, not behaviour: the core neither calls it nor recognises it, unlike
+ * {@link CsmsNotDispatchedError}.
+ *
+ * TRIED AND REJECTED, here because here is where it gets re-proposed: a core
+ * module of its own, so the seam is not inside the one file
+ * `tests/documented-install-ref.sh` compares byte for byte against the
+ * installed tag. It is a real cost -- changing this type after a tag exists
+ * obliges a version bump and a repoint of both install pages. It was chosen
+ * anyway: the type ships in `types/` either way, so a change to it IS a public
+ * API change that owes a release, and a separate module would owe a new
+ * `exports` subpath to be importable at all. The third option, a copy per
+ * driver, is the worst of the three -- two `FetchLike`s that drift are two
+ * types a shared guard cannot substitute for each other.
+ *
+ * The default is always the global, resolved PER CALL rather than captured at
+ * construction -- the same principle the `defaultXConfig` resolvers follow.
+ */
+export type FetchLike = (input: string, init?: RequestInit) => Promise<Response>;
 /**
  * Compile-time exhaustiveness guard for a driver's `switch (op.action)`.
  *

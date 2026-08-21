@@ -13,8 +13,9 @@
  *
  * IT IS NOT THE RIGHT DEFAULT FOR ONE CASE, which is the whole reason this file
  * exists rather than a `process.stderr.write` per call site. A
- * {@link CsmsNotDispatchedError} says the request never became an OCPP CALL --
- * the transport refused it, so the charge point was never asked. Warning and
+ * {@link CsmsNotDispatchedError} says the request never reached the CSMS -- the
+ * transport refused it, so the charge point was never asked, or for the two
+ * records waits the record was never read. Warning and
  * continuing there produces a scenario that reports several confident FAILs
  * about a charge point that did nothing wrong, and whose real cause is three
  * steps upstream in the driver. Issue #77 is that failure, and it cost a

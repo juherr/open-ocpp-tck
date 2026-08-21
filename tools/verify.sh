@@ -77,6 +77,10 @@ run "the wire trace reads as the frames the log would have given" bun tests/trac
 # property is a 45%-of-the-time event -- issue #77 took 91 archived artifacts
 # and a preserved wire trace to see once.
 run "the manager-UI client survives concurrent lanes" bun tests/steve-ui-session-race.ts
+# And in-process because every branch it classifies needs a CSMS engineered to
+# refuse a request a chosen way -- a 503, a body that stalls mid-stream, a 200
+# that is not JSON. The pinned image produces none of them on demand.
+run "a request that never reached the CSMS says so" bun tests/citrineos-transport-classification.ts
 run "core is CSMS-neutral" bash tests/generic-core.sh
 # The one reading in this repository that lives in the workflow rather than in
 # a file the gate can run -- so it is a file now, and this is what runs it.

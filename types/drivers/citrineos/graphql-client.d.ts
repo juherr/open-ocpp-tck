@@ -18,13 +18,30 @@
  * ERRORS. GraphQL answers HTTP 200 with an `errors` array, so a caller that
  * only checks the status code reads a failed query as an empty result -- and
  * an empty result is exactly what several assertions treat as "not set". Every
- * response therefore goes through `expectData`.
+ * `/v1/graphql` response therefore goes through `expectData`. The metadata
+ * calls do not, and do not need to: that endpoint reports a failure with a
+ * status rather than in-band, which is the same difference {@link QUERY_PATH}
+ * turns into a classification below.
+ *
+ * WHICH THROWS ARE NON-DISPATCHES. Two of the reads here are wrapped in
+ * `warnOpFailed` by the specs -- `waitForActiveTransaction`, in TC028 and TC057
+ * -- which warns and continues on every error but {@link CsmsNotDispatchedError}.
+ * Continuing past a read that never ran means asserting on a transaction nobody
+ * could look up, so a failure that kept the answer out of reach must ERROR
+ * rather than warn. {@link CsmsNotDispatchedError} states the rule and both
+ * halves of it; the CitrineOS fact that decides where this file's failures fall
+ * is the endpoint asymmetry above. Issue #80.
  */
+import { type FetchLike } from "../../tck/driver";
 import type { CitrineConfig } from "./config";
 export declare class CitrineGraphQL {
     private readonly cfg;
+    private readonly fetchImpl;
     private readonly headers;
-    constructor(cfg: CitrineConfig);
+    /** The {@link FetchLike} seam, driven by
+     *  `tests/citrineos-transport-classification.ts`: the branches below need an
+     *  engine that refuses a chosen way, which no CSMS here can be asked for. */
+    constructor(cfg: CitrineConfig, fetchImpl?: FetchLike);
     /** A query or mutation. `T` is the caller's to declare: this module owns the
      *  transport, records.ts and provision.ts own the shapes. */
     query<T>(document: string, variables?: Record<string, unknown>): Promise<T>;
@@ -69,6 +86,12 @@ export declare class CitrineGraphQL {
     /** What the source already exposes: the tracked tables and, per table, the
      *  relationships someone has defined on them. */
     private trackedTables;
+    /**
+     * `path` is the union rather than `string` on purpose: the status branch
+     * below reads it as a classification, and a third endpoint typed in as
+     * `string` would quietly take the "the server answered" side without anyone
+     * deciding that it should.
+     */
     private post;
     private expectData;
 }

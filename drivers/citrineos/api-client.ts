@@ -23,9 +23,40 @@
  * `connectorId <= 0` on TriggerMessage, a schema rejection inside
  * sendLocalList's persistence step. Those are request failures wearing a 200,
  * and swallowing them would report a scenario as having driven an operation it
- * never drove. So `success: false` throws, and the payload travels with it.
+ * never drove. So `success: false` throws -- as a {@link CsmsNotDispatchedError},
+ * because that is the statement it has always made -- and every refused payload
+ * travels with it. It is the widest of the throws here: an unknown station id
+ * used to WARN and carry on, and now ends the scenario.
+ *
+ * WHICH THROWS ARE NON-DISPATCHES
+ * -------------------------------
+ * `warnOpFailed` warns and continues on every error but
+ * {@link CsmsNotDispatchedError}, which it lets out so the scenario ERRORs, and
+ * the line between the two runs through this file. The rule here is one fact
+ * about CitrineOS: IT ANSWERS 200 FOR EVERYTHING THAT REACHES ITS OCPP LAYER --
+ * an Accepted, a Rejected, a CALLERROR, silence. So a non-2xx means nothing
+ * went on the wire, whatever the status, and no per-status arbitration is
+ * needed or would be honest.
+ *
+ * That includes 404, which is the one worth saying out loud, because it is also
+ * what an action with no route looks like. It is NOT
+ * `UnsupportedOperationError`: requests.ts already throws that for the actions
+ * this driver knows are unrouted, BEFORE the request is built, and scope.ts
+ * declares them where `check-driver` reads them offline. A 404 that survives
+ * both is not a statement about an API surface -- it is evidence that the route
+ * model or the deployment is wrong, and `UnsupportedOperationError` would file
+ * that as NOT APPLICABLE at exit 0, turning a wrong CITRINE_API_URL into 47
+ * scenarios that quietly never ran. Issue #80 settles this.
+ *
+ * The other half is what stays a plain `Error`: a 2xx whose body stalls, one
+ * that will not parse, one that is not a confirmation array. `http.ts` owns
+ * that half for both clients, and {@link CsmsNotDispatchedError} says why it is
+ * a half and not an oversight. It is what stops this being a blanket
+ * conversion, and it is the half worth a guard.
  */
+import { CsmsNotDispatchedError, type FetchLike } from "../../tck/driver";
 import type { CitrineConfig } from "./config";
+import { errorBody, preview, readAnsweredBody } from "./http";
 import type { CitrineRequest } from "./requests";
 
 const DEFAULT_TIMEOUT_MS = 15_000;
@@ -46,7 +77,15 @@ function describe(value: unknown): string {
 }
 
 export class CitrineMessageApi {
-  constructor(private readonly cfg: CitrineConfig) {}
+  /** The {@link FetchLike} seam, driven by
+   *  `tests/citrineos-transport-classification.ts`: every branch this file
+   *  classifies needs a CSMS engineered to refuse a request a chosen way -- a
+   *  503, a body that will not parse -- and neither bundled CSMS can be asked
+   *  for one. */
+  constructor(
+    private readonly cfg: CitrineConfig,
+    private readonly fetchImpl: FetchLike = (input, init) => fetch(input, init),
+  ) {}
 
   private url(req: CitrineRequest, cpId: string): string {
     const query = new URLSearchParams({
@@ -66,10 +105,10 @@ export class CitrineMessageApi {
    */
   async send(cpId: string, req: CitrineRequest): Promise<string> {
     const url = this.url(req, cpId);
+    const what = `citrineos: POST ${url}`;
     let res: Response;
-    let text: string;
     try {
-      res = await fetch(url, {
+      res = await this.fetchImpl(url, {
         method: "POST",
         headers: { "content-type": "application/json" },
         // JSON.stringify preserves insertion order, which requests.ts relies
@@ -77,13 +116,10 @@ export class CitrineMessageApi {
         body: JSON.stringify(req.body),
         signal: AbortSignal.timeout(DEFAULT_TIMEOUT_MS),
       });
-      // Inside the try, because the timeout above covers the body stream too:
-      // a CSMS that answers its headers and then stalls aborts here, not at
-      // fetch, and that failure deserves the same URL-bearing message.
-      text = await res.text();
     } catch (err) {
-      throw new Error(
-        `citrineos: POST ${url} failed: ${err instanceof Error ? err.message : String(err)}`,
+      throw new CsmsNotDispatchedError(
+        what,
+        err instanceof Error ? err.message : String(err),
       );
     }
 
@@ -100,19 +136,17 @@ export class CitrineMessageApi {
         res.status === 404
           ? ` -- no OCPP ${req.ocppVersion} route is registered for this action on this CitrineOS version`
           : "";
-      throw new Error(
-        `citrineos: POST ${url} returned ${res.status}${hint}: ${text.slice(0, 300)}`,
+      throw new CsmsNotDispatchedError(
+        what,
+        `returned ${res.status}${hint}: ${await errorBody(res)}`,
       );
     }
 
-    let parsed: unknown;
-    try {
-      parsed = JSON.parse(text);
-    } catch {
-      throw new Error(
-        `citrineos: POST ${url} returned unparseable body: ${text.slice(0, 300)}`,
-      );
-    }
+    // Past this point the request was answered, and http.ts owns what that
+    // means: the body read moved here from beside the fetch, because a 200
+    // whose stream then stalls -- the timeout covers it too -- is the same
+    // case as a body that will not parse.
+    const { text, parsed } = await readAnsweredBody(res, what);
 
     // One confirmation per identifier -- except GetConfiguration, which
     // CitrineOS splits into batches of GetConfigurationMaxKeys and confirms
@@ -128,15 +162,19 @@ export class CitrineMessageApi {
 
     if (!confirmations.every(isConfirmation)) {
       throw new Error(
-        `citrineos: POST ${url} returned a body that is not a confirmation array: ${text.slice(0, 300)}`,
+        `${what} returned a body that is not a confirmation array: ${preview(text)}`,
       );
     }
 
     const refused = confirmations.filter((c) => c.success !== true);
     if (refused.length > 0) {
-      throw new Error(
-        `citrineos: ${req.module}/${req.action} for ${cpId} was not dispatched: ` +
-          refused.map((c) => describe(c.payload)).join("; "),
+      // The one non-dispatch that wears a 200, and the only failure here whose
+      // message names the operation rather than the URL -- the request reached
+      // CitrineOS, so what a reader needs is which operation it refused to put
+      // on the wire, not where it was posted.
+      throw new CsmsNotDispatchedError(
+        `citrineos: ${req.module}/${req.action} for ${cpId}`,
+        refused.map((c) => describe(c.payload)).join("; "),
       );
     }
 

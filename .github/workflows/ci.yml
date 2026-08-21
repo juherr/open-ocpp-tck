@@ -127,6 +127,14 @@ jobs:
       - name: The manager-UI client survives concurrent lanes
         run: bun tests/steve-ui-session-race.ts
 
+      # In-process because every branch it classifies needs a CSMS engineered to
+      # refuse a request a chosen way -- a 503, a body that stalls mid-stream, a
+      # 200 that is not JSON. The pinned image produces none of them on demand,
+      # and the classification decides whether a scenario WARNs past a request
+      # the charge point was never asked to perform.
+      - name: A request that never reached the CSMS says so
+        run: bun tests/citrineos-transport-classification.ts
+
       - name: Core names no CSMS
         run: bash tests/generic-core.sh
 
