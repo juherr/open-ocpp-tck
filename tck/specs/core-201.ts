@@ -65,13 +65,16 @@
 import {
   assertAllAnswered,
   assertCallPayload,
+  assertEq,
+  assertNonEmpty,
   assertReceived,
   assertResponseStatus,
   assertSent,
   UNEXERCISED_PREFIX,
   type AssertRecorder,
 } from "../assert";
-import { findCall, findResponseFor, type Frame } from "../ocpp";
+import type { CsmsRecords } from "../driver";
+import { findAllCalls, findCall, findResponseFor, type Frame } from "../ocpp";
 import type { ScenarioSpec } from "../spec-types";
 import { sleep } from "../util";
 
@@ -126,6 +129,84 @@ function assertResponseTimestamp(
     return;
   }
   rec.pass(description);
+}
+
+/**
+ * Every status the charge point reported is one the CSMS actually recorded.
+ *
+ * THE ONLY CHECK IN THIS FILE THAT DOES NOT COME OFF THE WIRE, and it exists
+ * because for this message the wire has nothing to say. A
+ * `StatusNotificationResponse` is empty -- no status member, nothing that could
+ * be wrong -- so `assertAllAnswered` is satisfied by a CSMS that parsed the
+ * request and threw it away. That is not hypothetical: issue #86 measured a
+ * CitrineOS answering two statuses, logging four warnings, and storing neither.
+ *
+ * ADDRESSED FROM THE FRAMES RATHER THAN FROM A TABLE. The station decides which
+ * `(evseId, connectorId)` pairs it reports -- a station-scope `(0, 0)` plus one
+ * per connector, on the pinned simulator -- and a list written here would be
+ * this suite's belief about that rather than a measurement of it. Reading the
+ * requests back means a station that reports a third connector is checked for a
+ * third connector, and a scenario whose fixture covers fewer pairs than the
+ * station uses FAILS instead of quietly checking the subset that happens to
+ * work.
+ *
+ * TWO CHECKS PER STATUS, because a CSMS can lose it in two places and one
+ * answer would hide which: the connector ENTITY an operator would see, and the
+ * DEVICE MODEL that `GetVariables` reads. Only the second is compared against
+ * the reported value -- the first is whatever vocabulary the CSMS keeps
+ * connector states in, and demanding the OCPP spelling there would be asserting
+ * an implementation rather than an obligation.
+ *
+ * HERE AND NOT IN assert.ts, by the rule assertResponseTimestamp above states:
+ * `evseId`, `connectorId` and `connectorStatus` are members of one 2.0.1
+ * message, and assert.ts is message-agnostic by construction.
+ */
+async function assertStatusesRecorded(
+  rec: AssertRecorder,
+  records: CsmsRecords,
+  cpId: string,
+  frames: readonly Frame[],
+): Promise<void> {
+  const calls = findAllCalls(frames, "sent", "StatusNotification");
+  if (calls.length === 0) {
+    // A FAIL rather than a silent pass over an empty list: this scenario boots
+    // a station that reports its connectors, so no StatusNotification at all is
+    // the run having gone wrong upstream of anything here.
+    rec.fail(
+      "the charge point reported at least one connector status",
+      "no Sent CALL found for action=StatusNotification",
+    );
+    return;
+  }
+  for (const call of calls) {
+    const payload = call.payload as Record<string, unknown> | null;
+    const evseId = payload?.evseId;
+    const connectorId = payload?.connectorId;
+    const reported = payload?.connectorStatus;
+    if (
+      typeof evseId !== "number" ||
+      typeof connectorId !== "number" ||
+      typeof reported !== "string"
+    ) {
+      rec.fail(
+        "StatusNotification.req addresses a connector and names a status",
+        `payload is ${JSON.stringify(call.payload)}`,
+      );
+      continue;
+    }
+    const where = `EVSE ${evseId} connector ${connectorId}`;
+    assertNonEmpty(
+      rec,
+      await records.deviceModel.connectorStatus(cpId, evseId, connectorId),
+      `CSMS: ${where} exists and carries a state`,
+    );
+    assertEq(
+      rec,
+      await records.deviceModel.availabilityState(cpId, evseId, connectorId),
+      reported,
+      `CSMS: ${where} is ${reported} in the device model`,
+    );
+  }
 }
 
 /**
@@ -513,7 +594,7 @@ const TC_B_01: ScenarioSpec = {
   connector: 1,
   bootWaitSecs: 4,
   holdSecs: 10,
-  assert({ frames, rec }) {
+  async assert({ cpId, frames, rec, records }) {
     assertSent(rec, frames, "BootNotification", "BootNotification.req sent");
     // THE PROTOCOL, ASSERTED RATHER THAN ASSUMED, and it is this scenario's
     // job because it is the one that boots. `reason` is a 2.0.1 member: the
@@ -541,10 +622,14 @@ const TC_B_01: ScenarioSpec = {
       { direction: "sent" },
     );
     // What the station reports once the boot is accepted, and the CSMS owes a
-    // response to each. Answered is all this asserts: whether the status
-    // reached the CSMS's device model is a different question, it is
-    // unanswerable from the charge point's side, and issue #58 owns it.
+    // response to each.
     assertAllAnswered(rec, frames, "StatusNotification");
+    // AND WHETHER ANSWERING MEANT ANYTHING, which is the question the line
+    // above cannot reach and used to be parked on issue #58 as unanswerable.
+    // It is answerable, just not from the charge point's side: the helper reads
+    // the CSMS back. This is the one scenario that boots, so it is the one that
+    // reports connector statuses, so it is where the check belongs.
+    await assertStatusesRecorded(rec, records, cpId, frames);
   },
 };
 

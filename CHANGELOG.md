@@ -12,6 +12,34 @@ Released as `0.3.0`. The documented install ref already points at that tag, so
 
 ### Added
 
+- `CsmsDeviceModelRecords` — what the CSMS *recorded* when a
+  `StatusNotification` arrived, as `records.deviceModel`. It is the one part of
+  the contract the wire cannot reach: a 2.0.1 CSMS answers every status with an
+  empty response whatever it did with the payload, so "stored" and "dropped"
+  look identical from the charge point. Two methods, the connector entity and
+  the device model, because a CSMS can lose a status at either. An optional
+  capability like `reservations`: a driver that omits it gets the throwing stub
+  and its scenarios report NOT APPLICABLE ([#86])
+- `drivers/citrineos` provisions the OCPP 2.0.1 device model, which is what
+  makes a station's `StatusNotification`s land anywhere. `driver provision`
+  seeds the tenant-scoped half — an EVSE type, a `Connector` component and an
+  `AvailabilityState` variable per `(evseId, connectorId)` the station reports
+  — and `prepareStation` writes the per-station EVSEs and connectors, which
+  hang off a row that does not exist until a station connects. `driver verify`
+  and `driver teardown` follow, the latter keeping any row a scenario left
+  pointing at a fixture. Measured: the four `StatusNotificationService`
+  warnings that named the gap are gone, and stay gone across runs ([#86])
+- `cert201-tcb01-cold-boot` asserts that each status the station reported was
+  RECORDED, not merely answered — the pairs read back from the frames rather
+  than from a list, so a station reporting a third connector is checked for one
+  ([#86])
+- `tests/citrineos-device-model-fixture.ts`, which holds the fixture's shape
+  offline in six parts: the station-scope `(0, 0)` target is provisioned, each
+  target gets its own distinctly-instanced component, `verify` names each
+  missing piece, `teardown` keeps what is still referenced, the prepare hook
+  re-asserts a join CitrineOS breaks on every status it files, and an insert
+  that loses a race to a parallel lane is a no-op where one that fails for any
+  other reason is still reported ([#86])
 - `FetchLike` in the core (`open-ocpp-tck/driver`) — the `fetch` seam a driver's
   HTTP client takes so an offline guard can hand it a fake CSMS. It was declared
   in `drivers/steve/ui-client.ts`, which still re-exports it, so nothing that
@@ -53,6 +81,10 @@ Released as `0.3.0`. The documented install ref already points at that tag, so
 
 ### Changed
 
+- **BREAKING** — `CsmsCapabilities` gains a required `deviceModel: boolean`,
+  beside `reservations` and `chargingProfiles`. An out-of-tree driver adds one
+  line; a driver that does not gets a compiler error naming the field, which is
+  the point of it not being optional ([#86])
 - **BREAKING** — `SteveUiOps.isLoggedIn`, `.login` and `.ensureLogin` are
   private. None of them is serialised — they run under the lock `postForm`
   takes — so a second entry point into the session was a way to reopen the race
@@ -218,3 +250,4 @@ releases from 141 commits would mean writing detail nobody measured.
 [#75]: https://github.com/juherr/open-ocpp-tck/issues/75
 [#77]: https://github.com/juherr/open-ocpp-tck/issues/77
 [#80]: https://github.com/juherr/open-ocpp-tck/issues/80
+[#86]: https://github.com/juherr/open-ocpp-tck/issues/86

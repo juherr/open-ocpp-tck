@@ -80,6 +80,7 @@ import {
 } from "./standing";
 import {
   unsupportedChargingProfiles,
+  unsupportedDeviceModel,
   unsupportedOperations201,
   unsupportedReservations,
 } from "./capabilities";
@@ -371,6 +372,11 @@ function withCapabilityStubs(parts: CsmsDriverParts): CsmsRecords {
     chargingProfiles:
       base.chargingProfiles ??
       unsupportedChargingProfiles("this CSMS has no charging-profile registry"),
+    deviceModel:
+      base.deviceModel ??
+      unsupportedDeviceModel(
+        "this driver cannot read back what the CSMS stored about a connector",
+      ),
   };
 }
 
@@ -2104,6 +2110,18 @@ async function driverSelftest(argv: string[] = []): Promise<number> {
     {
       name: "chargingProfiles.refByDescription",
       run: () => records.chargingProfiles.refByDescription("SELFTEST"),
+    },
+    // EVSE 0 rather than 1, and it is the argument that exercises the query
+    // rather than a tidier-looking one: `evseId` 0 is how a 2.0.1 station
+    // reports its own availability, so a driver that resolves only "real"
+    // EVSEs answers it by accident here and fails a scenario later.
+    {
+      name: "deviceModel.connectorStatus",
+      run: () => records.deviceModel.connectorStatus(cpId, 0, 0),
+    },
+    {
+      name: "deviceModel.availabilityState",
+      run: () => records.deviceModel.availabilityState(cpId, 0, 0),
     },
   ];
   // prepareStation is the one WRITE the contract defines, and it is off by

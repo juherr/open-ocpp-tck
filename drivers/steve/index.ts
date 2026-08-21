@@ -86,6 +86,12 @@ const CAPABILITIES: CsmsCapabilities = {
   operations16: new Set(CSMS_OPERATION_16_ACTIONS),
   reservations: true,
   chargingProfiles: true,
+  // SteVe has connector statuses and no device model, so half of the capability
+  // is there and half cannot be. Declaring the half would leave every scenario
+  // that reads both reporting a FAIL on the second call rather than NOT
+  // APPLICABLE on the first, which is a verdict about SteVe rather than about
+  // the protocol it does not speak.
+  deviceModel: false,
 };
 
 export const csmsDriver: CsmsDriverModule = {

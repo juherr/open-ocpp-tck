@@ -135,6 +135,13 @@ jobs:
       - name: A request that never reached the CSMS says so
         run: bun tests/citrineos-transport-classification.ts
 
+      # In-process because what it holds is a SEQUENCE of writes -- what was
+      # inserted, what was pointed back, what was left alone -- and a CSMS
+      # answers a correct fixture and a wrong one identically: a
+      # StatusNotificationResponse is empty, so the wire cannot tell them apart.
+      - name: The 2.0.1 device-model fixture keeps its shape
+        run: bun tests/citrineos-device-model-fixture.ts
+
       - name: Core names no CSMS
         run: bash tests/generic-core.sh
 

@@ -239,10 +239,14 @@ const V2_SCOPE = {
   // it. Four are green. The fifth is DRIVABLE and red, and its row says why
   // that is a finding against neither this driver nor the CSMS.
   "cert201-tcb01-cold-boot": d(
-    "Driven green. Nothing to express -- the scenario drives no CSMS " +
-      "operation -- and the transport reaches a 2.0.1 station unchanged: one " +
-      "endpoint advertising ocpp2.1, ocpp2.0.1 and ocpp1.6, with the boot " +
-      "accepted and routed against the 2.0.1 schemas.",
+    "Driven green. No CSMS operation to express, and the transport reaches a " +
+      "2.0.1 station unchanged: one endpoint advertising ocpp2.1, ocpp2.0.1 " +
+      "and ocpp1.6, with the boot accepted and routed against the 2.0.1 " +
+      "schemas. What it does need from this driver is the device-model read " +
+      "back -- the scenario asserts that each status the station reported was " +
+      "RECORDED, which nothing on the wire can say -- and the rows that make " +
+      "that answerable are written by provision and by prepareStation. " +
+      "Issue #86.",
   ),
   "cert201-tcf20-heartbeat": d(
     "Driven green. Nothing to express either: the heartbeat is sent by the " +

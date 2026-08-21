@@ -45,7 +45,16 @@ import type { SteveConfig } from "./ui-client";
  * per-file.
  */
 export declare function sqlLiteral(value: string): string;
-export declare class SteveRecords implements CsmsRecords {
+/**
+ * `Omit<CsmsRecords, "deviceModel">` rather than `CsmsRecords`, and the Omit is
+ * the declaration of the gap: SteVe speaks OCPP 1.6 only, so it has connector
+ * statuses and no device model to store them in a second time. The runner
+ * substitutes tck/capabilities.ts's throwing stub and the scenarios that read
+ * one report NOT APPLICABLE. Keeping the rest of the interface checked is the
+ * point -- an `implements` dropped altogether would stop catching a renamed
+ * method. The same shape drivers/citrineos/records.ts uses for `reservations`.
+ */
+export declare class SteveRecords implements Omit<CsmsRecords, "deviceModel"> {
     private readonly cfg;
     private readonly api;
     constructor(cfg: SteveConfig, apiCfg: SteveApiConfig);
