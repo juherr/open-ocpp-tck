@@ -3,9 +3,8 @@
  * that were not ported from anything.
  *
  * WHICH CASES MAY BE HERE IS NOT THIS FILE'S DECISION. `OCA-201-SELECTION.md`
- * states the rule -- role CSMS, status `M`, on every certification profile
- * -- and
- * `OCA-201-SLICE.txt` is the resulting list, one row per case, guarded by
+ * states the rule -- role CSMS, status `M`, on every certification profile --
+ * and `OCA-201-SLICE.txt` is the resulting list, one row per case, guarded by
  * tests/oca-201-slice.sh in both directions. Adding a scenario here for a case
  * that is not in that file fails the build, which is the point: "a small
  * representative set" was a judgement each reviewer made differently.
@@ -47,7 +46,7 @@
  * "no Received CALL found", which is true and says nothing.
  *
  * THE SETUP IS INLINE, AND IT DUPLICATES. `ocppVersion` plus
- * `runsSimTemplate: false` is one copy of the same two lines per scenario, and the three
+ * `runsSimTemplate: false` is repeated once per scenario, and the three
  * Reset scenarios repeat the same drive-then-check shape with one member
  * changed. That is deliberate: OCPP 2.0.1 Part 6 defines 13 `Reusable State`
  * fixtures and this suite has timers and one-shot provisioning, which are not

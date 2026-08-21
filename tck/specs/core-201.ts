@@ -3,9 +3,8 @@
  * that were not ported from anything.
  *
  * WHICH CASES MAY BE HERE IS NOT THIS FILE'S DECISION. `OCA-201-SELECTION.md`
- * states the rule -- role CSMS, status `M`, on every certification profile
- * -- and
- * `OCA-201-SLICE.txt` is the resulting list, one row per case, guarded by
+ * states the rule -- role CSMS, status `M`, on every certification profile --
+ * and `OCA-201-SLICE.txt` is the resulting list, one row per case, guarded by
  * tests/oca-201-slice.sh in both directions. Adding a scenario here for a case
  * that is not in that file fails the build, which is the point: "a small
  * representative set" was a judgement each reviewer made differently.
@@ -47,7 +46,7 @@
  * "no Received CALL found", which is true and says nothing.
  *
  * THE SETUP IS INLINE, AND IT DUPLICATES. `ocppVersion` plus
- * `runsSimTemplate: false` is one copy of the same two lines per scenario, and the three
+ * `runsSimTemplate: false` is repeated once per scenario, and the three
  * Reset scenarios repeat the same drive-then-check shape with one member
  * changed. That is deliberate: OCPP 2.0.1 Part 6 defines 13 `Reusable State`
  * fixtures and this suite has timers and one-shot provisioning, which are not
@@ -143,15 +142,25 @@ function assertResponseTimestamp(
  * knowledge, which assert.ts is built not to hold.
  *
  * WHAT THIS MEASURES IS THE CSMS, not the station. The driver asked for one
- * pair; a CSMS that dropped it, renamed it, reordered a batch or added a
- * second entry of its own has reshaped an operation on the way to the wire,
- * and that is the finding. It is the same measurement `Reset.req asks for
- * type=Immediate` makes, against a request whose subject is not a scalar.
+ * pair; a CSMS that dropped it, renamed it or added an entry of its own has
+ * reshaped an operation on the way to the wire, and that is the finding. It is
+ * the same measurement `Reset.req asks for type=Immediate` makes, against a
+ * request whose subject is not a scalar.
  *
- * ANY entry may match rather than the first, because 2.0.1 allows the CSMS to
- * batch and `itemsPerMessage` is a device-model setting rather than a
- * constant. Asserting position would file a finding against a legal batching
- * decision.
+ * EXACTLY ONE ENTRY, ASSERTED, and it is the load-bearing half. An earlier
+ * draft matched ANY entry so that a CSMS batching legally would not be filed
+ * against -- which read reasonably and was wrong twice over. `itemsPerMessage`
+ * can only SPLIT a batch, never add to one, so no legal batching decision
+ * produces an entry the driver did not ask for; and matching any entry made
+ * "added a second entry of its own" a claim in the paragraph above that the
+ * code did not check, which is the shape of silent pass this suite exists to
+ * refuse. It also makes the reads at `[0]` in the two helpers below sound,
+ * where before they rested on a count nothing enforced.
+ *
+ * A SCENARIO SENDING SEVERAL VARIABLES therefore may not use this helper as
+ * it stands. That is deliberate rather than a limitation to route around: it
+ * would need a different assertion -- a set comparison, or a per-pair one --
+ * and getting there by relaxing this one puts the silent pass straight back.
  */
 function assertVariableRequested(
   rec: AssertRecorder,
@@ -175,26 +184,36 @@ function assertVariableRequested(
     );
     return;
   }
-  const seen: string[] = [];
-  for (const entry of entries) {
-    const row = entry as {
-      component?: { name?: unknown };
-      variable?: { name?: unknown };
-    } | null;
-    const gotComponent = row?.component?.name;
-    const gotVariable = row?.variable?.name;
-    if (gotComponent === component && gotVariable === variable) {
-      rec.pass(description);
-      return;
-    }
-    seen.push(`${JSON.stringify(gotComponent)}/${JSON.stringify(gotVariable)}`);
+  const seen = entries
+    .map((entry) => {
+      const row = entry as {
+        component?: { name?: unknown };
+        variable?: { name?: unknown };
+      } | null;
+      return `${JSON.stringify(row?.component?.name)}/${JSON.stringify(row?.variable?.name)}`;
+    })
+    .join(", ");
+  if (entries.length !== 1) {
+    rec.fail(
+      description,
+      `${member} carries ${entries.length} entries where the driver asked for 1: ${
+        entries.length === 0 ? "an empty array" : seen
+      }`,
+    );
+    return;
   }
-  rec.fail(
-    description,
-    `no entry of ${member} asked about ${component}/${variable}; got ${
-      seen.length === 0 ? "an empty array" : seen.join(", ")
-    }`,
-  );
+  const row = entries[0] as {
+    component?: { name?: unknown };
+    variable?: { name?: unknown };
+  } | null;
+  if (row?.component?.name !== component || row?.variable?.name !== variable) {
+    rec.fail(
+      description,
+      `${member}[0] asks about ${seen}, expected ${component}/${variable}`,
+    );
+    return;
+  }
+  rec.pass(description);
 }
 
 /**
@@ -203,10 +222,14 @@ function assertVariableRequested(
  *
  * `assertResponseStatus` is again the shape next door and again does not fit:
  * it reads `payload.status`, and a GetVariablesResponse has none -- its
- * outcome is per requested variable, one `attributeStatus` per result. The
- * position IS asserted here, unlike in `assertVariableRequested` above,
- * because the results correlate with the request positionally and this
- * scenario sends exactly one.
+ * outcome is per requested variable, one `attributeStatus` per result.
+ *
+ * READING `[0]` IS SOUND ONLY BECAUSE `assertVariableRequested` RAN, and both
+ * scenarios call it first. The results correlate with the request
+ * positionally, so `[0]` is ours exactly as long as the request carried one
+ * entry -- which that helper asserts rather than assumes. Dropping it from a
+ * scenario, or relaxing it, silently turns this into "some result was
+ * Accepted".
  *
  * WHAT A NON-`Accepted` STATUS MEANS IS NOT THIS ASSERTION'S BUSINESS, and the
  * reason is worth having: `UnknownComponent` and `UnknownVariable` are
@@ -264,13 +287,18 @@ function assertVariableResultStatus(
 }
 
 /**
- * The `setVariableData` entry for the pair above carries `expected`, AS A
- * STRING.
+ * The sole `setVariableData` entry carries `expected`, AS A STRING.
  *
  * Separate from `assertVariableRequested` rather than a fourth argument to it,
  * because the two say different things: that one is about the subject and is
  * shared with `GetVariables`, which has no value to carry. Folding them would
  * give the read scenario a parameter it must pass as undefined.
+ *
+ * SetVariables-only, and spelled rather than parameterised, because there is
+ * no second message whose subject is an array carrying a value -- the day
+ * there is, the action and member become arguments the way they already are
+ * next door. Reading `[0]` rests on the same assertion the helper above makes
+ * and this one does not repeat.
  */
 function assertVariableValueSent(
   rec: AssertRecorder,

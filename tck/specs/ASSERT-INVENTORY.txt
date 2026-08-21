@@ -115,12 +115,15 @@ FILE core-201.ts
     IF
       ·.fail(·, ·)
       RETURN
-    FOROF
-      IF
-        AND
-        ·.pass(·)
-        RETURN
-    ·.fail(·, ·)
+    RETURN
+    IF
+      ·.fail(·, ·)
+      RETURN
+    IF
+      OR
+      ·.fail(·, ·)
+      RETURN
+    ·.pass(·)
   HELPER assertVariableResultStatus
     IF
       ·.fail(·, ·)
