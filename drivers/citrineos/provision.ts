@@ -759,17 +759,11 @@ export class CitrineProvisioner {
    * station-scope target, would leave two of the four warnings standing and is
    * the thing this fixture exists to remove.
    */
-  private async syncDeviceModel(): Promise<Map<string, number>> {
+  private async syncDeviceModel(): Promise<void> {
     const now = new Date().toISOString();
     const variableId = await this.ensureVariable(now);
-    // Returned rather than looked up again: the station's connectors reference
-    // these rows by their primary key, and resolving them twice is a round trip
-    // AND a second place that would have to agree on which EVSE type a target
-    // means.
-    const evseTypes = new Map<string, number>();
     for (const target of statusTargets()) {
       const evseTypeDatabaseId = await this.ensureEvseType(target, now);
-      evseTypes.set(componentInstance(target), evseTypeDatabaseId);
       const componentId = await this.ensureComponent(
         target,
         evseTypeDatabaseId,
@@ -777,7 +771,6 @@ export class CitrineProvisioner {
       );
       await this.ensureComponentVariable(componentId, variableId, now);
     }
-    return evseTypes;
   }
 
   /**
@@ -1120,19 +1113,12 @@ export class CitrineProvisioner {
    * can be left in.
    */
   async ensureStationTopology(cpId: string): Promise<void> {
-    const evseTypes = await this.syncDeviceModel();
+    await this.syncDeviceModel();
     const now = new Date().toISOString();
     const stationId = await this.ensureChargingStation(cpId, now);
     for (const target of statusTargets()) {
       const evseRowId = await this.ensureEvse(cpId, stationId, target, now);
-      await this.ensureConnector(
-        cpId,
-        stationId,
-        evseRowId,
-        evseTypes.get(componentInstance(target))!,
-        target,
-        now,
-      );
+      await this.ensureConnector(cpId, stationId, evseRowId, target, now);
     }
   }
 
@@ -1215,12 +1201,28 @@ export class CitrineProvisioner {
    * first one arrives. What the fixture owes is the row's IDENTITY -- which
    * EVSE it belongs to and which connector it is -- because that is the part
    * the handler cannot work out for a 2.0.1 station.
+   *
+   * `evseTypeConnectorId` IS THE OCPP CONNECTOR NUMBER, NOT A DATABASE ID, and
+   * that is worth stating because the model says otherwise. The column carries
+   * `@ForeignKey(() => EvseType)` and there is NO foreign key behind it in the
+   * database -- the decorator is unbacked -- while the column's own comment
+   * says "the serial int starting at 1 used in OCPP 2.0.1 to refer to the
+   * connector, unique per EVSE". Every CitrineOS path agrees with the comment:
+   * the transaction repository looks a connector up with
+   * `evseTypeConnectorId: value.evse.connectorId` and creates one with
+   * `connectorId: value.evse.connectorId`.
+   *
+   * Writing an EVSE type's key here instead was measured, and the failure is
+   * not the one it sounds like. `TransactionEvent` then finds no connector, so
+   * it creates one -- and THAT insert collides with this fixture on
+   * `(stationId, connectorId)`, which the station sees as
+   * `CALLERROR InternalError: Failed handling message: Validation error` and
+   * the suite as an unanswered TransactionEvent.
    */
   private async ensureConnector(
     cpId: string,
     stationId: number,
     evseRowId: number,
-    evseTypeDatabaseId: number,
     target: StatusTarget,
     now: string,
   ): Promise<void> {
@@ -1243,7 +1245,7 @@ export class CitrineProvisioner {
           ocppConnectionName: cpId,
           connectorId: target.connectorId,
           evseId: evseRowId,
-          evseTypeConnectorId: evseTypeDatabaseId,
+          evseTypeConnectorId: target.connectorId,
           tenantId: this.tenant,
           createdAt: now,
           updatedAt: now,

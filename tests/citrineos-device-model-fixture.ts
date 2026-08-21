@@ -626,6 +626,27 @@ const TARGETS = statusTargets();
     );
   }
 
+  // Not the join it looks like. `Connectors.evseTypeConnectorId` carries
+  // `@ForeignKey(() => EvseType)` with no foreign key behind it, and every
+  // CitrineOS path treats it as the OCPP connector number -- the transaction
+  // repository looks a connector up by `evseTypeConnectorId: evse.connectorId`.
+  // Writing an EVSE type's key made that lookup miss, so the CSMS created its
+  // own connector, and THAT insert collided with this fixture on
+  // `(stationId, connectorId)`: one CALLERROR per transaction, measured.
+  check(
+    "part 5: a connector's evseTypeConnectorId is the OCPP connector number",
+    TARGETS.every((target) =>
+      csms.connectors.some(
+        (row) =>
+          row.connectorId === target.connectorId &&
+          row.evseTypeConnectorId === target.connectorId,
+      ),
+    ),
+    "a connector carries something other than its own OCPP connector number " +
+      "in evseTypeConnectorId, so TransactionEvent will not find it and will " +
+      `insert a colliding row. Written: ${JSON.stringify(csms.connectors)}`,
+  );
+
   check(
     "part 5: the station topology carries the fixture marker",
     csms.evses.every((row) =>

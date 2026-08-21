@@ -48,9 +48,9 @@ export interface StatusTarget {
  *
  * ONE, because that is what runs: every scenario in `tck/specs/` declares
  * `connector: 1`, and the simulator defaults to a single connector. It is a
- * constant rather than a literal `2` in the table below so that raising it is
- * a one-line change with a name, and so {@link statusTargets} states the rule
- * instead of the answer.
+ * named constant rather than a literal inside {@link statusTargets} so that
+ * raising it is a one-line change with a name, and so that function states the
+ * rule instead of the answer.
  */
 export const PROVISIONED_CONNECTORS = 1;
 

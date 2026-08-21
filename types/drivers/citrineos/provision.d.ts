@@ -321,6 +321,23 @@ export declare class CitrineProvisioner {
      * first one arrives. What the fixture owes is the row's IDENTITY -- which
      * EVSE it belongs to and which connector it is -- because that is the part
      * the handler cannot work out for a 2.0.1 station.
+     *
+     * `evseTypeConnectorId` IS THE OCPP CONNECTOR NUMBER, NOT A DATABASE ID, and
+     * that is worth stating because the model says otherwise. The column carries
+     * `@ForeignKey(() => EvseType)` and there is NO foreign key behind it in the
+     * database -- the decorator is unbacked -- while the column's own comment
+     * says "the serial int starting at 1 used in OCPP 2.0.1 to refer to the
+     * connector, unique per EVSE". Every CitrineOS path agrees with the comment:
+     * the transaction repository looks a connector up with
+     * `evseTypeConnectorId: value.evse.connectorId` and creates one with
+     * `connectorId: value.evse.connectorId`.
+     *
+     * Writing an EVSE type's key here instead was measured, and the failure is
+     * not the one it sounds like. `TransactionEvent` then finds no connector, so
+     * it creates one -- and THAT insert collides with this fixture on
+     * `(stationId, connectorId)`, which the station sees as
+     * `CALLERROR InternalError: Failed handling message: Validation error` and
+     * the suite as an unanswered TransactionEvent.
      */
     private ensureConnector;
     /**
