@@ -86,11 +86,15 @@ const CAPABILITIES: CsmsCapabilities = {
   operations16: new Set(CSMS_OPERATION_16_ACTIONS),
   reservations: true,
   chargingProfiles: true,
-  // SteVe has connector statuses and no device model, so half of the capability
-  // is there and half cannot be. Declaring the half would leave every scenario
-  // that reads both reporting a FAIL on the second call rather than NOT
-  // APPLICABLE on the first, which is a verdict about SteVe rather than about
-  // the protocol it does not speak.
+  // SteVe has connector statuses and no device model, so half of the
+  // capability is there and half cannot be -- and half is not a capability.
+  //
+  // What actually keeps this off the wire is the scope table, which declares
+  // every `cert201-` row NOT_APPLICABLE for the reason NO_OCPP_201 gives. The
+  // stub behind this `false` is a backstop that only converts a throw from
+  // `drive()`, and a device-model read can only happen in `assert()` -- see
+  // the note on CsmsDeviceModelRecords. This is a declaration, not the
+  // mechanism.
   deviceModel: false,
 };
 

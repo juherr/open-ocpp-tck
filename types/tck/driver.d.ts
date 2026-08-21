@@ -464,6 +464,15 @@ export interface CsmsChargingProfileRecords {
  * because that is what the request carries. `evseId` 0 is the station itself
  * and is a legitimate argument: a station reports its own availability that
  * way, and a CSMS that has nowhere to put it is exactly the finding here.
+ *
+ * THE SCOPE TABLE IS WHAT EXCUSES A DRIVER THAT OMITS THIS, not the stub, and
+ * the difference is worth stating because the two neighbouring capabilities
+ * read the same way and are not in the same position. A status is only
+ * observable AFTER the run, so every call site is in `assert()` -- and the
+ * runner's `UnsupportedOperationError` net wraps `drive()` alone, on purpose
+ * (it is what tells a driver its scope table missed a scenario). So a driver
+ * without this capability whose scope table still says DRIVABLE reports ERROR,
+ * not NOT APPLICABLE, and pays for a container first. Declare the row.
  */
 export interface CsmsDeviceModelRecords {
     /** Connector state the CSMS recorded for `(evseId, connectorId)`, in the

@@ -178,6 +178,14 @@ async function assertStatusesRecorded(
     );
     return;
   }
+  // THE LAST STATUS PER ADDRESS, NOT EVERY STATUS. What the CSMS holds is one
+  // state per connector, so a station that reported the same connector twice --
+  // Available, then Occupied -- would otherwise be asserted against its own
+  // superseded value and fail on a CSMS that did exactly the right thing. This
+  // scenario reports each address once, so the reduction changes nothing it
+  // does today; it is what stops the next scenario to use this helper from
+  // inheriting a check that only works by accident.
+  const latest = new Map<string, { evseId: number; connectorId: number; reported: string }>();
   for (const call of calls) {
     const payload = call.payload as Record<string, unknown> | null;
     const evseId = payload?.evseId;
@@ -194,6 +202,12 @@ async function assertStatusesRecorded(
       );
       continue;
     }
+    // findAllCalls answers in log order, so the last write wins is the last
+    // status sent.
+    latest.set(`${evseId}:${connectorId}`, { evseId, connectorId, reported });
+  }
+
+  for (const { evseId, connectorId, reported } of latest.values()) {
     const where = `EVSE ${evseId} connector ${connectorId}`;
     assertNonEmpty(
       rec,

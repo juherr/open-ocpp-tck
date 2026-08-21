@@ -59,7 +59,15 @@ import {
   type StatusTarget,
 } from "./device-model";
 import { CitrineGraphQL } from "./graphql-client";
-import { stationColumn } from "./variant";
+import { speaksOcpp201, stationColumn } from "./variant";
+
+/** What `provision`, `verify` and `teardown` say instead of touching a device
+ *  model on a line that declares no OCPP 2.0.1 surface. One spelling, so the
+ *  three cannot describe the same decision differently. */
+const NOT_ON_THIS_LINE =
+  "not provisioned -- this driver declares no OCPP 2.0.1 surface for the " +
+  "v1.9.1 line, where every cert201- scenario is NOT APPLICABLE and the " +
+  "station columns are named differently. Set CITRINE_VARIANT=v2 for a v2 server.";
 
 /**
  * Tags that must exist and authorize normally.
@@ -250,6 +258,28 @@ export class CitrineProvisioner {
 
   private get tenant(): number {
     return this.cfg.tenantId;
+  }
+
+  /**
+   * Whether the device-model fixture belongs on the line this driver is
+   * pointed at. THE SAME PREDICATE THE CAPABILITY USES, and for a reason that
+   * is not symmetry.
+   *
+   * The v1.9.1 line has no `ocppConnectionName`: it never got the rename
+   * migration, and its `Connector.stationId` is a STRING holding the OCPP
+   * name. Every write below spells `ocppConnectionName` literally -- correctly
+   * for v2, and as a field the v1 schema does not expose -- so an ungated
+   * `ensureStationTopology` fails on every scenario of a line where eighteen
+   * of them are still drivable. Nothing offline sees it: the scope check is
+   * static, and no CI lane sweeps v1.
+   *
+   * There is also nothing for the fixture to buy there. `capabilities` declares
+   * no OCPP 2.0.1 surface for v1 and every `cert201-` row is NOT_APPLICABLE,
+   * so seeding a 2.0.1 device model would be claiming a measurement nobody
+   * took -- which is what variant.ts exists to refuse.
+   */
+  private get speaks201(): boolean {
+    return speaksOcpp201(this.cfg.variant);
   }
 
   /**
@@ -726,6 +756,10 @@ export class CitrineProvisioner {
    * has no conflict target to offer `on_conflict`.
    */
   async provisionDeviceModel(): Promise<void> {
+    if (!this.speaks201) {
+      this.log(`device model: ${NOT_ON_THIS_LINE}`);
+      return;
+    }
     await this.syncDeviceModel();
     const targets = statusTargets();
     this.log(
@@ -1009,6 +1043,11 @@ export class CitrineProvisioner {
    * to re-derive which.
    */
   private async verifyDeviceModel(): Promise<string[]> {
+    // Nothing to check where nothing is seeded, and NOT a problem to report:
+    // a v1 environment with no 2.0.1 device model is correct rather than
+    // unprovisioned. See {@link speaks201}.
+    if (!this.speaks201) return [];
+
     const problems: string[] = [];
 
     const variables = await this.gql.query<{ Variables: { id: number }[] }>(
@@ -1113,6 +1152,10 @@ export class CitrineProvisioner {
    * can be left in.
    */
   async ensureStationTopology(cpId: string): Promise<void> {
+    // Before anything, and silently: this runs ahead of EVERY scenario, so on
+    // v1 it would otherwise be one failed write per scenario on a line where
+    // eighteen of them still run. See {@link speaks201}.
+    if (!this.speaks201) return;
     await this.syncDeviceModel();
     const now = new Date().toISOString();
     const stationId = await this.ensureChargingStation(cpId, now);
@@ -1154,25 +1197,50 @@ export class CitrineProvisioner {
     return created.insert_ChargingStations_one.id;
   }
 
-  /** Matched on `(stationId, evseTypeId)`, which is the unique index -- and NOT
-   *  on the marker, so a station that already has an EVSE numbered this way is
-   *  adopted rather than duplicated. The marker is what teardown reads. */
+  /**
+   * Matched on `(stationId, evseTypeId)`, which is the unique index -- and NOT
+   * on the marker, so a station that already has an EVSE numbered this way is
+   * adopted rather than duplicated.
+   *
+   * AN ADOPTED ROW IS MARKED, which makes the marker mean "this fixture owns
+   * it" rather than "this fixture created it", and the difference is a leak
+   * rather than a nuance. CitrineOS creates an EVSE of its own accord -- the
+   * transaction repository does `readOrCreateByQuery` on
+   * `(ocppConnectionName, evseTypeId)` -- so on a database that saw traffic
+   * before this fixture existed, the row is already there and unmarked. The
+   * connector written under it would then be invisible to teardown, which
+   * finds connectors only through marked EVSEs, and would survive every
+   * teardown until a `down -v`.
+   */
   private async ensureEvse(
     cpId: string,
     stationId: number,
     target: StatusTarget,
     now: string,
   ): Promise<number> {
-    const found = await this.gql.query<{ Evses: { id: number }[] }>(
+    const marker = fixtureEvseId(cpId, target.evseId);
+    const found = await this.gql.query<{
+      Evses: { id: number; evseId: string | null }[];
+    }>(
       `query EvseFixture($station: Int!, $evseTypeId: Int!) {
          Evses(where: {
            stationId: { _eq: $station }, evseTypeId: { _eq: $evseTypeId }
-         }) { id }
+         }) { id evseId }
        }`,
       { station: stationId, evseTypeId: target.evseId },
     );
     const existing = found.Evses[0];
-    if (existing) return existing.id;
+    if (existing) {
+      if (existing.evseId !== marker) {
+        await this.gql.query(
+          `mutation AdoptEvse($id: Int!, $set: Evses_set_input!) {
+             update_Evses(where: { id: { _eq: $id } }, _set: $set) { affected_rows }
+           }`,
+          { id: existing.id, set: { evseId: marker, updatedAt: now } },
+        );
+      }
+      return existing.id;
+    }
     const created = await this.gql.query<{ insert_Evses_one: { id: number } }>(
       `mutation SeedEvse($object: Evses_insert_input!) {
          insert_Evses_one(object: $object) { id }
@@ -1182,7 +1250,7 @@ export class CitrineProvisioner {
           stationId,
           ocppConnectionName: cpId,
           evseTypeId: target.evseId,
-          evseId: fixtureEvseId(cpId, target.evseId),
+          evseId: marker,
           tenantId: this.tenant,
           createdAt: now,
           updatedAt: now,
@@ -1267,6 +1335,10 @@ export class CitrineProvisioner {
    * alone.
    */
   private async teardownDeviceModel(): Promise<void> {
+    if (!this.speaks201) {
+      this.log(`device model: ${NOT_ON_THIS_LINE}`);
+      return;
+    }
     const evses = await this.gql.query<{
       Evses: { id: number }[];
     }>(
