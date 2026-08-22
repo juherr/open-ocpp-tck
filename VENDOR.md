@@ -57,7 +57,7 @@ strongest available demonstration that the core names no CSMS.
 | `tck/specs/index.ts` | `upstream-patched` | `scripts/steve-verify/runner/specs/index.ts` | `be8595765f4d66965bfd58498622c26a696962fabae8a2700f080ae5cd55d832` | `fb27277e3bbe10d32219e24a9d7d04f79c657d51b41f5ecd538ae635d9973524` | `patches/tck/specs/index.ts.patch` |
 | `tck/assert.ts` | `upstream-patched` | `src/cp/application/verification/assert.ts` | `2431f5f6c0df997d4d821d9af55689c1f0f2df199de1e9e4ed6f3fbaad4fc89e` | `57adac06ea55693abc1a7bfe49940950a4ef3f73ba1452910f4aa2ec49266538` | `patches/tck/assert.ts.patch` |
 | `tck/sim.ts` | `upstream-patched` | `scripts/steve-verify/runner/sim.ts` | `2bf2f78afe3434e7139cd62c3ff6d70f02defd39dd700611e7c5f7614260cd35` | `bd345ee0ccb9166590fc8d0e1efd08151fb4318c4cb54a34ea67d26ed79a0e39` | `patches/tck/sim.ts.patch` |
-| `tck/main.ts` | `upstream-patched` | `scripts/steve-verify/runner/main.ts` | `a757b0d35d29c7627336c0e858ad7d2f305a33c0acad819b5296f3847382f4e2` | `cad046181a66cda68f0cb582bc0a35d7360f2a4974af0c9de7d8c10c9ba3e898` | `patches/tck/main.ts.patch` |
+| `tck/main.ts` | `upstream-patched` | `scripts/steve-verify/runner/main.ts` | `a757b0d35d29c7627336c0e858ad7d2f305a33c0acad819b5296f3847382f4e2` | `20b607594bc005196a471134b32abdd5b7bcdf5b8aaa9299ca26e19e181cdc2b` | `patches/tck/main.ts.patch` |
 | `tck/driver.ts` | `local-upstreamable` | `—` | `—` | `—` | `—` |
 | `tck/index.ts` | `local-upstreamable` | `—` | `—` | `—` | `—` |
 | `tck/driver-registry.ts` | `local-upstreamable` | `—` | `—` | `—` | `—` |
@@ -95,6 +95,7 @@ strongest available demonstration that the core names no CSMS.
 | `drivers/citrineos/expected.ts` | `local-upstreamable` | `—` | `—` | `—` | `—` |
 | `drivers/citrineos/variant.ts` | `local-upstreamable` | `—` | `—` | `—` | `—` |
 | `drivers/citrineos/provision.ts` | `local-upstreamable` | `—` | `—` | `—` | `—` |
+| `drivers/citrineos/device-model.ts` | `local-upstreamable` | `—` | `—` | `—` | `—` |
 
 Deliberately **not** imported from upstream: `steve-api.ts` (SteVe 3.13.0 REST
 client, 763 lines), `capability-probe.ts` (probes a live SteVe container),

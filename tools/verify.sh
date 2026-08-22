@@ -81,6 +81,10 @@ run "the manager-UI client survives concurrent lanes" bun tests/steve-ui-session
 # refuse a request a chosen way -- a 503, a body that stalls mid-stream, a 200
 # that is not JSON. The pinned image produces none of them on demand.
 run "a request that never reached the CSMS says so" bun tests/citrineos-transport-classification.ts
+# And in-process for the reason its own header gives: what it holds is a
+# SEQUENCE of writes, and a CSMS answers a right fixture and a wrong one with
+# the same empty StatusNotificationResponse.
+run "the 2.0.1 device-model fixture keeps its shape" bun tests/citrineos-device-model-fixture.ts
 run "core is CSMS-neutral" bash tests/generic-core.sh
 # The one reading in this repository that lives in the workflow rather than in
 # a file the gate can run -- so it is a file now, and this is what runs it.

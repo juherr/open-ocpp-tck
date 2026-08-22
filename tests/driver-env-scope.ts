@@ -67,6 +67,7 @@ const SYNTHETIC: CsmsDriverModule = {
     operations16: new Set(env.LINE === "old" ? [] : ["Reset"]),
     reservations: false,
     chargingProfiles: false,
+    deviceModel: false,
   }),
   // The third declaration, and the one where getting the env wrong is worst:
   // a list resolved for the other release line excuses scenarios that are

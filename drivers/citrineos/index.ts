@@ -62,8 +62,10 @@ import {
   type CsmsOperations201,
 } from "../../tck/driver";
 import { CitrineMessageApi } from "./api-client";
+import { DEFAULT_CONNECTORS } from "./device-model";
 import { defaultCitrineConfig } from "./config";
 import {
+  CitrineProvisioner,
   provisionCommand,
   teardownCommand,
   verifyCommand,
@@ -120,6 +122,13 @@ function capabilitiesFor(variant: CitrineVariant): CsmsCapabilities {
     // Reservations table never gets a row for 1.6 to have an opinion about.
     reservations: false,
     chargingProfiles: true,
+    // Tied to the SAME line predicate as the vocabulary above, and for a
+    // concrete reason rather than by association: the reader joins
+    // `VariableAttributes` and `Connectors` on `ocppConnectionName`, which is
+    // the column variant.ts says v1.9.1 spells `stationId`. Declaring it on v1
+    // would be claiming a query nobody has run against a schema that names its
+    // station differently.
+    deviceModel: speaksOcpp201(variant),
   };
 }
 
@@ -177,6 +186,10 @@ export const csmsDriver: CsmsDriverModule = {
     const cfg = defaultCitrineConfig(env);
     const records = new CitrineRecords(cfg);
     const api = new CitrineMessageApi(cfg);
+    // Built once rather than per scenario, and the log is a no-op: a hook that
+    // runs before every scenario has nothing to announce, and
+    // `driver provision` is where the fixture speaks.
+    const topology = new CitrineProvisioner(cfg, () => {});
     return {
       operations16: createOperations(cfg.variant, api, records),
       // Present exactly when `capabilities.operations201` is declared, and the
@@ -187,7 +200,17 @@ export const csmsDriver: CsmsDriverModule = {
         ? { operations201: createOperations201(api) }
         : {}),
       records,
-      prepareStation: (cpId) => records.prepareStation(cpId),
+      // TWO WRITES, AND THE SECOND IS NOT RESIDUE-CLEARING. The first closes
+      // what a previous scenario left open; the second puts the EVSE and the
+      // connector a 2.0.1 StatusNotification needs in place. It is here rather
+      // than in `driver provision` because this is the only point in the
+      // contract where a driver is handed a charge point id, and those rows
+      // hang off a charging station row -- see the note on
+      // ensureStationTopology, which is also where the v1 line opts out.
+      prepareStation: async (cpId) => {
+        await records.prepareStation(cpId);
+        await topology.ensureStationTopology(cpId, DEFAULT_CONNECTORS);
+      },
       simTransport: async () => ({
         // CitrineOS takes the charge point id as the LAST path segment
         // (getClientIdFromUrl in WebsocketNetworkConnection.ts), and port 8081
