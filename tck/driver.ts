@@ -736,14 +736,15 @@ export interface CsmsChargingProfileRecords {
  * and is a legitimate argument: a station reports its own availability that
  * way, and a CSMS that has nowhere to put it is exactly the finding here.
  *
- * THE SCOPE TABLE IS WHAT EXCUSES A DRIVER THAT OMITS THIS, not the stub, and
- * the difference is worth stating because the two neighbouring capabilities
- * read the same way and are not in the same position. A status is only
- * observable AFTER the run, so every call site is in `assert()` -- and the
- * runner's `UnsupportedOperationError` net wraps `drive()` alone, on purpose
- * (it is what tells a driver its scope table missed a scenario). So a driver
- * without this capability whose scope table still says DRIVABLE reports ERROR,
- * not NOT APPLICABLE, and pays for a container first. Declare the row.
+ * ABSENCE DEGRADES TO SKIPPED HERE, WHERE THE OTHER TWO THROW, and the
+ * difference is unverifiable.ts's rule rather than an inconsistency. A status
+ * is only observable AFTER the run, so every call site is in `assert()` and
+ * every result flows straight into an assertion -- which is the case that rule
+ * reserves for the sentinel. The runner's NOT APPLICABLE escape wraps `drive()`
+ * alone, so a throw from here would surface as an ERROR after a container had
+ * run; `unsupportedDeviceModel` answers `unverifiable` instead, and the
+ * scenario reports PARTIAL with the driver's reason while the checks that do
+ * not need this capability keep their verdicts.
  */
 export interface CsmsDeviceModelRecords {
   /** Connector state the CSMS recorded for `(evseId, connectorId)`, in the
@@ -922,9 +923,19 @@ export interface CsmsDriverParts {
     chargingProfiles?: CsmsChargingProfileRecords;
     deviceModel?: CsmsDeviceModelRecords;
   };
-  /** Runs before the simulator container starts -- where a CSMS closes a stale
-   *  transaction left by a previous scenario. It is a WRITE, which is why it
-   *  is here and not on {@link CsmsRecords}. */
+  /**
+   * Runs before the simulator container starts -- where a CSMS closes a stale
+   * transaction left by a previous scenario. It is a WRITE, which is why it is
+   * here and not on {@link CsmsRecords}.
+   *
+   * TRIED AND REVERTED, here because here is where it gets re-proposed: a
+   * second `topology: { connectors }` argument, so a driver seeding
+   * per-connector fixtures could match the station instead of assuming one
+   * connector. It was built and then measured, and the configuration it was for
+   * cannot work anyway -- see the note on `statusTargets` in
+   * drivers/citrineos/device-model.ts. Adding contract surface for a shape no
+   * CSMS here can represent is worse than the assumption it replaced.
+   */
   prepareStation?(cpId: string): Promise<void>;
   simTransport?(cpId: string): Promise<SimTransportDefaults>;
   /** Connection pools, caches. NOT called by the runner today -- the lane

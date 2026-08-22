@@ -62,6 +62,7 @@ import {
   type CsmsOperations201,
 } from "../../tck/driver";
 import { CitrineMessageApi } from "./api-client";
+import { DEFAULT_CONNECTORS } from "./device-model";
 import { defaultCitrineConfig } from "./config";
 import {
   CitrineProvisioner,
@@ -208,7 +209,7 @@ export const csmsDriver: CsmsDriverModule = {
       // ensureStationTopology, which is also where the v1 line opts out.
       prepareStation: async (cpId) => {
         await records.prepareStation(cpId);
-        await topology.ensureStationTopology(cpId);
+        await topology.ensureStationTopology(cpId, DEFAULT_CONNECTORS);
       },
       simTransport: async () => ({
         // CitrineOS takes the charge point id as the LAST path segment
