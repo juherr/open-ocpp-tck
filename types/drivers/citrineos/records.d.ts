@@ -37,14 +37,16 @@
 import { type CsmsChargingProfileRecords, type CsmsDeviceModelRecords, type CsmsRecords } from "../../tck/driver";
 import type { CitrineConfig } from "./config";
 /**
- * `Omit<CsmsRecords, "reservations">` rather than `CsmsRecords`, and the Omit
- * is the declaration of the gap: `reservations` is a capability this CSMS does
- * not have for OCPP 1.6, so the runner substitutes tck/capabilities.ts's
- * throwing stub and the scenarios that need it report NOT APPLICABLE. Keeping
- * the rest of the interface checked is the point -- an `implements` dropped
- * altogether would stop catching a renamed method.
+ * Two names are omitted from the `implements`, and each omission is a
+ * declaration rather than a shortcut.
+ *
+ * `reservations` is a capability this CSMS does not have for OCPP 1.6 at all,
+ * so it is absent on every line. `deviceModel` is absent only on v1.9.1, which
+ * is why it is a property assigned in the constructor instead of a field --
+ * see its own note. Keeping the rest of the interface checked is the point: an
+ * `implements` dropped altogether would stop catching a renamed method.
  */
-export declare class CitrineRecords implements Omit<CsmsRecords, "reservations"> {
+export declare class CitrineRecords implements Omit<CsmsRecords, "reservations" | "deviceModel"> {
     private readonly gql;
     /** Every table below carries `tenantId`, and omitting it would read another
      *  tenant's rows as this tenant's. */
@@ -180,5 +182,20 @@ export declare class CitrineRecords implements Omit<CsmsRecords, "reservations">
      * The relationships both queries do use are declared in graphql-client.ts,
      * spelled out so a rename upstream fails with the name in the message.
      */
-    readonly deviceModel: CsmsDeviceModelRecords;
+    /**
+     * PRESENT EXACTLY WHEN `capabilities.deviceModel` SAYS SO, and assigned in
+     * the constructor rather than declared, because the two must not be able to
+     * disagree.
+     *
+     * They did. The capability was `speaksOcpp201(variant)` while this reader was
+     * unconditional, and substitution keys off the PARTS -- so on the v1 line the
+     * printed capability said `false` and the runner would still have handed a
+     * spec queries that name a column v1.9.1 does not have. Unreachable only
+     * because a third restatement, the scope table, marks every `cert201-` row
+     * NOT_APPLICABLE there. Omission is the mechanism the contract already has
+     * for "not on this line"; the boolean is now derived from it rather than
+     * claimed beside it.
+     */
+    readonly deviceModel?: CsmsDeviceModelRecords;
+    private readonly deviceModelReader;
 }

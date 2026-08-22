@@ -5,7 +5,7 @@
  * prepare hook write so a 2.0.1 StatusNotification reaches the CSMS's device
  * model, and the rows they refuse to remove.
  *
- * PROPERTY, in 8 parts:
+ * PROPERTY, in 9 parts:
  *  1. THE STATION-SCOPE TARGET IS PROVISIONED. A station reports `(evseId 0,
  *     connectorId 0)` for itself as well as one pair per connector, and a
  *     fixture covering only the connectors leaves half the failure exactly
@@ -50,6 +50,12 @@
  *     failure per scenario on a line where eighteen of them still run -- and
  *     no offline check sees it, because the scope check is static and no CI
  *     lane sweeps v1.
+ *  9. THE FIXTURE FOLLOWS THE COUNT IT IS HANDED rather than a default it
+ *     reaches for. Only `DEFAULT_CONNECTORS` is passed today -- a
+ *     multi-connector 2.0.1 station is not representable on this CSMS, see
+ *     `statusTargets` -- so what this holds is that the count is a parameter in
+ *     fact and not just in the signature, which is the half a reader cannot
+ *     check by looking.
  *  8. AN ADOPTED EVSE IS MARKED. CitrineOS creates EVSEs of its own accord, so
  *     on a database that saw traffic before this fixture existed the row is
  *     already there, unmarked. Teardown finds connectors only through marked
@@ -78,12 +84,14 @@ import type { FetchLike } from "../tck/driver";
 import { defaultCitrineConfig } from "../drivers/citrineos/config";
 import {
   COMPONENT_NAME,
+  DEFAULT_CONNECTORS,
   FIXTURE_EVSE_PREFIX,
   VARIABLE_NAME,
   componentInstance,
   statusTargets,
 } from "../drivers/citrineos/device-model";
 import { CitrineProvisioner } from "../drivers/citrineos/provision";
+import { CitrineRecords } from "../drivers/citrineos/records";
 
 let failures = 0;
 
@@ -351,17 +359,22 @@ class FakeCitrine {
         };
       }
       case "FixtureDeviceModel": {
-        const instances = vars.instances as string[];
+        return {
+          Components: this.components.filter(
+            (row) =>
+              row.name === vars.name &&
+              row.instance !== undefined &&
+              row.instance !== null,
+          ),
+          Variables: this.variables.filter((row) => row.name === vars.variable),
+        };
+      }
+      case "FixtureEvseTypes": {
         const pairs = vars.pairs as {
           id: { _eq: number };
           connectorId: { _eq: number };
         }[];
         return {
-          Components: this.components.filter(
-            (row) =>
-              row.name === vars.name && instances.includes(String(row.instance)),
-          ),
-          Variables: this.variables.filter((row) => row.name === vars.variable),
           EvseTypes: this.evseTypes.filter((row) =>
             pairs.some(
               (pair) =>
@@ -448,7 +461,8 @@ function deviceModelProblems(problems: string[]): string[] {
   );
 }
 
-const TARGETS = statusTargets();
+const CONNECTORS = DEFAULT_CONNECTORS;
+const TARGETS = statusTargets(CONNECTORS);
 
 // ---------------------------------------------------------------------------
 // Part 1 and 2: what provisioning writes
@@ -540,6 +554,9 @@ const TARGETS = statusTargets();
   const seeded = new FakeCitrine();
   const provisioner = provisionerOn(seeded);
   await provisioner.provisionDeviceModel();
+  // Once, into a local. `check`'s detail is evaluated eagerly, so a second
+  // `verify()` inside it would describe a different run from the one that
+  // failed -- and would run on every green pass for nothing.
   const after = deviceModelProblems(await provisioner.verify());
   check(
     "part 3: verify is silent once provisioned",
@@ -556,7 +573,7 @@ const TARGETS = statusTargets();
   const csms = new FakeCitrine();
   const provisioner = provisionerOn(csms);
   await provisioner.provisionDeviceModel();
-  await provisioner.ensureStationTopology(CP_ID);
+  await provisioner.ensureStationTopology(CP_ID, CONNECTORS);
 
   // The variable attribute the CSMS wrote when a status finally landed points
   // at the first component. That is runtime residue on a fixture, and it is
@@ -634,7 +651,7 @@ const TARGETS = statusTargets();
 
   // Outside the branch above so the marker claim stands on its own: it is
   // about what the hook WRITES, not about the repoint it also does.
-  await provisioner.ensureStationTopology(CP_ID);
+  await provisioner.ensureStationTopology(CP_ID, CONNECTORS);
 
   if (stationScope !== undefined) {
     check(
@@ -743,7 +760,7 @@ const TARGETS = statusTargets();
     csms.fetch,
   );
   await v1.provisionDeviceModel();
-  await v1.ensureStationTopology(CP_ID);
+  await v1.ensureStationTopology(CP_ID, CONNECTORS);
   await v1.teardown();
 
   const written =
@@ -766,11 +783,34 @@ const TARGETS = statusTargets();
         connectors: csms.connectors,
       })}`,
   );
+  const v1Problems = deviceModelProblems(await v1.verify());
   check(
     "part 7: and verify reports it as correct rather than as unprovisioned",
-    deviceModelProblems(await v1.verify()).length === 0,
+    v1Problems.length === 0,
     "verify reported a missing device model on a line that must not have " +
-      `one: ${JSON.stringify(deviceModelProblems(await v1.verify()))}`,
+      `one: ${JSON.stringify(v1Problems)}`,
+  );
+
+  // The reader and the capability boolean are two spellings of one fact, and
+  // substitution keys off the PARTS. They diverged once: the capability said
+  // false on v1 while the reader was built unconditionally, so the runner would
+  // have handed a spec queries naming a column v1.9.1 does not have.
+  check(
+    "part 7: and the driver offers no device-model reader there",
+    new CitrineRecords(
+      defaultCitrineConfig({
+        CITRINE_GRAPHQL_URL: "http://citrine.test:8090",
+        CITRINE_VARIANT: "v1",
+      }),
+    ).deviceModel === undefined,
+    "the parts carry a reader on a line whose capability says false, so " +
+      "nothing substitutes the stub and a spec would run v2-shaped queries " +
+      "against a v1 schema",
+  );
+  check(
+    "part 7: and it offers one on the line that has it",
+    new CitrineRecords(CFG).deviceModel !== undefined,
+    "the reader is missing on v2, where every cert201- scenario needs it",
   );
 }
 
@@ -797,7 +837,7 @@ const TARGETS = statusTargets();
     tenantId: TENANT,
   });
 
-  await provisioner.ensureStationTopology(CP_ID);
+  await provisioner.ensureStationTopology(CP_ID, CONNECTORS);
 
   const adopted = csms.evses.find((row) => row.id === strayEvseId);
   check(
@@ -815,6 +855,55 @@ const TARGETS = statusTargets();
     "teardown finds a connector only through a marked EVSE, so the connector " +
       "written under this one would survive every teardown. " +
       `Marker is now ${JSON.stringify(adopted?.evseId)}`,
+  );
+}
+
+// ---------------------------------------------------------------------------
+// Part 9: the fixture follows the connector count it is handed
+// ---------------------------------------------------------------------------
+
+{
+  const TWO = 2;
+  const csms = new FakeCitrine();
+  const provisioner = provisionerOn(csms);
+  // The real sequence, and the one that makes the claim bite: `driver
+  // provision` seeded for the default, and only then does a wider run arrive.
+  // Provisioning for two up front would let the hook ignore its argument and
+  // still find everything in place.
+  await provisioner.provisionDeviceModel();
+  await provisioner.ensureStationTopology(CP_ID, TWO);
+
+  const expected = statusTargets(TWO);
+  check(
+    "part 9: a second connector adds its own target",
+    expected.length === TARGETS.length + 1 &&
+      expected.some((t) => t.evseId === 2 && t.connectorId === 1),
+    `statusTargets(2) is ${JSON.stringify(expected)}; the simulator's own ` +
+      "projection reports (2, 1) for a second connector",
+  );
+  check(
+    "part 9: every target of the wider topology is seeded",
+    expected.every((target) =>
+      csms.evseTypes.some(
+        (row) =>
+          row.id === target.evseId && row.connectorId === target.connectorId,
+      ),
+    ) && csms.components.length === expected.length,
+    "the fixture ignored the count it was handed, so a --connector 2 run " +
+      "reports a status the CSMS was never given anywhere to put. " +
+      `EVSE types ${JSON.stringify(csms.evseTypes)}`,
+  );
+  check(
+    "part 9: and the station carries the extra EVSE and connector",
+    csms.evses.length === expected.length &&
+      csms.connectors.some((row) => row.connectorId === 1) &&
+      csms.evses.some((row) => row.evseTypeId === 2),
+    `evses ${JSON.stringify(csms.evses)}, connectors ${JSON.stringify(csms.connectors)}`,
+  );
+  check(
+    "part 9: and verify checks the topology it is asked about",
+    deviceModelProblems(await provisioner.verify(TWO)).length === 0,
+    JSON.stringify(deviceModelProblems(await provisioner.verify(TWO))),
   );
 }
 

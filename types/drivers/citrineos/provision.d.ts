@@ -159,15 +159,15 @@ export declare class CitrineProvisioner {
      *
      * IT CHECKS WHAT `provision` WROTE, WHICH IS NOT ALL OF WHAT A SCENARIO
      * NEEDS. The device model's station-scoped half -- an EVSE and a connector
-     * per charge point -- is written by {@link ensureStationTopology} from a
-     * charge point id the runner supplies scenario by scenario, and nothing in
-     * this driver's environment lists those ids. So a green `verify` says the
-     * tenant-scoped fixtures are in place, and says nothing at all about any
-     * particular station. Stated here rather than left to be inferred, because a
-     * check that appears to cover something it cannot is worse than one that
-     * does not cover it.
+     * per charge point -- is written by {@link ensureStationTopology} from the
+     * prepare hook, one station at a time, so a green `verify` says the
+     * tenant-scoped fixtures are in place and says nothing about any particular
+     * station. Stated here rather than left to be inferred, because a check that
+     * appears to cover something it cannot is worse than one that does not cover
+     * it -- and see the note above {@link provisionDeviceModel} for why this is a
+     * question worth reopening rather than a settled shape.
      */
-    verify(): Promise<string[]>;
+    verify(connectors?: number): Promise<string[]>;
     /**
      * Which tables reference an Authorization, asked of the schema rather than
      * written out here.
@@ -228,7 +228,7 @@ export declare class CitrineProvisioner {
      * the unique indexes here are indexes with no matching constraint, so Hasura
      * has no conflict target to offer `on_conflict`.
      */
-    provisionDeviceModel(): Promise<void>;
+    provisionDeviceModel(connectors?: number): Promise<void>;
     /**
      * The same work, silent, and it runs before EVERY scenario rather than once
      * -- because the CSMS un-does part of it on every status it files.
@@ -246,11 +246,19 @@ export declare class CitrineProvisioner {
      * status's lookup, which filters on the pair, no longer matches. Measured:
      * the four warnings are gone on the first run and one is back on the second.
      *
-     * Re-asserting the join costs `1 + 3n` reads and no writes when nothing
-     * moved -- seven for the two targets a one-connector station reports -- which
-     * is what a per-scenario hook has to cost. The alternative, dropping the
-     * station-scope target, would leave two of the four warnings standing and is
-     * the thing this fixture exists to remove.
+     * The alternative, dropping the station-scope target, would leave two of the
+     * four warnings standing and is the thing this fixture exists to remove.
+     *
+     * WHAT IT COSTS, counted rather than waved at, because this runs before every
+     * scenario: seven reads and no writes for a one-connector station when
+     * nothing has moved, `1 + 3n` in general, and {@link ensureStationTopology}
+     * adds five more for a total of twelve. They are all independent and would
+     * fit in two documents -- the batched shape already exists in
+     * {@link teardownDeviceModel}. NOT DONE, and the arithmetic is why: ten saved
+     * localhost round trips are ~20 ms against a scenario that spends four
+     * seconds booting and ten to a hundred and fifteen holding, so a sweep saves
+     * about a second in twenty-one minutes. Re-propose it with a measurement, not
+     * with the round-trip count.
      */
     private syncDeviceModel;
     /**
@@ -278,6 +286,12 @@ export declare class CitrineProvisioner {
     /** The EVSE type the handler's component query joins through. Matched on the
      *  PAIR, because `(tenantId, id, connectorId)` is the unique index and an
      *  EVSE type with the right id and a different connector is a different row. */
+    private findEvseType;
+    private findVariable;
+    private findComponent;
+    /** The join row's own key, which is the pair -- so the id it answers with is
+     *  the component's, and its absence is the only thing either caller needs. */
+    private findComponentVariable;
     private ensureEvseType;
     /** One row for every target, and it is shared: the handler filters variables
      *  by name alone, and the unique index on `(tenantId, name)` where the
@@ -305,8 +319,9 @@ export declare class CitrineProvisioner {
      */
     private verifyDeviceModel;
     /**
-     * The station-scoped half, written per station because that is the only
-     * granularity a charge point id arrives at.
+     * The station-scoped half, written per station from the prepare hook -- the
+     * one point in the contract that hands a driver a charge point id and the
+     * topology the attempt will address.
      *
      * It CREATES the charging station row when there is none, which is not the
      * overreach it looks like: the hook runs before the simulator container
@@ -325,7 +340,7 @@ export declare class CitrineProvisioner {
      * time it files a status, so "provisioned once" is not a state this fixture
      * can be left in.
      */
-    ensureStationTopology(cpId: string): Promise<void>;
+    ensureStationTopology(cpId: string, connectors: number): Promise<void>;
     private ensureChargingStation;
     /**
      * Matched on `(stationId, evseTypeId)`, which is the unique index -- and NOT
@@ -374,10 +389,10 @@ export declare class CitrineProvisioner {
     /**
      * Removes both halves, keeping whatever a scenario left pointing at them.
      *
-     * BOTH HALVES, where `verify` sees one, and the asymmetry is deliberate
-     * rather than sloppy: teardown can find the station rows without a roster
-     * because they carry a marker, and a check that cannot enumerate what it is
-     * checking would have nothing to say. The charging station row itself is NOT
+     * BOTH HALVES, where `verify` sees one. Teardown finds the station rows
+     * through their marker, so it needs no roster and no connector count -- it
+     * removes what a station ACCUMULATED, which is not what any one invocation
+     * would seed. The charging station row itself is NOT
      * removed -- the CSMS creates one for anything that connects, and taking it
      * would take its status notifications, its messages and its transactions with
      * it, which is the runtime residue this file's teardown promises to leave

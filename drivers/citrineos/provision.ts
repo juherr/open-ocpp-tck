@@ -51,23 +51,17 @@ import { EXPIRED_FIXTURE_BACKDATE_MINUTES, inMinutes } from "../../tck/time";
 import type { FetchLike } from "../../tck/driver";
 import {
   COMPONENT_NAME,
+  DEFAULT_CONNECTORS,
   FIXTURE_EVSE_PATTERN,
   VARIABLE_NAME,
   componentInstance,
   fixtureEvseId,
+  parseComponentInstance,
   statusTargets,
   type StatusTarget,
 } from "./device-model";
 import { CitrineGraphQL } from "./graphql-client";
-import { speaksOcpp201, stationColumn } from "./variant";
-
-/** What `provision`, `verify` and `teardown` say instead of touching a device
- *  model on a line that declares no OCPP 2.0.1 surface. One spelling, so the
- *  three cannot describe the same decision differently. */
-const NOT_ON_THIS_LINE =
-  "not provisioned -- this driver declares no OCPP 2.0.1 surface for the " +
-  "v1.9.1 line, where every cert201- scenario is NOT APPLICABLE and the " +
-  "station columns are named differently. Set CITRINE_VARIANT=v2 for a v2 server.";
+import { NO_OCPP_201_ON_V1, speaksOcpp201, stationColumn } from "./variant";
 
 /**
  * Tags that must exist and authorize normally.
@@ -501,15 +495,15 @@ export class CitrineProvisioner {
    *
    * IT CHECKS WHAT `provision` WROTE, WHICH IS NOT ALL OF WHAT A SCENARIO
    * NEEDS. The device model's station-scoped half -- an EVSE and a connector
-   * per charge point -- is written by {@link ensureStationTopology} from a
-   * charge point id the runner supplies scenario by scenario, and nothing in
-   * this driver's environment lists those ids. So a green `verify` says the
-   * tenant-scoped fixtures are in place, and says nothing at all about any
-   * particular station. Stated here rather than left to be inferred, because a
-   * check that appears to cover something it cannot is worse than one that
-   * does not cover it.
+   * per charge point -- is written by {@link ensureStationTopology} from the
+   * prepare hook, one station at a time, so a green `verify` says the
+   * tenant-scoped fixtures are in place and says nothing about any particular
+   * station. Stated here rather than left to be inferred, because a check that
+   * appears to cover something it cannot is worse than one that does not cover
+   * it -- and see the note above {@link provisionDeviceModel} for why this is a
+   * question worth reopening rather than a settled shape.
    */
-  async verify(): Promise<string[]> {
+  async verify(connectors: number = DEFAULT_CONNECTORS): Promise<string[]> {
     // First, and returning early -- not because the checks below depend on it
     // (they read `Authorizations`, which has no station column) but because of
     // how a mismatch READS. Pointing a v2 driver at a v1.9.1 server makes every
@@ -600,7 +594,7 @@ export class CitrineProvisioner {
       problems.push(`${INVALID_TAG}: present, must be absent for TC_023.1`);
     }
 
-    problems.push(...(await this.verifyDeviceModel()));
+    problems.push(...(await this.verifyDeviceModel(connectors)));
 
     return problems;
   }
@@ -742,9 +736,19 @@ export class CitrineProvisioner {
   // so they are a fixture in the same sense the tags are: provisioned once,
   // verified, torn down. The other half of what a status needs, an EVSE and a
   // connector, hangs off a charging station row that does not exist until a
-  // station has connected, and `provision` has no roster to name one with. That
-  // half is {@link ensureStationTopology}, called per station from the prepare
-  // hook, and `verify` cannot see it -- see its header.
+  // station has connected. That half is {@link ensureStationTopology}, called
+  // per station from the prepare hook, and `verify` cannot see it -- see its
+  // header.
+  //
+  // NOT BECAUSE THE ROSTER IS UNAVAILABLE. `OCPP_CP_IDS` is in the same shell
+  // -- drivers/citrineos/README.md has the operator export it two lines above
+  // `driver provision` -- and `resolveStations` is exported from the runner.
+  // The reasons are that the tenant half has to be re-asserted per scenario
+  // anyway (the CSMS breaks one of its joins on every station-scope status,
+  // see syncDeviceModel), and that a driver reading a core `OCPP_*` variable
+  // would be claiming the runner's roster as its own. Whether `verify` should
+  // take the roster and cover both halves is a real question, and this comment
+  // is where it gets asked rather than answered.
   // -------------------------------------------------------------------------
 
   /**
@@ -755,13 +759,15 @@ export class CitrineProvisioner {
    * the unique indexes here are indexes with no matching constraint, so Hasura
    * has no conflict target to offer `on_conflict`.
    */
-  async provisionDeviceModel(): Promise<void> {
+  async provisionDeviceModel(
+    connectors: number = DEFAULT_CONNECTORS,
+  ): Promise<void> {
     if (!this.speaks201) {
-      this.log(`device model: ${NOT_ON_THIS_LINE}`);
+      this.log(`device model: ${NO_OCPP_201_ON_V1}`);
       return;
     }
-    await this.syncDeviceModel();
-    const targets = statusTargets();
+    await this.syncDeviceModel(connectors);
+    const targets = statusTargets(connectors);
     this.log(
       `device model: ${COMPONENT_NAME}/${VARIABLE_NAME} seeded for ` +
         `${targets.map(describeTarget).join(", ")} ` +
@@ -787,16 +793,24 @@ export class CitrineProvisioner {
    * status's lookup, which filters on the pair, no longer matches. Measured:
    * the four warnings are gone on the first run and one is back on the second.
    *
-   * Re-asserting the join costs `1 + 3n` reads and no writes when nothing
-   * moved -- seven for the two targets a one-connector station reports -- which
-   * is what a per-scenario hook has to cost. The alternative, dropping the
-   * station-scope target, would leave two of the four warnings standing and is
-   * the thing this fixture exists to remove.
+   * The alternative, dropping the station-scope target, would leave two of the
+   * four warnings standing and is the thing this fixture exists to remove.
+   *
+   * WHAT IT COSTS, counted rather than waved at, because this runs before every
+   * scenario: seven reads and no writes for a one-connector station when
+   * nothing has moved, `1 + 3n` in general, and {@link ensureStationTopology}
+   * adds five more for a total of twelve. They are all independent and would
+   * fit in two documents -- the batched shape already exists in
+   * {@link teardownDeviceModel}. NOT DONE, and the arithmetic is why: ten saved
+   * localhost round trips are ~20 ms against a scenario that spends four
+   * seconds booting and ten to a hundred and fifteen holding, so a sweep saves
+   * about a second in twenty-one minutes. Re-propose it with a measurement, not
+   * with the round-trip count.
    */
-  private async syncDeviceModel(): Promise<void> {
+  private async syncDeviceModel(connectors: number): Promise<void> {
     const now = new Date().toISOString();
     const variableId = await this.ensureVariable(now);
-    for (const target of statusTargets()) {
+    for (const target of statusTargets(connectors)) {
       const evseTypeDatabaseId = await this.ensureEvseType(target, now);
       const componentId = await this.ensureComponent(
         target,
@@ -843,31 +857,94 @@ export class CitrineProvisioner {
     }
   }
 
+  // -------------------------------------------------------------------------
+  // The four reads, owned once.
+  //
+  // ONE DOCUMENT PER QUESTION, which is the rule `fixtureRows` states for the
+  // tags and this half broke: "provisioning and verification ask the same
+  // question of the same columns -- a second copy would let the seeder write a
+  // field the check never looks at". The seeders and `verifyDeviceModel` had a
+  // query each, character-identical apart from the operation name, so a column
+  // rename was eight edits with four of them silent -- and the silent direction
+  // is a `verify` that goes green against rows the seeder no longer writes.
+  // -------------------------------------------------------------------------
+
   /** The EVSE type the handler's component query joins through. Matched on the
    *  PAIR, because `(tenantId, id, connectorId)` is the unique index and an
    *  EVSE type with the right id and a different connector is a different row. */
+  private async findEvseType(
+    target: StatusTarget,
+  ): Promise<number | undefined> {
+    const found = await this.gql.query<{
+      EvseTypes: { databaseId: number }[];
+    }>(
+      `query EvseTypeFixture($id: Int!, $connector: Int!, $tenant: Int!) {
+         EvseTypes(where: {
+           id: { _eq: $id }, connectorId: { _eq: $connector }, tenantId: { _eq: $tenant }
+         }) { databaseId }
+       }`,
+      { id: target.evseId, connector: target.connectorId, tenant: this.tenant },
+    );
+    return found.EvseTypes[0]?.databaseId;
+  }
+
+  private async findVariable(): Promise<number | undefined> {
+    const found = await this.gql.query<{ Variables: { id: number }[] }>(
+      `query VariableFixture($name: String!, $tenant: Int!) {
+         Variables(where: {
+           name: { _eq: $name }, instance: { _is_null: true }, tenantId: { _eq: $tenant }
+         }) { id }
+       }`,
+      { name: VARIABLE_NAME, tenant: this.tenant },
+    );
+    return found.Variables[0]?.id;
+  }
+
+  private async findComponent(
+    target: StatusTarget,
+  ): Promise<{ id: number; evseDatabaseId: number | null } | undefined> {
+    const found = await this.gql.query<{
+      Components: { id: number; evseDatabaseId: number | null }[];
+    }>(
+      `query ComponentFixture($name: String!, $instance: String!, $tenant: Int!) {
+         Components(where: {
+           name: { _eq: $name }, instance: { _eq: $instance }, tenantId: { _eq: $tenant }
+         }) { id evseDatabaseId }
+       }`,
+      {
+        name: COMPONENT_NAME,
+        instance: componentInstance(target),
+        tenant: this.tenant,
+      },
+    );
+    return found.Components[0];
+  }
+
+  /** The join row's own key, which is the pair -- so the id it answers with is
+   *  the component's, and its absence is the only thing either caller needs. */
+  private async findComponentVariable(
+    componentId: number,
+    variableId: number,
+  ): Promise<number | undefined> {
+    const found = await this.gql.query<{
+      ComponentVariables: { componentId: number }[];
+    }>(
+      `query ComponentVariableFixture($component: Int!, $variable: Int!) {
+         ComponentVariables(where: {
+           componentId: { _eq: $component }, variableId: { _eq: $variable }
+         }) { componentId }
+       }`,
+      { component: componentId, variable: variableId },
+    );
+    return found.ComponentVariables[0]?.componentId;
+  }
+
   private async ensureEvseType(
     target: StatusTarget,
     now: string,
   ): Promise<number> {
     return this.readOrSeed(
-      async () => {
-        const found = await this.gql.query<{
-          EvseTypes: { databaseId: number }[];
-        }>(
-          `query EvseTypeFixture($id: Int!, $connector: Int!, $tenant: Int!) {
-             EvseTypes(where: {
-               id: { _eq: $id }, connectorId: { _eq: $connector }, tenantId: { _eq: $tenant }
-             }) { databaseId }
-           }`,
-          {
-            id: target.evseId,
-            connector: target.connectorId,
-            tenant: this.tenant,
-          },
-        );
-        return found.EvseTypes[0]?.databaseId;
-      },
+      () => this.findEvseType(target),
       async () => {
         const created = await this.gql.query<{
           insert_EvseTypes_one: { databaseId: number };
@@ -895,17 +972,7 @@ export class CitrineProvisioner {
    *  instance is null means there can only be one anyway. */
   private async ensureVariable(now: string): Promise<number> {
     return this.readOrSeed(
-      async () => {
-        const found = await this.gql.query<{ Variables: { id: number }[] }>(
-          `query VariableFixture($name: String!, $tenant: Int!) {
-             Variables(where: {
-               name: { _eq: $name }, instance: { _is_null: true }, tenantId: { _eq: $tenant }
-             }) { id }
-           }`,
-          { name: VARIABLE_NAME, tenant: this.tenant },
-        );
-        return found.Variables[0]?.id;
-      },
+      () => this.findVariable(),
       async () => {
         const created = await this.gql.query<{
           insert_Variables_one: { id: number };
@@ -942,22 +1009,7 @@ export class CitrineProvisioner {
     now: string,
   ): Promise<number> {
     const instance = componentInstance(target);
-    const read = async (): Promise<
-      { id: number; evseDatabaseId: number | null } | undefined
-    > => {
-      const found = await this.gql.query<{
-        Components: { id: number; evseDatabaseId: number | null }[];
-      }>(
-        `query ComponentFixture($name: String!, $instance: String!, $tenant: Int!) {
-           Components(where: {
-             name: { _eq: $name }, instance: { _eq: $instance }, tenantId: { _eq: $tenant }
-           }) { id evseDatabaseId }
-         }`,
-        { name: COMPONENT_NAME, instance, tenant: this.tenant },
-      );
-      return found.Components[0];
-    };
-    const existing = await this.readOrSeed(read, async () => {
+    const existing = await this.readOrSeed(() => this.findComponent(target), async () => {
       const created = await this.gql.query<{
         insert_Components_one: { id: number };
       }>(
@@ -1002,21 +1054,11 @@ export class CitrineProvisioner {
     now: string,
   ): Promise<void> {
     await this.readOrSeed(
+      () => this.findComponentVariable(componentId, variableId),
       async () => {
-        const found = await this.gql.query<{
-          ComponentVariables: { componentId: number }[];
+        const created = await this.gql.query<{
+          insert_ComponentVariables_one: { componentId: number };
         }>(
-          `query ComponentVariableFixture($component: Int!, $variable: Int!) {
-             ComponentVariables(where: {
-               componentId: { _eq: $component }, variableId: { _eq: $variable }
-             }) { componentId }
-           }`,
-          { component: componentId, variable: variableId },
-        );
-        return found.ComponentVariables.length > 0 ? true : undefined;
-      },
-      async () => {
-        await this.gql.query(
           `mutation SeedComponentVariable($object: ComponentVariables_insert_input!) {
              insert_ComponentVariables_one(object: $object) { componentId }
            }`,
@@ -1030,7 +1072,7 @@ export class CitrineProvisioner {
             },
           },
         );
-        return true;
+        return created.insert_ComponentVariables_one.componentId;
       },
     );
   }
@@ -1042,7 +1084,7 @@ export class CitrineProvisioner {
    * it just found. One line saying "device model missing" would send a reader
    * to re-derive which.
    */
-  private async verifyDeviceModel(): Promise<string[]> {
+  private async verifyDeviceModel(connectors: number): Promise<string[]> {
     // Nothing to check where nothing is seeded, and NOT a problem to report:
     // a v1 environment with no 2.0.1 device model is correct rather than
     // unprovisioned. See {@link speaks201}.
@@ -1050,77 +1092,37 @@ export class CitrineProvisioner {
 
     const problems: string[] = [];
 
-    const variables = await this.gql.query<{ Variables: { id: number }[] }>(
-      `query VariableCheck($name: String!, $tenant: Int!) {
-         Variables(where: {
-           name: { _eq: $name }, instance: { _is_null: true }, tenantId: { _eq: $tenant }
-         }) { id }
-       }`,
-      { name: VARIABLE_NAME, tenant: this.tenant },
-    );
-    const variableId = variables.Variables[0]?.id;
+    const variableId = await this.findVariable();
     if (variableId === undefined) {
       problems.push(
         `${VARIABLE_NAME}: no variable row, so no status can reach the device model`,
       );
     }
 
-    for (const target of statusTargets()) {
+    for (const target of statusTargets(connectors)) {
       const where = describeTarget(target);
-      const evseTypes = await this.gql.query<{
-        EvseTypes: { databaseId: number }[];
-      }>(
-        `query EvseTypeCheck($id: Int!, $connector: Int!, $tenant: Int!) {
-           EvseTypes(where: {
-             id: { _eq: $id }, connectorId: { _eq: $connector }, tenantId: { _eq: $tenant }
-           }) { databaseId }
-         }`,
-        {
-          id: target.evseId,
-          connector: target.connectorId,
-          tenant: this.tenant,
-        },
-      );
-      const evseType = evseTypes.EvseTypes[0];
-      if (evseType === undefined) {
+      const evseTypeDatabaseId = await this.findEvseType(target);
+      if (evseTypeDatabaseId === undefined) {
         problems.push(`${where}: no EvseTypes row`);
         continue;
       }
 
-      const instance = componentInstance(target);
-      const components = await this.gql.query<{
-        Components: { id: number; evseDatabaseId: number | null }[];
-      }>(
-        `query ComponentCheck($name: String!, $instance: String!, $tenant: Int!) {
-           Components(where: {
-             name: { _eq: $name }, instance: { _eq: $instance }, tenantId: { _eq: $tenant }
-           }) { id evseDatabaseId }
-         }`,
-        { name: COMPONENT_NAME, instance, tenant: this.tenant },
-      );
-      const component = components.Components[0];
+      const component = await this.findComponent(target);
       if (component === undefined) {
         problems.push(`${where}: no ${COMPONENT_NAME} component`);
         continue;
       }
-      if (component.evseDatabaseId !== evseType.databaseId) {
+      if (component.evseDatabaseId !== evseTypeDatabaseId) {
         problems.push(
           `${where}: the ${COMPONENT_NAME} component points at EVSE type ` +
-            `${component.evseDatabaseId ?? "<null>"}, expected ${evseType.databaseId}`,
+            `${component.evseDatabaseId ?? "<null>"}, expected ${evseTypeDatabaseId}`,
         );
       }
       if (variableId === undefined) continue;
-      const link = await this.gql.query<{
-        ComponentVariables: { componentId: number }[];
-      }>(
-        `query ComponentVariableCheck($component: Int!, $variable: Int!) {
-           ComponentVariables(where: {
-             componentId: { _eq: $component }, variableId: { _eq: $variable }
-           }) { componentId }
-         }`,
-        { component: component.id, variable: variableId },
-      );
-      if (link.ComponentVariables.length === 0) {
+      if (
+        (await this.findComponentVariable(component.id, variableId)) ===
+        undefined
+      ) {
         problems.push(
           `${where}: the ${COMPONENT_NAME} component carries no ${VARIABLE_NAME} variable`,
         );
@@ -1131,8 +1133,9 @@ export class CitrineProvisioner {
   }
 
   /**
-   * The station-scoped half, written per station because that is the only
-   * granularity a charge point id arrives at.
+   * The station-scoped half, written per station from the prepare hook -- the
+   * one point in the contract that hands a driver a charge point id and the
+   * topology the attempt will address.
    *
    * It CREATES the charging station row when there is none, which is not the
    * overreach it looks like: the hook runs before the simulator container
@@ -1151,15 +1154,18 @@ export class CitrineProvisioner {
    * time it files a status, so "provisioned once" is not a state this fixture
    * can be left in.
    */
-  async ensureStationTopology(cpId: string): Promise<void> {
+  async ensureStationTopology(
+    cpId: string,
+    connectors: number,
+  ): Promise<void> {
     // Before anything, and silently: this runs ahead of EVERY scenario, so on
     // v1 it would otherwise be one failed write per scenario on a line where
     // eighteen of them still run. See {@link speaks201}.
     if (!this.speaks201) return;
-    await this.syncDeviceModel();
+    await this.syncDeviceModel(connectors);
     const now = new Date().toISOString();
     const stationId = await this.ensureChargingStation(cpId, now);
-    for (const target of statusTargets()) {
+    for (const target of statusTargets(connectors)) {
       const evseRowId = await this.ensureEvse(cpId, stationId, target, now);
       await this.ensureConnector(cpId, stationId, evseRowId, target, now);
     }
@@ -1169,32 +1175,39 @@ export class CitrineProvisioner {
     cpId: string,
     now: string,
   ): Promise<number> {
-    const found = await this.gql.query<{ ChargingStations: { id: number }[] }>(
-      `query StationFixture($name: String!, $tenant: Int!) {
-         ChargingStations(where: {
-           ocppConnectionName: { _eq: $name }, tenantId: { _eq: $tenant }
-         }) { id }
-       }`,
-      { name: cpId, tenant: this.tenant },
-    );
-    const existing = found.ChargingStations[0];
-    if (existing) return existing.id;
-    const created = await this.gql.query<{
-      insert_ChargingStations_one: { id: number };
-    }>(
-      `mutation SeedStation($object: ChargingStations_insert_input!) {
-         insert_ChargingStations_one(object: $object) { id }
-       }`,
-      {
-        object: {
-          ocppConnectionName: cpId,
-          tenantId: this.tenant,
-          createdAt: now,
-          updatedAt: now,
-        },
+    return this.readOrSeed(
+      async () => {
+        const found = await this.gql.query<{
+          ChargingStations: { id: number }[];
+        }>(
+          `query StationFixture($name: String!, $tenant: Int!) {
+             ChargingStations(where: {
+               ocppConnectionName: { _eq: $name }, tenantId: { _eq: $tenant }
+             }) { id }
+           }`,
+          { name: cpId, tenant: this.tenant },
+        );
+        return found.ChargingStations[0]?.id;
+      },
+      async () => {
+        const created = await this.gql.query<{
+          insert_ChargingStations_one: { id: number };
+        }>(
+          `mutation SeedStation($object: ChargingStations_insert_input!) {
+             insert_ChargingStations_one(object: $object) { id }
+           }`,
+          {
+            object: {
+              ocppConnectionName: cpId,
+              tenantId: this.tenant,
+              createdAt: now,
+              updatedAt: now,
+            },
+          },
+        );
+        return created.insert_ChargingStations_one.id;
       },
     );
-    return created.insert_ChargingStations_one.id;
   }
 
   /**
@@ -1219,45 +1232,54 @@ export class CitrineProvisioner {
     now: string,
   ): Promise<number> {
     const marker = fixtureEvseId(cpId, target.evseId);
-    const found = await this.gql.query<{
-      Evses: { id: number; evseId: string | null }[];
-    }>(
-      `query EvseFixture($station: Int!, $evseTypeId: Int!) {
-         Evses(where: {
-           stationId: { _eq: $station }, evseTypeId: { _eq: $evseTypeId }
-         }) { id evseId }
-       }`,
-      { station: stationId, evseTypeId: target.evseId },
-    );
-    const existing = found.Evses[0];
-    if (existing) {
-      if (existing.evseId !== marker) {
-        await this.gql.query(
-          `mutation AdoptEvse($id: Int!, $set: Evses_set_input!) {
-             update_Evses(where: { id: { _eq: $id } }, _set: $set) { affected_rows }
+    const existing = await this.readOrSeed(
+      async () => {
+        const found = await this.gql.query<{
+          Evses: { id: number; evseId: string | null }[];
+        }>(
+          `query EvseFixture($station: Int!, $evseTypeId: Int!) {
+             Evses(where: {
+               stationId: { _eq: $station }, evseTypeId: { _eq: $evseTypeId }
+             }) { id evseId }
            }`,
-          { id: existing.id, set: { evseId: marker, updatedAt: now } },
+          { station: stationId, evseTypeId: target.evseId },
         );
-      }
-      return existing.id;
-    }
-    const created = await this.gql.query<{ insert_Evses_one: { id: number } }>(
-      `mutation SeedEvse($object: Evses_insert_input!) {
-         insert_Evses_one(object: $object) { id }
-       }`,
-      {
-        object: {
-          stationId,
-          ocppConnectionName: cpId,
-          evseTypeId: target.evseId,
-          evseId: marker,
-          tenantId: this.tenant,
-          createdAt: now,
-          updatedAt: now,
-        },
+        return found.Evses[0];
+      },
+      async () => {
+        const created = await this.gql.query<{
+          insert_Evses_one: { id: number };
+        }>(
+          `mutation SeedEvse($object: Evses_insert_input!) {
+             insert_Evses_one(object: $object) { id }
+           }`,
+          {
+            object: {
+              stationId,
+              ocppConnectionName: cpId,
+              evseTypeId: target.evseId,
+              evseId: marker,
+              tenantId: this.tenant,
+              createdAt: now,
+              updatedAt: now,
+            },
+          },
+        );
+        return { id: created.insert_Evses_one.id, evseId: marker };
       },
     );
-    return created.insert_Evses_one.id;
+    // AFTER the seed, the same shape ensureComponent uses: a row this call
+    // created already carries the marker, and one it found -- whether it was
+    // the CSMS's or a racing lane's -- may not.
+    if (existing.evseId !== marker) {
+      await this.gql.query(
+        `mutation AdoptEvse($id: Int!, $set: Evses_set_input!) {
+           update_Evses(where: { id: { _eq: $id } }, _set: $set) { affected_rows }
+         }`,
+        { id: existing.id, set: { evseId: marker, updatedAt: now } },
+      );
+    }
+    return existing.id;
   }
 
   /**
@@ -1294,30 +1316,39 @@ export class CitrineProvisioner {
     target: StatusTarget,
     now: string,
   ): Promise<void> {
-    const found = await this.gql.query<{ Connectors: { id: number }[] }>(
-      `query ConnectorFixture($station: Int!, $connectorId: Int!) {
-         Connectors(where: {
-           stationId: { _eq: $station }, connectorId: { _eq: $connectorId }
-         }) { id }
-       }`,
-      { station: stationId, connectorId: target.connectorId },
-    );
-    if (found.Connectors.length > 0) return;
-    await this.gql.query(
-      `mutation SeedConnector($object: Connectors_insert_input!) {
-         insert_Connectors_one(object: $object) { id }
-       }`,
-      {
-        object: {
-          stationId,
-          ocppConnectionName: cpId,
-          connectorId: target.connectorId,
-          evseId: evseRowId,
-          evseTypeConnectorId: target.connectorId,
-          tenantId: this.tenant,
-          createdAt: now,
-          updatedAt: now,
-        },
+    await this.readOrSeed(
+      async () => {
+        const found = await this.gql.query<{ Connectors: { id: number }[] }>(
+          `query ConnectorFixture($station: Int!, $connectorId: Int!) {
+             Connectors(where: {
+               stationId: { _eq: $station }, connectorId: { _eq: $connectorId }
+             }) { id }
+           }`,
+          { station: stationId, connectorId: target.connectorId },
+        );
+        return found.Connectors[0]?.id;
+      },
+      async () => {
+        const created = await this.gql.query<{
+          insert_Connectors_one: { id: number };
+        }>(
+          `mutation SeedConnector($object: Connectors_insert_input!) {
+             insert_Connectors_one(object: $object) { id }
+           }`,
+          {
+            object: {
+              stationId,
+              ocppConnectionName: cpId,
+              connectorId: target.connectorId,
+              evseId: evseRowId,
+              evseTypeConnectorId: target.connectorId,
+              tenantId: this.tenant,
+              createdAt: now,
+              updatedAt: now,
+            },
+          },
+        );
+        return created.insert_Connectors_one.id;
       },
     );
   }
@@ -1325,10 +1356,10 @@ export class CitrineProvisioner {
   /**
    * Removes both halves, keeping whatever a scenario left pointing at them.
    *
-   * BOTH HALVES, where `verify` sees one, and the asymmetry is deliberate
-   * rather than sloppy: teardown can find the station rows without a roster
-   * because they carry a marker, and a check that cannot enumerate what it is
-   * checking would have nothing to say. The charging station row itself is NOT
+   * BOTH HALVES, where `verify` sees one. Teardown finds the station rows
+   * through their marker, so it needs no roster and no connector count -- it
+   * removes what a station ACCUMULATED, which is not what any one invocation
+   * would seed. The charging station row itself is NOT
    * removed -- the CSMS creates one for anything that connects, and taking it
    * would take its status notifications, its messages and its transactions with
    * it, which is the runtime residue this file's teardown promises to leave
@@ -1336,7 +1367,7 @@ export class CitrineProvisioner {
    */
   private async teardownDeviceModel(): Promise<void> {
     if (!this.speaks201) {
-      this.log(`device model: ${NOT_ON_THIS_LINE}`);
+      this.log(`device model: ${NO_OCPP_201_ON_V1}`);
       return;
     }
     const evses = await this.gql.query<{
@@ -1367,38 +1398,60 @@ export class CitrineProvisioner {
     );
     const keptEvses = await this.removeUnreferenced("Evses", evseIds);
 
-    const targets = statusTargets();
-    const instances = targets.map(componentInstance);
-    const components = await this.gql.query<{
-      Components: { id: number }[];
+    // FOUND, NOT ASSUMED. An earlier version asked `statusTargets()` which
+    // targets to remove, which is the one thing teardown cannot know: what a
+    // station accumulated is not what any single invocation seeds --
+    // `driver provision` assumes DEFAULT_CONNECTORS and a `--connector 2` run
+    // adds a target through the prepare hook. Reading the components back and
+    // parsing their instances removes what is there.
+    //
+    // `instance` is the whole predicate for a component because it is the
+    // whole difference: the CSMS's own path creates `Connector` components
+    // with a NULL instance (`componentType.instance ? … : null`), and only this
+    // fixture sets one.
+    const fixtures = await this.gql.query<{
+      Components: { id: number; instance: string | null }[];
       Variables: { id: number }[];
-      EvseTypes: { databaseId: number }[];
     }>(
-      // The EVSE types are matched on the PAIR rather than on the id, and the
-      // extra clause is the fixture/residue line again. Filing the
-      // station-scope status makes CitrineOS create its own EVSE type numbered
-      // 0 with a NULL connector -- see syncDeviceModel -- and `id: { _in: … }`
-      // would take that one too. It is a row the CSMS wrote, so it stays.
-      `query FixtureDeviceModel($name: String!, $instances: [String!]!, $variable: String!, $pairs: [EvseTypes_bool_exp!]!, $tenant: Int!) {
+      `query FixtureDeviceModel($name: String!, $variable: String!, $tenant: Int!) {
          Components(where: {
-           name: { _eq: $name }, instance: { _in: $instances }, tenantId: { _eq: $tenant }
-         }) { id }
+           name: { _eq: $name }, instance: { _is_null: false }, tenantId: { _eq: $tenant }
+         }) { id instance }
          Variables(where: {
            name: { _eq: $variable }, instance: { _is_null: true }, tenantId: { _eq: $tenant }
          }) { id }
-         EvseTypes(where: { _or: $pairs, tenantId: { _eq: $tenant } }) { databaseId }
        }`,
-      {
-        name: COMPONENT_NAME,
-        instances,
-        variable: VARIABLE_NAME,
-        pairs: targets.map((target) => ({
-          id: { _eq: target.evseId },
-          connectorId: { _eq: target.connectorId },
-        })),
-        tenant: this.tenant,
-      },
+      { name: COMPONENT_NAME, variable: VARIABLE_NAME, tenant: this.tenant },
     );
+    const targets = fixtures.Components.map((row) =>
+      parseComponentInstance(row.instance),
+    ).filter((target): target is StatusTarget => target !== undefined);
+
+    // The EVSE types are matched on the PAIR rather than on the id, and the
+    // extra clause is the fixture/residue line again. Filing the station-scope
+    // status makes CitrineOS create its own EVSE type numbered 0 with a NULL
+    // connector -- see syncDeviceModel -- and `id: { _in: … }` would take that
+    // one too. It is a row the CSMS wrote, so it stays.
+    const evseTypes =
+      targets.length === 0
+        ? { EvseTypes: [] as { databaseId: number }[] }
+        : await this.gql.query<{ EvseTypes: { databaseId: number }[] }>(
+            `query FixtureEvseTypes($pairs: [EvseTypes_bool_exp!]!, $tenant: Int!) {
+               EvseTypes(where: { _or: $pairs, tenantId: { _eq: $tenant } }) { databaseId }
+             }`,
+            {
+              pairs: targets.map((target) => ({
+                id: { _eq: target.evseId },
+                connectorId: { _eq: target.connectorId },
+              })),
+              tenant: this.tenant,
+            },
+          );
+    const components = {
+      Components: fixtures.Components,
+      Variables: fixtures.Variables,
+      EvseTypes: evseTypes.EvseTypes,
+    };
 
     // The join rows go unguarded, and they are the only ones that may: nothing
     // in the schema points at a join table, so `removeUnreferenced` would ask

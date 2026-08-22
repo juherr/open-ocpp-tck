@@ -40,33 +40,56 @@ export interface StatusTarget {
     connectorId: number;
 }
 /**
- * How many connectors the provisioned topology covers.
- *
- * ONE, because that is what runs: every scenario in `tck/specs/` declares
- * `connector: 1`, and the simulator defaults to a single connector. It is a
- * named constant rather than a literal inside {@link statusTargets} so that
- * raising it is a one-line change with a name, and so that function states the
- * rule instead of the answer.
- */
-export declare const PROVISIONED_CONNECTORS = 1;
-/**
- * The targets a station reports, derived from the simulator's own projection
- * rather than from what a CSMS log happened to show.
+ * The targets a station with `connectors` connectors reports, derived from the
+ * simulator's own projection rather than from what a CSMS log happened to show.
  *
  * `v201StatusEvse` (`src/cp/infrastructure/transport/v201/topologyWireV201.ts`
  * in the pinned simulator image) maps station scope to `{evseId: 0,
  * connectorId: 0}` and domain connector *N* to `{evseId: N, connectorId: 1}`.
+ *
+ * THE COUNT IS AN ARGUMENT AND NOT A CONSTANT, so that the one thing this
+ * function knows -- the projection -- is stated as a rule rather than as its
+ * answer for one topology. Every caller passes {@link DEFAULT_CONNECTORS}.
+ *
+ * A MULTI-CONNECTOR 2.0.1 STATION IS NOT REPRESENTABLE ON THIS CSMS, which is
+ * why that is not a gap waiting to be closed. Measured with
+ * `SIM_EXTRA_ARGS='--connectors 2'`: the station reports `(0,0)`, `(1,1)` and
+ * `(2,1)`, this fixture seeds all three, and the device-model half is correct
+ * for each -- but `Connectors` is unique on `(stationId, connectorId)` while
+ * 2.0.1 addressing puts `connectorId 1` under EVERY EVSE. One row can exist for
+ * connector 1 per station, so `createOrUpdateConnector` repoints it to whichever
+ * EVSE reported last and the connector-entity read for `(1, 1)` then finds
+ * nothing.
+ *
+ * The threading that would let the runner hand the real count to
+ * `prepareStation` was built and reverted for that reason -- see the note on
+ * `prepareStation` in tck/driver.ts. Contract surface for a topology the CSMS
+ * cannot hold is worse than the assumption it replaced.
  *
  * THE STATION-SCOPE TARGET IS THE ONE THAT LOOKS SKIPPABLE. `evseId` 0 is the
  * charging station itself, so an EVSE type numbered 0 reads like a placeholder
  * -- but it is half of what the station sends, and leaving it out leaves two
  * of the four warnings exactly where they were.
  */
-export declare function statusTargets(connectors?: number): StatusTarget[];
-/** The component name the handler queries for. A literal there, so a literal
- *  here. */
+export declare function statusTargets(connectors: number): StatusTarget[];
+/**
+ * The component and variable a connector's availability is filed under.
+ *
+ * THE OCPP 2.0.1 STANDARDIZED DATA MODEL, not this CSMS's choice, which is why
+ * they are constants rather than configuration: Part 2's component/variable
+ * list defines `Connector` and `AvailabilityState`, and the equality
+ * `cert201-tcb01-cold-boot` asserts -- the status the station reported equals
+ * what the CSMS stored here -- is an obligation only because the standard says
+ * these two mirror each other.
+ *
+ * They live in the driver because the driver is what WRITES the rows. A second
+ * OCPP 2.0.1 driver would want the same pair, and moving them to `tck/` beside
+ * the rest of the protocol vocabulary is the obvious next step -- deliberately
+ * not taken while there is one such driver, because a shared constant with a
+ * single consumer records agreement that has never been tested.
+ */
 export declare const COMPONENT_NAME = "Connector";
-/** The variable name the handler queries for, same. */
+/** @see {@link COMPONENT_NAME} */
 export declare const VARIABLE_NAME = "AvailabilityState";
 /**
  * What tells one provisioned component from another.
@@ -79,6 +102,29 @@ export declare const VARIABLE_NAME = "AvailabilityState";
  * second insert fails on an index whose name says nothing about any of this.
  */
 export declare function componentInstance(target: StatusTarget): string;
+/**
+ * The instance read back as the target that produced it, or `undefined` if it
+ * is not one of ours.
+ *
+ * THE INVERSE EXISTS SO TEARDOWN NEEDS NO COUNT. It removes what a station
+ * actually accumulated, which is not what any one invocation would seed:
+ * `driver provision` assumes {@link DEFAULT_CONNECTORS}, and a scenario run
+ * with `--connector 2` adds a target through the prepare hook. Deriving the
+ * pairs from the rows that exist rather than from a count is what stops a
+ * teardown leaving the extra one behind forever.
+ */
+export declare function parseComponentInstance(instance: string | null): StatusTarget | undefined;
+/**
+ * The connector count the CLI verbs assume, because they have no scenario in
+ * hand to ask.
+ *
+ * `driver provision` seeds for one connector -- what every scenario in
+ * `tck/specs/` declares -- and `driver verify` checks that much. A run that
+ * addresses more gets the extra targets from the prepare hook, which is handed
+ * the real number; teardown finds them all through
+ * {@link parseComponentInstance} rather than through this.
+ */
+export declare const DEFAULT_CONNECTORS = 1;
 /**
  * What every provisioned EVSE row's `evseId` starts with -- the eMI3 STRING
  * column, not the numeric OCPP one two fields away.
@@ -96,10 +142,11 @@ export declare function fixtureEvseId(cpId: string, evseId: number): string;
 /**
  * Every fixture EVSE, whatever station it belongs to, as a SQL `LIKE` pattern.
  *
- * Teardown ranges over all of them rather than over a roster because it has
- * none: the station half is written per station by the driver's prepare hook,
- * from a charge point id the runner supplies scenario by scenario, and nothing
- * in the driver's environment lists them. `*` is a literal in `LIKE`, so the
+ * Teardown ranges over all of them rather than over a roster, and that is what
+ * makes it independent of how the fixture got there: the station half is
+ * written per station by the prepare hook, one charge point at a time, so the
+ * set that exists is the union of every station a sweep touched rather than
+ * anything one invocation could enumerate. `*` is a literal in `LIKE`, so the
  * only metacharacter here is the trailing `%`.
  */
 export declare const FIXTURE_EVSE_PATTERN = "TCK*FIXTURE*%";
