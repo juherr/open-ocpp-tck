@@ -85,19 +85,19 @@ Released as `0.3.0`. The documented install ref already points at that tag, so
   a profile the CitrineOS certificate does not attest, which
   `OCA-201-SELECTION.md` states once rather than leaving to be noticed ([#25])
 - The licensing question is answered: **a list of case identifiers may be
-  committed, whatever its length.** `OCA-201-SELECTION.md` forbade it on an argument about
-  *extent*; CC BY-ND draws its line on modification, and a list of identifiers
-  modifies nothing. That page's licensing section now carries the argument, the
-  one risk the answer accepts, and the line that replaces the extent one —
-  identifiers in, a reference's prose and tables out, the PDFs out for a reason
-  of ours rather than the licence's. The line is drawn on kinds of material, so
-  it covers both protocols: `tck/specs/OCA-OBLIGATIONS.txt`'s OCPP 1.6 rows are
-  the harder case and are named as in, with `OCA-COVERAGE.md` carrying the
-  worked application beside the derivation it belongs to. The line also gains
-  the clause the tree was already relying on unwritten: a short marked
-  quotation that *identifies* what is under discussion — `tck/assert.ts` naming
-  the column `assertAllAnswered` checks — is not step text brought into ours.
-  Unblocks taking the 2.0.1 list from seven rows to the whole pool ([#84])
+  committed, whatever its length.** `OCA-201-SELECTION.md` forbade it on an
+  argument about *extent*; CC BY-ND draws its line on modification, and a list
+  of identifiers modifies nothing. That page's licensing section now carries the
+  argument, the one risk the answer accepts, and the line that replaces the
+  extent one — identifiers in, a reference's prose and tables out, the PDFs out
+  for a reason of ours rather than the licence's. The line is drawn on kinds of
+  material, so it covers both protocols: `tck/specs/OCA-OBLIGATIONS.txt`'s OCPP
+  1.6 rows are the harder case and are named as in, with `OCA-COVERAGE.md`
+  carrying the worked application beside the derivation it belongs to. The line
+  also gains the clause the tree was already relying on unwritten: a short
+  marked quotation that *identifies* what is under discussion — `tck/assert.ts`
+  naming the column `assertAllAnswered` checks — is not step text brought into
+  ours. Unblocks taking the 2.0.1 list from seven rows to the whole pool ([#84])
 - The OCPP 1.6 *Compliancy Testing Tool - Test Case Document* is recorded as
   CC BY-ND 4.0, © 2010–2025 Open Charge Alliance, read off its own front
   matter. `OCA-COVERAGE.md` cited the revision and the URL but never the terms,
@@ -115,12 +115,12 @@ Released as `0.3.0`. The documented install ref already points at that tag, so
   a blocker rather than per row. Nothing a consumer calls changes — the file is
   what says which `cert201-` scenarios may exist at all ([#85])
 - The per-profile totals the selection rule is measured against are corrected.
-  Three of the four had been counted on the certification matrix's *charging
-  station* column rather than its CSMS one, which is why the rule was published
-  as selecting 205 cases; re-reading it selects 165 matrix rows and 147 distinct
-  cases. Core was right. `OCA-201-SELECTION.md` now records the correction, and
-  pins the edition it was measured against, which the first derivation note
-  never did ([#85])
+  Three of the four had been counted with a row selected when `M` appeared in
+  *either* of the certification matrix's two status columns rather than in its
+  CSMS one, which is why the rule was published as selecting 205 cases;
+  re-reading it selects 165 matrix rows and 147 distinct cases. Core was right.
+  `OCA-201-SELECTION.md` now records the correction, and pins the edition it
+  was measured against, which the first derivation note never did ([#85])
 - `OCA-201-SELECTION.md` cites the slice list instead of restating it, the way
   `OCA-COVERAGE.md` cites `OCA-OBLIGATIONS.txt` ([#73])
 - The runner refuses a run where `SIM_EXTRA_ARGS` would silently replace a

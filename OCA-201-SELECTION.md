@@ -94,7 +94,7 @@ disagreement and no way to tell them apart.
 rather than only the counts moved three of the four profile totals. The numbers
 being replaced, as `CSMS M / C / blank`, were **6 / 2 / 0** for Advanced
 Security, **36 / 4 / 0** for Smart Charging and **59 / 5 / 0** for ISO 15118
-Support, summing to the 205 this page and seven other files quoted.
+Support, summing to the 205 this page and nine other tracked files quoted.
 
 Core reproduced exactly, all four numbers, and so did every row total — 364, 8,
 40, 64. The three that moved are reproduced exactly by counting a row as selected

@@ -12,12 +12,15 @@
 # bounding list and became the pool when the matrix was re-parsed to keep the
 # case identifier per row rather than only the per-profile count -- Part 5
 # Edition 4, 2025-12-03, by the method on that page. Note what the same run
-# corrected: the totals it replaced summed to 205, because three of the four
-# profiles had been counted on the charging station's column. Whether a list
-# this long may be committed at all was the other half of the gap, and it is
-# settled: it may. CC BY-ND limits modification, not extent, and a list of case
-# identifiers modifies nothing -- the argument, and the one risk it accepts,
-# are in that page's "What may be committed here, and what may not".
+# corrected: the totals it replaced summed to 205, because on three of the four
+# profiles a row had been counted as selected when `M` appeared in EITHER
+# status column rather than in the CSMS one -- the reading that reproduces two
+# of those three profiles' old numbers exactly, and the third to within one
+# row. Whether a list this long may be committed at all was the other half of
+# the gap, and it is settled: it may. CC BY-ND limits modification, not extent,
+# and a list of case identifiers modifies nothing -- the argument, and the one
+# risk it accepts, are in that page's "What may be committed here, and what may
+# not".
 #
 # 147 CASES, 165 ROWS OF THE MATRIX. Thirty-seven cases are listed under two
 # profiles, all of them Smart Charging and ISO 15118 Support, and nineteen of
@@ -59,7 +62,7 @@
 # template can produce, a transport seam that does not exist. Splitting one
 # reason into ten copies with the case id changed would read as ten decisions
 # and be one. If a case is blocked by something its neighbours are not, it gets
-# its own row text; TC_B_58, TC_F_27 and TC_G_20 already do.
+# its own row text; five do -- TC_A_12, TC_B_58, TC_F_27, TC_G_20 and TC_K_10.
 #
 # WHICH RESET OUTCOME IS WHICH CASE IS OUR READING, not something read off Part
 # 6. `ResetStatusEnumType` has three values and the Reset block has three
@@ -68,15 +71,15 @@
 # it moves three rows here and three templateIds there.
 #
 # case / scenario / why not
-TC_A_01    not-implemented    no transport seam: every driver is reached over one ws:// URL from tck/sim.ts, so a credential, a security profile or a TLS version is not a thing a scenario can vary.
-TC_A_02    not-implemented    no transport seam: every driver is reached over one ws:// URL from tck/sim.ts, so a credential, a security profile or a TLS version is not a thing a scenario can vary.
-TC_A_03    not-implemented    no transport seam: every driver is reached over one ws:// URL from tck/sim.ts, so a credential, a security profile or a TLS version is not a thing a scenario can vary.
-TC_A_04    not-implemented    no transport seam: every driver is reached over one ws:// URL from tck/sim.ts, so a credential, a security profile or a TLS version is not a thing a scenario can vary.
-TC_A_06    not-implemented    no transport seam: every driver is reached over one ws:// URL from tck/sim.ts, so a credential, a security profile or a TLS version is not a thing a scenario can vary.
+TC_A_01    not-implemented    no transport seam: a driver names one ws:// endpoint and the simulator connects to it, so a credential, a security profile or a TLS version is not a thing a scenario can vary.
+TC_A_02    not-implemented    no transport seam: a driver names one ws:// endpoint and the simulator connects to it, so a credential, a security profile or a TLS version is not a thing a scenario can vary.
+TC_A_03    not-implemented    no transport seam: a driver names one ws:// endpoint and the simulator connects to it, so a credential, a security profile or a TLS version is not a thing a scenario can vary.
+TC_A_04    not-implemented    no transport seam: a driver names one ws:// endpoint and the simulator connects to it, so a credential, a security profile or a TLS version is not a thing a scenario can vary.
+TC_A_06    not-implemented    no transport seam: a driver names one ws:// endpoint and the simulator connects to it, so a credential, a security profile or a TLS version is not a thing a scenario can vary.
 TC_A_07    not-implemented    Advanced Security. Same missing transport seam as this block's Core rows, plus a client certificate the pinned simulator has nowhere to hold.
 TC_A_08    not-implemented    Advanced Security. Same missing transport seam as this block's Core rows, plus a client certificate the pinned simulator has nowhere to hold.
-TC_A_09    not-implemented    no transport seam: every driver is reached over one ws:// URL from tck/sim.ts, so a credential, a security profile or a TLS version is not a thing a scenario can vary.
-TC_A_10    not-implemented    no transport seam: every driver is reached over one ws:// URL from tck/sim.ts, so a credential, a security profile or a TLS version is not a thing a scenario can vary.
+TC_A_09    not-implemented    no transport seam: a driver names one ws:// endpoint and the simulator connects to it, so a credential, a security profile or a TLS version is not a thing a scenario can vary.
+TC_A_10    not-implemented    no transport seam: a driver names one ws:// endpoint and the simulator connects to it, so a credential, a security profile or a TLS version is not a thing a scenario can vary.
 TC_A_11    not-implemented    Advanced Security. Same missing transport seam as this block's Core rows, plus a client certificate the pinned simulator has nowhere to hold.
 TC_A_12    not-implemented    ISO 15118 Support. V2G certificate material on top of the transport seam this block's Core rows already need, and no attestation stands behind the profile.
 TC_A_14    not-implemented    Advanced Security. Same missing transport seam as this block's Core rows, plus a client certificate the pinned simulator has nowhere to hold.
