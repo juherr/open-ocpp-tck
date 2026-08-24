@@ -70,7 +70,8 @@ reading order, but they can be recovered from x-position: `pdftotext
 lines of text processing, written down so it can be **redone** rather than
 re-read when the reference is revised — the same arrangement, and for the same
 reason, as `OCA-COVERAGE.md`'s derivation note. Nothing in this repository can
-check the result; the PDF is not here and cannot be. Those counts, and the `M` /
+check the result; the PDF is not here and [will not
+be](#what-may-be-committed-here-and-what-may-not). Those counts, and the `M` /
 `C` status of every case this page names, carry exactly the status
 `OCA-COVERAGE.md`'s own totals carry: measured, then written into prose.
 Everything else numeric here is cited from the references rather than counted.
@@ -119,21 +120,23 @@ a mandatory case is a decision, and the guard refuses a `not-implemented` row
 with nothing after it, so the two are not the same as "not done yet".
 
 **The list is seven rows, not 205, and that gap is deliberate rather than
-overlooked.** Two things have to happen before the rest can be written, and
-they are the milestone's first two issues:
+overlooked.** One thing has to happen before the rest can be written, and it is
+the milestone's next issue: **the identifiers behind the 205 have never been
+enumerated.** The per-profile totals in the table above were counted; the rows
+were not. The method for redoing the parse is [in the derivation
+note](#what-the-rule-is-drawn-against), and this time it has to keep the case
+identifier per row rather than only the count.
 
-- the identifiers behind the 205 have never been enumerated. The per-profile
-  totals in the table above were counted; the rows were not. The method for
-  redoing the parse is [in the derivation note](#what-the-rule-is-drawn-against),
-  and this time it has to keep the case identifier per row rather than only the
-  count;
-- committing 205 rows is the thing [the licensing
-  section](#what-may-be-committed-here-and-what-may-not) currently forbids, and
-  that has to be answered before the file is produced rather than after.
+There used to be a second one — whether a 205-row file may be committed at all,
+given that the references are CC BY-ND — and it is
+[answered](#what-may-be-committed-here-and-what-may-not): it may.
 
-Until then the file still bounds what may be implemented — direction 1 of the
-guard is what does that, and it does not care how long the file is. What is
-temporarily untrue is the stronger claim, that the file **is** the pool.
+Until the enumeration lands the file still bounds what may be implemented —
+direction 1 of the guard is what does that, and it does not care how long the
+file is. What is temporarily untrue is the stronger claim, that the file **is**
+the pool, and that gap is one [no guard closes](#the-guard). The licensing
+decision does not touch it either: what was blocking the file was a question
+about the licence, and what leaves it short is the enumeration.
 
 **What the first slice bounded, kept because it is the worked example of
 writing the number down before the work.** Its seven cases were boot, reading
@@ -249,29 +252,122 @@ for a driver author who never opens this page.
 
 *OCPP 2.0.1 Part 5 — Certification Profiles and Test Cases* supplies the
 selection matrix; *Part 6 — Test Cases* supplies the cases themselves. Both are
-**CC BY-ND 4.0**. This repository is public and Apache-2.0, and BY-ND permits
-no derivative works, so their text, their tables and the PDFs stay out of it.
-What may be committed, and what this page is made of: **case identifiers**
-(`TC_B_01`), **requirement identifiers** (`P02.FR.06`), **feature identifiers**
-(`C-45`), **counts**, and our own prose — already the line the OCPP 1.6
-scenarios sit on.
+**CC BY-ND 4.0**, and this repository is public and Apache-2.0. What may be
+committed, and what this page is made of: **case identifiers** (`TC_B_01`),
+**requirement identifiers** (`P02.FR.06`), **feature identifiers** (`C-45`),
+**counts**, and our own prose — already the line the OCPP 1.6 scenarios sit on.
+Their text, their tables and the PDFs stay out, for two different reasons.
 
-The line is drawn on **extent**, not shape: citing the handful of cases under
-discussion is a citation, while committing the mandatory column in full
-re-renders the matrix's own selection whatever the markup around it looks like.
-So no table on this page is the pool, and the pool is not committed anywhere.
+**The 205-row list may be committed.** This section used to draw the line
+somewhere else, and what changed is not an appetite for risk but a reading of
+the licence. The sentence to unlearn:
 
-**And the coverage target asks for exactly that, so this section is now an open
-question rather than a settled one.** A 205-row `OCA-201-SLICE.txt` is the
-column the paragraph above forbids. There is no version of the milestone that
-does not have to answer it, and answering it by committing the file and seeing
-whether anyone objects is answering it by default. The two readings — that a
-list of case identifiers mandatory for one role is a *fact about the
-specification* rather than a derivative of its prose, or that rows may only be
-committed as cases are handled, at the cost of the file no longer expressing a
-perimeter — are set out in the milestone issue, and the decision is the
-repository owner's. **Until it is made, this section stands as written and the
-list stays at seven rows.**
+> The line is drawn on **extent**, not shape: citing the handful of cases under
+> discussion is a citation, while committing the mandatory column in full
+> re-renders the matrix's own selection whatever the markup around it looks
+> like.
+
+Extent is the one thing `BY-ND` says nothing about. §2(a)(1)(A) grants the right
+to "reproduce and Share the Licensed Material, **in whole or in part**"; what
+§2(a)(1)(B) withholds is Sharing **Adapted Material**, which §1(a) defines as
+material in which the Licensed Material is "translated, altered, arranged,
+transformed, or otherwise modified **in a manner requiring permission** under
+the Copyright and Similar Rights held by the Licensor". `ND` is a limit on
+modification. The paragraph above read it as a limit on quantity, and
+everything it concluded followed from that.
+
+**Why the list is not Adapted Material.** Nothing of Part 5 is in the file as
+expression: not a sentence, not a cell, not a step, not a precondition, not an
+expected result. What is in it is the answer to a question asked *of* the
+matrix — which rows carry `M` in the `Conf. test for CSMS` column — and that
+answer is a fact about the specification, the status this repository already
+gives `P02.FR.06` and `C-45`. The licence says as much about itself in §8(a): it
+"does not, and shall not be interpreted to, reduce, limit, restrict, or impose
+conditions on any use of the Licensed Material that could lawfully be made
+without permission under this Public License". So the first question is not
+whether `ND` forbids the file. It is whether the file needs permission at all.
+
+**And where it does, §4 grants it.** Take the objection at its strongest — Part
+5 §4 is a database, and 205 rows drawn from one of its columns are a substantial
+extraction of the contents — and the licence answers in those terms. §4(a): "for
+the avoidance of doubt, Section 2(a)(1) grants You the right to extract, reuse,
+reproduce, and Share all or a substantial portion of the contents of the
+database, provided You do not Share Adapted Material." Substantial extraction is
+named and permitted, and the proviso is the one already met.
+
+**The risk taken, written down rather than argued away.** §4(b) is the limb that
+could bite: where a substantial portion of a licensed database's contents ends
+up in a database *in which You have Sui Generis Database Rights*, that database
+— though not its individual contents — is Adapted Material, and Adapted Material
+may not be Shared. The reading under which `OCA-201-SLICE.txt` is such a
+database is not absurd, because it carries a column of ours beside the
+identifiers. Against it: the right §1(i) names is Directive 96/9/EC's, which
+arises from substantial investment in obtaining, verifying or presenting
+contents, and a hand-maintained flat file is not that. **This repository asserts
+no Sui Generis Database Right in `OCA-201-SLICE.txt` or in anything drawn from
+it.** That is the assumed risk and the whole of it. If it is ever pressed the
+remedy is to delete the file, which costs the perimeter and not one scenario.
+
+**Attribution, so the fallback stays available.** §4(c) makes §3(a)'s conditions
+apply to a substantial extraction, so they are satisfied here whether or not
+they are owed — otherwise the §4 argument would be a violation at the moment it
+was needed. §3(a)(2) allows them to be met "by providing a URI or hyperlink to a
+resource that includes the required information", so it is one block rather than
+a header on every file that names a case — **and the block is in
+[`NOTICE`](NOTICE), because that is the file that ships.** `package.json`'s
+`files` carries `NOTICE` and `tck/`, so a consumer of the pinned git dependency
+receives `OCA-201-SLICE.txt` and the attribution together; this page is not in
+the package at all, which is what makes it the wrong home for a notice and the
+right one for the argument behind it.
+
+**Where the line falls now.** It replaces the extent line, and only the first
+part moved:
+
+- **identifiers, counts, and our own prose about them** — in. Not the Licensed
+  Material as expression, and length is not a term. The 205-row list is on this
+  side; so is any table of identifiers a future page needs; and so, already, is
+  [`OCA-OBLIGATIONS.txt`](tck/specs/OCA-OBLIGATIONS.txt), which is the harder
+  case and had never been ruled on. Its OCPP 1.6 rows were read out of that
+  reference's *Scenario Detail(s)* tables, so they look like an extraction of
+  case content rather than of identifiers — but a row is our scenario id, an
+  OCPP message name, our helper's name and a case identifier. Three columns are
+  ours or the protocol's, the fourth is an identifier, and what came out of the
+  reference is *which* messages a case owes: a fact, not the wording that
+  states it. [`OCA-COVERAGE.md`](OCA-COVERAGE.md) is the worked application,
+  and note what the test turns on — that no expression is carried across, which
+  is a question that does not need to know which licence the reference carries;
+- **Part 5's and Part 6's prose, tables and step text, brought into ours** —
+  out, and this is where `ND` actually bites. A case's steps trimmed to fit a
+  paragraph, a matrix reflowed into Markdown, an expected result paraphrased:
+  each is the Licensed Material "arranged" or "otherwise modified", which is
+  §1(a)'s Adapted Material and §2(a)(1)(B) withholds Sharing it. Every assertion
+  in `tck/specs/core-201.ts` is written rather than copied for this reason, and
+  that file's header says so under `WRITTEN, NOT COPIED`;
+- **the PDFs, whole and unmodified** — out, and *not* because the licence
+  forbids it: §2(a)(1)(A) would permit exactly that, with attribution. The
+  reason is ours. Everything in an Apache-2.0 tree is offered on Apache-2.0
+  terms to whoever clones it, and a `BY-ND` document sitting inside one
+  misstates its own terms to every fork. So a reference is cited by URL and not
+  committed, which is what [`OCA-COVERAGE.md`](OCA-COVERAGE.md) already does in
+  practice with the OCPP 1.6 test case document.
+
+**One qualifier on the middle bullet, written because the tree already relies on
+it.** A short quotation that *identifies* what is under discussion is not step
+text brought into ours. `tck/assert.ts` names the column `assertAllAnswered`
+checks by quoting the one-line template a `_CSMS` case uses for it, and
+[`OCA-COVERAGE.md`](OCA-COVERAGE.md) quotes two field values of `TC_004_1` to
+report that the reference contradicts itself there. Both are marked as
+quotations, both are the shortest form that leaves the claim checkable by
+someone holding the reference, and neither carries a step anyone could execute.
+§2(a)(2) puts a use covered by an exception outside this licence altogether and
+§8(a) says the licence does not reach it. The line to hold is the purpose: a
+quotation is here to *name* something, never to spare us writing our own.
+
+**No table on this page is the pool, and that outlives the licensing question.**
+The list lives in
+[`tck/specs/OCA-201-SLICE.txt`](tck/specs/OCA-201-SLICE.txt) for the reason [the
+coverage target](#the-coverage-target) gives, which is now the only one holding
+that sentence up.
 
 ## Why this became a selection axis
 
@@ -333,8 +429,8 @@ A guard that cannot be made to fail cannot be shown to fail *correctly*, and
 that demonstration is this repository's entry condition for a guard.
 
 What the guard cannot check is the thing that matters most: that the rows really
-are the cases the rule selects. That is a reading of a PDF this repository
-cannot contain, the method for redoing it is above, and those rows carry exactly
+are the cases the rule selects. That is a reading of a PDF this repository does
+not carry, the method for redoing it is above, and those rows carry exactly
 the status `OCA-COVERAGE.md`'s totals carry — measured, then written down. What
 stops afterwards is the drift.
 

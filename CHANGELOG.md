@@ -82,10 +82,35 @@ Released as `0.3.0`. The documented install ref already points at that tag, so
   a case is covered when it is implemented *or declined in writing*. No
   scenario, guard or type changes shape: what moves is what the suite says it
   owes. Two things the new target has to answer before the list can be
-  completed are written down where they bite rather than left implicit — that
-  committing 205 rows is what `OCA-201-SELECTION.md`'s own CC BY-ND reasoning
-  currently forbids, and that only 110 of the 205 run against a profile the
-  CitrineOS certificate attests ([#25])
+  completed are written down where they bite rather than left implicit —
+  whether a 205-row list of case identifiers may be committed at all, given the
+  references' CC BY-ND licence, and that only 110 of the 205 run against a
+  profile the CitrineOS certificate attests ([#25])
+- The licensing question is answered: **a 205-row list of case identifiers may
+  be committed.** `OCA-201-SELECTION.md` forbade it on an argument about
+  *extent*; CC BY-ND draws its line on modification, and a list of identifiers
+  modifies nothing. That page's licensing section now carries the argument, the
+  one risk the answer accepts, and the line that replaces the extent one —
+  identifiers in, a reference's prose and tables out, the PDFs out for a reason
+  of ours rather than the licence's. The line is drawn on kinds of material, so
+  it covers both protocols: `tck/specs/OCA-OBLIGATIONS.txt`'s OCPP 1.6 rows are
+  the harder case and are named as in, with `OCA-COVERAGE.md` carrying the
+  worked application beside the derivation it belongs to. The line also gains
+  the clause the tree was already relying on unwritten: a short marked
+  quotation that *identifies* what is under discussion — `tck/assert.ts` naming
+  the column `assertAllAnswered` checks — is not step text brought into ours.
+  Unblocks taking the 2.0.1 list from seven rows to 205 ([#84])
+- The OCPP 1.6 *Compliancy Testing Tool - Test Case Document* is recorded as
+  CC BY-ND 4.0, © 2010–2025 Open Charge Alliance, read off its own front
+  matter. `OCA-COVERAGE.md` cited the revision and the URL but never the terms,
+  so the licence under which this suite's oldest reference sits was an
+  assumption. It is the same one OCPP 2.0.1's Parts 5 and 6 carry, which is why
+  one rule covers both ([#84])
+- `NOTICE` carries the OCA attribution the answer above owes. It goes there
+  rather than on the page that argues for it, because `NOTICE` is in
+  `package.json`'s `files` and that page is not: a consumer of the pinned git
+  dependency receives `tck/specs/OCA-201-SLICE.txt`, so it has to receive the
+  notice too ([#84])
 - `OCA-201-SELECTION.md` cites the slice list instead of restating it, the way
   `OCA-COVERAGE.md` cites `OCA-OBLIGATIONS.txt` ([#73])
 - The runner refuses a run where `SIM_EXTRA_ARGS` would silently replace a
@@ -218,3 +243,4 @@ releases from 141 commits would mean writing detail nobody measured.
 [#75]: https://github.com/juherr/open-ocpp-tck/issues/75
 [#77]: https://github.com/juherr/open-ocpp-tck/issues/77
 [#80]: https://github.com/juherr/open-ocpp-tck/issues/80
+[#84]: https://github.com/juherr/open-ocpp-tck/issues/84

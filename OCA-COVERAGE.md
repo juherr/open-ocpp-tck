@@ -23,6 +23,12 @@ linked from the [OCPP 1.6 certification page][octt]:
 
 [octt]: https://openchargealliance.org/certificationocpp/certification-ocpp-1-6/
 
+Its front matter states **CC BY-ND 4.0**, © 2010–2025 Open Charge Alliance —
+the same licence OCPP 2.0.1's Parts 5 and 6 carry. So what may be taken from it
+is [the same
+rule](OCA-201-SELECTION.md#what-may-be-committed-here-and-what-may-not), and
+`NOTICE` carries the attribution for both.
+
 Section 2 is SUT = Charge Point (`TC_*_CS`). **Section 3 is SUT = Central
 System (`TC_*_CSMS`)** -- 77 cases, and the only ones that apply here. Where a
 `_CS` and a `_CSMS` case share a number they are different tests, not two
@@ -52,6 +58,19 @@ One wrinkle in the reference itself: **TC_004_1_CSMS** declares
 `Reusable State(s): n/a` and then gives its entire *Scenario Detail(s)* as the
 bare list item `- Charging`. It is read here as executing the `Charging`
 state, which is the only reading under which the case tests anything.
+
+**What a derivation may carry across** is decided once, in
+[`OCA-201-SELECTION.md`](OCA-201-SELECTION.md#what-may-be-committed-here-and-what-may-not).
+Its worked example is OCPP 2.0.1, but the rule is about kinds of material and
+this page is the older case of it — and the harder one, because what is read
+here is a case's *Scenario Detail(s)* table rather than one column of a matrix.
+What comes out of that reading is case identifiers, OCPP message names, counts
+and our own prose. No step, precondition or expected result is reproduced, and
+a row does not let a reader reconstruct the case: `TC_003` owing `Authorize`,
+`StartTransaction` and `StatusNotification` is a fact about the case, not the
+sentences that state it. That is what keeps this side of the line; bringing the
+*Scenario Detail(s)* wording, or its two-column layout, into ours is what would
+cross it.
 
 ## Coverage
 

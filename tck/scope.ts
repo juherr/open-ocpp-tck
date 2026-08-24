@@ -47,11 +47,13 @@ export type ScopeStatus = "DRIVABLE" | "CONDITIONAL" | "NOT_APPLICABLE";
 // comment so an internal decision stays out of the emitted declarations.
 //
 // A CLOSED UNION of feature ids, so a typo is a build error the way
-// V1_LOCAL_LIST makes one in drivers/citrineos/scope.ts: premature twice. No
-// scenario of the protocol that HAS those identifiers is registered yet, so
-// the union would be written against zero rows -- and the complete enumeration
-// it needs is a reproduction of a no-derivatives table rather than the
-// citation of one, which is the whole reason the identifiers are quotable.
+// V1_LOCAL_LIST makes one in drivers/citrineos/scope.ts: premature. No scenario
+// of the protocol that HAS those identifiers is registered yet, so the union
+// would be written against zero rows. It used to be premature twice, the second
+// reason being that the complete enumeration it needs would reproduce a
+// no-derivatives table rather than cite one; that reason is retired -- such a
+// table is permitted, and OCA-201-SELECTION.md's licensing section says why. So
+// zero rows is the whole of the objection now, and it expires on its own.
 //
 // AN OPTIONAL `feature?: string` beside `reason`, which is additive, keeps 1.6
 // rows prose and enumerates nothing: the objections above do not touch it, and
