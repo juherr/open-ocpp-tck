@@ -221,7 +221,7 @@ its header is now a false claim about what the build checks.
   repository does not contain. What this stops is the two drifting afterwards,
   which is the failure a page that keeps reading well always has. It does not
   stop the list being *short* — both directions range over the file, so seven
-  rows out of the 205 the rule now selects is a green, and where that gap is
+  rows out of the 147 the rule now selects is a green, and where that gap is
   owned is the selection page rather than here.
   (`tests/oca-201-slice.sh`)
 - **A scenario's assertions and its CSMS call sequence may not change.**

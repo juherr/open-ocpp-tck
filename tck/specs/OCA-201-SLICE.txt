@@ -8,11 +8,11 @@
 # reason: two copies of a list drift, and the prose copy is the one nobody
 # diffs.
 #
-# THE RULE SELECTS 205 CASES AND THIS FILE HOLDS SEVEN. That gap is the
+# THE RULE SELECTS 147 CASES AND THIS FILE HOLDS SEVEN. That gap is the
 # coverage milestone's next issue, not an oversight, and OCA-201-SELECTION.md's
-# "The coverage target" section owns it: the identifiers behind the 205 have
+# "The coverage target" section owns it: the identifiers behind the 147 have
 # never been enumerated -- the per-profile totals were counted, the rows were
-# not. Whether a 205-row file may be committed at all was the other half of
+# not. Whether a 147-row file may be committed at all was the other half of
 # that gap, and it is settled: it may. CC BY-ND limits modification, not
 # extent, and a list of case identifiers modifies nothing -- the argument, and
 # the one risk it accepts, are in that page's "What may be committed here, and

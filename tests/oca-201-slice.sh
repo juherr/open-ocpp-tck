@@ -57,7 +57,7 @@
 # is. Second, and this is the one the coverage target creates: that the rows
 # are ALL of them. Both directions range over this file, so a file short of the
 # pool is a file this guard finds complete, and it will report a green on seven
-# rows exactly as readily as on 205. What this stops is the set drifting
+# rows exactly as readily as on 147. What this stops is the set drifting
 # afterwards, not the set being small.
 set -uo pipefail
 

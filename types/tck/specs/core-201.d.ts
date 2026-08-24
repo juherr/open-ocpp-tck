@@ -59,10 +59,10 @@
  *
  * THE EVIDENCE HAS SINCE ARRIVED, so read the paragraph above as a record of
  * why the mechanism was not built rather than as a reason to keep inlining.
- * The rule in OCA-201-SELECTION.md now selects 205 cases, at which point a
+ * The rule in OCA-201-SELECTION.md now selects 147 cases, at which point a
  * handful of copies becomes a class of copies, they drift, and each one reads
  * reasonably on its own -- which is the failure inlining was cheap enough to
- * risk at five and is not at 205. The fixture mechanism has its own issue.
+ * risk at five and is not at 147. The fixture mechanism has its own issue.
  */
 import type { ScenarioSpec } from "../spec-types";
 /**

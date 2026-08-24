@@ -22,7 +22,7 @@ The `cert16-` prefix is a protocol version, not decoration. Its counterpart is
 `cert201-`, and those scenarios trace the same way to OCPP 2.0.1's Parts 5 and
 6 — `cert201-tcb01-…` to `TC_B_01`. Which 2.0.1 cases may be here at all is a
 written rule, [`OCA-201-SELECTION.md`](OCA-201-SELECTION.md) — role CSMS,
-status mandatory, on every certification profile, which is 205 cases — and the
+status mandatory, on every certification profile, which is 147 cases — and the
 resulting list is [`tck/specs/OCA-201-SLICE.txt`](tck/specs/OCA-201-SLICE.txt),
 where 7 of them are written down so far, all implemented. A `cert201-`
 scenario needs a driver that speaks the protocol; one that does not says so per
