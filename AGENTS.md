@@ -218,7 +218,7 @@ its header is now a false claim about what the build checks.
   scenario traces to a row, and every row is implemented or declined with a
   reason. `OCA-201-SELECTION.md` states the rule the list was drawn against,
   and no guard can check that part: it is a reading of a specification this
-  repository cannot contain. What this stops is the two drifting afterwards,
+  repository does not contain. What this stops is the two drifting afterwards,
   which is the failure a page that keeps reading well always has. It does not
   stop the list being *short* — both directions range over the file, so seven
   rows out of the 205 the rule now selects is a green, and where that gap is
@@ -250,6 +250,14 @@ its header is now a false claim about what the build checks.
 Conventional Commits, `!` plus a `BREAKING CHANGE:` footer when the driver
 contract changes shape. Branches are `juherr/<topic>`. Code, comments and
 commit messages in English.
+
+**What may be committed from an OCA reference is decided once**, in
+`OCA-201-SELECTION.md`'s "What may be committed here, and what may not". Its
+worked example is OCPP 2.0.1, but the rule it states is about kinds of material
+and covers both protocols: identifiers, counts and our own prose are in; a
+reference's prose, tables and step text brought into ours are out; the PDFs are
+out for a reason of ours rather than the licence's. The §3(a) attribution the
+answer owes is in `NOTICE`, because that is the file the package ships.
 
 **A refactor that was tried and rejected gets a note where it would be
 re-proposed.** Reviews converge on the same simplifications, and the second

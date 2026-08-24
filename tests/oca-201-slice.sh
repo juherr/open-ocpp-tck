@@ -53,7 +53,7 @@
 #
 # WHAT IT CANNOT CHECK, IN TWO PARTS. First, that the rows are the right rows
 # -- that they are what the rule selects from Part 5 §4. That is a reading of a
-# PDF this repository cannot contain; the method is written down where the rule
+# PDF this repository does not contain; the method is written down where the rule
 # is. Second, and this is the one the coverage target creates: that the rows
 # are ALL of them. Both directions range over this file, so a file short of the
 # pool is a file this guard finds complete, and it will report a green on seven

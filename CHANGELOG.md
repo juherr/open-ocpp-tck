@@ -86,18 +86,19 @@ Released as `0.3.0`. The documented install ref already points at that tag, so
   whether a 205-row list of case identifiers may be committed at all, given the
   references' CC BY-ND licence, and that only 110 of the 205 run against a
   profile the CitrineOS certificate attests ([#25])
-- The first of those two is answered: **the 205-row list may be committed.**
-  `OCA-201-SELECTION.md`'s licensing section forbade it on an argument about
-  *extent*, and CC BY-ND draws its line on modification instead — §2(a)(1)(A)
-  grants sharing the licensed material "in whole or in part", §4(a) expressly
-  grants extracting and sharing a substantial portion of a database's contents,
-  and a list of case identifiers is none of the "translated, altered, arranged,
-  transformed" §1(a) withholds. The section now states that, states the §4(b)
-  risk the answer accepts, carries the attribution §4(c) makes conditional, and
-  replaces the extent line with a three-part one: identifiers in, the
-  references' prose and tables out because `ND` does bite there, the PDFs out
-  because a `BY-ND` document in an Apache-2.0 tree misstates its own terms.
-  Unblocks taking the list from seven rows to 205 ([#84])
+- The licensing question is answered: **a 205-row list of case identifiers may
+  be committed.** `OCA-201-SELECTION.md` forbade it on an argument about
+  *extent*; CC BY-ND draws its line on modification, and a list of identifiers
+  modifies nothing. That page's licensing section now carries the argument, the
+  one risk the answer accepts, and the line that replaces the extent one —
+  identifiers in, a reference's prose and tables out, the PDFs out for a reason
+  of ours rather than the licence's. Unblocks taking the list from seven rows
+  to 205 ([#84])
+- `NOTICE` carries the OCA attribution the answer above owes. It goes there
+  rather than on the page that argues for it, because `NOTICE` is in
+  `package.json`'s `files` and that page is not: a consumer of the pinned git
+  dependency receives `tck/specs/OCA-201-SLICE.txt`, so it has to receive the
+  notice too ([#84])
 - `OCA-201-SELECTION.md` cites the slice list instead of restating it, the way
   `OCA-COVERAGE.md` cites `OCA-OBLIGATIONS.txt` ([#73])
 - The runner refuses a run where `SIM_EXTRA_ARGS` would silently replace a

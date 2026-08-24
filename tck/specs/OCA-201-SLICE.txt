@@ -27,10 +27,10 @@
 #
 # WHAT NO GUARD CAN CHECK: that these rows ARE mandatory CSMS cases the rule
 # selects, and that they are ALL of them. That is a reading of a PDF this
-# repository does not contain -- the references are cited, not vendored, and
-# OCA-201-SELECTION.md's licensing section says why that is our rule rather
-# than theirs -- and the method for redoing the reading is written down on that
-# same page. Note the second half: the guard ranges over this file, so a file
+# repository does not contain -- a reference is cited by URL and not committed,
+# and OCA-201-SELECTION.md's licensing section says why that is our rule rather
+# than the licence's -- and the method for redoing the reading is written down
+# on that same page. Note the second half: the guard ranges over this file, so a file
 # short of the pool is a file it finds complete. What is checked is that the
 # list and the scenarios stop drifting afterwards.
 #

@@ -127,19 +127,16 @@ were not. The method for redoing the parse is [in the derivation
 note](#what-the-rule-is-drawn-against), and this time it has to keep the case
 identifier per row rather than only the count.
 
-There used to be a second thing — whether a 205-row file may be committed at
-all, given that the references are CC BY-ND. It is
-[answered](#what-may-be-committed-here-and-what-may-not): it may, the argument
-is written down there, and so is the one risk that answer accepts.
+There used to be a second one — whether a 205-row file may be committed at all,
+given that the references are CC BY-ND — and it is
+[answered](#what-may-be-committed-here-and-what-may-not): it may.
 
 Until the enumeration lands the file still bounds what may be implemented —
 direction 1 of the guard is what does that, and it does not care how long the
 file is. What is temporarily untrue is the stronger claim, that the file **is**
-the pool. **And no guard closes that gap.** Both of its directions range over
-this file, so a list short of the pool is a list the build finds complete, and
-green is what it reports at seven rows as readily as at 205. The licensing
-decision does not touch that: what was blocking the file was a question about
-the licence, and what leaves it short now is only the enumeration.
+the pool, and that gap is one [no guard closes](#the-guard). The licensing
+decision does not touch it either: what was blocking the file was a question
+about the licence, and what leaves it short is the enumeration.
 
 **What the first slice bounded, kept because it is the worked example of
 writing the number down before the work.** Its seven cases were boot, reading
@@ -259,8 +256,7 @@ selection matrix; *Part 6 — Test Cases* supplies the cases themselves. Both ar
 committed, and what this page is made of: **case identifiers** (`TC_B_01`),
 **requirement identifiers** (`P02.FR.06`), **feature identifiers** (`C-45`),
 **counts**, and our own prose — already the line the OCPP 1.6 scenarios sit on.
-Their text, their tables and the PDFs stay out, for two different reasons, and
-the difference between those reasons is what this section is about.
+Their text, their tables and the PDFs stay out, for two different reasons.
 
 **The 205-row list may be committed.** This section used to draw the line
 somewhere else, and what changed is not an appetite for risk but a reading of
@@ -275,9 +271,10 @@ Extent is the one thing `BY-ND` says nothing about. §2(a)(1)(A) grants the righ
 to "reproduce and Share the Licensed Material, **in whole or in part**"; what
 §2(a)(1)(B) withholds is Sharing **Adapted Material**, which §1(a) defines as
 material in which the Licensed Material is "translated, altered, arranged,
-transformed, or otherwise modified". `ND` is a limit on modification, not on
-quantity. The paragraph above read it as a quantity limit, and everything it
-concluded followed from that.
+transformed, or otherwise modified **in a manner requiring permission** under
+the Copyright and Similar Rights held by the Licensor". `ND` is a limit on
+modification. The paragraph above read it as a limit on quantity, and
+everything it concluded followed from that.
 
 **Why the list is not Adapted Material.** Nothing of Part 5 is in the file as
 expression: not a sentence, not a cell, not a step, not a precondition, not an
@@ -311,23 +308,20 @@ no Sui Generis Database Right in `OCA-201-SLICE.txt` or in anything drawn from
 it.** That is the assumed risk and the whole of it. If it is ever pressed the
 remedy is to delete the file, which costs the perimeter and not one scenario.
 
-**Attribution, so the second limb stays available.** §4(c) makes §3(a)'s
-conditions apply to a substantial extraction, so they are satisfied here whether
-or not they are owed — the alternative is a fallback argument that would be a
-violation at the moment it was needed. §3(a)(2) allows them to be met "by
-providing a URI or hyperlink to a resource that includes the required
-information", which is why this is one block on one page rather than a header on
-every file that names a case:
+**Attribution, so the fallback stays available.** §4(c) makes §3(a)'s conditions
+apply to a substantial extraction, so they are satisfied here whether or not
+they are owed — otherwise the §4 argument would be a violation at the moment it
+was needed. §3(a)(2) allows them to be met "by providing a URI or hyperlink to a
+resource that includes the required information", so it is one block rather than
+a header on every file that names a case — **and the block is in
+[`NOTICE`](NOTICE), because that is the file that ships.** `package.json`'s
+`files` carries `NOTICE` and `tck/`, so a consumer of the pinned git dependency
+receives `OCA-201-SLICE.txt` and the attribution together; this page is not in
+the package at all, which is what makes it the wrong home for a notice and the
+right one for the argument behind it.
 
-> Case, requirement and feature identifiers used in this repository are taken
-> from *OCPP 2.0.1 Part 5 — Certification Profiles and Test Cases* and *Part 6 —
-> Test Cases*, © Open Charge Alliance, published under CC BY-ND 4.0
-> (<https://creativecommons.org/licenses/by-nd/4.0/>) and available from
-> <https://openchargealliance.org/protocols/open-charge-point-protocol/>.
-> Neither document is reproduced or modified here.
-
-**Where the line falls now, in three parts.** It replaces the extent line, and
-only the first part moved:
+**Where the line falls now.** It replaces the extent line, and only the first
+part moved:
 
 - **identifiers, counts, and our own prose about them** — in. Not the Licensed
   Material as expression, and length is not a term. The 205-row list is on this
@@ -344,14 +338,13 @@ only the first part moved:
   reason is ours. Everything in an Apache-2.0 tree is offered on Apache-2.0
   terms to whoever clones it, and a `BY-ND` document sitting inside one
   misstates its own terms to every fork. So a reference is cited by URL and not
-  committed, which is already what [`OCA-COVERAGE.md`](OCA-COVERAGE.md) does
-  with the OCPP 1.6 test case document.
+  committed, which is what [`OCA-COVERAGE.md`](OCA-COVERAGE.md) already does in
+  practice with the OCPP 1.6 test case document.
 
-**No table on this page is the pool, and that outlives the licensing
-question.** The list lives in
-[`tck/specs/OCA-201-SLICE.txt`](tck/specs/OCA-201-SLICE.txt) because a second
-copy of a list drifts and the prose copy is the one nobody diffs — the argument
-[the coverage target](#the-coverage-target) makes, and the only one now holding
+**No table on this page is the pool, and that outlives the licensing question.**
+The list lives in
+[`tck/specs/OCA-201-SLICE.txt`](tck/specs/OCA-201-SLICE.txt) for the reason [the
+coverage target](#the-coverage-target) gives, which is now the only one holding
 that sentence up.
 
 ## Why this became a selection axis

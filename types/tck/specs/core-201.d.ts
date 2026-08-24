@@ -9,11 +9,14 @@
  * that is not in that file fails the build, which is the point: "a small
  * representative set" was a judgement each reviewer made differently.
  *
- * WRITTEN, NOT COPIED. OCPP 2.0.1 Parts 5 and 6 are CC BY-ND 4.0 and this
- * repository is Apache-2.0, so their prose, tables and step text are not here
- * and cannot be. Case identifiers are citations and are all that is quoted.
- * Every assertion below says what we decided to measure, in our words, exactly
- * as the OCPP 1.6 scenarios do.
+ * WRITTEN, NOT COPIED. OCPP 2.0.1 Parts 5 and 6 are CC BY-ND 4.0, and `ND` is
+ * a limit on modification: their prose, tables and step text brought into ours
+ * would be the Licensed Material "arranged" or "otherwise modified", which is
+ * the Adapted Material §2(a)(1)(B) withholds. So none of it is here and none of
+ * it can be. Case identifiers are not that -- they are facts about the
+ * specification, and OCA-201-SELECTION.md's licensing section is where that is
+ * argued. Every assertion below says what we decided to measure, in our words,
+ * exactly as the OCPP 1.6 scenarios do.
  *
  * WHICH OUTCOME IS WHICH CASE IS OUR READING. `ResetStatusEnumType` has three
  * values and the Reset block has three mandatory CSMS cases, so the three are
