@@ -95,8 +95,17 @@ Released as `0.3.0`. The documented install ref already points at that tag, so
   of ours rather than the licence's. The line is drawn on kinds of material, so
   it covers both protocols: `tck/specs/OCA-OBLIGATIONS.txt`'s OCPP 1.6 rows are
   the harder case and are named as in, with `OCA-COVERAGE.md` carrying the
-  worked application beside the derivation it belongs to. Unblocks taking the
-  2.0.1 list from seven rows to 205 ([#84])
+  worked application beside the derivation it belongs to. The line also gains
+  the clause the tree was already relying on unwritten: a short marked
+  quotation that *identifies* what is under discussion — `tck/assert.ts` naming
+  the column `assertAllAnswered` checks — is not step text brought into ours.
+  Unblocks taking the 2.0.1 list from seven rows to 205 ([#84])
+- The OCPP 1.6 *Compliancy Testing Tool - Test Case Document* is recorded as
+  CC BY-ND 4.0, © 2010–2025 Open Charge Alliance, read off its own front
+  matter. `OCA-COVERAGE.md` cited the revision and the URL but never the terms,
+  so the licence under which this suite's oldest reference sits was an
+  assumption. It is the same one OCPP 2.0.1's Parts 5 and 6 carry, which is why
+  one rule covers both ([#84])
 - `NOTICE` carries the OCA attribution the answer above owes. It goes there
   rather than on the page that argues for it, because `NOTICE` is in
   `package.json`'s `files` and that page is not: a consumer of the pinned git

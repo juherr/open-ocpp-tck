@@ -351,6 +351,18 @@ part moved:
   committed, which is what [`OCA-COVERAGE.md`](OCA-COVERAGE.md) already does in
   practice with the OCPP 1.6 test case document.
 
+**One qualifier on the middle bullet, written because the tree already relies on
+it.** A short quotation that *identifies* what is under discussion is not step
+text brought into ours. `tck/assert.ts` names the column `assertAllAnswered`
+checks by quoting the one-line template a `_CSMS` case uses for it, and
+[`OCA-COVERAGE.md`](OCA-COVERAGE.md) quotes two field values of `TC_004_1` to
+report that the reference contradicts itself there. Both are marked as
+quotations, both are the shortest form that leaves the claim checkable by
+someone holding the reference, and neither carries a step anyone could execute.
+§2(a)(2) puts a use covered by an exception outside this licence altogether and
+§8(a) says the licence does not reach it. The line to hold is the purpose: a
+quotation is here to *name* something, never to spare us writing our own.
+
 **No table on this page is the pool, and that outlives the licensing question.**
 The list lives in
 [`tck/specs/OCA-201-SLICE.txt`](tck/specs/OCA-201-SLICE.txt) for the reason [the

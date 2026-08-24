@@ -23,6 +23,12 @@ linked from the [OCPP 1.6 certification page][octt]:
 
 [octt]: https://openchargealliance.org/certificationocpp/certification-ocpp-1-6/
 
+Its front matter states **CC BY-ND 4.0**, © 2010–2025 Open Charge Alliance —
+the same licence OCPP 2.0.1's Parts 5 and 6 carry. So what may be taken from it
+is [the same
+rule](OCA-201-SELECTION.md#what-may-be-committed-here-and-what-may-not), and
+`NOTICE` carries the attribution for both.
+
 Section 2 is SUT = Charge Point (`TC_*_CS`). **Section 3 is SUT = Central
 System (`TC_*_CSMS`)** -- 77 cases, and the only ones that apply here. Where a
 `_CS` and a `_CSMS` case share a number they are different tests, not two

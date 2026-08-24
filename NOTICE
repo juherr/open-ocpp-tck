@@ -96,8 +96,10 @@ database. They are satisfied here whether or not they are owed.
   Neither document is reproduced or modified here. No text, table, step,
   precondition or expected result of either is present in this repository, and
   neither PDF is committed. The OCPP 1.6 identifiers (`TC_019_1`) come from the
-  *OCPP Compliancy Testing Tool - Test Case Document*, cited by URL in
-  OCA-COVERAGE.md and likewise not reproduced.
+  *OCPP Compliancy Testing Tool - Test Case Document*, revision 2025-09, whose
+  front matter states the same licence -- CC BY-ND 4.0, (c) 2010-2025 Open
+  Charge Alliance. It is cited by URL in OCA-COVERAGE.md and likewise neither
+  reproduced nor modified.
 
   This repository asserts no Sui Generis Database Right in
   tck/specs/OCA-201-SLICE.txt, tck/specs/OCA-OBLIGATIONS.txt, or anything drawn
