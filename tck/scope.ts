@@ -127,8 +127,9 @@ export function templateIdsWithStatus(
 // says something true per row. It is not the "branch on a scenario id" that
 // CONTRIBUTING.md forbids -- that rule is about execute() and the record
 // queries at runtime, and it names this table as where the fact belongs; every
-// row here already names a scenario. The cost is bounded: the v0.3 slice is
-// seven cases, so a table grows by at most seven rows, and check-driver going
+// row here already names a scenario. The cost is bounded by the REGISTERED
+// cert201- scenarios rather than by the slice, which is 147 cases: a table
+// grows by at most one row per scenario, seven today, and check-driver going
 // red until they are written is the drift detection this pair of lists is for.
 // What those rows say is an author's business, and it is the last bullet of
 // this file's header.

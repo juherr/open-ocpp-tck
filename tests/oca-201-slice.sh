@@ -128,7 +128,7 @@ fi
 # row shape that parses and means nothing.
 #
 # A SECOND PASS AND NOT A RULE IN THE PARSER ABOVE, which would be one fewer
-# traversal of a 7-row file: the parser's failure is "this line is not a row"
+# traversal of this file: the parser's failure is "this line is not a row"
 # and points at the syntax, where this one's is "write down what blocks it" and
 # points at the decision. Folding them makes the cheaper message win for the
 # case where the expensive one is the whole point.

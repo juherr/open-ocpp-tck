@@ -815,9 +815,9 @@ const TC_F_20: ScenarioSpec = {
 };
 
 /**
- * The slice, in case order. Two of the seven cases `OCA-201-SLICE.txt` lists
- * are absent, with the reason in that file rather than here -- one place per
- * fact, and the guard reads that one.
+ * The scenarios, in case order -- the seven of `OCA-201-SLICE.txt`'s 147 that
+ * are implemented. The other 140 are declined there rather than here, with
+ * the reason in the row: one place per fact, and the guard reads that one.
  */
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
 export const CORE_201_SPECS: ScenarioSpec<any>[] = [

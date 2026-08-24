@@ -168,13 +168,8 @@ all, given that the references are CC BY-ND, and it is
 Seven of the 147 are implemented and 140 decline with a reason. Those reasons
 are written per group rather than per case — 22 of them across the 140 — and the
 file's header says why that is the granularity the decision was taken at rather
-than a placeholder.
-
-What no longer holds is the weaker claim this section used to make. The file
-does not merely bound what may be implemented; it **is** the pool. What a guard
-still cannot say is whether it is the *right* 147, and that is
-[unchanged](#the-guard) — it is a reading of a PDF this repository does not
-carry, now pinned to the edition it was read from.
+than a placeholder. What a guard still cannot say is whether these are the
+*right* 147, and that is [unchanged](#the-guard).
 
 **What the first slice bounded, kept because it is the worked example of
 writing the number down before the work.** Its seven cases were boot, reading
@@ -498,13 +493,13 @@ Written out, because 914 pages of test cases make an unwritten line slip. This
 list got shorter when the target grew, which is the point of keeping it: what
 leaves it leaves by a decision someone can find.
 
-- **the 94 conditional rows** — everything the table above counts that the rule
+- **the 85 conditional rows** — everything the table above counts that the rule
   does not select. The reason is [above](#m-only-not-m-plus-the-conditionals-a-csms-declares)
   and it is not size;
 - **a shared 1.6 / 2.0.1 abstraction layer.** One slice was not evidence; 147
   cases may become some, and that is an argument to make once the second
   vocabulary exists rather than a reason to generalise ahead of it;
-- **charging-station-role testing** — the 177 rows the matrix marks blank for
+- **charging-station-role testing** — the 226 rows the matrix marks blank for
   this role, and a milestone of its own;
 - **any claim that passing this harness is OCA certification.** Certification
   runs through an accredited laboratory, a declaration form and the official

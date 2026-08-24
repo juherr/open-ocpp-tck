@@ -324,8 +324,8 @@ export const CSMS_OPERATION_16_ACTIONS = everyOneOf<CsmsOperation16Action>()([
 //
 // AND WHY THREE IS NOT THE FINAL ANSWER. That page's rule now selects 147
 // cases rather than seven, so this union grows. What does NOT change is how:
-// the count comes from the cases selected, derived once the identifiers behind
-// the 147 exist, and a case that only observes charge-point-initiated traffic
+// the count comes from the cases selected, read off the identifiers now in
+// OCA-201-SLICE.txt, and a case that only observes charge-point-initiated traffic
 // still needs no arm here. Adding the rest of the 2.0.1 messages because they
 // exist is the mistake "three, not eighteen" was written against, and it reads
 // the same whichever direction the number moves in.
