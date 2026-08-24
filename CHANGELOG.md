@@ -92,8 +92,11 @@ Released as `0.3.0`. The documented install ref already points at that tag, so
   modifies nothing. That page's licensing section now carries the argument, the
   one risk the answer accepts, and the line that replaces the extent one —
   identifiers in, a reference's prose and tables out, the PDFs out for a reason
-  of ours rather than the licence's. Unblocks taking the list from seven rows
-  to 205 ([#84])
+  of ours rather than the licence's. The line is drawn on kinds of material, so
+  it covers both protocols: `tck/specs/OCA-OBLIGATIONS.txt`'s OCPP 1.6 rows are
+  the harder case and are named as in, with `OCA-COVERAGE.md` carrying the
+  worked application beside the derivation it belongs to. Unblocks taking the
+  2.0.1 list from seven rows to 205 ([#84])
 - `NOTICE` carries the OCA attribution the answer above owes. It goes there
   rather than on the page that argues for it, because `NOTICE` is in
   `package.json`'s `files` and that page is not: a consumer of the pinned git

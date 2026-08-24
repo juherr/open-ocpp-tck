@@ -325,7 +325,17 @@ part moved:
 
 - **identifiers, counts, and our own prose about them** — in. Not the Licensed
   Material as expression, and length is not a term. The 205-row list is on this
-  side, and so is any table of identifiers a future page needs;
+  side; so is any table of identifiers a future page needs; and so, already, is
+  [`OCA-OBLIGATIONS.txt`](tck/specs/OCA-OBLIGATIONS.txt), which is the harder
+  case and had never been ruled on. Its OCPP 1.6 rows were read out of that
+  reference's *Scenario Detail(s)* tables, so they look like an extraction of
+  case content rather than of identifiers — but a row is our scenario id, an
+  OCPP message name, our helper's name and a case identifier. Three columns are
+  ours or the protocol's, the fourth is an identifier, and what came out of the
+  reference is *which* messages a case owes: a fact, not the wording that
+  states it. [`OCA-COVERAGE.md`](OCA-COVERAGE.md) is the worked application,
+  and note what the test turns on — that no expression is carried across, which
+  is a question that does not need to know which licence the reference carries;
 - **Part 5's and Part 6's prose, tables and step text, brought into ours** —
   out, and this is where `ND` actually bites. A case's steps trimmed to fit a
   paragraph, a matrix reflowed into Markdown, an expected result paraphrased:
