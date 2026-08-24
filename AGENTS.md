@@ -220,9 +220,11 @@ its header is now a false claim about what the build checks.
   and no guard can check that part: it is a reading of a specification this
   repository does not contain. What this stops is the two drifting afterwards,
   which is the failure a page that keeps reading well always has. It does not
-  stop the list being *short* — both directions range over the file, so seven
-  rows out of the 147 the rule now selects is a green, and where that gap is
-  owned is the selection page rather than here.
+  stop the list being *short* — both directions range over the file, so a row
+  deleted from it is a mandatory case that stops being owed with the build
+  green. The file holds all 147 the rule selects, so that is now a regression
+  rather than the state it sat in for a year; where it is owned is the
+  selection page rather than here.
   (`tests/oca-201-slice.sh`)
 - **A scenario's assertions and its CSMS call sequence may not change.**
   Changing what a scenario measures is legitimate and moves the two committed

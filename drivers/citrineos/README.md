@@ -368,9 +368,10 @@ The scenario keeps its `SKIPPED` path: a third-party CSMS may still fail to
 start a transaction for its own reasons, and the honest verdict there remains
 "the suite did not ask".
 
-All seven selected cases are implemented. `TC_B_06` and `TC_B_09` were the last
-two, and they arrived by a correction worth keeping here rather than only in
-the commit that made it: both were declined for a year on the ground that
+All seven cases this driver implements are green, out of the 147 the selection
+rule owes. `TC_B_06` and `TC_B_09` were the last two, and they arrived by a
+correction worth keeping here rather than only in the commit that made it:
+both were declined for a year on the ground that
 reading or writing a variable needs a device model `driver provision` does not
 seed. That reason was about the wrong side of the wire. `GetVariables` is
 CSMS-initiated, so the device model that *answers* it is the station's — the

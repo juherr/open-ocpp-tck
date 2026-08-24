@@ -57,8 +57,11 @@
 # is. Second, and this is the one the coverage target creates: that the rows
 # are ALL of them. Both directions range over this file, so a file short of the
 # pool is a file this guard finds complete, and it will report a green on seven
-# rows exactly as readily as on 147. What this stops is the set drifting
-# afterwards, not the set being small.
+# rows exactly as readily as on 147. The file now holds all 147 the rule
+# selects, which changes what that costs rather than removing it: a row deleted
+# from the list is a mandatory case that stops being owed, and nothing here
+# will say so. What this stops is the set drifting afterwards, not the set
+# being small.
 set -uo pipefail
 
 cd "$(dirname "$0")/.." || exit 1

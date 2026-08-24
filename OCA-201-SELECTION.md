@@ -143,9 +143,8 @@ status-notification group has is mandatory, and it is in the pool.
 The rule selects 147 cases, every one of them `M`. They belong **in
 [`tck/specs/OCA-201-SLICE.txt`](tck/specs/OCA-201-SLICE.txt)** rather than here
 — one row per case, naming the scenario that implements it or the reason there
-is none — and that file currently enumerates **seven** of them, which the
-paragraph below owns rather than glosses. It is machine-readable and guarded in
-both directions; this page states the rule it was drawn against. The
+is none — and that file enumerates **all 147**. It is machine-readable and
+guarded in both directions; this page states the rule it was drawn against. The
 arrangement, and the reason for it, is [`OCA-COVERAGE.md`](OCA-COVERAGE.md)'s
 with
 [`OCA-OBLIGATIONS.txt`](tck/specs/OCA-OBLIGATIONS.txt): a second copy of a list
@@ -155,24 +154,27 @@ A case is covered when it is implemented **or declined in writing**. Declining
 a mandatory case is a decision, and the guard refuses a `not-implemented` row
 with nothing after it, so the two are not the same as "not done yet".
 
-**The list is seven rows, not 147, and that gap is deliberate rather than
-overlooked.** One thing has to happen before the rest can be written, and it is
-the milestone's next issue: **the identifiers behind the 147 have never been
-enumerated.** The per-profile totals in the table above were counted; the rows
-were not. The method for redoing the parse is [in the derivation
-note](#what-the-rule-is-drawn-against), and this time it has to keep the case
-identifier per row rather than only the count.
+**The list used to be seven rows and is now the pool**, which is the change
+this milestone's enumeration made. What stood between the two was never a
+decision: the per-profile totals in the table above had been counted and the
+rows behind them had not, so there was nothing to write down. Redoing the parse
+to keep the case identifier per row is what produced the 147 — and, on the way,
+the [correction](#what-the-rule-is-drawn-against) to three of the four totals.
 
-There used to be a second one — whether a 147-row file may be committed at all,
-given that the references are CC BY-ND — and it is
+The other half of that gap was whether a list this long may be committed at
+all, given that the references are CC BY-ND, and it is
 [answered](#what-may-be-committed-here-and-what-may-not): it may.
 
-Until the enumeration lands the file still bounds what may be implemented —
-direction 1 of the guard is what does that, and it does not care how long the
-file is. What is temporarily untrue is the stronger claim, that the file **is**
-the pool, and that gap is one [no guard closes](#the-guard). The licensing
-decision does not touch it either: what was blocking the file was a question
-about the licence, and what leaves it short is the enumeration.
+Seven of the 147 are implemented and 140 decline with a reason. Those reasons
+are written per group rather than per case — 22 of them across the 140 — and the
+file's header says why that is the granularity the decision was taken at rather
+than a placeholder.
+
+What no longer holds is the weaker claim this section used to make. The file
+does not merely bound what may be implemented; it **is** the pool. What a guard
+still cannot say is whether it is the *right* 147, and that is
+[unchanged](#the-guard) — it is a reading of a PDF this repository does not
+carry, now pinned to the edition it was read from.
 
 **What the first slice bounded, kept because it is the worked example of
 writing the number down before the work.** Its seven cases were boot, reading
@@ -476,11 +478,14 @@ the status `OCA-COVERAGE.md`'s totals carry — measured, then written down. Wha
 stops afterwards is the drift.
 
 **And it cannot check that the rows are all of them.** Direction 2 ranges over
-the file, so a file short of the pool is a file the guard finds complete. That
-is the exposure the coverage target creates and the reason the gap is named in
-[the section that owns it](#the-coverage-target) rather than left for a reader
-to notice: at seven rows out of 147 the build is green on a list that describes
-a twentieth of what was promised, and nothing in the tree says so.
+the file, so a file short of the pool is a file the guard finds complete. The
+enumeration closed the gap that exposure was named for — the file holds 147 of
+147 — but it did not close the exposure, and the two are worth telling apart. A
+row deleted from this list is a mandatory case that stops being owed, silently
+and with a green build, exactly as it was when the file held seven. What the
+guard did lose is the shape the drift had for a year: the file is no longer
+short *by construction*, so a short file is now a regression rather than a
+state.
 
 One shape it deliberately does not have, and the precedent is exact — the
 header of `tests/oca-obligations.sh` refuses a per-namespace breakdown in the
