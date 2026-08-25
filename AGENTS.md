@@ -25,7 +25,7 @@ error.
 
 `bun run verify` is every check CI runs before it starts a container —
 typecheck, committed declarations, three driver scope checks, ten in-process
-guards and twelve shell guards — with one exit code, and every step runs even
+guards and thirteen shell guards — with one exit code, and every step runs even
 after one fails, where CI enumerates them and stops at the first.
 
 There is a third copy of that list — `bun run test`, the guards without the
@@ -90,6 +90,7 @@ because a diff is reviewable where a digest is not.
 | `tck/specs/ASSERT-INVENTORY.txt`, `DRIVE-TRACE.txt` | `bash tests/spec-invariants.sh --regenerate` | `tests/spec-invariants.sh` |
 | `tck/specs/OCA-OBLIGATIONS.txt` | hand-maintained, not generated | `tests/oca-obligations.sh` |
 | `tck/specs/OCA-201-SLICE.txt` | hand-maintained, not generated | `tests/oca-201-slice.sh` |
+| `tck/specs/OCA-201-OPERATIONS.txt` | `bun tools/extract-201-operations.ts <part6.pdf>` — the reference is not in the tree, so this is hand-committed from a run you do, and `--diff` re-checks it | `tests/oca-201-operations.sh` |
 | `patches/**`, `VENDOR.md` digests | `tools/repin-vendored.sh <path>` | `tests/vendor-integrity.sh` |
 
 Never hand-edit them. The diff of `types/` **is** the change to this package's
@@ -187,7 +188,7 @@ weaker than its comment, and only the mutation nobody had to run said so.
 Stopping at the obvious ones is not rigour, it is luck: the guard ships, and
 its header is now a false claim about what the build checks.
 
-## Eight boundaries the guards enforce
+## Nine boundaries the guards enforce
 
 - **The gate is one list.** `tools/verify.sh` and the workflow's `check` job
   must run the same commands in the same order, minus the CI-only setup the
@@ -235,6 +236,19 @@ its header is now a false claim about what the build checks.
   rather than the state it sat in for a year; where it is owned is the
   selection page rather than here.
   (`tests/oca-201-slice.sh`)
+- **A selected case's operation cost is measured, and a row may not claim a
+  case the contract cannot express.** `tck/specs/OCA-201-OPERATIONS.txt` names
+  the CSMS-initiated operation each of those 147 cases obliges the CSMS to send
+  — how many kinds that is, and how far short of it the union stands, are
+  `OCA-201-SELECTION.md`'s to state and the guard's to print. It holds the
+  table to the same case set as the slice, agrees it against every
+  slice reason that names an operation, and refuses an implemented row whose
+  case needs an operation `CSMS_OPERATION_201_ACTIONS` has not. That last one
+  is the direction with nothing else watching it: two files agreeing about
+  *which* case a scenario is for say nothing about *what* the case asks for,
+  and `TC_F_20` sat implemented for a milestone on a case whose only validation
+  is a `TriggerMessage` no driver could be asked to send.
+  (`tests/oca-201-operations.sh`)
 - **A scenario's assertions and its CSMS call sequence may not change.**
   Changing what a scenario measures is legitimate and moves the two committed
   artifacts above — say why in the pull request. (`tests/spec-invariants.sh`)

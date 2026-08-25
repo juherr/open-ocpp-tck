@@ -55,7 +55,7 @@
 #                                                one, where the scenario says it>
 #
 # A REASON IS WRITTEN PER GROUP, NOT PER CASE, and the repetition below is that
-# rather than a placeholder. Twenty-two reasons cover the 140 declined rows,
+# rather than a placeholder. Twenty-three reasons cover the 140 declined rows,
 # because that is the granularity the decision was actually taken at: a block's
 # cases are blocked by one missing thing -- an operation the
 # `CsmsOperation201` union does not have, a station-side event no simulator
@@ -65,6 +65,16 @@
 # its own row text; four do -- TC_A_12, TC_B_58, TC_F_27 and TC_G_20. TC_K_10
 # has one too, for the other reason a row can be alone: the blocker is its
 # neighbours', the profile that makes it mandatory is not.
+#
+# AND WHAT MEASURING THE CASES DID TO THOSE REASONS, because it is the cost of
+# writing them per group before anything read Part 6. They were drawn from Part
+# 5's arrangement, which groups by profile and functional block, and a block's
+# cases do not all need the same thing: TC_M_24, TC_M_26 and TC_M_28 shared a
+# reason with rows that really do need a certificate operation and turn out to
+# need none -- they are the station asking the CSMS. TC_F_27's named a missing
+# operation that is no longer missing. Both are corrected above, and
+# tck/specs/OCA-201-OPERATIONS.txt is now what a reason naming an operation is
+# checked against, which is the guard that would have found them.
 #
 # WHICH RESET OUTCOME IS WHICH CASE IS OUR READING, not something read off Part
 # 6. `ResetStatusEnumType` has three values and the Reset block has three
@@ -135,7 +145,7 @@ TC_F_02    not-implemented    RequestStartTransaction is not one of CsmsOperatio
 TC_F_03    not-implemented    RequestStartTransaction is not one of CsmsOperation201's members, and the cable-plugin half is station-side with no template to drive it.
 TC_F_04    not-implemented    RequestStartTransaction is not one of CsmsOperation201's members, and the cable-plugin half is station-side with no template to drive it.
 TC_F_20    cert201-tcf20-heartbeat
-TC_F_27    not-implemented    TriggerMessage is not one of CsmsOperation201's members, so there is no request to make.
+TC_F_27    not-implemented    nothing is missing any more: TriggerMessage joined CsmsOperation201 for TC_F_20, and the pinned image answers NotImplemented to any requestedMessage outside the four it handles, which is exactly what this case asks the CSMS to survive. Unwritten rather than blocked, and that is the one reason this column is otherwise not allowed to carry -- it is here because the alternative is leaving the blocker it used to name, which stopped being true. Issue #105.
 TC_G_03    not-implemented    ChangeAvailability is not one of CsmsOperation201's members; adding it is how that union grows, on the terms its note in tck/driver.ts sets.
 TC_G_04    not-implemented    ChangeAvailability is not one of CsmsOperation201's members; adding it is how that union grows, on the terms its note in tck/driver.ts sets.
 TC_G_05    not-implemented    ChangeAvailability is not one of CsmsOperation201's members; adding it is how that union grows, on the terms its note in tck/driver.ts sets.
@@ -205,9 +215,9 @@ TC_M_18    not-implemented    installing, listing and deleting certificates are 
 TC_M_19    not-implemented    installing, listing and deleting certificates are CSMS-initiated and none is among CsmsOperation201's members; each also needs certificate material this suite does not generate.
 TC_M_20    not-implemented    installing, listing and deleting certificates are CSMS-initiated and none is among CsmsOperation201's members; each also needs certificate material this suite does not generate.
 TC_M_21    not-implemented    installing, listing and deleting certificates are CSMS-initiated and none is among CsmsOperation201's members; each also needs certificate material this suite does not generate.
-TC_M_24    not-implemented    ISO 15118 Support. The same certificate operations as this block's Core rows, with V2G and MO material on top.
-TC_M_26    not-implemented    ISO 15118 Support. The same certificate operations as this block's Core rows, with V2G and MO material on top.
-TC_M_28    not-implemented    ISO 15118 Support. The same certificate operations as this block's Core rows, with V2G and MO material on top.
+TC_M_24    not-implemented    ISO 15118 Support, and station-initiated: the station asks about a certificate's status or forwards the EV's install and update, so no CSMS operation is missing at all. What is missing is a cert201- template to send either, and the V2G and MO material behind it.
+TC_M_26    not-implemented    ISO 15118 Support, and station-initiated: the station asks about a certificate's status or forwards the EV's install and update, so no CSMS operation is missing at all. What is missing is a cert201- template to send either, and the V2G and MO material behind it.
+TC_M_28    not-implemented    ISO 15118 Support, and station-initiated: the station asks about a certificate's status or forwards the EV's install and update, so no CSMS operation is missing at all. What is missing is a cert201- template to send either, and the V2G and MO material behind it.
 TC_N_25    not-implemented    retrieving a log and clearing customer information are CSMS-initiated and neither is among CsmsOperation201's members; the log rows also need somewhere for the station to upload to.
 TC_N_27    not-implemented    retrieving a log and clearing customer information are CSMS-initiated and neither is among CsmsOperation201's members; the log rows also need somewhere for the station to upload to.
 TC_N_28    not-implemented    retrieving a log and clearing customer information are CSMS-initiated and neither is among CsmsOperation201's members; the log rows also need somewhere for the station to upload to.

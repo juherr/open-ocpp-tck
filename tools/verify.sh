@@ -119,6 +119,11 @@ run "every OCA obligation has a check" bash tests/oca-obligations.sh
 # scenarios are the ones a written selection rule governs, and the rule and the
 # scenarios are two files that can disagree.
 run "the OCPP 2.0.1 slice is the selected one" bash tests/oca-201-slice.sh
+# And after that one, because it reads the same slice: what the selected cases
+# ask the driver contract for. A row the slice calls implemented, whose case
+# needs an operation CsmsOperation201 has not, is a claim the two files alone
+# cannot contradict.
+run "the OCPP 2.0.1 operations are the measured ones" bash tests/oca-201-operations.sh
 
 # Not fatal when absent: shellcheck is a linter, and refusing to verify a
 # TypeScript repository because a shell linter is missing would push people to

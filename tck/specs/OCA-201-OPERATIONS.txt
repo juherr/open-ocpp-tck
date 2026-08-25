@@ -1,0 +1,227 @@
+# OCA-201-OPERATIONS -- which CSMS-initiated operation each selected OCPP 2.0.1
+# certification case obliges the CSMS to send.
+#
+# THE QUESTION THIS ANSWERS IS NOT THE ONE OCA-201-SLICE.txt ANSWERS. That file
+# says WHICH cases the rule selects and which scenario implements each; this one
+# says HOW WIDE A VOCABULARY they ask for between them, which is what decides
+# how far `CsmsOperation201` in tck/driver.ts has to grow and in what order. The
+# two range over the same 147 cases and are checked against each other in both
+# directions; they are separate files because they answer to separate
+# references -- the slice to Part 5's matrix, this to Part 6's cases -- and a
+# column bolted onto the slice would make one row answer to two.
+#
+# HOW MANY KINDS OF OPERATION THAT IS, AND HOW FAR SHORT OF IT THE UNION
+# STANDS, ARE NOT WRITTEN HERE. The rows are, and tests/oca-201-operations.sh
+# prints both counts off them on every run; OCA-201-SELECTION.md is where they
+# are stated in prose, once, with the tranche table that spends them. Three
+# copies of a derived number is how one of them ends up wrong, and this file is
+# the one that would be believed.
+#
+# WHAT IS WORTH SAYING HERE is what a `none` row means, because it is most of
+# them: a case that only observes charge-point-initiated traffic needs no verb
+# at all, which is why "add the rest of the 2.0.1 messages" was the wrong shape
+# for this. Those rows are blocked by other things -- a station-side event, a
+# transport seam, certificate material -- and OCA-201-SLICE.txt's reason column
+# is where that is said.
+#
+# MEASURED, THEN WRITTEN DOWN, the status OCA-COVERAGE.md's totals carry.
+# `bun tools/extract-201-operations.ts <part6.pdf>` produces these rows; Part 6
+# - Test Cases, Edition 4, 2025-12-03, the SAME edition OCA-201-SELECTION.md's
+# per-profile counts were measured against. Two editions apart would make the
+# two measurements incomparable while both kept reading well, so the edition is
+# on both pages. `--diff` re-runs the parse against this file.
+#
+# WHAT NO GUARD HERE CAN CHECK is that a row is the reference's answer, for
+# OCA-201-SLICE.txt's reason: the PDF is not in this repository and will not be.
+# What is checked is that the rows, the slice and the driver's union stop
+# drifting -- tests/oca-201-operations.sh, whose header states the three
+# directions.
+#
+# WHY IT IS NOT DERIVED FROM THE SLICE'S REASONS. Twenty-two of those name an
+# operation -- ChangeAvailability, UpdateFirmware, TriggerMessage -- and they
+# were written from Part 5's groupings, per group and without aiming at
+# exhaustiveness. Measured against Part 6 they are right where they are
+# specific and wrong where they generalise: TC_M_24, TC_M_26 and TC_M_28 shared
+# a reason with rows that do need a certificate operation, and drive none.
+# The reasons are a cross-check on this file, which the guard runs; they are not
+# its source.
+#
+# NOTHING OF THE REFERENCE'S OWN WORDS IS HERE. A row is a case identifier and
+# an OCPP message name, and a message name is the protocol's vocabulary rather
+# than the OCA's expression -- the same side of the line OCA-201-SELECTION.md's
+# "What may be committed here, and what may not" already puts identifiers and
+# counts on. This file says TC_G_03 needs ChangeAvailability; it never says what
+# TC_G_03 asks anyone to do.
+#
+# A row is two fields:
+#
+#   <OCA case>  <operation[,operation] | none>
+#
+# `none` is measured, not missing, and the guard refuses an empty second field
+# for that reason: the two must not render the same. Operations are sorted
+# within a row so a re-run diffs clean.
+#
+# SIX CASES NEED TWO OPERATIONS, and they are why "cases needing X" and "cases
+# X unblocks" are different numbers: TC_A_11, TC_A_12 and TC_A_14 need
+# CertificateSigned AND TriggerMessage, TC_K_05 needs ClearChargingProfile AND
+# GetChargingProfiles, TC_M_20 and TC_M_21 need DeleteCertificate AND
+# GetInstalledCertificateIds. A tranche sized by the first number promises
+# cases it does not deliver; OCA-201-SELECTION.md's tranche table counts the
+# second.
+#
+# WHERE THE READING IS OURS. Part 6 attributes a request to the CSMS in three
+# places -- a `Tool validations` line, a step of the scenario, and a Reusable
+# State the case executes -- and this file unions all three, transitively
+# through the states. The one that looks skippable and is not: TC_G_03's entire
+# scenario is "Execute Reusable State Unavailable" with no tool validation at
+# all, and ChangeAvailability is named only in that state. The extractor's
+# header states the rest, including the two normalisations it applies.
+#
+# case / operation(s)
+TC_A_01    none
+TC_A_02    none
+TC_A_03    none
+TC_A_04    none
+TC_A_06    none
+TC_A_07    none
+TC_A_08    none
+TC_A_09    SetVariables
+TC_A_10    SetVariables
+TC_A_11    CertificateSigned,TriggerMessage
+TC_A_12    CertificateSigned,TriggerMessage
+TC_A_14    CertificateSigned,TriggerMessage
+TC_B_01    none
+TC_B_06    GetVariables
+TC_B_09    SetVariables
+TC_B_20    Reset
+TC_B_21    Reset
+TC_B_22    Reset
+TC_B_42    SetNetworkProfile
+TC_B_44    SetNetworkProfile
+TC_B_58    none
+TC_C_02    none
+TC_C_06    none
+TC_C_07    none
+TC_C_08    none
+TC_C_20    none
+TC_C_37    ClearCache
+TC_C_38    ClearCache
+TC_C_39    none
+TC_C_47    none
+TC_C_48    none
+TC_C_49    none
+TC_C_50    none
+TC_C_51    none
+TC_C_52    none
+TC_E_01    none
+TC_E_02    none
+TC_E_03    none
+TC_E_04    none
+TC_E_07    none
+TC_E_08    none
+TC_E_09    none
+TC_E_10    none
+TC_E_11    none
+TC_E_12    none
+TC_E_14    none
+TC_E_15    none
+TC_E_16    none
+TC_E_17    none
+TC_E_19    none
+TC_E_20    none
+TC_E_21    RequestStopTransaction
+TC_E_22    none
+TC_E_26    none
+TC_E_38    none
+TC_E_39    none
+TC_E_53    none
+TC_F_01    RequestStartTransaction
+TC_F_02    RequestStartTransaction
+TC_F_03    RequestStartTransaction
+TC_F_04    RequestStartTransaction
+TC_F_20    TriggerMessage
+TC_F_27    TriggerMessage
+TC_G_03    ChangeAvailability
+TC_G_04    ChangeAvailability
+TC_G_05    ChangeAvailability
+TC_G_06    ChangeAvailability
+TC_G_07    ChangeAvailability
+TC_G_08    ChangeAvailability
+TC_G_11    ChangeAvailability
+TC_G_14    ChangeAvailability
+TC_G_17    ChangeAvailability
+TC_G_20    none
+TC_J_01    none
+TC_J_02    none
+TC_J_03    none
+TC_J_04    none
+TC_J_07    none
+TC_J_08    none
+TC_J_09    none
+TC_J_10    none
+TC_J_11    none
+TC_K_01    SetChargingProfile
+TC_K_03    SetChargingProfile
+TC_K_04    SetChargingProfile
+TC_K_05    ClearChargingProfile,GetChargingProfiles
+TC_K_06    ClearChargingProfile
+TC_K_08    ClearChargingProfile
+TC_K_10    SetChargingProfile
+TC_K_15    SetChargingProfile
+TC_K_19    SetChargingProfile
+TC_K_29    GetChargingProfiles
+TC_K_30    GetChargingProfiles
+TC_K_31    GetChargingProfiles
+TC_K_32    GetChargingProfiles
+TC_K_33    GetChargingProfiles
+TC_K_34    GetChargingProfiles
+TC_K_35    GetChargingProfiles
+TC_K_36    GetChargingProfiles
+TC_K_37    RequestStartTransaction
+TC_K_43    GetCompositeSchedule
+TC_K_44    GetCompositeSchedule
+TC_K_53    SetChargingProfile
+TC_K_55    SetChargingProfile
+TC_K_57    SetChargingProfile
+TC_K_58    SetChargingProfile
+TC_K_59    SetChargingProfile
+TC_K_60    SetChargingProfile
+TC_K_70    SetChargingProfile
+TC_L_01    UpdateFirmware
+TC_L_04    UpdateFirmware
+TC_L_05    UpdateFirmware
+TC_L_06    UpdateFirmware
+TC_L_07    UpdateFirmware
+TC_L_08    UpdateFirmware
+TC_L_09    UpdateFirmware
+TC_L_10    UpdateFirmware
+TC_L_11    UpdateFirmware
+TC_L_13    UpdateFirmware
+TC_M_01    InstallCertificate
+TC_M_02    InstallCertificate
+TC_M_03    InstallCertificate
+TC_M_04    InstallCertificate
+TC_M_05    InstallCertificate
+TC_M_13    GetInstalledCertificateIds
+TC_M_14    GetInstalledCertificateIds
+TC_M_15    GetInstalledCertificateIds
+TC_M_16    GetInstalledCertificateIds
+TC_M_18    GetInstalledCertificateIds
+TC_M_19    GetInstalledCertificateIds
+TC_M_20    DeleteCertificate,GetInstalledCertificateIds
+TC_M_21    DeleteCertificate,GetInstalledCertificateIds
+TC_M_24    none
+TC_M_26    none
+TC_M_28    none
+TC_N_25    GetLog
+TC_N_27    CustomerInformation
+TC_N_28    CustomerInformation
+TC_N_29    CustomerInformation
+TC_N_30    CustomerInformation
+TC_N_31    CustomerInformation
+TC_N_32    CustomerInformation
+TC_N_34    GetLog
+TC_N_35    GetLog
+TC_N_36    GetLog
+TC_P_02    none
+TC_P_03    none

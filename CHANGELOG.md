@@ -12,6 +12,25 @@ Released as `0.3.0`. The documented install ref already points at that tag, so
 
 ### Added
 
+- `tck/specs/OCA-201-OPERATIONS.txt` — which CSMS-initiated operation each of
+  the 147 selected OCPP 2.0.1 cases obliges the CSMS to send. **Twenty kinds of
+  operation** between them, against the four `CsmsOperation201` now carries: 90
+  of the 147 drive at least one, and 57 drive none at all. That is the number
+  `OCA-201-SELECTION.md` said was owed and the number issue [#87] asked for, and
+  the page now carries it beside a tranche table sized by cases *completed* per
+  verb rather than by cases mentioning one ([#87])
+- `tools/extract-201-operations.ts` — the measurement, as a command rather than
+  a note. Takes the Part 6 path as a required argument, since the reference is
+  cited by URL and not committed, and `--diff` re-checks the committed rows
+  against it. Not in `bun run test`, which stays offline ([#87])
+- `tests/oca-201-operations.sh` — the table covers the cases the slice selects,
+  a slice reason that names an operation agrees with the measurement, and no
+  slice row claims a case whose operation `CSMS_OPERATION_201_ACTIONS` has not
+  ([#87])
+- `TriggerMessage` joins `CsmsOperation201`, with `MessageTrigger201` for OCPP
+  2.0.1's `MessageTriggerEnumType`. The vocabulary is four operations, not
+  three, because `TC_F_20` needs it — see Fixed ([#87])
+
 - `CsmsDeviceModelRecords` — what the CSMS *recorded* when a
   `StatusNotification` arrived, as `records.deviceModel`. It is the one part of
   the contract the wire cannot reach: a 2.0.1 CSMS answers every status with an
@@ -48,7 +67,8 @@ Released as `0.3.0`. The documented install ref already points at that tag, so
   in `drivers/steve/ui-client.ts`, which still re-exports it, so nothing that
   imported it from there has to move ([#80])
 - A second, opt-in operation vocabulary for OCPP 2.0.1 — `CsmsOperation201`
-  with `Reset`, `GetVariables` and `SetVariables`; `operations201?` on
+  with `Reset`, `GetVariables` and `SetVariables` (and `TriggerMessage`, added
+  later in this cycle — see above); `operations201?` on
   `CsmsDriverParts` and `CsmsCapabilities`; `csms201` on `DriveContext`. A
   driver that speaks only OCPP 1.6 declares nothing and compiles untouched
   ([#70])
@@ -180,6 +200,23 @@ Released as `0.3.0`. The documented install ref already points at that tag, so
 
 ### Fixed
 
+- `cert201-tcf20-heartbeat` measures the case it claims. `TC_F_20` is *Trigger
+  message - Heartbeat*: the CSMS is the system under test, its step 1 is a
+  `TriggerMessageRequest`, and that step carries the case's only tool
+  validation. The scenario drove a heartbeat from the station and asserted the
+  answer — steps 3 and 4, and nothing the case validates — so the slice row
+  claimed more than the scenario did, in the direction that reads as coverage.
+  It now drives `TriggerMessage(Heartbeat)` and keeps the Heartbeat assertions
+  as the trigger's consequence. Nothing could contradict the old row until the
+  cases were read; `tests/oca-201-operations.sh` is the direction that now
+  would ([#87])
+- Three `tck/specs/OCA-201-SLICE.txt` reasons the measurement contradicted.
+  `TC_M_24`, `TC_M_26` and `TC_M_28` shared a reason with rows that do need a
+  certificate operation and need none — they are the station asking the CSMS —
+  and `TC_F_27`'s named a missing operation that is no longer missing. The
+  reasons were written per group from Part 5's arrangement, which groups by
+  profile rather than by what a case drives ([#87])
+
 - **Behaviour change for `drivers/citrineos` consumers.** A CitrineOS request
   that never reached the CSMS now ends the scenario with `ERROR` instead of a
   `WARN` it carried on past. `warnOpFailed` lets `CsmsNotDispatchedError`
@@ -291,3 +328,4 @@ releases from 141 commits would mean writing detail nobody measured.
 [#84]: https://github.com/juherr/open-ocpp-tck/issues/84
 [#85]: https://github.com/juherr/open-ocpp-tck/issues/85
 [#86]: https://github.com/juherr/open-ocpp-tck/issues/86
+[#87]: https://github.com/juherr/open-ocpp-tck/issues/87
