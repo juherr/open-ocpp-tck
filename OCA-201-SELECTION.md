@@ -219,25 +219,31 @@ is how the committed rows are re-checked; the method is a command rather than a
 note here because it is a two-level read that looks like a one-level one, and
 the extractor's header says why.
 
-**Tranches, sized by cases unblocked rather than by cases mentioning a verb.**
-Six cases need two operations, so the two counts differ: adding
+**Tranches, sized by cases completed rather than by cases mentioning a verb.**
+Six cases need more than one operation, so the two counts differ: adding
 `GetInstalledCertificateIds` is named by eight rows and finishes six of them,
-because `TC_M_20` and `TC_M_21` want `DeleteCertificate` as well. Taking the
-largest first:
+because `TC_M_20` and `TC_M_21` want `DeleteCertificate` and
+`InstallCertificate` as well. Greedy from the four the union has, which leaves
+**81** of the 147 short of a verb:
 
 | # | operation | cases it completes | still blocked after |
 |---|---|---|---|
-| 1 | `SetChargingProfile` | 13 | 70 |
-| 2 | `UpdateFirmware` | 10 | 60 |
-| 3 | `ChangeAvailability` | 9 | 51 |
-| 4 | `GetChargingProfiles` | 8 | 43 |
-| 5 | `GetInstalledCertificateIds` | 6 | 37 |
-| 6 | `CustomerInformation` | 6 | 31 |
-| 7 | `RequestStartTransaction` | 5 | 26 |
-| 8 | `InstallCertificate` | 5 | 21 |
-| 9 | `GetLog` | 4 | 17 |
-| 10 | `ClearChargingProfile` | 3 | 14 |
-| 11–16 | `DeleteCertificate`, `GetCompositeSchedule`, `CertificateSigned`, `ClearCache`, `SetNetworkProfile`, `RequestStopTransaction` | 2 or 3 each | 0 |
+| 1 | `SetChargingProfile` | 13 | 68 |
+| 2 | `UpdateFirmware` | 10 | 58 |
+| 3 | `ChangeAvailability` | 9 | 49 |
+| 4 | `GetChargingProfiles` | 8 | 41 |
+| 5 | `CustomerInformation` | 6 | 35 |
+| 6 | `GetInstalledCertificateIds` | 6 | 29 |
+| 7 | `InstallCertificate` | 5 | 24 |
+| 8 | `RequestStartTransaction` | 5 | 19 |
+| 9 | `GetLog` | 4 | 15 |
+| 10 | `CertificateSigned` | 3 | 12 |
+| 11 | `ClearChargingProfile` | 3 | 9 |
+| 12 | `ClearCache` | 2 | 7 |
+| 13 | `SetNetworkProfile` | 2 | 5 |
+| 14 | `DeleteCertificate` | 2 | 3 |
+| 15 | `GetCompositeSchedule` | 2 | 1 |
+| 16 | `RequestStopTransaction` | 1 | 0 |
 
 The right-hand column is the number a tranche is worth arguing about, and it is
 not the number of scenarios that become writable: a verb removes *one* blocker,

@@ -51,8 +51,10 @@
  * THE SETUP IS INLINE, AND IT DUPLICATES. `ocppVersion` plus
  * `runsSimTemplate: false` is repeated once per scenario, and the three
  * Reset scenarios repeat the same drive-then-check shape with one member
- * changed. That is deliberate: OCPP 2.0.1 Part 6 defines 13 `Reusable State`
- * fixtures and this suite has timers and one-shot provisioning, which are not
+ * changed. That is deliberate: OCPP 2.0.1 Part 6 defines 14 `Reusable State`
+ * fixtures for the CSMS role -- 13 was this paragraph's first count, corrected
+ * when the reference was re-read for the operation measurement -- and this
+ * suite has timers and one-shot provisioning, which are not
  * the same thing -- issue #63 says to write the setup inline and note where it
  * duplicates rather than build the mechanism from one slice's evidence. This
  * paragraph is that note.
@@ -902,11 +904,16 @@ const TC_F_20: ScenarioSpec = {
   runsSimTemplate: false,
   connector: 1,
   bootWaitSecs: 4,
-  // 8 = the 6 this scenario needs, plus the 2 that were a trailing sleep() at
-  // the end of drive(). The runner sleeps holdSecs the moment drive() returns
-  // and runs nothing in between, so a wait on either side of that boundary is
-  // one wait; written on both sides it reads as two and drifts as two.
-  holdSecs: 8,
+  // 12, and the 8 it replaces was measured against a drive() that no longer
+  // exists: one local sim.send. What is waited on now is a chain -- the CSMS's
+  // TriggerMessage, the station's answer, the Heartbeat it then sends, and the
+  // CSMS's answer to that -- and 8 was the shortest hold in this file while
+  // being one of its longest chains. 12 is what every other CSMS-driven
+  // scenario here uses for strictly less, and what the 1.6 twin uses for this
+  // exact exchange (plus a sleep(2000) this does not need: bootWaitSecs gates
+  // the same thing). TC_B_20's note records what a window tuned in isolation
+  // costs under three-lane CI contention.
+  holdSecs: 12,
   async drive({ cpId, csms201 }) {
     // THE TRIGGER IS THE MEASUREMENT, and the Heartbeat is its consequence. The
     // charge point also starts a periodic timer at whatever interval the

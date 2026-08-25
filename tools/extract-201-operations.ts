@@ -218,28 +218,69 @@ function scan(key: string): Scanned {
     if (trimmed.startsWith("Before (Preparations)")) section = "before";
     else if (trimmed.startsWith("Reusable State")) section = "reference";
     else if (/^(Configuration State|Memory State):/.test(trimmed)) section = "before";
-    else if (trimmed.startsWith("Main (Test scenario)")) section = "scenario";
+    // `Main (Part 1) (Test scenario)` twice in Edition 4. Anchored on both ends
+    // rather than on the prefix: missing it leaves a whole scenario classified
+    // as the field block above it and scanned by the wrong rules.
+    else if (/^Main .*\(Test scenario\)/.test(trimmed)) section = "scenario";
     else if (trimmed.startsWith("Tool validations")) section = "validations";
     else if (trimmed.startsWith("Post scenario validations")) section = "after";
     else if (section === "reference") {
-      // The `Reusable State(s):` field's value, `State is <Name>`. Read as a
-      // whole line: the same three words open a state's own post-scenario
-      // validation, where they assert rather than refer.
-      const named = /^State is\s+(\w+)/.exec(trimmed);
-      // NOT FILTERED against the known states, which is what makes the
-      // refusal below reachable: a state renamed by a future edition would
-      // otherwise be dropped here, and every case referring to it would
-      // measure as driving nothing -- the reading this script exists to refuse.
-      if (named !== null) references.add(named[1]!);
+      // The `Reusable State(s):` field's value. TWO SPELLINGS, and the second
+      // was found by review rather than by reading: `State is <Name>`, and the
+      // bare `<Name> with certificateType ...` TC_M_21 uses. Missing the
+      // second cost that case its InstallCertificate.
+      //
+      // `State is` with an UNKNOWN name is a refusal -- that is a state
+      // renamed by a new edition, and resolving it to nothing would make every
+      // case referring to it measure as driving nothing. A bare first word
+      // that is not a known state is NOT a refusal: this field also carries
+      // `N/a`, prose conditions and wrapped continuations.
+      const explicit = /^State is\s+(\w+)/i.exec(trimmed);
+      if (explicit !== null) references.add(explicit[1]!);
+      else {
+        const bare = /^([A-Za-z][A-Za-z0-9]*)\b/.exec(trimmed);
+        if (bare !== null && stateNames.has(bare[1]!)) references.add(bare[1]!);
+      }
     } else if (section === "before" || section === "scenario") {
       for (const name of matchAll(EXECUTE_STATE, line)) references.add(name);
+      // A numbered step that IS a state name, with no verb in front of it --
+      // TC_M_20's "1. CertificateInstalled with certificateType ...". Filtered
+      // against the known states because a step can begin with anything.
+      const step = /^\d+\.\s+([A-Za-z][A-Za-z0-9]*)\b/.exec(trimmed);
+      if (step !== null && stateNames.has(step[1]!)) references.add(step[1]!);
+      // And in the Configuration / Memory State fields, a state named in
+      // prose: "If configured <Security profile> is 2, then
+      // RenewChargingStationCertificate". A whole-word scan is loose enough to
+      // worry about -- `Authorized`, `Reserved` and `Booted` are state names
+      // AND ordinary words -- so it is bounded to those two short fields and
+      // measured: across Edition 4's CSMS half it matches three times and all
+      // three are real (TC_A_19, TC_G_04, TC_G_08).
+      if (section === "before") {
+        for (const name of stateNames) {
+          if (new RegExp(`\\b${name}\\b`).test(trimmed)) references.add(name);
+        }
+      }
       if (!CSMS_STAYS_SILENT.test(line)) {
         for (const op of matchAll(CSMS_SENDS, line)) operations.add(op);
         for (const op of matchAll(CSMS_ASKED_TO_SEND, line)) operations.add(op);
       }
-    } else if (section === "validations" && /^Message:?\s/.test(trimmed)) {
-      // Two spellings in Edition 4, `Message:` and `Message`.
-      for (const op of matchAll(REQUEST, trimmed)) operations.add(op);
+    } else if (section === "validations") {
+      // A validation line IDENTIFIES a message the SUT sent, and in a `_CSMS`
+      // case the SUT is the CSMS. Four spellings carry that identification --
+      // `Message:`, `Message`, a parenthesised `(Message: X)`, and a bare
+      // `<X>Request with:` under a `* Step N:` -- plus the two sender phrases,
+      // which appear here as `1. CSMS sends <X>Request with:`.
+      //
+      // NOT every `<X>Request` token in the section, which was the obvious
+      // rule and is wrong: TC_E_53's validations say "CSMS accepts the message
+      // TransactionEventRequest", prose about a request the STATION sent.
+      if (/^\(?Message:?\s/.test(trimmed) || /^[A-Z][A-Za-z0-9]*Request\b/.test(trimmed)) {
+        for (const op of matchAll(REQUEST, trimmed)) operations.add(op);
+      }
+      if (!CSMS_STAYS_SILENT.test(line)) {
+        for (const op of matchAll(CSMS_SENDS, line)) operations.add(op);
+        for (const op of matchAll(CSMS_ASKED_TO_SEND, line)) operations.add(op);
+      }
     }
   }
   return { operations, references };

@@ -256,9 +256,9 @@ const V2_SCOPE = {
   // this driver for anything. A scope row can only be as right as the scenario
   // it describes.
   "cert201-tcf20-heartbeat": d(
-    "Driven green. TriggerMessage is Configuration's on both lines -- the " +
-      "one 2.0.1 action of the four whose module matches its 1.6 namesake -- " +
-      "and requestedMessage reaches the wire as the driver spelled it.",
+    "Driven green. TriggerMessage routes through Configuration on the 2.0.1 " +
+      "path exactly as its 1.6 namesake does, and requestedMessage reaches " +
+      "the wire as the driver spelled it.",
   ),
   // THE TWO ROWS #63 PREDICTED WOULD NEED A DEVICE MODEL, and the prediction
   // was wrong in a way worth keeping written down. It read #57 §A's four

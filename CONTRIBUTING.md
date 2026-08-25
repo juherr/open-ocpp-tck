@@ -196,7 +196,8 @@ traffic needs no operation at all, and 57 of the selected 147 are that.
 
 **This page does not spell the member list or its size**, because the union is
 where both live and a second copy of them here would be the copy that goes
-stale. `CSMS_OPERATION_201_ACTIONS` in `tck/driver.ts` is the list; the note
+stale — the sketch below shows three arms out of however many there are, and
+says so. `CSMS_OPERATION_201_ACTIONS` in `tck/driver.ts` is the list; the note
 above it says how the count was arrived at. It will grow —
 [`tck/specs/OCA-201-OPERATIONS.txt`](tck/specs/OCA-201-OPERATIONS.txt) is the
 measurement of how far, and the selection page's tranche table is the order.

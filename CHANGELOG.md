@@ -210,12 +210,13 @@ Released as `0.3.0`. The documented install ref already points at that tag, so
   as the trigger's consequence. Nothing could contradict the old row until the
   cases were read; `tests/oca-201-operations.sh` is the direction that now
   would ([#87])
-- Three `tck/specs/OCA-201-SLICE.txt` reasons the measurement contradicted.
-  `TC_M_24`, `TC_M_26` and `TC_M_28` shared a reason with rows that do need a
-  certificate operation and need none — they are the station asking the CSMS —
-  and `TC_F_27`'s named a missing operation that is no longer missing. The
-  reasons were written per group from Part 5's arrangement, which groups by
-  profile rather than by what a case drives ([#87])
+- Four `tck/specs/OCA-201-SLICE.txt` rows whose reason the measurement
+  contradicted, carrying two reasons between them. `TC_M_24`, `TC_M_26` and
+  `TC_M_28` shared a reason with rows that do need a certificate operation and
+  need none — they are the station asking the CSMS — and `TC_F_27`'s named a
+  missing operation that is no longer missing. The reasons were written per
+  group from Part 5's arrangement, which groups by profile rather than by what
+  a case drives ([#87])
 
 - **Behaviour change for `drivers/citrineos` consumers.** A CitrineOS request
   that never reached the CSMS now ends the scenario with `ERROR` instead of a

@@ -463,7 +463,8 @@ export type CsmsOperation201 =
   | { action: "SetVariables"; variables: SetVariableData201[] }
   // Homonyms again, and this pair is further apart than `Reset`'s: OCPP 1.6's
   // TriggerMessage scopes to a `connectorId`, 2.0.1's to an `evse` object, and
-  // the enums they range over share four of six names against eleven. Same
+  // the enums they range over share five of six names against eleven -- only
+  // DiagnosticsStatusNotification is 1.6's alone. Same
   // conclusion as the note above, reached for a second time on a second arm --
   // which is the evidence OCA-201-SELECTION.md says a shared abstraction layer
   // would need, not a reason to build one on two data points.

@@ -108,8 +108,8 @@ function capabilitiesFor(variant: CitrineVariant): CsmsCapabilities {
       CSMS_OPERATION_16_ACTIONS.filter((action) => !unrouted.has(action)),
     ),
     // ALL OR NONE, and the line decides which. On v2 the 2.0.1 routes are the
-    // whole vocabulary, so there is nothing to subtract. On v1
-    // the declaration is ABSENT rather than empty, which is the contract's way
+    // whole vocabulary, so there is nothing to subtract. On v1 the
+    // declaration is ABSENT rather than empty, which is the contract's way
     // of saying "this driver, pointed here, does not speak OCPP 2.0.1" -- and
     // that is the honest answer: the 2.0.1 surface has never been measured
     // against the v1.9.1 image, and an empty set would claim it had been and

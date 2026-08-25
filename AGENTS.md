@@ -242,7 +242,8 @@ its header is now a false claim about what the build checks.
   — how many kinds that is, and how far short of it the union stands, are
   `OCA-201-SELECTION.md`'s to state and the guard's to print. It holds the
   table to the same case set as the slice, agrees it against every
-  slice reason that names an operation, and refuses an implemented row whose
+  slice reason that names a measured operation, and refuses an implemented row
+  whose
   case needs an operation `CSMS_OPERATION_201_ACTIONS` has not. That last one
   is the direction with nothing else watching it: two files agreeing about
   *which* case a scenario is for say nothing about *what* the case asks for,

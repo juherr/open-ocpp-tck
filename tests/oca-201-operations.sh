@@ -22,10 +22,18 @@
 #      read Part 6, and where they generalise they are wrong: TC_M_24, TC_M_26
 #      and TC_M_28 shared a reason with rows that really do need a certificate
 #      operation and drive none. This is what turns those reasons into a
-#      cross-check instead of a second, unmeasured source. Which names to look
-#      for is read from this file's OWN value column, so the guard has no
-#      vocabulary of its own to go stale -- and `CsmsOperation201`, which many
-#      reasons name, is not an operation and is therefore not looked for.
+#      cross-check instead of a second, unmeasured source.
+#
+#      WHICH NAMES IT LOOKS FOR, AND THE HOLE THAT LEAVES. The search set is
+#      this file's own value column plus `CSMS_OPERATION_201_ACTIONS`, so the
+#      guard carries no vocabulary of its own to go stale. The cost: an
+#      operation spelled NOWHERE in either -- because it is wrong on every row
+#      that should carry it -- is a word this direction does not look for, and a
+#      reason naming it passes. Stated rather than papered over, because what
+#      covers it is `tools/extract-201-operations.ts --diff` re-deriving every
+#      row from the reference, and nothing in the gate can do that.
+#      `CsmsOperation201`, which 66 reasons name, is outside the set for the
+#      same reason and by the same accident -- not by a rule.
 #
 #   3. AN IMPLEMENTED ROW'S OPERATIONS EXIST IN THE CONTRACT. If the slice says
 #      a scenario implements a case, and the case needs an operation
@@ -104,8 +112,25 @@ fi
 # left to refuse is a value that is neither `none` nor a list of operation
 # names, because a typo there is invisible to every direction below -- it just
 # becomes an operation nobody else names.
-if bad=$(awk '$2 !~ /^[A-Za-z0-9]+(,[A-Za-z0-9]+)*$/ { print $1 "\t" $2 }' \
-  "$work/rows") && [ -n "$bad" ]; then
+# `none` EXACTLY, or a comma-separated list of names each starting with a
+# capital. Reproduced, not supposed: `None` passed the looser shape this
+# replaces and became a 21st kind of operation driven by one case -- both
+# printed counts moved and nothing refused, on the 140 rows direction 3 does
+# not reach. A `none` INSIDE a list did the same and then matched the ordinary
+# English word in unrelated reasons, so the run went red naming eight innocent
+# rows and never the typo.
+#
+# THE CASE-ONLY ARM IS WHY THIS IS THREE RULES AND NOT A REGEX. `None` is a
+# capitalised word and an operation name is a capitalised word: no shape tells
+# them apart, so the sentinel is matched exactly and anything that differs from
+# it only by case is refused by name. What still gets through is a value that
+# is neither -- `non`, say -- and there is no offline answer to that: whether a
+# name is an operation the reference produced is what `--diff` is for.
+if bad=$(awk '
+  $2 == "none" { next }
+  tolower($2) == "none" { print $1 "\t" $2; next }
+  $2 !~ /^[A-Z][A-Za-z0-9]*(,[A-Z][A-Za-z0-9]*)*$/ { print $1 "\t" $2 }
+' "$work/rows") && [ -n "$bad" ]; then
   status=1
   echo "FAIL: $operations has a value that is not an operation list:" >&2
   awk '{ printf "  %s\t%s\n", $1, $2 }' <<< "$bad" >&2
@@ -140,17 +165,40 @@ if extra=$(comm -23 "$work/measured" "$work/selected") && [ -n "$extra" ]; then
   echo "    of the other 104 inflates the same total." >&2
 fi
 
-# The vocabulary this file uses, one name per line -- the summary's count, and
-# nothing else reads it: direction 2 derives the same set from the rows it is
-# already loading rather than being handed this file as a second input.
+# The vocabulary this file uses, one name per line. Only the summary's count
+# reads it: direction 2 derives the same set from the rows it is already
+# loading rather than being handed this file as a second input.
 awk '$2 != "none" { n = split($2, ops, ","); for (i = 1; i <= n; i++) print ops[i] }' \
   "$work/rows" | sort -u > "$work/vocabulary"
+
+# The driver contract's own vocabulary, ITS VALUE AND NOT ITS SOURCE TEXT. A
+# regex over the array literal was written first and had two ways to go quiet
+# that this does not: a comment inside the literal donates its first quoted
+# word as a phantom member, and the closing `]);` anchor pins the guard to
+# today's formatting rather than to the property. What `everyOneOf` holds the
+# array to is checked by the typecheck, a separate step of the same gate; what
+# this buys is the value rather than a regex's reading of the text. The
+# precedent for a shell guard shelling into bun is tests/summary-red-rows.sh.
+#
+# Read here rather than beside direction 3 because BOTH directions below use
+# it: it is also half of direction 2's search set.
+bun -e 'import { CSMS_OPERATION_201_ACTIONS } from "./tck/driver";
+  console.log(CSMS_OPERATION_201_ACTIONS.join("\n"));' \
+  2>/dev/null | sort -u > "$work/union"
+
+if [ ! -s "$work/union" ]; then
+  echo "FAIL: no CSMS_OPERATION_201_ACTIONS members found in $driver." >&2
+  echo "  → every implemented row would pass by having nothing to check" >&2
+  echo "    against, which is the one way direction 3 can go quiet." >&2
+  exit 1
+fi
 
 # Direction 2: a slice reason that names an operation names one the case needs.
 # Read from the reason column only -- $1 is the case and $2 the scenario -- and
 # on whole words after punctuation is blanked, or `Reset` would match inside a
 # sentence about resetting and `SetVariables` inside `SetVariablesRequest`.
 if ! awk '
+  FILENAME == unionfile { vocab[$1]; next }
   FILENAME == rowsfile {
     needs[$1] = "," $2 ","
     if ($2 == "none") next
@@ -176,7 +224,7 @@ if ! awk '
     }
   }
   END { exit(bad ? 1 : 0) }
-' rowsfile="$work/rows" "$work/rows" "$slice"; then
+' unionfile="$work/union" rowsfile="$work/rows" "$work/union" "$work/rows" "$slice"; then
   status=1
   echo "FAIL: a reason in $slice names an operation the case does not drive." >&2
   echo "  → the reasons were written per group from Part 5's arrangement and" >&2
@@ -185,29 +233,6 @@ if ! awk '
 fi
 
 # Direction 3: an implemented row's operations exist in the driver contract.
-# The union is read from tck/driver.ts rather than spelled here, for the reason
-# direction 2 derives its vocabulary from the table: a second copy is a second
-# thing to keep in step.
-#
-# ITS VALUE, NOT ITS SOURCE TEXT. A regex over the array literal was written
-# first and had two ways to go quiet that this one does not: a comment inside
-# the literal donates its first quoted word as a phantom member -- which
-# weakens the one direction with nothing else watching it -- and the closing
-# `]);` anchor pins the guard to today's formatting rather than to the
-# property. `everyOneOf` already type-checks the array against the union, so
-# importing it gets the compiler's answer instead of a regex's guess. The
-# precedent for a shell guard shelling into bun is tests/summary-red-rows.sh.
-bun -e 'import { CSMS_OPERATION_201_ACTIONS } from "./tck/driver";
-  console.log(CSMS_OPERATION_201_ACTIONS.join("\n"));' \
-  2>/dev/null | sort -u > "$work/union"
-
-if [ ! -s "$work/union" ]; then
-  echo "FAIL: no CSMS_OPERATION_201_ACTIONS members found in $driver." >&2
-  echo "  → every implemented row would pass by having nothing to check" >&2
-  echo "    against, which is the one way this direction can go quiet." >&2
-  exit 1
-fi
-
 if ! awk '
   FILENAME == unionfile { union[$1]; next }
   FILENAME == rowsfile  { needs[$1] = $2; next }
