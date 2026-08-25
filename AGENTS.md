@@ -24,7 +24,7 @@ error.
 ## The gate
 
 `bun run verify` is every check CI runs before it starts a container —
-typecheck, committed declarations, three driver scope checks, nine in-process
+typecheck, committed declarations, three driver scope checks, ten in-process
 guards and twelve shell guards — with one exit code, and every step runs even
 after one fails, where CI enumerates them and stops at the first.
 
@@ -53,6 +53,7 @@ bun tests/sim-docker-argv.ts
 bun tests/trace-frames.ts
 bun tests/steve-ui-session-race.ts
 bun tests/citrineos-transport-classification.ts
+bun tests/citrineos-device-model-fixture.ts
 ```
 
 then `bun run verify` once before committing.
@@ -100,7 +101,7 @@ There is no unit-test framework and no `*.test.ts`. `tests/` holds offline
 guards, each with a header stating the property it protects. `bun run test`
 chains them — note `bun test` is Bun's own runner and finds nothing here.
 
-Shell is the default, and the nine TypeScript ones are TypeScript because
+Shell is the default, and the ten TypeScript ones are TypeScript because
 what they assert is unreachable through the CLI. `driver-env-scope.ts`: a
 driver's declarations follow the env they are *resolved* with, where the CLI
 can only ever pass `process.env`. `expected-failure-standing.ts`: the rule that
@@ -143,6 +144,14 @@ cost a container and a misconfiguration to stage. What it holds is a line, not
 a behaviour: which failures `warnOpFailed` lets out, so it is wrong in two
 directions and half of its table asserts the *negative* — that a request the
 CSMS answered stays an ordinary failure.
+`citrineos-device-model-fixture.ts`: the last one, and the one whose subject is
+least visible from anywhere else. It holds a SEQUENCE of writes — which rows
+`provision` seeds, which one the prepare hook points back, which ones teardown
+refuses to remove — against a CSMS that answers a right fixture and a wrong one
+with the same empty `StatusNotificationResponse`. There is no wire assertion
+that could tell them apart, and the live measurement that can is four lines in
+a CSMS log rather than a verdict. So the seam again: the provisioner takes its
+`fetch`, and the guard answers from a store.
 
 Two guards build a fixture instead of reading the tree, and they are the two
 that test the scripts under `tools/` which *write*.

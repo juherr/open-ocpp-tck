@@ -108,6 +108,18 @@ FILE core-201.ts
       ·.fail(·, ·)
       RETURN
     ·.pass(·)
+  HELPER assertStatusesRecorded
+    IF
+      ·.fail("the charge point reported at least one connector status", "no Sent CALL found for action=StatusNotification")
+      RETURN
+    FOROF
+      IF
+        OR
+          OR
+        ·.fail("StatusNotification.req addresses a connector and names a status", ·)
+    FOROF
+      assertNonEmpty(·, ·, ·)
+      assertEq(·, ·, ·, ·)
   HELPER assertVariableRequested
     IF
       ·.fail(·, ·)
@@ -167,6 +179,7 @@ FILE core-201.ts
     assertCallPayload(·, ·, "sent", "BootNotification", {reason:"PowerUp"}, "BootNotification.req is the OCPP 2.0.1 request (reason=PowerUp)")
     assertResponseStatus(·, ·, "BootNotification", "Accepted", "BootNotification accepted", {direction:"sent"})
     assertAllAnswered(·, ·, "StatusNotification")
+    assertStatusesRecorded(·, ·, ·, ·)
   SPEC cert201-tcb20-reset-accepted connector=1 bootWaitSecs=4 holdSecs=32 ocppVersion="OCPP-2.0.1" runsSimTemplate=false
     assertReceived(·, ·, "Reset", "Reset.req received")
     assertCallPayload(·, ·, "received", "Reset", {type:"Immediate"}, "Reset.req asks for type=Immediate")
