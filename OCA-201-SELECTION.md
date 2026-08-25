@@ -181,8 +181,10 @@ cases, plus reading and writing a variable — but between them they spell only
 **three kinds of operation**, which is the count a vocabulary is measured in.
 So the first 2.0.1 vocabulary needed three, not eighteen, and "as
 few as the first slice needs" was a number instead of an intention before a
-line of it was written. The same arithmetic is owed for 147 and has not been
-done.
+line of it was written. The same count is owed for the 147 and has not been
+done — how many kinds of operation they need between them, which is not what
+the enumeration produced: that says which cases, not how wide a vocabulary
+they ask for.
 
 A scenario issue may implement fewer than the list holds and say why — which
 the first one did, leaving `TC_B_06` and `TC_B_09` to the device-model
