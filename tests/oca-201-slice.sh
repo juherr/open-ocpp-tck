@@ -57,8 +57,11 @@
 # is. Second, and this is the one the coverage target creates: that the rows
 # are ALL of them. Both directions range over this file, so a file short of the
 # pool is a file this guard finds complete, and it will report a green on seven
-# rows exactly as readily as on 205. What this stops is the set drifting
-# afterwards, not the set being small.
+# rows exactly as readily as on 147. The file now holds all 147 the rule
+# selects, which changes what that costs rather than removing it: a row deleted
+# from the list is a mandatory case that stops being owed, and nothing here
+# will say so. What this stops is the set drifting afterwards, not the set
+# being small.
 set -uo pipefail
 
 cd "$(dirname "$0")/.." || exit 1
@@ -125,7 +128,7 @@ fi
 # row shape that parses and means nothing.
 #
 # A SECOND PASS AND NOT A RULE IN THE PARSER ABOVE, which would be one fewer
-# traversal of a 7-row file: the parser's failure is "this line is not a row"
+# traversal of this file: the parser's failure is "this line is not a row"
 # and points at the syntax, where this one's is "write down what blocks it" and
 # points at the decision. Folding them makes the cheaper message win for the
 # case where the expensive one is the whole point.

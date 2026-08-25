@@ -195,7 +195,7 @@ certification cases and only those three are CSMS-*initiated*.
 `BootNotification` and `Heartbeat` are watched on the wire, so they need no
 operation at all.
 
-The rule that page states now selects 205 cases rather than seven, so this
+The rule that page states now selects 147 cases rather than seven, so this
 vocabulary will grow — in tranches sized by what unblocks the most cases, and
 still by counting rather than by adding the rest of the protocol. **Three is
 what it is today**; check the union in `tck/driver.ts` rather than this

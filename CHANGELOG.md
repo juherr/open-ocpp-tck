@@ -29,7 +29,7 @@ Released as `0.3.0`. The documented install ref already points at that tag, so
   `cert201-tcb22-reset-rejected` and `cert201-tcf20-heartbeat` — in a
   `core-201` group that `run-all` sweeps like any other ([#73])
 - `cert201-tcb06-get-variables` and `cert201-tcb09-set-variables`, which
-  complete the seven selected OCPP 2.0.1 cases. Both were declined as blocked
+  complete the seven cases the first slice bounded. Both were declined as blocked
   on CSMS device-model provisioning; measurement says they were not. The device
   model that answers a `GetVariables` is the *station's* — the pinned simulator
   resolves the pair through a component/variable map of its own — and CitrineOS
@@ -77,29 +77,27 @@ Released as `0.3.0`. The documented install ref already points at that tag, so
   ([#64])
 - The OCPP 2.0.1 selection rule drops its `profile = Core` term and its
   seven-case slice. It now reads `role = CSMS, status = M` on every
-  certification profile, which selects **205 cases** rather than 104 or seven —
-  Core 104, Advanced Security 6, Smart Charging 36, ISO 15118 Support 59 — and
-  a case is covered when it is implemented *or declined in writing*. No
-  scenario, guard or type changes shape: what moves is what the suite says it
-  owes. Two things the new target has to answer before the list can be
-  completed are written down where they bite rather than left implicit —
-  whether a 205-row list of case identifiers may be committed at all, given the
-  references' CC BY-ND licence, and that only 110 of the 205 run against a
-  profile the CitrineOS certificate attests ([#25])
-- The licensing question is answered: **a 205-row list of case identifiers may
-  be committed.** `OCA-201-SELECTION.md` forbade it on an argument about
-  *extent*; CC BY-ND draws its line on modification, and a list of identifiers
-  modifies nothing. That page's licensing section now carries the argument, the
-  one risk the answer accepts, and the line that replaces the extent one —
-  identifiers in, a reference's prose and tables out, the PDFs out for a reason
-  of ours rather than the licence's. The line is drawn on kinds of material, so
-  it covers both protocols: `tck/specs/OCA-OBLIGATIONS.txt`'s OCPP 1.6 rows are
-  the harder case and are named as in, with `OCA-COVERAGE.md` carrying the
-  worked application beside the derivation it belongs to. The line also gains
-  the clause the tree was already relying on unwritten: a short marked
-  quotation that *identifies* what is under discussion — `tck/assert.ts` naming
-  the column `assertAllAnswered` checks — is not step text brought into ours.
-  Unblocks taking the 2.0.1 list from seven rows to 205 ([#84])
+  certification profile, which selects **147 cases** rather than 104 or seven —
+  Core 104, Advanced Security 4, Smart Charging 21, ISO 15118 Support 36, less
+  the 18 the last two profiles share — and a case is covered when it is
+  implemented *or declined in writing*. No scenario, guard or type changes
+  shape: what moves is what the suite says it owes. Of the 147, 39 run against
+  a profile the CitrineOS certificate does not attest, which
+  `OCA-201-SELECTION.md` states once rather than leaving to be noticed ([#25])
+- The licensing question is answered: **a list of case identifiers may be
+  committed, whatever its length.** `OCA-201-SELECTION.md` forbade it on an
+  argument about *extent*; CC BY-ND draws its line on modification, and a list
+  of identifiers modifies nothing. That page's licensing section now carries the
+  argument, the one risk the answer accepts, and the line that replaces the
+  extent one — identifiers in, a reference's prose and tables out, the PDFs out
+  for a reason of ours rather than the licence's. The line is drawn on kinds of
+  material, so it covers both protocols: `tck/specs/OCA-OBLIGATIONS.txt`'s OCPP
+  1.6 rows are the harder case and are named as in, with `OCA-COVERAGE.md`
+  carrying the worked application beside the derivation it belongs to. The line
+  also gains the clause the tree was already relying on unwritten: a short
+  marked quotation that *identifies* what is under discussion — `tck/assert.ts`
+  naming the column `assertAllAnswered` checks — is not step text brought into
+  ours. Unblocks taking the 2.0.1 list from seven rows to the whole pool ([#84])
 - The OCPP 1.6 *Compliancy Testing Tool - Test Case Document* is recorded as
   CC BY-ND 4.0, © 2010–2025 Open Charge Alliance, read off its own front
   matter. `OCA-COVERAGE.md` cited the revision and the URL but never the terms,
@@ -111,6 +109,18 @@ Released as `0.3.0`. The documented install ref already points at that tag, so
   `package.json`'s `files` and that page is not: a consumer of the pinned git
   dependency receives `tck/specs/OCA-201-SLICE.txt`, so it has to receive the
   notice too ([#84])
+- `tck/specs/OCA-201-SLICE.txt` holds all **147** selected OCPP 2.0.1 cases
+  rather than seven, so it is the pool instead of a bound on it. Seven are
+  implemented; 140 decline with a reason, written per group of cases that share
+  a blocker rather than per row. Nothing a consumer calls changes — the file is
+  what says which `cert201-` scenarios may exist at all ([#85])
+- The per-profile totals the selection rule is measured against are corrected.
+  Three of the four had been counted with a row selected when `M` appeared in
+  *either* of the certification matrix's two status columns rather than in its
+  CSMS one, which is why the rule was published as selecting 205 cases;
+  re-reading it selects 165 matrix rows and 147 distinct cases. Core was right.
+  `OCA-201-SELECTION.md` now records the correction, and pins the edition it
+  was measured against, which the first derivation note never did ([#85])
 - `OCA-201-SELECTION.md` cites the slice list instead of restating it, the way
   `OCA-COVERAGE.md` cites `OCA-OBLIGATIONS.txt` ([#73])
 - The runner refuses a run where `SIM_EXTRA_ARGS` would silently replace a
@@ -244,3 +254,4 @@ releases from 141 commits would mean writing detail nobody measured.
 [#77]: https://github.com/juherr/open-ocpp-tck/issues/77
 [#80]: https://github.com/juherr/open-ocpp-tck/issues/80
 [#84]: https://github.com/juherr/open-ocpp-tck/issues/84
+[#85]: https://github.com/juherr/open-ocpp-tck/issues/85

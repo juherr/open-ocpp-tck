@@ -59,15 +59,15 @@
  *
  * THE EVIDENCE HAS SINCE ARRIVED, so read the paragraph above as a record of
  * why the mechanism was not built rather than as a reason to keep inlining.
- * The rule in OCA-201-SELECTION.md now selects 205 cases, at which point a
+ * The rule in OCA-201-SELECTION.md now selects 147 cases, at which point a
  * handful of copies becomes a class of copies, they drift, and each one reads
  * reasonably on its own -- which is the failure inlining was cheap enough to
- * risk at five and is not at 205. The fixture mechanism has its own issue.
+ * risk at five and is not at 147. The fixture mechanism has its own issue.
  */
 import type { ScenarioSpec } from "../spec-types";
 /**
- * The slice, in case order. Two of the seven cases `OCA-201-SLICE.txt` lists
- * are absent, with the reason in that file rather than here -- one place per
- * fact, and the guard reads that one.
+ * The scenarios, in case order -- the seven of `OCA-201-SLICE.txt`'s 147 that
+ * are implemented. The other 140 are declined there rather than here, with
+ * the reason in the row: one place per fact, and the guard reads that one.
  */
 export declare const CORE_201_SPECS: ScenarioSpec<any>[];

@@ -40,26 +40,34 @@ out, and out by arithmetic rather than by taste.
 the change the coverage milestone makes.** The term was never part of the
 arithmetic; it was the first slice's way of saying "one profile is enough to
 prove the architecture". It was, and the proof is spent. What it selects now is
-205 cases rather than 104.
+147 cases rather than 104.
 
 ## What the rule is drawn against
 
 | Certification profile | rows | CSMS `M` | CSMS `C` | CSMS blank (CS-only) |
 |---|---|---|---|---|
 | **Core** | 364 | **104** | 83 | 177 |
-| **Advanced Security** | 8 | **6** | 2 | 0 |
-| **Smart Charging** | 40 | **36** | 4 | 0 |
-| **ISO 15118 Support** | 64 | **59** | 5 | 0 |
-| | 476 | **205** | 94 | 177 |
+| **Advanced Security** | 8 | **4** | 0 | 4 |
+| **Smart Charging** | 40 | **21** | 1 | 18 |
+| **ISO 15118 Support** | 64 | **36** | 1 | 27 |
+| | 476 | **165** | 85 | 226 |
 
-One narrowing, and it is the rule: 476 rows to the 205 mandatory for this role.
+One narrowing, and it is the rule: 476 rows to the 165 mandatory for this role.
 There used to be a second, taking Core's 104 to a seven-case slice; that one was
 never a rule and is gone.
+
+**165 rows, 147 cases**, and the difference is not a third narrowing. A case can
+appear in two profiles, and 37 do — every one of them in both Smart Charging and
+ISO 15118. Nineteen of those carry `M` for this role somewhere: eighteen in both
+profiles, and `TC_K_10` in ISO 15118 only, where Smart Charging leaves it
+conditional. A case is a case, so the pool is the 147 distinct identifiers — and
+that is also what [`tck/specs/OCA-201-SLICE.txt`](tck/specs/OCA-201-SLICE.txt)
+can hold, since its guard refuses a second row for a case already listed.
 
 For scale: the entire OCPP 1.6 certification set has 77 `_CSMS` cases — the
 count [`OCA-COVERAGE.md`](OCA-COVERAGE.md) derives and this suite's 47 OCPP 1.6
 scenarios are measured against. One profile of 2.0.1 asks for more mandatory
-CSMS cases than 1.6 has cases at all, and all four ask for nearly three times.
+CSMS cases than 1.6 has cases at all, and all four ask for nearly twice as many.
 Part 6 devotes p608–p900 to 251 `*_CSMS` cases, which is scale rather than a
 term in the narrowing: it is a different document's count of a different
 population, and how it relates to the matrix's rows was **not measured**.
@@ -75,6 +83,33 @@ be](#what-may-be-committed-here-and-what-may-not). Those counts, and the `M` /
 `C` status of every case this page names, carry exactly the status
 `OCA-COVERAGE.md`'s own totals carry: measured, then written into prose.
 Everything else numeric here is cited from the references rather than counted.
+
+**Which reading the counts are of, because the first pass did not say.** *Part 5
+— Certification Profiles*, **Edition 4, 2025-12-03**. The note above was written
+without an edition on it, which is the one thing a note written to be redone
+cannot leave out: a re-run that disagrees then has two explanations for the
+disagreement and no way to tell them apart.
+
+**And what the re-run corrected.** Redoing the parse to keep the identifiers
+rather than only the counts moved three of the four profile totals. The numbers
+being replaced, as `CSMS M / C / blank`, were **6 / 2 / 0** for Advanced
+Security, **36 / 4 / 0** for Smart Charging and **59 / 5 / 0** for ISO 15118
+Support, summing to the 205 this page and nine other tracked files quoted.
+
+Core reproduced exactly, all four numbers, and so did every row total — 364, 8,
+40, 64. The three that moved are reproduced exactly by counting a row as selected
+when `M` appears in **either** status column, which is what the first pass did to
+the three small tables: 6 / 2 / 0 and 59 / 5 / 0 fall straight out of it. The
+tell was in the published table all along — a `CSMS blank (CS-only)` of **0** on
+three profiles, when a column blank nowhere is not a column anyone read. Smart
+Charging is the one that does not land on the old numbers under either reading,
+37 / 3 against 36 / 4, which is what an edition apart looks like and is the
+second reason the edition is now pinned.
+
+The correction is kept here rather than applied silently, for
+`OCA-COVERAGE.md`'s reason: a page that quietly agrees with itself is evidence
+for nothing, and the next reader of a number wants to know whether it was
+measured or inherited.
 
 ## What the rule corrects on a hand-drawn list
 
@@ -98,18 +133,18 @@ organised by **which side is under test**. `Reset` turning out to be three
 mandatory cases and `StatusNotification` turning out to be none is the
 correction, and it runs in both directions.
 
-`TC_G_20`'s own status was **not measured** — it is the one cell in this table
-the parse did not produce. Look it up before a status scenario is written, and
-do not read the row above as calling it mandatory.
+`TC_G_20`'s own status was the one cell in this table the first parse did not
+produce, and the re-run resolved it: **`M` for the CSMS, blank for the charging
+station**. So the row above reads as it appears to — the one Core CSMS row the
+status-notification group has is mandatory, and it is in the pool.
 
 ## The coverage target
 
-The rule selects 205 cases, every one of them `M`. They belong **in
+The rule selects 147 cases, every one of them `M`. They belong **in
 [`tck/specs/OCA-201-SLICE.txt`](tck/specs/OCA-201-SLICE.txt)** rather than here
 — one row per case, naming the scenario that implements it or the reason there
-is none — and that file currently enumerates **seven** of them, which the
-paragraph below owns rather than glosses. It is machine-readable and guarded in
-both directions; this page states the rule it was drawn against. The
+is none — and that file enumerates **all 147**. It is machine-readable and
+guarded in both directions; this page states the rule it was drawn against. The
 arrangement, and the reason for it, is [`OCA-COVERAGE.md`](OCA-COVERAGE.md)'s
 with
 [`OCA-OBLIGATIONS.txt`](tck/specs/OCA-OBLIGATIONS.txt): a second copy of a list
@@ -119,24 +154,22 @@ A case is covered when it is implemented **or declined in writing**. Declining
 a mandatory case is a decision, and the guard refuses a `not-implemented` row
 with nothing after it, so the two are not the same as "not done yet".
 
-**The list is seven rows, not 205, and that gap is deliberate rather than
-overlooked.** One thing has to happen before the rest can be written, and it is
-the milestone's next issue: **the identifiers behind the 205 have never been
-enumerated.** The per-profile totals in the table above were counted; the rows
-were not. The method for redoing the parse is [in the derivation
-note](#what-the-rule-is-drawn-against), and this time it has to keep the case
-identifier per row rather than only the count.
+**The list used to be seven rows and is now the pool**, which is the change
+this milestone's enumeration made. What stood between the two was never a
+decision: the per-profile totals in the table above had been counted and the
+rows behind them had not, so there was nothing to write down. Redoing the parse
+to keep the case identifier per row is what produced the 147 — and, on the way,
+the [correction](#what-the-rule-is-drawn-against) to three of the four totals.
 
-There used to be a second one — whether a 205-row file may be committed at all,
-given that the references are CC BY-ND — and it is
+The other half of that gap was whether a list this long may be committed at
+all, given that the references are CC BY-ND, and it is
 [answered](#what-may-be-committed-here-and-what-may-not): it may.
 
-Until the enumeration lands the file still bounds what may be implemented —
-direction 1 of the guard is what does that, and it does not care how long the
-file is. What is temporarily untrue is the stronger claim, that the file **is**
-the pool, and that gap is one [no guard closes](#the-guard). The licensing
-decision does not touch it either: what was blocking the file was a question
-about the licence, and what leaves it short is the enumeration.
+Seven of the 147 are implemented and 140 decline with a reason. Those reasons
+are written per group rather than per case — 22 of them across the 140 — and the
+file's header says why that is the granularity the decision was taken at rather
+than a placeholder. What a guard still cannot say is whether these are the
+*right* 147, and that is [unchanged](#the-guard).
 
 **What the first slice bounded, kept because it is the worked example of
 writing the number down before the work.** Its seven cases were boot, reading
@@ -148,8 +181,10 @@ cases, plus reading and writing a variable — but between them they spell only
 **three kinds of operation**, which is the count a vocabulary is measured in.
 So the first 2.0.1 vocabulary needed three, not eighteen, and "as
 few as the first slice needs" was a number instead of an intention before a
-line of it was written. The same arithmetic is owed for 205 and has not been
-done.
+line of it was written. The same count is owed for the 147 and has not been
+done — how many kinds of operation they need between them, which is not what
+the enumeration produced: that says which cases, not how wide a vocabulary
+they ask for.
 
 A scenario issue may implement fewer than the list holds and say why — which
 the first one did, leaving `TC_B_06` and `TC_B_09` to the device-model
@@ -158,10 +193,10 @@ row. It may not implement a case outside the list without either extending it
 or changing the rule, which is the whole point of the list existing rather than
 being re-drawn per review. That half is checked: see [the guard](#the-guard).
 
-## 95 of the 205 have no attestation behind them
+## 39 of the 147 have no attestation behind them
 
-The rule is a property of the specification, so it selects the same 205 cases
-whatever CSMS is on the other end. What is *not* uniform across those 205 is the
+The rule is a property of the specification, so it selects the same 147 cases
+whatever CSMS is on the other end. What is *not* uniform across those 147 is the
 thing this suite leans on when a scenario goes red.
 
 The argument runs: CitrineOS is certified, so a red is first of all information
@@ -174,11 +209,16 @@ Support are all **Not Tested**.
 | Profile | mandatory CSMS cases | attested |
 |---|---|---|
 | Core | 104 | yes |
-| Advanced Security | 6 | yes |
-| Smart Charging | 36 | **no** |
-| ISO 15118 Support | 59 | **no** |
+| Advanced Security | 4 | yes |
+| Smart Charging | 21 | **no** |
+| ISO 15118 Support | 36 | **no** |
 
-So for 95 of the 205 the argument is unavailable, and so is its converse: a
+The split of the 147 is 108 attested and 39 not, rather than 104 + 4 against
+21 + 36: eighteen of the Smart Charging cases are ISO 15118 cases too, and no
+case is attested under one profile and unattested under another, because the two
+profiles that carry the attestation share no case with the two that do not.
+
+So for 39 of the 147 the argument is unavailable, and so is its converse: a
 green says the build happens to answer, not that anyone assessed the answer.
 That is not a reason to drop those cases — the rule selects them and the rule is
 about the specification — but it is a reason to say once, here, that a verdict
@@ -258,7 +298,7 @@ committed, and what this page is made of: **case identifiers** (`TC_B_01`),
 **counts**, and our own prose — already the line the OCPP 1.6 scenarios sit on.
 Their text, their tables and the PDFs stay out, for two different reasons.
 
-**The 205-row list may be committed.** This section used to draw the line
+**The 147-row list may be committed.** This section used to draw the line
 somewhere else, and what changed is not an appetite for risk but a reading of
 the licence. The sentence to unlearn:
 
@@ -288,7 +328,7 @@ without permission under this Public License". So the first question is not
 whether `ND` forbids the file. It is whether the file needs permission at all.
 
 **And where it does, §4 grants it.** Take the objection at its strongest — Part
-5 §4 is a database, and 205 rows drawn from one of its columns are a substantial
+5 §4 is a database, and 147 rows drawn from one of its columns are a substantial
 extraction of the contents — and the licence answers in those terms. §4(a): "for
 the avoidance of doubt, Section 2(a)(1) grants You the right to extract, reuse,
 reproduce, and Share all or a substantial portion of the contents of the
@@ -324,7 +364,7 @@ right one for the argument behind it.
 part moved:
 
 - **identifiers, counts, and our own prose about them** — in. Not the Licensed
-  Material as expression, and length is not a term. The 205-row list is on this
+  Material as expression, and length is not a term. The 147-row list is on this
   side; so is any table of identifiers a future page needs; and so, already, is
   [`OCA-OBLIGATIONS.txt`](tck/specs/OCA-OBLIGATIONS.txt), which is the harder
   case and had never been ruled on. Its OCPP 1.6 rows were read out of that
@@ -396,7 +436,7 @@ spec files (each edit costs a re-pin) or in a registry beside the groups (no
 re-pin, a second place to keep in step), and whether the vocabulary is closed or
 open.
 
-**Four profiles and 205 cases retire that objection and replace it with the
+**Four profiles and 147 cases retire that objection and replace it with the
 opposite one.** The axis now has values to be built on, and doing nothing does
 not leave the tree axis-less — it produces `smartcharging-201`,
 `security-201`, `iso15118-201` beside `core-201`, which is N×M buckets where two
@@ -435,11 +475,14 @@ the status `OCA-COVERAGE.md`'s totals carry — measured, then written down. Wha
 stops afterwards is the drift.
 
 **And it cannot check that the rows are all of them.** Direction 2 ranges over
-the file, so a file short of the pool is a file the guard finds complete. That
-is the exposure the coverage target creates and the reason the gap is named in
-[the section that owns it](#the-coverage-target) rather than left for a reader
-to notice: at seven rows out of 205 the build is green on a list that describes
-a seventh of what was promised, and nothing in the tree says so.
+the file, so a file short of the pool is a file the guard finds complete. The
+enumeration closed the gap that exposure was named for — the file holds 147 of
+147 — but it did not close the exposure, and the two are worth telling apart. A
+row deleted from this list is a mandatory case that stops being owed, silently
+and with a green build, exactly as it was when the file held seven. What the
+guard did lose is the shape the drift had for a year: the file is no longer
+short *by construction*, so a short file is now a regression rather than a
+state.
 
 One shape it deliberately does not have, and the precedent is exact — the
 header of `tests/oca-obligations.sh` refuses a per-namespace breakdown in the
@@ -452,13 +495,13 @@ Written out, because 914 pages of test cases make an unwritten line slip. This
 list got shorter when the target grew, which is the point of keeping it: what
 leaves it leaves by a decision someone can find.
 
-- **the 94 conditional rows** — everything the table above counts that the rule
+- **the 85 conditional rows** — everything the table above counts that the rule
   does not select. The reason is [above](#m-only-not-m-plus-the-conditionals-a-csms-declares)
   and it is not size;
-- **a shared 1.6 / 2.0.1 abstraction layer.** One slice was not evidence; 205
+- **a shared 1.6 / 2.0.1 abstraction layer.** One slice was not evidence; 147
   cases may become some, and that is an argument to make once the second
   vocabulary exists rather than a reason to generalise ahead of it;
-- **charging-station-role testing** — the 177 rows the matrix marks blank for
+- **charging-station-role testing** — the 226 rows the matrix marks blank for
   this role, and a milestone of its own;
 - **any claim that passing this harness is OCA certification.** Certification
   runs through an accredited laboratory, a declaration form and the official
@@ -468,5 +511,5 @@ leaves it leaves by a decision someone can find.
 A `Reusable State` fixture mechanism used to be on this list, named as a gap
 rather than built, on the grounds that inlining a state per scenario was cheaper
 than a mechanism. At seven scenarios it was. Part 6 defines 13 of them for the
-CSMS role, and at 205 cases the copies drift and each one reads reasonably, so
+CSMS role, and at 147 cases the copies drift and each one reads reasonably, so
 it is now in scope and has an issue.

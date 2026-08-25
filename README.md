@@ -1,7 +1,7 @@
 # open-ocpp-tck
 
 An OCPP conformance TCK you point at **your** CSMS: 47 OCPP 1.6 certification
-scenarios, and the 7 of OCPP 2.0.1 selected so far.
+scenarios, and 7 of the 147 OCPP 2.0.1 cases the selection rule owes.
 
 It brings a real charge point (the [`ocpp-cp-simulator`][sim] CLI, in a
 digest-pinned container), drives it through 54 certification scenarios, parses
@@ -22,11 +22,11 @@ The `cert16-` prefix is a protocol version, not decoration. Its counterpart is
 `cert201-`, and those scenarios trace the same way to OCPP 2.0.1's Parts 5 and
 6 — `cert201-tcb01-…` to `TC_B_01`. Which 2.0.1 cases may be here at all is a
 written rule, [`OCA-201-SELECTION.md`](OCA-201-SELECTION.md) — role CSMS,
-status mandatory, on every certification profile, which is 205 cases — and the
+status mandatory, on every certification profile, which is 147 cases — and the
 resulting list is [`tck/specs/OCA-201-SLICE.txt`](tck/specs/OCA-201-SLICE.txt),
-where 7 of them are written down so far, all implemented. A `cert201-`
-scenario needs a driver that speaks the protocol; one that does not says so per
-scenario in its scope table, and nothing else about it changes.
+where all 147 are written down: 7 implemented, 140 declined against 22 reasons.
+A `cert201-` scenario needs a driver that speaks the protocol; one that does not
+says so per scenario in its scope table, and nothing else about it changes.
 
 [sim]: https://github.com/shiv3/ocpp-cp-simulator
 [octt]: https://openchargealliance.org/certificationocpp/certification-ocpp-1-6/

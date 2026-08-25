@@ -8,17 +8,25 @@
 # reason: two copies of a list drift, and the prose copy is the one nobody
 # diffs.
 #
-# THE RULE SELECTS 205 CASES AND THIS FILE HOLDS SEVEN. That gap is the
-# coverage milestone's next issue, not an oversight, and OCA-201-SELECTION.md's
-# "The coverage target" section owns it: the identifiers behind the 205 have
-# never been enumerated -- the per-profile totals were counted, the rows were
-# not. Whether a 205-row file may be committed at all was the other half of
-# that gap, and it is settled: it may. CC BY-ND limits modification, not
-# extent, and a list of case identifiers modifies nothing -- the argument, and
-# the one risk it accepts, are in that page's "What may be committed here, and
-# what may not". Until the enumeration lands this file still BOUNDS what may be
-# implemented -- that is the guard's direction 1, and it does not care how long
-# the file is. What is temporarily untrue is that the file IS the pool.
+# THE RULE SELECTS 147 CASES AND THIS FILE HOLDS 147. It stopped being a
+# bounding list and became the pool when the matrix was re-parsed to keep the
+# case identifier per row rather than only the per-profile count -- Part 5
+# Edition 4, 2025-12-03, by the method on that page. Note what the same run
+# corrected: the totals it replaced summed to 205, because on three of the four
+# profiles a row had been counted as selected when `M` appeared in EITHER
+# status column rather than in the CSMS one -- the reading that reproduces two
+# of those three profiles' old numbers exactly, and the third to within one
+# row. Whether a list this long may be committed at all was the other half of
+# the gap, and it is settled: it may. CC BY-ND limits modification, not extent,
+# and a list of case identifiers modifies nothing -- the argument, and the one
+# risk it accepts, are in that page's "What may be committed here, and what may
+# not".
+#
+# 147 CASES, 165 ROWS OF THE MATRIX. A case can be listed under two profiles,
+# and a case is a case, so it gets one row -- which is also all this file can
+# hold, since the guard refuses a second row for a case already listed. Which
+# cases those are, and why the two numbers differ by 18 rather than by 37, is
+# on that page with the rest of the derivation.
 #
 # Hand-maintained, and guarded: tests/oca-201-slice.sh reads it against
 # tck/specs/ASSERT-INVENTORY.txt in both directions, so a `cert201-` scenario
@@ -30,15 +38,33 @@
 # repository does not contain -- a reference is cited by URL and not committed,
 # and OCA-201-SELECTION.md's licensing section says why that is our rule rather
 # than the licence's -- and the method for redoing the reading is written down
-# on that same page. Note the second half: the guard ranges over this file, so a file
-# short of the pool is a file it finds complete. What is checked is that the
-# list and the scenarios stop drifting afterwards.
+# on that same page, now with the edition it was last run against. Note the
+# second half: the guard ranges over this file, so a file short of the pool is
+# a file it finds complete, and that this file is no longer short is a claim
+# only a re-run of the parse can check. What is checked is that the list and
+# the scenarios stop drifting afterwards.
+#
+# NOTHING OF THE REFERENCE'S OWN WORDS IS HERE, which is what leaves a row on
+# the identifiers-and-counts side of the line that page draws. A reason below
+# says what THIS suite lacks; none of them says what a case asks for.
 #
 # A row is three fields, the third free text:
 #
 #   <OCA case>  <templateId | not-implemented>  <why not, on a not-implemented
 #                                                row; omitted on an implemented
 #                                                one, where the scenario says it>
+#
+# A REASON IS WRITTEN PER GROUP, NOT PER CASE, and the repetition below is that
+# rather than a placeholder. Twenty-two reasons cover the 140 declined rows,
+# because that is the granularity the decision was actually taken at: a block's
+# cases are blocked by one missing thing -- an operation the
+# `CsmsOperation201` union does not have, a station-side event no simulator
+# template can produce, a transport seam that does not exist. Splitting one
+# reason into ten copies with the case id changed would read as ten decisions
+# and be one. If a case is blocked by something its neighbours are not, it gets
+# its own row text; four do -- TC_A_12, TC_B_58, TC_F_27 and TC_G_20. TC_K_10
+# has one too, for the other reason a row can be alone: the blocker is its
+# neighbours', the profile that makes it mandatory is not.
 #
 # WHICH RESET OUTCOME IS WHICH CASE IS OUR READING, not something read off Part
 # 6. `ResetStatusEnumType` has three values and the Reset block has three
@@ -47,10 +73,150 @@
 # it moves three rows here and three templateIds there.
 #
 # case / scenario / why not
+TC_A_01    not-implemented    no transport seam: a driver names one ws:// endpoint and the simulator connects to it, so a credential, a security profile or a TLS version is not a thing a scenario can vary.
+TC_A_02    not-implemented    no transport seam: a driver names one ws:// endpoint and the simulator connects to it, so a credential, a security profile or a TLS version is not a thing a scenario can vary.
+TC_A_03    not-implemented    no transport seam: a driver names one ws:// endpoint and the simulator connects to it, so a credential, a security profile or a TLS version is not a thing a scenario can vary.
+TC_A_04    not-implemented    no transport seam: a driver names one ws:// endpoint and the simulator connects to it, so a credential, a security profile or a TLS version is not a thing a scenario can vary.
+TC_A_06    not-implemented    no transport seam: a driver names one ws:// endpoint and the simulator connects to it, so a credential, a security profile or a TLS version is not a thing a scenario can vary.
+TC_A_07    not-implemented    Advanced Security. Same missing transport seam as this block's Core rows, plus a client certificate the pinned simulator has nowhere to hold.
+TC_A_08    not-implemented    Advanced Security. Same missing transport seam as this block's Core rows, plus a client certificate the pinned simulator has nowhere to hold.
+TC_A_09    not-implemented    no transport seam: a driver names one ws:// endpoint and the simulator connects to it, so a credential, a security profile or a TLS version is not a thing a scenario can vary.
+TC_A_10    not-implemented    no transport seam: a driver names one ws:// endpoint and the simulator connects to it, so a credential, a security profile or a TLS version is not a thing a scenario can vary.
+TC_A_11    not-implemented    Advanced Security. Same missing transport seam as this block's Core rows, plus a client certificate the pinned simulator has nowhere to hold.
+TC_A_12    not-implemented    ISO 15118 Support. V2G certificate material on top of the transport seam this block's Core rows already need.
+TC_A_14    not-implemented    Advanced Security. Same missing transport seam as this block's Core rows, plus a client certificate the pinned simulator has nowhere to hold.
 TC_B_01    cert201-tcb01-cold-boot
 TC_B_06    cert201-tcb06-get-variables
 TC_B_09    cert201-tcb09-set-variables
 TC_B_20    cert201-tcb20-reset-accepted
 TC_B_21    cert201-tcb21-reset-scheduled
 TC_B_22    cert201-tcb22-reset-rejected
+TC_B_42    not-implemented    setting a network connection profile is CSMS-initiated and CsmsOperation201 has no member for it, so no driver can be asked for it.
+TC_B_44    not-implemented    setting a network connection profile is CSMS-initiated and CsmsOperation201 has no member for it, so no driver can be asked for it.
+TC_B_58    not-implemented    the subprotocol is negotiated by the simulator during connect, before any scenario runs, and nothing in tck/sim.ts can offer a different one.
+TC_C_02    not-implemented    an idToken has to be presented at the station and, for the stop cases, a transaction has to be running; the pinned image ships no cert201- template, so nothing here drives that side.
+TC_C_06    not-implemented    an idToken has to be presented at the station and, for the stop cases, a transaction has to be running; the pinned image ships no cert201- template, so nothing here drives that side.
+TC_C_07    not-implemented    an idToken has to be presented at the station and, for the stop cases, a transaction has to be running; the pinned image ships no cert201- template, so nothing here drives that side.
+TC_C_08    not-implemented    an idToken has to be presented at the station and, for the stop cases, a transaction has to be running; the pinned image ships no cert201- template, so nothing here drives that side.
+TC_C_20    not-implemented    an idToken has to be presented at the station and, for the stop cases, a transaction has to be running; the pinned image ships no cert201- template, so nothing here drives that side.
+TC_C_37    not-implemented    an idToken has to be presented at the station and, for the stop cases, a transaction has to be running; the pinned image ships no cert201- template, so nothing here drives that side.
+TC_C_38    not-implemented    an idToken has to be presented at the station and, for the stop cases, a transaction has to be running; the pinned image ships no cert201- template, so nothing here drives that side.
+TC_C_39    not-implemented    an idToken has to be presented at the station and, for the stop cases, a transaction has to be running; the pinned image ships no cert201- template, so nothing here drives that side.
+TC_C_47    not-implemented    an idToken has to be presented at the station and, for the stop cases, a transaction has to be running; the pinned image ships no cert201- template, so nothing here drives that side.
+TC_C_48    not-implemented    an idToken has to be presented at the station and, for the stop cases, a transaction has to be running; the pinned image ships no cert201- template, so nothing here drives that side.
+TC_C_49    not-implemented    an idToken has to be presented at the station and, for the stop cases, a transaction has to be running; the pinned image ships no cert201- template, so nothing here drives that side.
+TC_C_50    not-implemented    ISO 15118 Support. Contract certificate material presented at the station, which is this block's Core blocker plus certificates.
+TC_C_51    not-implemented    ISO 15118 Support. Contract certificate material presented at the station, which is this block's Core blocker plus certificates.
+TC_C_52    not-implemented    ISO 15118 Support. Contract certificate material presented at the station, which is this block's Core blocker plus certificates.
+TC_E_01    not-implemented    the transaction lifecycle is driven from the station and the pinned image ships no cert201- template to drive it; these are also the rows Part 6's Reusable State fixtures exist for, and this suite has no fixture mechanism.
+TC_E_02    not-implemented    the transaction lifecycle is driven from the station and the pinned image ships no cert201- template to drive it; these are also the rows Part 6's Reusable State fixtures exist for, and this suite has no fixture mechanism.
+TC_E_03    not-implemented    the transaction lifecycle is driven from the station and the pinned image ships no cert201- template to drive it; these are also the rows Part 6's Reusable State fixtures exist for, and this suite has no fixture mechanism.
+TC_E_04    not-implemented    the transaction lifecycle is driven from the station and the pinned image ships no cert201- template to drive it; these are also the rows Part 6's Reusable State fixtures exist for, and this suite has no fixture mechanism.
+TC_E_07    not-implemented    the transaction lifecycle is driven from the station and the pinned image ships no cert201- template to drive it; these are also the rows Part 6's Reusable State fixtures exist for, and this suite has no fixture mechanism.
+TC_E_08    not-implemented    the transaction lifecycle is driven from the station and the pinned image ships no cert201- template to drive it; these are also the rows Part 6's Reusable State fixtures exist for, and this suite has no fixture mechanism.
+TC_E_09    not-implemented    the transaction lifecycle is driven from the station and the pinned image ships no cert201- template to drive it; these are also the rows Part 6's Reusable State fixtures exist for, and this suite has no fixture mechanism.
+TC_E_10    not-implemented    the transaction lifecycle is driven from the station and the pinned image ships no cert201- template to drive it; these are also the rows Part 6's Reusable State fixtures exist for, and this suite has no fixture mechanism.
+TC_E_11    not-implemented    the transaction lifecycle is driven from the station and the pinned image ships no cert201- template to drive it; these are also the rows Part 6's Reusable State fixtures exist for, and this suite has no fixture mechanism.
+TC_E_12    not-implemented    the transaction lifecycle is driven from the station and the pinned image ships no cert201- template to drive it; these are also the rows Part 6's Reusable State fixtures exist for, and this suite has no fixture mechanism.
+TC_E_14    not-implemented    the transaction lifecycle is driven from the station and the pinned image ships no cert201- template to drive it; these are also the rows Part 6's Reusable State fixtures exist for, and this suite has no fixture mechanism.
+TC_E_15    not-implemented    the transaction lifecycle is driven from the station and the pinned image ships no cert201- template to drive it; these are also the rows Part 6's Reusable State fixtures exist for, and this suite has no fixture mechanism.
+TC_E_16    not-implemented    the transaction lifecycle is driven from the station and the pinned image ships no cert201- template to drive it; these are also the rows Part 6's Reusable State fixtures exist for, and this suite has no fixture mechanism.
+TC_E_17    not-implemented    the transaction lifecycle is driven from the station and the pinned image ships no cert201- template to drive it; these are also the rows Part 6's Reusable State fixtures exist for, and this suite has no fixture mechanism.
+TC_E_19    not-implemented    the transaction lifecycle is driven from the station and the pinned image ships no cert201- template to drive it; these are also the rows Part 6's Reusable State fixtures exist for, and this suite has no fixture mechanism.
+TC_E_20    not-implemented    the transaction lifecycle is driven from the station and the pinned image ships no cert201- template to drive it; these are also the rows Part 6's Reusable State fixtures exist for, and this suite has no fixture mechanism.
+TC_E_21    not-implemented    the transaction lifecycle is driven from the station and the pinned image ships no cert201- template to drive it; these are also the rows Part 6's Reusable State fixtures exist for, and this suite has no fixture mechanism.
+TC_E_22    not-implemented    the transaction lifecycle is driven from the station and the pinned image ships no cert201- template to drive it; these are also the rows Part 6's Reusable State fixtures exist for, and this suite has no fixture mechanism.
+TC_E_26    not-implemented    the transaction lifecycle is driven from the station and the pinned image ships no cert201- template to drive it; these are also the rows Part 6's Reusable State fixtures exist for, and this suite has no fixture mechanism.
+TC_E_38    not-implemented    the transaction lifecycle is driven from the station and the pinned image ships no cert201- template to drive it; these are also the rows Part 6's Reusable State fixtures exist for, and this suite has no fixture mechanism.
+TC_E_39    not-implemented    the transaction lifecycle is driven from the station and the pinned image ships no cert201- template to drive it; these are also the rows Part 6's Reusable State fixtures exist for, and this suite has no fixture mechanism.
+TC_E_53    not-implemented    the transaction lifecycle is driven from the station and the pinned image ships no cert201- template to drive it; these are also the rows Part 6's Reusable State fixtures exist for, and this suite has no fixture mechanism.
+TC_F_01    not-implemented    RequestStartTransaction is not one of CsmsOperation201's members, and the cable-plugin half is station-side with no template to drive it.
+TC_F_02    not-implemented    RequestStartTransaction is not one of CsmsOperation201's members, and the cable-plugin half is station-side with no template to drive it.
+TC_F_03    not-implemented    RequestStartTransaction is not one of CsmsOperation201's members, and the cable-plugin half is station-side with no template to drive it.
+TC_F_04    not-implemented    RequestStartTransaction is not one of CsmsOperation201's members, and the cable-plugin half is station-side with no template to drive it.
 TC_F_20    cert201-tcf20-heartbeat
+TC_F_27    not-implemented    TriggerMessage is not one of CsmsOperation201's members, so there is no request to make.
+TC_G_03    not-implemented    ChangeAvailability is not one of CsmsOperation201's members; adding it is how that union grows, on the terms its note in tck/driver.ts sets.
+TC_G_04    not-implemented    ChangeAvailability is not one of CsmsOperation201's members; adding it is how that union grows, on the terms its note in tck/driver.ts sets.
+TC_G_05    not-implemented    ChangeAvailability is not one of CsmsOperation201's members; adding it is how that union grows, on the terms its note in tck/driver.ts sets.
+TC_G_06    not-implemented    ChangeAvailability is not one of CsmsOperation201's members; adding it is how that union grows, on the terms its note in tck/driver.ts sets.
+TC_G_07    not-implemented    ChangeAvailability is not one of CsmsOperation201's members; adding it is how that union grows, on the terms its note in tck/driver.ts sets.
+TC_G_08    not-implemented    ChangeAvailability is not one of CsmsOperation201's members; adding it is how that union grows, on the terms its note in tck/driver.ts sets.
+TC_G_11    not-implemented    ChangeAvailability is not one of CsmsOperation201's members; adding it is how that union grows, on the terms its note in tck/driver.ts sets.
+TC_G_14    not-implemented    ChangeAvailability is not one of CsmsOperation201's members; adding it is how that union grows, on the terms its note in tck/driver.ts sets.
+TC_G_17    not-implemented    ChangeAvailability is not one of CsmsOperation201's members; adding it is how that union grows, on the terms its note in tck/driver.ts sets.
+TC_G_20    not-implemented    the station has to report a failed connector lock, which is a condition nothing here can stage and no cert201- template produces; driving the unlock that provokes it would need an operation the CsmsOperation201 union does not have either.
+TC_J_01    not-implemented    meter values reach the CSMS from the station, on a clock or inside a transaction, and the pinned image ships no cert201- template to produce either.
+TC_J_02    not-implemented    meter values reach the CSMS from the station, on a clock or inside a transaction, and the pinned image ships no cert201- template to produce either.
+TC_J_03    not-implemented    meter values reach the CSMS from the station, on a clock or inside a transaction, and the pinned image ships no cert201- template to produce either.
+TC_J_04    not-implemented    meter values reach the CSMS from the station, on a clock or inside a transaction, and the pinned image ships no cert201- template to produce either.
+TC_J_07    not-implemented    meter values reach the CSMS from the station, on a clock or inside a transaction, and the pinned image ships no cert201- template to produce either.
+TC_J_08    not-implemented    meter values reach the CSMS from the station, on a clock or inside a transaction, and the pinned image ships no cert201- template to produce either.
+TC_J_09    not-implemented    meter values reach the CSMS from the station, on a clock or inside a transaction, and the pinned image ships no cert201- template to produce either.
+TC_J_10    not-implemented    meter values reach the CSMS from the station, on a clock or inside a transaction, and the pinned image ships no cert201- template to produce either.
+TC_J_11    not-implemented    meter values reach the CSMS from the station, on a clock or inside a transaction, and the pinned image ships no cert201- template to produce either.
+TC_K_01    not-implemented    Smart Charging and ISO 15118 Support. Charging profile operations are CSMS-initiated and none is among CsmsOperation201's members.
+TC_K_03    not-implemented    Smart Charging and ISO 15118 Support. Charging profile operations are CSMS-initiated and none is among CsmsOperation201's members.
+TC_K_04    not-implemented    Smart Charging and ISO 15118 Support. Charging profile operations are CSMS-initiated and none is among CsmsOperation201's members.
+TC_K_05    not-implemented    Smart Charging and ISO 15118 Support. Charging profile operations are CSMS-initiated and none is among CsmsOperation201's members.
+TC_K_06    not-implemented    Smart Charging and ISO 15118 Support. Charging profile operations are CSMS-initiated and none is among CsmsOperation201's members.
+TC_K_08    not-implemented    Smart Charging and ISO 15118 Support. Charging profile operations are CSMS-initiated and none is among CsmsOperation201's members.
+TC_K_10    not-implemented    ISO 15118 Support, where Smart Charging leaves it conditional. Same charging profile operation the rows above need.
+TC_K_15    not-implemented    Smart Charging. Charging profile operations are CSMS-initiated and none is among CsmsOperation201's members.
+TC_K_19    not-implemented    Smart Charging and ISO 15118 Support. Charging profile operations are CSMS-initiated and none is among CsmsOperation201's members.
+TC_K_29    not-implemented    Smart Charging and ISO 15118 Support. Charging profile operations are CSMS-initiated and none is among CsmsOperation201's members.
+TC_K_30    not-implemented    Smart Charging and ISO 15118 Support. Charging profile operations are CSMS-initiated and none is among CsmsOperation201's members.
+TC_K_31    not-implemented    Smart Charging and ISO 15118 Support. Charging profile operations are CSMS-initiated and none is among CsmsOperation201's members.
+TC_K_32    not-implemented    Smart Charging and ISO 15118 Support. Charging profile operations are CSMS-initiated and none is among CsmsOperation201's members.
+TC_K_33    not-implemented    Smart Charging and ISO 15118 Support. Charging profile operations are CSMS-initiated and none is among CsmsOperation201's members.
+TC_K_34    not-implemented    Smart Charging and ISO 15118 Support. Charging profile operations are CSMS-initiated and none is among CsmsOperation201's members.
+TC_K_35    not-implemented    Smart Charging and ISO 15118 Support. Charging profile operations are CSMS-initiated and none is among CsmsOperation201's members.
+TC_K_36    not-implemented    Smart Charging and ISO 15118 Support. Charging profile operations are CSMS-initiated and none is among CsmsOperation201's members.
+TC_K_37    not-implemented    Smart Charging. Charging profile operations are CSMS-initiated and none is among CsmsOperation201's members.
+TC_K_43    not-implemented    Smart Charging and ISO 15118 Support. Charging profile operations are CSMS-initiated and none is among CsmsOperation201's members.
+TC_K_44    not-implemented    Smart Charging and ISO 15118 Support. Charging profile operations are CSMS-initiated and none is among CsmsOperation201's members.
+TC_K_53    not-implemented    ISO 15118 Support. These turn on an EV-side exchange the simulator does not model at all, ahead of any charging profile operation.
+TC_K_55    not-implemented    ISO 15118 Support. These turn on an EV-side exchange the simulator does not model at all, ahead of any charging profile operation.
+TC_K_57    not-implemented    ISO 15118 Support. These turn on an EV-side exchange the simulator does not model at all, ahead of any charging profile operation.
+TC_K_58    not-implemented    ISO 15118 Support. These turn on an EV-side exchange the simulator does not model at all, ahead of any charging profile operation.
+TC_K_59    not-implemented    ISO 15118 Support. These turn on an EV-side exchange the simulator does not model at all, ahead of any charging profile operation.
+TC_K_60    not-implemented    Smart Charging and ISO 15118 Support. Charging profile operations are CSMS-initiated and none is among CsmsOperation201's members.
+TC_K_70    not-implemented    Smart Charging. Charging profile operations are CSMS-initiated and none is among CsmsOperation201's members.
+TC_L_01    not-implemented    UpdateFirmware is not one of CsmsOperation201's members, and the station then has to fetch and install an image, which needs a file server this suite does not stand up.
+TC_L_04    not-implemented    UpdateFirmware is not one of CsmsOperation201's members, and the station then has to fetch and install an image, which needs a file server this suite does not stand up.
+TC_L_05    not-implemented    UpdateFirmware is not one of CsmsOperation201's members, and the station then has to fetch and install an image, which needs a file server this suite does not stand up.
+TC_L_06    not-implemented    UpdateFirmware is not one of CsmsOperation201's members, and the station then has to fetch and install an image, which needs a file server this suite does not stand up.
+TC_L_07    not-implemented    UpdateFirmware is not one of CsmsOperation201's members, and the station then has to fetch and install an image, which needs a file server this suite does not stand up.
+TC_L_08    not-implemented    UpdateFirmware is not one of CsmsOperation201's members, and the station then has to fetch and install an image, which needs a file server this suite does not stand up.
+TC_L_09    not-implemented    UpdateFirmware is not one of CsmsOperation201's members, and the station then has to fetch and install an image, which needs a file server this suite does not stand up.
+TC_L_10    not-implemented    UpdateFirmware is not one of CsmsOperation201's members, and the station then has to fetch and install an image, which needs a file server this suite does not stand up.
+TC_L_11    not-implemented    UpdateFirmware is not one of CsmsOperation201's members, and the station then has to fetch and install an image, which needs a file server this suite does not stand up.
+TC_L_13    not-implemented    UpdateFirmware is not one of CsmsOperation201's members, and the station then has to fetch and install an image, which needs a file server this suite does not stand up.
+TC_M_01    not-implemented    installing, listing and deleting certificates are CSMS-initiated and none is among CsmsOperation201's members; each also needs certificate material this suite does not generate.
+TC_M_02    not-implemented    installing, listing and deleting certificates are CSMS-initiated and none is among CsmsOperation201's members; each also needs certificate material this suite does not generate.
+TC_M_03    not-implemented    ISO 15118 Support. The same certificate operations as this block's Core rows, with V2G and MO material on top.
+TC_M_04    not-implemented    ISO 15118 Support. The same certificate operations as this block's Core rows, with V2G and MO material on top.
+TC_M_05    not-implemented    installing, listing and deleting certificates are CSMS-initiated and none is among CsmsOperation201's members; each also needs certificate material this suite does not generate.
+TC_M_13    not-implemented    installing, listing and deleting certificates are CSMS-initiated and none is among CsmsOperation201's members; each also needs certificate material this suite does not generate.
+TC_M_14    not-implemented    ISO 15118 Support. The same certificate operations as this block's Core rows, with V2G and MO material on top.
+TC_M_15    not-implemented    ISO 15118 Support. The same certificate operations as this block's Core rows, with V2G and MO material on top.
+TC_M_16    not-implemented    ISO 15118 Support. The same certificate operations as this block's Core rows, with V2G and MO material on top.
+TC_M_18    not-implemented    installing, listing and deleting certificates are CSMS-initiated and none is among CsmsOperation201's members; each also needs certificate material this suite does not generate.
+TC_M_19    not-implemented    installing, listing and deleting certificates are CSMS-initiated and none is among CsmsOperation201's members; each also needs certificate material this suite does not generate.
+TC_M_20    not-implemented    installing, listing and deleting certificates are CSMS-initiated and none is among CsmsOperation201's members; each also needs certificate material this suite does not generate.
+TC_M_21    not-implemented    installing, listing and deleting certificates are CSMS-initiated and none is among CsmsOperation201's members; each also needs certificate material this suite does not generate.
+TC_M_24    not-implemented    ISO 15118 Support. The same certificate operations as this block's Core rows, with V2G and MO material on top.
+TC_M_26    not-implemented    ISO 15118 Support. The same certificate operations as this block's Core rows, with V2G and MO material on top.
+TC_M_28    not-implemented    ISO 15118 Support. The same certificate operations as this block's Core rows, with V2G and MO material on top.
+TC_N_25    not-implemented    retrieving a log and clearing customer information are CSMS-initiated and neither is among CsmsOperation201's members; the log rows also need somewhere for the station to upload to.
+TC_N_27    not-implemented    retrieving a log and clearing customer information are CSMS-initiated and neither is among CsmsOperation201's members; the log rows also need somewhere for the station to upload to.
+TC_N_28    not-implemented    retrieving a log and clearing customer information are CSMS-initiated and neither is among CsmsOperation201's members; the log rows also need somewhere for the station to upload to.
+TC_N_29    not-implemented    retrieving a log and clearing customer information are CSMS-initiated and neither is among CsmsOperation201's members; the log rows also need somewhere for the station to upload to.
+TC_N_30    not-implemented    retrieving a log and clearing customer information are CSMS-initiated and neither is among CsmsOperation201's members; the log rows also need somewhere for the station to upload to.
+TC_N_31    not-implemented    retrieving a log and clearing customer information are CSMS-initiated and neither is among CsmsOperation201's members; the log rows also need somewhere for the station to upload to.
+TC_N_32    not-implemented    retrieving a log and clearing customer information are CSMS-initiated and neither is among CsmsOperation201's members; the log rows also need somewhere for the station to upload to.
+TC_N_34    not-implemented    retrieving a log and clearing customer information are CSMS-initiated and neither is among CsmsOperation201's members; the log rows also need somewhere for the station to upload to.
+TC_N_35    not-implemented    retrieving a log and clearing customer information are CSMS-initiated and neither is among CsmsOperation201's members; the log rows also need somewhere for the station to upload to.
+TC_N_36    not-implemented    retrieving a log and clearing customer information are CSMS-initiated and neither is among CsmsOperation201's members; the log rows also need somewhere for the station to upload to.
+TC_P_02    not-implemented    both are a DataTransfer sent by the station, and the pinned image ships no cert201- template to send one.
+TC_P_03    not-implemented    both are a DataTransfer sent by the station, and the pinned image ships no cert201- template to send one.
