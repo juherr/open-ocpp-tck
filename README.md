@@ -1,7 +1,7 @@
 # open-ocpp-tck
 
 An OCPP conformance TCK you point at **your** CSMS: 47 OCPP 1.6 certification
-scenarios, and the 7 of OCPP 2.0.1 selected so far.
+scenarios, and 7 of the 147 OCPP 2.0.1 cases the selection rule owes.
 
 It brings a real charge point (the [`ocpp-cp-simulator`][sim] CLI, in a
 digest-pinned container), drives it through 54 certification scenarios, parses
