@@ -188,5 +188,5 @@ GROUP core-201
     OP 201:Reset [9, immediate]
     -> driveState keys=[]
   SPEC cert201-tcf20-heartbeat
-    SIM send {"command":"heartbeat"}
+    OP 201:TriggerMessage [heartbeat]
     -> driveState keys=[]

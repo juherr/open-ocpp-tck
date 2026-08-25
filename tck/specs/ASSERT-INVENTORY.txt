@@ -201,6 +201,10 @@ FILE core-201.ts
     assertCallPayload(·, ·, "received", "Reset", {type:"Immediate",evseId:9}, "Reset.req names the EVSE it was asked to name")
     assertResponseStatus(·, ·, "Reset", "Rejected", "Reset rejected for an EVSE the station does not have", {direction:"received"})
   SPEC cert201-tcf20-heartbeat connector=1 bootWaitSecs=4 holdSecs=8 ocppVersion="OCPP-2.0.1" runsSimTemplate=false
+    assertReceived(·, ·, "TriggerMessage", "TriggerMessage.req received")
+    assertCallPayload(·, ·, "received", "TriggerMessage", {requestedMessage:"Heartbeat"}, "TriggerMessage.req asks for a Heartbeat")
+    assertResponseStatus(·, ·, "TriggerMessage", "Accepted", "TriggerMessage accepted", {direction:"received"})
+    assertLineAfter(·, ·, /Received: \[2,.*"TriggerMessage"/, /Sent: \[2,.*"Heartbeat"/, "requested Heartbeat sent after TriggerMessage")
     assertSent(·, ·, "Heartbeat", "Heartbeat.req sent")
     assertAllAnswered(·, ·, "Heartbeat")
     assertResponseTimestamp(·, ·, "Heartbeat", "currentTime", "Heartbeat.conf carries a currentTime the charge point can parse")
