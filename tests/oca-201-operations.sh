@@ -290,16 +290,21 @@ if [ -s "$selection" ]; then
     echo "    and $driver, and needs no reference. If it cannot run, the" >&2
     echo "    published table has no producer again." >&2
   else
-    missing=0
-    while IFS= read -r row; do
-      case "$row" in '| '*) ;; *) continue ;; esac
-      grep -qF -- "$row" "$selection" || { missing=1; echo "  $row" >&2; }
-    done < "$work/tranches"
-    if [ "$missing" -ne 0 ]; then
+    # BOTH DIRECTIONS, so the block is extracted and diffed rather than each
+    # generated row being looked for. Containment alone accepts a row the
+    # generator no longer emits -- a seventeenth tranche left behind by an
+    # operation leaving the pool reads as a verb still owed, and every row the
+    # generator DOES emit is still there, so nothing goes red. The failure this
+    # direction exists for runs in that direction too.
+    awk '/^\| # \| operation \|/ { inside = 1 } inside && !/^\|/ { exit } inside' \
+      "$selection" > "$work/published"
+    grep '^|' "$work/tranches" > "$work/derived"
+    if ! diff -u "$work/published" "$work/derived" > "$work/tranche-diff"; then
       status=1
       echo "FAIL: $selection's tranche table is not the one the rows derive." >&2
-      echo "  → the rows above are what --tranches prints and the page does not" >&2
-      echo "    carry. Paste them in; the arithmetic is not yours to redo." >&2
+      sed 's/^/  /' "$work/tranche-diff" >&2
+      echo "  → -/+ is published/derived. Paste what --tranches prints; the" >&2
+      echo "    arithmetic is not yours to redo." >&2
     fi
   fi
 fi
