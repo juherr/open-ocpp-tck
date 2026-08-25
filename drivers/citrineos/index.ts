@@ -43,7 +43,7 @@
  * Protocols
  * ---------
  * This is the first driver to declare an OCPP 2.0.1 surface, and it declares
- * it for the v2 line only -- three operations, which is the whole vocabulary
+ * it for the v2 line only -- four operations, which is the whole vocabulary
  * the first `cert201-` slice needs. The 1.6 half is untouched by it: one
  * CitrineOS serves both protocols on one websocket endpoint, dispatching on
  * the negotiated subprotocol, so there is no second deployment, no second
@@ -107,8 +107,8 @@ function capabilitiesFor(variant: CitrineVariant): CsmsCapabilities {
     operations16: new Set(
       CSMS_OPERATION_16_ACTIONS.filter((action) => !unrouted.has(action)),
     ),
-    // ALL THREE OR NONE, and the line decides which. On v2 the three 2.0.1
-    // routes are the whole vocabulary, so there is nothing to subtract. On v1
+    // ALL OR NONE, and the line decides which. On v2 the 2.0.1 routes are the
+    // whole vocabulary, so there is nothing to subtract. On v1
     // the declaration is ABSENT rather than empty, which is the contract's way
     // of saying "this driver, pointed here, does not speak OCPP 2.0.1" -- and
     // that is the honest answer: the 2.0.1 surface has never been measured

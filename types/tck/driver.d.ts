@@ -183,6 +183,20 @@ export declare const CSMS_OPERATION_16_ACTIONS: readonly ["Reset", "UnlockConnec
 /** OCPP 2.0.1 `ResetEnumType`. Not OCPP 1.6's Hard/Soft -- see the note on
  *  the `Reset` arm below. */
 export type ResetType201 = "Immediate" | "OnIdle";
+/**
+ * OCPP 2.0.1 `MessageTriggerEnumType`, whole.
+ *
+ * COMPLETE WHERE THE UNION BELOW IS MINIMAL, and the two rules do not conflict
+ * because they are about different things. "As few as the slice needs" prices
+ * an operation and an optional member: each costs a driver a switch arm or a
+ * field to translate, and each can be added later for nothing. An enum value
+ * costs neither -- a driver passes it through -- and adding one LATER is the
+ * breaking direction for a driver that switches on it exhaustively. So the
+ * eleven are here because widening is the expensive move, not because a
+ * scenario reaches them; {@link MessageTrigger} carries OCPP 1.6's six on the
+ * same terms.
+ */
+export type MessageTrigger201 = "BootNotification" | "FirmwareStatusNotification" | "Heartbeat" | "LogStatusNotification" | "MeterValues" | "PublishFirmwareStatusNotification" | "SignChargingStationCertificate" | "SignCombinedCertificate" | "SignV2GCertificate" | "StatusNotification" | "TransactionEvent";
 /** OCPP 2.0.1 `ComponentType` -- half of a device-model address. */
 export interface Component201 {
     name: string;
@@ -218,12 +232,15 @@ export type CsmsOperation201 = {
 } | {
     action: "SetVariables";
     variables: SetVariableData201[];
+} | {
+    action: "TriggerMessage";
+    requestedMessage: MessageTrigger201;
 };
 export type CsmsOperation201Action = CsmsOperation201["action"];
 /** Every 2.0.1 action name. Same job as {@link CSMS_OPERATION_16_ACTIONS},
  *  and a SECOND list rather than an extension of it -- see the note on
  *  {@link CsmsOperation201}'s `Reset` arm for why the two must not merge. */
-export declare const CSMS_OPERATION_201_ACTIONS: readonly ["Reset", "GetVariables", "SetVariables"];
+export declare const CSMS_OPERATION_201_ACTIONS: readonly ["Reset", "GetVariables", "SetVariables", "TriggerMessage"];
 /**
  * "This CSMS's API cannot express this operation or observation AT ALL."
  *
@@ -519,7 +536,7 @@ export interface CsmsCapabilities {
      * REQUIRED, not `deviceModel?`, and the asymmetry with `operations201?` above
      * is deliberate rather than an oversight. That one is opt-in because its
      * absence has a second meaning -- a 1.6-only driver would otherwise draw
-     * "operation not declared" warnings for three operations it never claimed.
+     * "operation not declared" warnings for operations it never claimed.
      * This is a plain boolean beside `reservations` and `chargingProfiles`, its
      * two siblings, and a driver that forgets it gets a compiler error naming the
      * field instead of a printed capability list that quietly says `false`.

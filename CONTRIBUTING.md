@@ -186,20 +186,20 @@ answer. If you read those fields yourself rather than through the runner, use
 ## Speaking OCPP 2.0.1 (optional)
 
 Everything above is OCPP 1.6. If your CSMS also speaks 2.0.1, there is a
-**second** operation vocabulary — `CsmsOperation201`, **three** members:
-`Reset`, `GetVariables`, `SetVariables`.
+**second** operation vocabulary — `CsmsOperation201`.
 
-Three, not eighteen and not six, because
-[`OCA-201-SELECTION.md`](OCA-201-SELECTION.md)'s first slice was seven
-certification cases and only those three are CSMS-*initiated*.
-`BootNotification` and `Heartbeat` are watched on the wire, so they need no
-operation at all.
+It is deliberately small, and it is small by counting rather than by taste:
+[`OCA-201-SELECTION.md`](OCA-201-SELECTION.md) selects the certification cases
+this suite may implement, and the vocabulary carries what those cases actually
+oblige a CSMS to *send*. A case that only watches charge-point-initiated
+traffic needs no operation at all, and 57 of the selected 147 are that.
 
-The rule that page states now selects 147 cases rather than seven, so this
-vocabulary will grow — in tranches sized by what unblocks the most cases, and
-still by counting rather than by adding the rest of the protocol. **Three is
-what it is today**; check the union in `tck/driver.ts` rather than this
-sentence before writing a driver against it.
+**This page does not spell the member list or its size**, because the union is
+where both live and a second copy of them here would be the copy that goes
+stale. `CSMS_OPERATION_201_ACTIONS` in `tck/driver.ts` is the list; the note
+above it says how the count was arrived at. It will grow —
+[`tck/specs/OCA-201-OPERATIONS.txt`](tck/specs/OCA-201-OPERATIONS.txt) is the
+measurement of how far, and the selection page's tranche table is the order.
 
 It is a **separate closed union**, not an extension of the first, and the
 consequence is the point: **a 1.6-only driver implements nothing here and
@@ -227,6 +227,9 @@ operations201: {
         return post(`/v201/cp/${cpId}/get-variables`, { getVariableData: op.variables });
       case "SetVariables":
         return post(`/v201/cp/${cpId}/set-variables`, { setVariableData: op.variables });
+      // ... one arm per member of the union. `assertNever` below is what tells
+      // you which ones you still owe: it stops compiling until every arm is
+      // handled, so this sketch is deliberately not the whole switch.
       default:
         return assertNever(op, "acme.execute201");
     }

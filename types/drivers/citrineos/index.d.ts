@@ -41,7 +41,7 @@
  * Protocols
  * ---------
  * This is the first driver to declare an OCPP 2.0.1 surface, and it declares
- * it for the v2 line only -- three operations, which is the whole vocabulary
+ * it for the v2 line only -- four operations, which is the whole vocabulary
  * the first `cert201-` slice needs. The 1.6 half is untouched by it: one
  * CitrineOS serves both protocols on one websocket endpoint, dispatching on
  * the negotiated subprotocol, so there is no second deployment, no second

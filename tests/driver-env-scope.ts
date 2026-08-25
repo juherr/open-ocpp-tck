@@ -36,6 +36,7 @@ import {
 import { csmsDriver as steve } from "../drivers/steve/index";
 import { STEVE_SCOPE } from "../drivers/steve/scope";
 import {
+  CSMS_OPERATION_201_ACTIONS,
   driverCapabilities,
   driverExpectedFailures,
   driverScope,
@@ -212,10 +213,17 @@ check(
     "run has ever measured against the v1.9.1 line. Absent means 'does not " +
     "speak it'; an empty set would claim it was measured and found nothing.",
 );
+// THE WHOLE VOCABULARY, read from the contract rather than spelled. A literal
+// here was `3`, and it went red the day a fourth operation was added -- which
+// looks like the guard working and is not: what it protects is that v2 declares
+// the vocabulary where v1 declares none, and the size of that vocabulary is
+// tck/driver.ts's to decide. A guard that has to be edited to stay true about
+// something it does not own is a guard that gets edited without being read.
 check(
-  v2Caps?.operations201?.size === 3,
+  v2Caps?.operations201?.size === CSMS_OPERATION_201_ACTIONS.length,
   `capabilities resolved for v2 declare ${v2Caps?.operations201?.size ?? "no"} ` +
-    "OCPP 2.0.1 operation(s) rather than three, so the two resolutions do not " +
+    `OCPP 2.0.1 operation(s) rather than the contract's ` +
+    `${CSMS_OPERATION_201_ACTIONS.length}, so the two resolutions do not ` +
     "differ as the scope rows above say they do.",
 );
 

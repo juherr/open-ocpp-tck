@@ -2188,7 +2188,7 @@
 +    // asymmetry between the two vocabularies. Absent means "this driver does
 +    // not speak 2.0.1", which is the state every driver here is in and is not
 +    // a finding -- run unconditionally, the rule above would cost a 1.6-only
-+    // driver three warnings for operations it never claimed, which is exactly
++    // driver warnings for operations it never claimed, which is exactly
 +    // the zero cost the opt-in shape exists to provide.
 +    if (capabilities.operations201) {
 +      checkVocabulary(

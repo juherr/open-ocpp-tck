@@ -185,6 +185,18 @@ function route201(op: CsmsOperation201): CitrineRoute {
         body: { setVariableData: op.variables },
       };
 
+    // Configuration's, like 1.6's -- read off the same decorators, and the one
+    // action of the four whose module is the same on both lines. `evse` is
+    // omitted because the contract has no member for it: TC_F_20 triggers a
+    // station-wide Heartbeat, and tck/driver.ts's NOT BUILT note is where the
+    // member arrives if a case ever scopes one to an EVSE.
+    case "TriggerMessage":
+      return {
+        module: "configuration",
+        action: "triggerMessage",
+        body: { requestedMessage: op.requestedMessage },
+      };
+
     default:
       return assertNever(op, "citrineos.operations201.execute");
   }

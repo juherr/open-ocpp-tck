@@ -317,15 +317,21 @@ carries all three to the wire.
 
 ## OCPP 2.0.1
 
-The version is a path segment, so the 2.0.1 half of the contract is the same
-three moves through the same client — `/ocpp/2.0.1/…` instead of
-`/ocpp/1.6/…`:
+The version is a path segment, so the 2.0.1 half of the contract goes through
+the same client — `/ocpp/2.0.1/…` instead of `/ocpp/1.6/…`. The routing is
+`route201()` in `requests.ts`, and this table is a second spelling of its
+`switch` kept for readers rather than for the code:
 
 | Contract operation | Endpoint |
 |---|---|
 | `Reset` | `configuration/reset` |
 | `GetVariables` | `monitoring/getVariables` |
 | `SetVariables` | `monitoring/setVariables` |
+| `TriggerMessage` | `configuration/triggerMessage` |
+
+The module is CitrineOS's rather than the specification's, read off the
+`@AsMessageEndpoint` decorators in the pinned image; `TriggerMessage` is the
+one action here whose module is the same on both protocols.
 
 Declared for the **v2 line only**. Nobody has pointed a 2.0.1 station at
 v1.9.1 here, and a driver declaring a surface on the strength of a version
