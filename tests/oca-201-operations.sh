@@ -5,8 +5,9 @@
 # PROPERTY: `tck/specs/OCA-201-OPERATIONS.txt` answers "how wide a vocabulary do
 # the selected cases ask for" for exactly the cases
 # `tck/specs/OCA-201-SLICE.txt` selects, its answers do not contradict the
-# reasons that file gives, and no row claims a case implemented that the
-# contract cannot express. Three directions, and none of them compares this file
+# reasons that file gives, no row claims a case implemented that the contract
+# cannot express, and the table OCA-201-SELECTION.md spends them in is derived
+# from them. Four directions, and none of them compares this file
 # to a literal written in its own header -- the shape tests/oca-obligations.sh
 # refuses in writing, because a number checked against a second spelling of
 # itself is checked against nothing.
@@ -24,8 +25,9 @@
 #      operation and drive none. This is what turns those reasons into a
 #      cross-check instead of a second, unmeasured source.
 #
-#      WHICH NAMES IT LOOKS FOR, AND THE HOLE THAT LEAVES. The search set is
-#      this file's own value column plus `CSMS_OPERATION_201_ACTIONS`, so the
+#      WHICH NAMES IT LOOKS FOR, AND THE HOLE THAT LEAVES. The search set is the
+#      operations table's own value column plus `CSMS_OPERATION_201_ACTIONS`,
+#      so the
 #      guard carries no vocabulary of its own to go stale. The cost: an
 #      operation spelled NOWHERE in either -- because it is wrong on every row
 #      that should carry it -- is a word this direction does not look for, and a
@@ -34,6 +36,9 @@
 #      row from the reference, and nothing in the gate can do that.
 #      `CsmsOperation201`, which 66 reasons name, is outside the set for the
 #      same reason and by the same accident -- not by a rule.
+#
+#   4. THE PUBLISHED TRANCHE TABLE IS THE ONE THE ROWS DERIVE. Its own
+#      paragraph below, because the reason it exists is that it failed.
 #
 #   3. AN IMPLEMENTED ROW'S OPERATIONS EXIST IN THE CONTRACT. If the slice says
 #      a scenario implements a case, and the case needs an operation
@@ -120,16 +125,24 @@ fi
 # English word in unrelated reasons, so the run went red naming eight innocent
 # rows and never the typo.
 #
-# THE CASE-ONLY ARM IS WHY THIS IS THREE RULES AND NOT A REGEX. `None` is a
-# capitalised word and an operation name is a capitalised word: no shape tells
-# them apart, so the sentinel is matched exactly and anything that differs from
-# it only by case is refused by name. What still gets through is a value that
+# THE CASE ARM IS WHY THIS IS NOT A REGEX. `None` is a capitalised word and an
+# operation name is a capitalised word: no shape tells them apart, so the
+# sentinel is matched exactly and anything differing from it only by case is
+# refused by name. PER ELEMENT rather than per field, because the whole-field
+# form let `Reset,None` through -- the capitalised half of the very typo the
+# paragraph above says was reproduced. What still gets through is a value that
 # is neither -- `non`, say -- and there is no offline answer to that: whether a
 # name is an operation the reference produced is what `--diff` is for.
 if bad=$(awk '
   $2 == "none" { next }
-  tolower($2) == "none" { print $1 "\t" $2; next }
-  $2 !~ /^[A-Z][A-Za-z0-9]*(,[A-Z][A-Za-z0-9]*)*$/ { print $1 "\t" $2 }
+  {
+    n = split($2, ops, ",")
+    for (i = 1; i <= n; i++)
+      if (ops[i] !~ /^[A-Z][A-Za-z0-9]*$/ || tolower(ops[i]) == "none") {
+        print $1 "\t" $2
+        next
+      }
+  }
 ' "$work/rows") && [ -n "$bad" ]; then
   status=1
   echo "FAIL: $operations has a value that is not an operation list:" >&2
@@ -165,9 +178,11 @@ if extra=$(comm -23 "$work/measured" "$work/selected") && [ -n "$extra" ]; then
   echo "    of the other 104 inflates the same total." >&2
 fi
 
-# The vocabulary this file uses, one name per line. Only the summary's count
-# reads it: direction 2 derives the same set from the rows it is already
-# loading rather than being handed this file as a second input.
+# The vocabulary this file uses, one name per line: the summary's count, and
+# the rows half of direction 2's search set. It was rebuilt inside direction 2's
+# awk while this file sat beside it -- defensible while that awk took one input
+# and stopped being so when it took two, which left the value column's parse
+# (the `none` sentinel, the comma) spelled in three places that nothing compares.
 awk '$2 != "none" { n = split($2, ops, ","); for (i = 1; i <= n; i++) print ops[i] }' \
   "$work/rows" | sort -u > "$work/vocabulary"
 
@@ -198,14 +213,8 @@ fi
 # on whole words after punctuation is blanked, or `Reset` would match inside a
 # sentence about resetting and `SetVariables` inside `SetVariablesRequest`.
 if ! awk '
-  FILENAME == unionfile { vocab[$1]; next }
-  FILENAME == rowsfile {
-    needs[$1] = "," $2 ","
-    if ($2 == "none") next
-    n = split($2, ops, ",")
-    for (i = 1; i <= n; i++) vocab[ops[i]]
-    next
-  }
+  FILENAME == unionfile || FILENAME == vocabfile { vocab[$1]; next }
+  FILENAME == rowsfile { needs[$1] = "," $2 ","; next }
   { sub(/\r$/, "") }
   /^[[:space:]]*#/ { next }
   /^[[:space:]]*$/ { next }
@@ -224,7 +233,8 @@ if ! awk '
     }
   }
   END { exit(bad ? 1 : 0) }
-' unionfile="$work/union" rowsfile="$work/rows" "$work/union" "$work/rows" "$slice"; then
+' unionfile="$work/union" vocabfile="$work/vocabulary" rowsfile="$work/rows" \
+  "$work/union" "$work/vocabulary" "$work/rows" "$slice"; then
   status=1
   echo "FAIL: a reason in $slice names an operation the case does not drive." >&2
   echo "  → the reasons were written per group from Part 5's arrangement and" >&2
@@ -260,6 +270,40 @@ if ! awk '
   echo "    say so." >&2
 fi
 
+# Direction 4: the tranche table OCA-201-SELECTION.md publishes is the one the
+# rows derive. Not a number checked against a second spelling of itself -- that
+# is the shape tests/oca-obligations.sh refuses, and it is about a literal in a
+# guard's OWN header. This is doc-counts.sh's shape instead: prose against the
+# list it describes. It earns its place the way the others did, by having
+# failed -- the table shipped with all sixteen `still blocked after` cells two
+# too high, because it was arithmetic against a three-verb union and a fourth
+# verb landed in the same branch. The function lived in a person.
+#
+# String containment rather than a markdown parser: the generator emits the
+# rows verbatim, so the check is whether the page still holds what it printed.
+selection=OCA-201-SELECTION.md
+if [ -s "$selection" ]; then
+  if ! bun tools/extract-201-operations.ts --tranches > "$work/tranches" 2>/dev/null; then
+    status=1
+    echo "FAIL: could not derive the tranche table." >&2
+    echo "  → bun tools/extract-201-operations.ts --tranches reads $operations" >&2
+    echo "    and $driver, and needs no reference. If it cannot run, the" >&2
+    echo "    published table has no producer again." >&2
+  else
+    missing=0
+    while IFS= read -r row; do
+      case "$row" in '| '*) ;; *) continue ;; esac
+      grep -qF -- "$row" "$selection" || { missing=1; echo "  $row" >&2; }
+    done < "$work/tranches"
+    if [ "$missing" -ne 0 ]; then
+      status=1
+      echo "FAIL: $selection's tranche table is not the one the rows derive." >&2
+      echo "  → the rows above are what --tranches prints and the page does not" >&2
+      echo "    carry. Paste them in; the arithmetic is not yours to redo." >&2
+    fi
+  fi
+fi
+
 if [ "$status" -ne 0 ]; then
   echo >&2
   echo "$operations, $slice and $driver disagree about the same vocabulary." >&2
@@ -269,4 +313,5 @@ fi
 cases=$(wc -l < "$work/rows" | tr -d ' ')
 driving=$(awk '$2 != "none" { n++ } END { print n + 0 }' "$work/rows")
 kinds=$(wc -l < "$work/vocabulary" | tr -d ' ')
-echo "OCPP 2.0.1 operations: $cases case(s) measured, $driving driving, $kinds kind(s) of operation."
+echo "OCPP 2.0.1 operations: $cases case(s) measured, $driving driving," \
+  "$kinds kind(s) of operation."

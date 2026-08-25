@@ -37,10 +37,11 @@
 # drifting -- tests/oca-201-operations.sh, whose header states the three
 # directions.
 #
-# WHY IT IS NOT DERIVED FROM THE SLICE'S REASONS. Twenty-four of those rows name
-# an operation -- ChangeAvailability, UpdateFirmware, RequestStartTransaction,
-# TriggerMessage, across four distinct reasons -- and they were written from
-# Part 5's groupings, per group and without aiming at exhaustiveness. Measured against Part 6 they are right where they are
+# WHY IT IS NOT DERIVED FROM THE SLICE'S REASONS. Twenty-four of those rows
+# name an operation -- ChangeAvailability, UpdateFirmware,
+# RequestStartTransaction, TriggerMessage, across four distinct reasons -- and
+# they were written from Part 5's groupings, per group and without aiming at
+# exhaustiveness. Measured against Part 6 they are right where they are
 # specific and wrong where they generalise: TC_M_24, TC_M_26 and TC_M_28 shared
 # a reason with rows that do need a certificate operation, and drive none.
 # The reasons are a cross-check on this file, which the guard runs; they are not
@@ -64,8 +65,9 @@
 # SIX CASES NEED MORE THAN ONE OPERATION, and they are why "cases needing X"
 # and "cases X completes" are different numbers: TC_A_11, TC_A_12 and TC_A_14
 # need CertificateSigned AND TriggerMessage, TC_K_05 needs ClearChargingProfile
-# AND GetChargingProfiles, and TC_M_20 and TC_M_21 need three -- DeleteCertificate,
-# GetInstalledCertificateIds AND InstallCertificate. A tranche sized by the
+# AND GetChargingProfiles, and TC_M_20 and TC_M_21 need three --
+# DeleteCertificate, GetInstalledCertificateIds AND InstallCertificate. A
+# tranche sized by the
 # first number promises cases it does not deliver; OCA-201-SELECTION.md's
 # tranche table counts the second.
 #

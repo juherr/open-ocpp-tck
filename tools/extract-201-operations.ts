@@ -4,6 +4,8 @@
  *
  *   bun tools/extract-201-operations.ts <path to Part 6 PDF>
  *   bun tools/extract-201-operations.ts <path> --diff   # against the committed table
+ *   bun tools/extract-201-operations.ts --tranches      # no PDF: the committed
+ *                                                       # table plus the union
  *
  * Needs `pdftotext` (poppler) and a copy of the reference. NEITHER IS IN THIS
  * REPOSITORY: the PDF is cited by URL and not committed, for the reason
@@ -61,6 +63,18 @@
  * nothing", which is a verdict the table is allowed to carry and a parse
  * failure is not.
  *
+ * THE ONE THEY DO NOT COVER is the mirror of the third: a reference SPELLING
+ * this does not know produces no reference at all, so there is nothing to
+ * refuse. That is what cost TC_M_20 and TC_M_21 an InstallCertificate through
+ * three commits and a review. It was tried as a fourth refusal -- "the
+ * `Reusable State` field said something and I understood none of it" -- and
+ * measured before being kept: the field carries prose as well as values ("If
+ * State is NOT Authorized then execute...", "Charging Station set to
+ * Unavailable (Original status was Available)", a bare wrapped "State is"), so
+ * it fired on 230 legitimate lines. Refusing prose needs the list of prose
+ * forms, which is the pile the refusal was meant to replace. So it is stated
+ * here instead, and `--diff` against a fresh reading is what covers it.
+ *
  * TWO NORMALISATIONS, STATED RATHER THAN APPLIED SILENTLY:
  *   - `SetVariableRequest` (singular) appears twice in Edition 4 where every
  *     other mention and the schema say `SetVariablesRequest`. Folded, because
@@ -86,6 +100,51 @@ const COMMITTED = "tck/specs/OCA-201-OPERATIONS.txt";
 /** Two mentions in Edition 4, against ~40 of the plural spelling. */
 const NORMALISE: Record<string, string> = { SetVariable: "SetVariables" };
 
+/**
+ * The tranche table OCA-201-SELECTION.md publishes, DERIVED rather than
+ * arithmetic somebody did once.
+ *
+ * WHY THIS MODE EXISTS. That table was published with every one of its sixteen
+ * `still blocked after` cells two too high, because it was computed against a
+ * three-verb union and a fourth verb landed in the same branch. Nothing caught
+ * it: the numbers are a function of two files in this repository and the
+ * function lived in a person. It needs no PDF for the same reason -- the
+ * measurement is already committed.
+ *
+ * GREEDY, AND A CASE COUNTS ONLY WHEN EVERY OPERATION IT NEEDS IS PRESENT.
+ * That is the whole point of the column: six cases need more than one, so
+ * "rows that name X" and "cases X completes" are different numbers and the
+ * smaller one is the honest one. Ties are broken by name so a re-run diffs
+ * clean.
+ */
+function tranches(
+  needs: ReadonlyMap<string, readonly string[]>,
+  have: ReadonlySet<string>,
+): string[] {
+  const held = new Set(have);
+  let blocked = [...needs].filter(([, ops]) => !ops.every((o) => held.has(o)));
+  const rows = [`| # | operation | cases it completes | still blocked after |`];
+  rows.push(`|---|---|---|---|`);
+  for (let step = 1; blocked.length > 0; step++) {
+    const candidates = [...new Set(blocked.flatMap(([, ops]) => ops))].sort();
+    let best = candidates[0]!;
+    let bestGain = -1;
+    for (const op of candidates) {
+      const gain = blocked.filter(([, ops]) =>
+        ops.every((o) => held.has(o) || o === op),
+      ).length;
+      if (gain > bestGain) {
+        best = op;
+        bestGain = gain;
+      }
+    }
+    held.add(best);
+    blocked = blocked.filter(([, ops]) => !ops.every((o) => held.has(o)));
+    rows.push(`| ${step} | \`${best}\` | ${bestGain} | ${blocked.length} |`);
+  }
+  return rows;
+}
+
 const usage = [
   "usage: bun tools/extract-201-operations.ts <part6.pdf> [--diff]",
   "",
@@ -93,11 +152,34 @@ const usage = [
   "               see OCA-201-SELECTION.md for why a reference is cited and",
   "               not committed.",
   `  --diff       compare the measurement with ${COMMITTED}`,
+  `  --tranches   derive OCA-201-SELECTION.md's tranche table from ${COMMITTED}`,
+  "               and the driver contract. Needs no PDF.",
 ].join("\n");
 
 const argv = process.argv.slice(2);
 const diff = argv.includes("--diff");
+const wantTranches = argv.includes("--tranches");
 const pdf = argv.find((a) => !a.startsWith("--"));
+
+if (wantTranches) {
+  const rows = new Map<string, readonly string[]>();
+  for (const raw of readFileSync(COMMITTED, "utf8").split("\n")) {
+    const line = raw.replace(/\r$/, "").trim();
+    if (line === "" || line.startsWith("#")) continue;
+    const [id, ops] = line.split(/\s+/, 2);
+    if (id === undefined || ops === undefined) continue;
+    rows.set(id, ops === "none" ? [] : ops.split(","));
+  }
+  const union = new Set(
+    (
+      await import(new URL("../tck/driver.ts", import.meta.url).href)
+    ).CSMS_OPERATION_201_ACTIONS as readonly string[],
+  );
+  const short = [...rows.values()].filter((ops) => !ops.every((o) => union.has(o)));
+  console.log(`${short.length} of the ${rows.size} are short a verb.`);
+  for (const row of tranches(rows, union)) console.log(row);
+  process.exit(0);
+}
 
 if (pdf === undefined) {
   console.error(usage);
@@ -168,6 +250,14 @@ const stateNames = new Set(
   [...blocks.keys()].flatMap((k) => (k.startsWith("state:") ? [k.slice(6)] : [])),
 );
 
+/** Each state name as a whole-word matcher, compiled once. Escaped because the
+ *  names come out of `STATE_HEADER`'s `(\S+)` and nothing promises a future
+ *  edition will not put a `.` or a `(` in one. */
+const stateWords = [...stateNames].map(
+  (name) =>
+    [name, new RegExp(`\\b${name.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")}\\b`)] as const,
+);
+
 if (caseIds.length === 0 || stateNames.size === 0) {
   console.error(
     `FAIL: parsed ${caseIds.length} case(s) and ${stateNames.size} reusable state(s).`,
@@ -202,6 +292,7 @@ interface Scanned {
   operations: Set<string>;
   references: Set<string>;
 }
+
 
 function matchAll(re: RegExp, line: string): string[] {
   re.lastIndex = 0;
@@ -243,21 +334,24 @@ function scan(key: string): Scanned {
       }
     } else if (section === "before" || section === "scenario") {
       for (const name of matchAll(EXECUTE_STATE, line)) references.add(name);
-      // A numbered step that IS a state name, with no verb in front of it --
-      // TC_M_20's "1. CertificateInstalled with certificateType ...". Filtered
-      // against the known states because a step can begin with anything.
-      const step = /^\d+\.\s+([A-Za-z][A-Za-z0-9]*)\b/.exec(trimmed);
-      if (step !== null && stateNames.has(step[1]!)) references.add(step[1]!);
-      // And in the Configuration / Memory State fields, a state named in
-      // prose: "If configured <Security profile> is 2, then
-      // RenewChargingStationCertificate". A whole-word scan is loose enough to
-      // worry about -- `Authorized`, `Reserved` and `Booted` are state names
-      // AND ordinary words -- so it is bounded to those two short fields and
-      // measured: across Edition 4's CSMS half it matches three times and all
-      // three are real (TC_A_19, TC_G_04, TC_G_08).
-      if (section === "before") {
-        for (const name of stateNames) {
-          if (new RegExp(`\\b${name}\\b`).test(trimmed)) references.add(name);
+      if (section === "scenario") {
+        // A numbered step that IS a state name, with no verb in front of it --
+        // TC_M_20's "1. CertificateInstalled with certificateType ...". Scoped
+        // to the scenario because in `before` the whole-word scan below is a
+        // strict superset of it: measured, this fires exactly once in the whole
+        // CSMS half and it is TC_M_20's step.
+        const step = /^\d+\.\s+([A-Za-z][A-Za-z0-9]*)\b/.exec(trimmed);
+        if (step !== null && stateNames.has(step[1]!)) references.add(step[1]!);
+      } else {
+        // And in the Configuration / Memory State fields, a state named in
+        // prose: "If configured <Security profile> is 2, then
+        // RenewChargingStationCertificate". A whole-word scan is loose enough to
+        // worry about -- `Authorized`, `Reserved` and `Booted` are state names
+        // AND ordinary words -- so it is bounded to those two short fields and
+        // measured: across Edition 4's CSMS half it matches three times and all
+        // three are real (TC_A_19, TC_G_04, TC_G_08).
+        for (const [name, word] of stateWords) {
+          if (word.test(trimmed)) references.add(name);
         }
       }
       if (!CSMS_STAYS_SILENT.test(line)) {

@@ -330,10 +330,8 @@ the same client — `/ocpp/2.0.1/…` instead of `/ocpp/1.6/…`. The routing is
 | `TriggerMessage` | `configuration/triggerMessage` |
 
 The module is CitrineOS's rather than the specification's, read off the
-`@AsMessageEndpoint` decorators in the pinned image. Both actions with a 1.6
-namesake — `Reset` and `TriggerMessage` — happen to sit in the same module on
-both protocols, which is a fact about this arrangement and not a rule: the two
-device-model actions have no namesake to agree with.
+`@AsMessageEndpoint` decorators in the pinned image; `toCitrineRequest201`'s
+doc comment is where that is argued.
 
 Declared for the **v2 line only**. Nobody has pointed a 2.0.1 station at
 v1.9.1 here, and a driver declaring a surface on the strength of a version

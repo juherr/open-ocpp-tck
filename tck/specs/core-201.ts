@@ -908,8 +908,9 @@ const TC_F_20: ScenarioSpec = {
   // exists: one local sim.send. What is waited on now is a chain -- the CSMS's
   // TriggerMessage, the station's answer, the Heartbeat it then sends, and the
   // CSMS's answer to that -- and 8 was the shortest hold in this file while
-  // being one of its longest chains. 12 is what every other CSMS-driven
-  // scenario here uses for strictly less, and what the 1.6 twin uses for this
+  // being one of its longest chains. 12 is the modal hold among this file's
+  // CSMS-driven scenarios -- TC_B_06, TC_B_09 and TC_B_21 -- and what the 1.6
+  // twin uses for this
   // exact exchange (plus a sleep(2000) this does not need: bootWaitSecs gates
   // the same thing). TC_B_20's note records what a window tuned in isolation
   // costs under three-lane CI contention.

@@ -224,7 +224,9 @@ Six cases need more than one operation, so the two counts differ: adding
 `GetInstalledCertificateIds` is named by eight rows and finishes six of them,
 because `TC_M_20` and `TC_M_21` want `DeleteCertificate` and
 `InstallCertificate` as well. Greedy from the four the union has, which leaves
-**81** of the 147 short of a verb:
+**81** of the 147 short of a verb. `bun tools/extract-201-operations.ts
+--tranches` is what prints this table — no PDF, just the row file and the
+contract — and `tests/oca-201-operations.sh` holds the two together:
 
 | # | operation | cases it completes | still blocked after |
 |---|---|---|---|
@@ -240,9 +242,9 @@ because `TC_M_20` and `TC_M_21` want `DeleteCertificate` and
 | 10 | `CertificateSigned` | 3 | 12 |
 | 11 | `ClearChargingProfile` | 3 | 9 |
 | 12 | `ClearCache` | 2 | 7 |
-| 13 | `SetNetworkProfile` | 2 | 5 |
-| 14 | `DeleteCertificate` | 2 | 3 |
-| 15 | `GetCompositeSchedule` | 2 | 1 |
+| 13 | `DeleteCertificate` | 2 | 5 |
+| 14 | `GetCompositeSchedule` | 2 | 3 |
+| 15 | `SetNetworkProfile` | 2 | 1 |
 | 16 | `RequestStopTransaction` | 1 | 0 |
 
 The right-hand column is the number a tranche is worth arguing about, and it is
