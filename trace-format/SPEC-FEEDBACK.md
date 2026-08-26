@@ -113,8 +113,18 @@ exchanges:
 3  CALLRESULT  csms-to-cp  id=X   -> correlatesWith 0
 ```
 
-An implementation missing the clause maps both responses onto index 1 and
-reports index 0 unanswered.
+Both ways of dropping the clause show up here, and no fixture that exists
+catches either:
+
+- a response-centric search that forgets "not already correlated" picks the
+  most recent preceding CALL twice, so **both responses map to index 1** and
+  index 0 is reported unanswered;
+- a call-centric forward scan — the shape the consumer above actually had —
+  takes the first matching response after each CALL, so **both CALLs map to
+  record 2** and record 3 is left over.
+
+The rule pairs them one to one, most recent first, which is what the mapping
+above states.
 
 A second fixture would pin the **opposite-direction** clause, which has the
 same problem for the same reason — every fixture has all CALLs travelling one
@@ -158,8 +168,20 @@ that chose the other reading. No fixture exercises it today.
   shipped reader correct. `conformance.ts` in this library is offered as a
   replacement: same checks, expressed over the reader consumers actually
   import.
-- **`timestamp` is `required`.** Worth a line in the prose — it is the only
-  member of a derived event that is not recoverable from `raw`, which makes it
-  load-bearing in a way its position in the `required` list does not convey.
-- **Leap seconds.** `format: date-time` admits `23:59:60`. Consumers building a
-  `Date` from it will silently normalise. Probably worth a note.
+- **`timestamp` and `direction` are `required`, and neither is in `raw`.**
+  `raw` is the OCPP-J array — message type id, `messageId`, `action`, payload —
+  so both are transport metadata the frame itself cannot carry. Worth a line in
+  the prose: they are load-bearing in a way their position in the `required`
+  list does not convey. `direction` especially, since the correlation rule is
+  written in terms of it, and a producer that mislabels it emits a trace that
+  validates and correlates wrongly.
+- **Leap seconds have no stated consumer behaviour.** RFC 3339 admits
+  `23:59:60`, so `format: date-time` does too, and the document says nothing
+  about what a consumer should do with one. Not a theoretical gap: in
+  JavaScript `new Date("2024-12-31T23:59:60Z")` is **Invalid Date**, not a
+  normalised instant — measured, not assumed — so a consumer that converts
+  timestamps eagerly turns a conformant record into a parse failure, while one
+  that keeps them as strings does not. The document should say which of reject,
+  preserve or normalise it expects. This library preserves: `validate.ts`
+  accepts second 60 because RFC 3339 does, and never constructs a `Date`, so
+  the string reaches the caller intact and the choice stays theirs.

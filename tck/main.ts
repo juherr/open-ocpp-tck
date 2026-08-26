@@ -715,8 +715,11 @@ async function runScenario<D>(
         "simulator log instead, which this runner parses itself. If the trace " +
         "is absent or empty and this runner is containerised, the bind mount " +
         "names a path on the docker host, not this one; SIM_TRACE=0 turns the " +
-        "request off. If it is unreadable, the image emits records " +
-        "tck/trace.ts does not map. If it is payload-only or no-message-id, " +
+        "request off. If it is unreadable, the records reached this runner " +
+        "and it REFUSED them -- off the schema, carrying a `raw` that " +
+        "contradicts its own envelope, on a schemaVersion major this build " +
+        "does not read, or bytes that are not an OCPP-J frame. " +
+        "If it is payload-only or no-message-id, " +
         "the records are CONFORMANT and omit an optional member this runner " +
         "needs -- the format allows it, nothing here is misconfigured, and " +
         "the log is the right substrate for that run. Said once per run: " +
