@@ -31,8 +31,14 @@ conformance suite judges an OCPP session by parsing the wire frames out of
 | Accept and judge on nothing | Reports a false verdict about a session it could not read. |
 | **Refuse the trace and say why** | What it does. And this makes it, by the letter of the rules, **non-conformant.** |
 
-The same applies to a record with no `messageId`: correlation is undefined for
-it, so a consumer that correlates cannot honestly accept it.
+A record with no `messageId` is the same shape of problem, though for a
+subtler reason: correlation is not *undefined* for it -- the reference pairs
+id-less records with each other, see finding 4 -- it is **not
+distinguishing**. A consumer that must say which request a response answers
+cannot rely on a match that would hold between any two id-less records in the
+trace, so it needs to refuse them, and the rules give it no way to say so.
+Only consumers that correlate are affected; one that renders a timeline reads
+such a record perfectly well.
 
 **What the document is missing** is not permission to refuse — it is the
 vocabulary to distinguish two things it currently collapses:
@@ -100,7 +106,7 @@ reading the specification, not by running anything.
 **Suggested shape.** A fixture with one `messageId` reused across two
 exchanges:
 
-```
+```text
 0  CALL        cp-to-csms  id=X
 1  CALL        cp-to-csms  id=X
 2  CALLRESULT  csms-to-cp  id=X   -> correlatesWith 1
@@ -114,7 +120,7 @@ A second fixture would pin the **opposite-direction** clause, which has the
 same problem for the same reason — every fixture has all CALLs travelling one
 way. It needs the nearer candidate to be the wrong-direction one:
 
-```
+```text
 0  CALL        cp-to-csms  id=Y
 1  CALL        csms-to-cp  id=Y
 2  CALLRESULT  csms-to-cp  id=Y   -> correlatesWith 0, not 1
