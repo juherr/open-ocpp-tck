@@ -79,20 +79,30 @@ export declare function findAllCalls(frames: readonly Frame[], direction: Direct
 /**
  * Finds the CALLRESULT/CALLERROR that answers `call`, correlated strictly
  * by OCPP-J `uniqueId` and reply direction (a response to a sent CALL must
- * be received, and vice versa) -- never by adjacency in the log. Returns
- * the FIRST such response in log order (an OCPP peer should never send two
- * responses to the same uniqueId, but this is deterministic either way).
+ * be received, and vice versa) -- never by adjacency in the log.
  *
- * uniqueId-uniqueness assumption: this correlation is only sound if
- * `uniqueId`s are effectively unique for the span of the log being
- * searched. In practice they are -- both the CP (OCPPWebSocket) and SteVe
- * generate UUIDs per outstanding request -- but a long-running or reused
- * log CAN contain the same uniqueId string twice by coincidence (or, in a
- * test fixture, deliberately). Guard against that: a response can only
- * ever be for the CALL that precedes it on the wire, so this only searches
- * frames STRICTLY AFTER `call`'s own position in `frames` -- an earlier
- * frame sharing the same uniqueId (e.g. a stale response left over from a
- * prior exchange that happened to reuse the id) is never matched, even
- * though it satisfies direction+uniqueId.
+ * THIS IS THE open-ocpp-trace CORRELATION RULE, and it is not implemented
+ * here. `trace-format/correlate.ts` owns it -- three clauses whose failure
+ * modes are argued in that file's header -- and this function does the two
+ * things that ARE local: spell a `Frame` in the format's vocabulary, and turn
+ * the whole-trace pairing into the per-call question every assertion asks.
+ *
+ * Writing the rule out again here is the obvious thing and it was the first
+ * shape of this function. It is wrong for the reason `tck/trace.ts` gives
+ * about parsers, one layer up: this suite reads the same wire two ways, and
+ * `tools/trace-conformance.sh` proves the LIBRARY reproduces the
+ * specification. A second copy of the rule means that proof says nothing about
+ * the assertions, and agreement between the two becomes a property to measure
+ * and re-measure. One copy makes it a property of the code.
+ *
+ * It is not a local question, either: which response answers this call depends
+ * on which calls the OTHER responses have already claimed, so the pairing is
+ * computed whole and then indexed. That is O(n^2) per lookup where a forward
+ * scan was O(n) -- measured at 0.03 ms for this repository's largest scenario
+ * and 3 ms at 1000 frames, against sweeps that take minutes, so the shape that
+ * states the rule wins over the shape that saves the microseconds.
+ *
+ * A `call` that is not in `frames` has no position, so the rule has nothing to
+ * anchor on and this returns undefined rather than guessing from index 0.
  */
 export declare function findResponseFor(frames: readonly Frame[], call: CallFrame): ResponseFrame | undefined;

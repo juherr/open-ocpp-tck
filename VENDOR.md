@@ -47,7 +47,7 @@ strongest available demonstration that the core names no CSMS.
 |---|---|---|---|---|---|
 | `tck/spec-types.ts` | `upstream-patched` | `scripts/steve-verify/runner/spec-types.ts` | `db4b29ab5ee0c623c950a52a999ef4e4c0a916dab0b6cfebe8fa8eabc5da0d26` | `9020e8e6be458d37b5f3d3e61d0071caf8e885812bbf0c20df95b66d0f329994` | `patches/tck/spec-types.ts.patch` |
 | `tck/util.ts` | `upstream-verbatim` | `scripts/steve-verify/runner/util.ts` | `ba62ed29c79e04533e0725739c9c0d514caadb7bff8146e46688c867432eee9e` | `ba62ed29c79e04533e0725739c9c0d514caadb7bff8146e46688c867432eee9e` | `—` |
-| `tck/ocpp.ts` | `upstream-verbatim` | `src/cp/application/verification/ocpp.ts` | `a3f99c1b77b30d0ab0b22556b65aca05332d68f4b4b8d566a500d2036065368f` | `a3f99c1b77b30d0ab0b22556b65aca05332d68f4b4b8d566a500d2036065368f` | `—` |
+| `tck/ocpp.ts` | `upstream-patched` | `src/cp/application/verification/ocpp.ts` | `a3f99c1b77b30d0ab0b22556b65aca05332d68f4b4b8d566a500d2036065368f` | `c3e65b3fea2e10b72d202d962b6da2d46697092a5f390e17ec3d186f9fccd1a5` | `patches/tck/ocpp.ts.patch` |
 | `tsconfig.json` | `upstream-verbatim` | `scripts/steve-verify/runner/tsconfig.json` | `b632b69c836000d80209c183b57d43ac917e3a1d50f042af65112bdf234d1931` | `b632b69c836000d80209c183b57d43ac917e3a1d50f042af65112bdf234d1931` | `—` |
 | `tck/specs/core.ts` | `upstream-patched` | `scripts/steve-verify/runner/specs/core.ts` | `ef26b803ffee2d2fa5d809ebb2e066475ed33cb7fd527aeb43d5b416566f0125` | `36a3ea0e6a474323f780c96920a3bc53c2e14e1aa39ef7274a3688352e4159fa` | `patches/tck/specs/core.ts.patch` |
 | `tck/specs/authorize.ts` | `upstream-patched` | `scripts/steve-verify/runner/specs/authorize.ts` | `aaf1c5f2b4888df41cd1f0b8637b47eedc376ff2d61d29841d3668d26b66e7da` | `a627d704d62ccc5e47c60974859a12975827a4727da57cd3fd01a1bc96b57062` | `patches/tck/specs/authorize.ts.patch` |
@@ -57,7 +57,7 @@ strongest available demonstration that the core names no CSMS.
 | `tck/specs/index.ts` | `upstream-patched` | `scripts/steve-verify/runner/specs/index.ts` | `be8595765f4d66965bfd58498622c26a696962fabae8a2700f080ae5cd55d832` | `fb27277e3bbe10d32219e24a9d7d04f79c657d51b41f5ecd538ae635d9973524` | `patches/tck/specs/index.ts.patch` |
 | `tck/assert.ts` | `upstream-patched` | `src/cp/application/verification/assert.ts` | `2431f5f6c0df997d4d821d9af55689c1f0f2df199de1e9e4ed6f3fbaad4fc89e` | `57adac06ea55693abc1a7bfe49940950a4ef3f73ba1452910f4aa2ec49266538` | `patches/tck/assert.ts.patch` |
 | `tck/sim.ts` | `upstream-patched` | `scripts/steve-verify/runner/sim.ts` | `2bf2f78afe3434e7139cd62c3ff6d70f02defd39dd700611e7c5f7614260cd35` | `bd345ee0ccb9166590fc8d0e1efd08151fb4318c4cb54a34ea67d26ed79a0e39` | `patches/tck/sim.ts.patch` |
-| `tck/main.ts` | `upstream-patched` | `scripts/steve-verify/runner/main.ts` | `a757b0d35d29c7627336c0e858ad7d2f305a33c0acad819b5296f3847382f4e2` | `19779edd3be5d430ebf9732300164865e51b995fdb3e3d1faf48bb67cab77d65` | `patches/tck/main.ts.patch` |
+| `tck/main.ts` | `upstream-patched` | `scripts/steve-verify/runner/main.ts` | `a757b0d35d29c7627336c0e858ad7d2f305a33c0acad819b5296f3847382f4e2` | `fc13a2b7874097865e1741bf2db7658d906103f278acad12c44d739236e271f3` | `patches/tck/main.ts.patch` |
 | `tck/driver.ts` | `local-upstreamable` | `—` | `—` | `—` | `—` |
 | `tck/index.ts` | `local-upstreamable` | `—` | `—` | `—` | `—` |
 | `tck/driver-registry.ts` | `local-upstreamable` | `—` | `—` | `—` | `—` |
