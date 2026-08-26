@@ -51,8 +51,10 @@
  * THE SETUP IS INLINE, AND IT DUPLICATES. `ocppVersion` plus
  * `runsSimTemplate: false` is repeated once per scenario, and the three
  * Reset scenarios repeat the same drive-then-check shape with one member
- * changed. That is deliberate: OCPP 2.0.1 Part 6 defines 13 `Reusable State`
- * fixtures and this suite has timers and one-shot provisioning, which are not
+ * changed. That is deliberate: OCPP 2.0.1 Part 6 defines 14 `Reusable State`
+ * fixtures for the CSMS role -- 13 was this paragraph's first count, corrected
+ * when the reference was re-read for the operation measurement -- and this
+ * suite has timers and one-shot provisioning, which are not
  * the same thing -- issue #63 says to write the setup inline and note where it
  * duplicates rather than build the mechanism from one slice's evidence. This
  * paragraph is that note.

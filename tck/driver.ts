@@ -295,7 +295,8 @@ export const CSMS_OPERATION_16_ACTIONS = everyOneOf<CsmsOperation16Action>()([
 ]);
 
 // ---------------------------------------------------------------------------
-// The OCPP 2.0.1 operation vocabulary -- 3 members, OPT-IN.
+// The OCPP 2.0.1 operation vocabulary -- OPT-IN. The count is the note
+// below's to state; a second spelling of it here is one that goes stale.
 //
 // A SECOND CLOSED UNION, not a widening of the one above, and the reason is
 // the mechanism rather than taste. `assertNever` makes every arm of
@@ -312,34 +313,75 @@ export const CSMS_OPERATION_16_ACTIONS = everyOneOf<CsmsOperation16Action>()([
 // alternatives -- widening, and a version-parameterised
 // `CsmsOperations16<V>` -- and rejects both; that argument is not re-run here.
 //
-// WHY THREE AND NOT SIX. OCA-201-SELECTION.md's first slice was seven
+// WHY FOUR AND NOT ELEVEN. OCA-201-SELECTION.md's first slice was seven
 // certification cases, and CASES ARE NOT OPERATION KINDS -- the distinction is
-// the whole of this note. FIVE of the seven are CSMS-INITIATED: TC_B_20,
-// TC_B_21 and TC_B_22 all drive Reset, and TC_B_06 and TC_B_09 drive
-// GetVariables and SetVariables. Between them those five spell THREE kinds of
-// operation, which is what this union counts. TC_B_01 and TC_F_20 are
-// BootNotification and Heartbeat, observed on the wire rather than driven, so
-// they need no operation at all. "As few as the first slice needs" is that
-// file's number, not this file's judgement.
+// the whole of this note. SIX of the seven are CSMS-INITIATED: TC_B_20,
+// TC_B_21 and TC_B_22 all drive Reset, TC_B_06 and TC_B_09 drive GetVariables
+// and SetVariables, and TC_F_20 -- "Trigger message - Heartbeat" -- drives
+// TriggerMessage. Between them those six spell FOUR kinds of operation, which
+// is what this union counts. TC_B_01 is a BootNotification observed on the
+// wire rather than driven, so it needs no arm at all. "As few as the first
+// slice needs" is that file's number, not this file's judgement.
 //
-// AND WHY THREE IS NOT THE FINAL ANSWER. That page's rule now selects 147
-// cases rather than seven, so this union grows. What does NOT change is how:
-// the count comes from the cases selected, read off the identifiers now in
-// OCA-201-SLICE.txt, and a case that only observes charge-point-initiated traffic
-// still needs no arm here. Adding the rest of the 2.0.1 messages because they
-// exist is the mistake "three, not eighteen" was written against, and it reads
-// the same whichever direction the number moves in.
+// THE FOURTH ARM IS A CORRECTION, and it is left visible because the mistake
+// is the one this note is most likely to repeat. This union shipped with three
+// arms and the sentence above said TC_F_20 was "Heartbeat, observed on the wire
+// rather than driven". It is not: the case's only tool validation is the CSMS
+// sending a TriggerMessageRequest, and the scenario that claimed it drove a
+// heartbeat from the station instead. The claim was read off the case's TITLE,
+// which names the message the station is made to send, where the reference
+// organises a case by which side is under test -- the same correction
+// OCA-201-SELECTION.md records against the six candidate messages the milestone
+// was scoped from. Nothing could contradict it until the cases were read:
+// tests/oca-201-operations.sh is the direction that now would.
+//
+// AND WHY FOUR IS NOT THE FINAL ANSWER. That page's rule now selects 147 cases
+// rather than seven, and tck/specs/OCA-201-OPERATIONS.txt measures what they
+// ask for: TWENTY kinds of operation, over 90 cases that drive one and 57 that
+// drive none. So this union grows, sixteen more times. What does NOT change is
+// how: the count comes from the cases selected, and a case that only observes
+// charge-point-initiated traffic still needs no arm here. Adding the rest of
+// the 2.0.1 messages because they exist is the mistake "three, not eighteen"
+// was written against, and it reads the same whichever direction the number
+// moves in.
 // ---------------------------------------------------------------------------
 
 /** OCPP 2.0.1 `ResetEnumType`. Not OCPP 1.6's Hard/Soft -- see the note on
  *  the `Reset` arm below. */
 export type ResetType201 = "Immediate" | "OnIdle";
 
+/**
+ * OCPP 2.0.1 `MessageTriggerEnumType`, whole.
+ *
+ * COMPLETE WHERE THE UNION BELOW IS MINIMAL, and the two rules do not conflict
+ * because they are about different things. "As few as the slice needs" prices
+ * an operation and an optional member: each costs a driver a switch arm or a
+ * field to translate, and each can be added later for nothing. An enum value
+ * costs neither -- a driver passes it through -- and adding one LATER is the
+ * breaking direction for a driver that switches on it exhaustively. So the
+ * eleven are here because widening is the expensive move, not because a
+ * scenario reaches them; {@link MessageTrigger} carries OCPP 1.6's six on the
+ * same terms.
+ */
+export type MessageTrigger201 =
+  | "BootNotification"
+  | "FirmwareStatusNotification"
+  | "Heartbeat"
+  | "LogStatusNotification"
+  | "MeterValues"
+  | "PublishFirmwareStatusNotification"
+  | "SignChargingStationCertificate"
+  | "SignCombinedCertificate"
+  | "SignV2GCertificate"
+  | "StatusNotification"
+  | "TransactionEvent";
+
 // NOT BUILT, here because here is where they get added -- every OPTIONAL
-// member of the three requests below EXCEPT the one the first slice reached:
+// member of the four requests below EXCEPT the one the first slice reached:
 // `ComponentType`'s `instance` and `evse`, `VariableType`'s `instance`,
-// `GetVariableDataType`'s and `SetVariableDataType`'s `attributeType`, and the
-// `EVSEType` and `AttributeEnumType` the last two of those need.
+// `GetVariableDataType`'s and `SetVariableDataType`'s `attributeType`,
+// `TriggerMessageRequest`'s `evse`, and the `EVSEType` and `AttributeEnumType`
+// those need.
 //
 // The section header above applies "as few as the first slice needs" to the
 // operation count. This is the same rule one level down, applied to every
@@ -416,9 +458,17 @@ export type CsmsOperation201 =
   // on the frame. A single-variable arm would read closer to TC_B_06 ("read
   // one variable") and would be a BREAKING change to widen later; an array is
   // not the premature abstraction #25 warns about, which is about how many
-  // operations exist, and there are still three.
+  // operations exist, not how many members one of them carries.
   | { action: "GetVariables"; variables: GetVariableData201[] }
-  | { action: "SetVariables"; variables: SetVariableData201[] };
+  | { action: "SetVariables"; variables: SetVariableData201[] }
+  // Homonyms again, and this pair is further apart than `Reset`'s: OCPP 1.6's
+  // TriggerMessage scopes to a `connectorId`, 2.0.1's to an `evse` object, and
+  // the enums they range over share five of six names against eleven -- only
+  // DiagnosticsStatusNotification is 1.6's alone. Same
+  // conclusion as the note above, reached for a second time on a second arm --
+  // which is the evidence OCA-201-SELECTION.md says a shared abstraction layer
+  // would need, not a reason to build one on two data points.
+  | { action: "TriggerMessage"; requestedMessage: MessageTrigger201 };
 
 export type CsmsOperation201Action = CsmsOperation201["action"];
 
@@ -429,6 +479,7 @@ export const CSMS_OPERATION_201_ACTIONS = everyOneOf<CsmsOperation201Action>()([
   "Reset",
   "GetVariables",
   "SetVariables",
+  "TriggerMessage",
 ]);
 
 // ---------------------------------------------------------------------------
@@ -796,7 +847,7 @@ export interface CsmsCapabilities {
   // A SECOND SET rather than widening the one above -- the note on
   // CsmsOperation201's `Reset` arm has the argument. One consequence is this
   // declaration's alone, though: merged, every 1.6-only driver would draw an
-  // "operation not declared" warning for three operations it never claimed,
+  // "operation not declared" warning for operations it never claimed,
   // and that zero cost is the whole point of the opt-in shape.
   readonly operations201?: ReadonlySet<CsmsOperation201Action>;
   readonly reservations: boolean;
@@ -809,7 +860,7 @@ export interface CsmsCapabilities {
    * REQUIRED, not `deviceModel?`, and the asymmetry with `operations201?` above
    * is deliberate rather than an oversight. That one is opt-in because its
    * absence has a second meaning -- a 1.6-only driver would otherwise draw
-   * "operation not declared" warnings for three operations it never claimed.
+   * "operation not declared" warnings for operations it never claimed.
    * This is a plain boolean beside `reservations` and `chargingProfiles`, its
    * two siblings, and a driver that forgets it gets a compiler error naming the
    * field instead of a printed capability list that quietly says `false`.

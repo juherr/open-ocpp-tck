@@ -122,7 +122,7 @@ Against the six candidate messages named when the milestone was scoped:
 | Candidate | Core CSMS rows |
 |---|---|
 | BootNotification | `TC_B_01` **M**; `TC_B_02` C (`C-44`), `TC_B_30` / `TC_B_31` C |
-| Heartbeat | `TC_F_20` **M** |
+| **Heartbeat** | `TC_F_20` **M** — and it is a `TriggerMessage` case. See [below](#the-coverage-target). |
 | Reset | `TC_B_20`, `TC_B_21`, `TC_B_22` — all **M** |
 | GetVariables | `TC_B_06` **M**; `TC_B_07` C (`C-45`) |
 | SetVariables | `TC_B_09` **M**; `TC_B_10` C (`C-46`) |
@@ -132,6 +132,13 @@ The candidate list was drawn up from message names; the certification matrix is
 organised by **which side is under test**. `Reset` turning out to be three
 mandatory cases and `StatusNotification` turning out to be none is the
 correction, and it runs in both directions.
+
+**And a third way it runs**, found later and by reading the case rather than
+the matrix: a row of this table names the message a candidate *selected*, not
+the message the case obliges the CSMS to send. `TC_F_20` is here under
+Heartbeat and is *Trigger message - Heartbeat* — the heartbeat is what the
+station is made to send, and what the CSMS must send is a `TriggerMessage`.
+The matrix cannot say that; only Part 6 can.
 
 `TC_G_20`'s own status was the one cell in this table the first parse did not
 produce, and the re-run resolved it: **`M` for the CSMS, blank for the charging
@@ -166,25 +173,86 @@ all, given that the references are CC BY-ND, and it is
 [answered](#what-may-be-committed-here-and-what-may-not): it may.
 
 Seven of the 147 are implemented and 140 decline with a reason. Those reasons
-are written per group rather than per case — 22 of them across the 140 — and the
+are written per group rather than per case — 23 of them across the 140 — and the
 file's header says why that is the granularity the decision was taken at rather
 than a placeholder. What a guard still cannot say is whether these are the
 *right* 147, and that is [unchanged](#the-guard).
 
 **What the first slice bounded, kept because it is the worked example of
 writing the number down before the work.** Its seven cases were boot, reading
-and writing one variable, reset — three mandatory cases of its own — and
-heartbeat, chosen because between them they touched boot, the device model and
+and writing one variable, reset — three mandatory cases of its own — and a
+trigger, chosen because between them they touched boot, the device model and
 a CSMS-initiated operation: the three parts of the driver contract that
-milestone changed. Five of the seven are CSMS-initiated — the three Reset
-cases, plus reading and writing a variable — but between them they spell only
-**three kinds of operation**, which is the count a vocabulary is measured in.
-So the first 2.0.1 vocabulary needed three, not eighteen, and "as
+milestone changed. Six of the seven are CSMS-initiated — the three Reset
+cases, reading and writing a variable, and `TC_F_20` — but between them they
+spell only **four kinds of operation**, which is the count a vocabulary is
+measured in. So the first 2.0.1 vocabulary needed four, not eighteen, and "as
 few as the first slice needs" was a number instead of an intention before a
-line of it was written. The same count is owed for the 147 and has not been
-done — how many kinds of operation they need between them, which is not what
-the enumeration produced: that says which cases, not how wide a vocabulary
-they ask for.
+line of it was written.
+
+That paragraph said **three**, and `TC_F_20` was the seventh case rather than
+the sixth CSMS-initiated one — "heartbeat, observed on the wire rather than
+driven". It is not. `TC_F_20_CSMS` is *Trigger message - Heartbeat*: its step 1
+is the CSMS sending a `TriggerMessageRequest`, and that step carries the case's
+only tool validation. The claim was read off the case's title, and a title names
+the message the station is made to send where the reference organises a case by
+which side is under test — the same correction [the six candidate
+messages](#what-the-rule-corrects-on-a-hand-drawn-list) needed, arriving a
+second time from the other end. The scenario has been completed to drive the
+trigger and `CsmsOperation201` carries the verb.
+
+## How wide a vocabulary the 147 ask for
+
+**Twenty kinds of operation**, against the four above. Ninety of the 147 drive at
+least one CSMS-initiated request and **57 drive none at all** — a case that only
+observes charge-point-initiated traffic needs no verb, which is why "add the
+rest of the 2.0.1 messages" was the wrong shape for this and why the answer is
+20 rather than the protocol's forty-odd.
+
+The list is [`tck/specs/OCA-201-OPERATIONS.txt`](tck/specs/OCA-201-OPERATIONS.txt),
+one row per case, beside the slice for the reason the slice is beside this page:
+two files, two references, one guarded relation. It carries the same status the
+counts above carry — measured, then written down — and from the same edition,
+*Part 6 — Test Cases*, **Edition 4, 2025-12-03**. `bun
+tools/extract-201-operations.ts <part6.pdf>` is how it is redone, and `--diff`
+is how the committed rows are re-checked; the method is a command rather than a
+note here because it is a two-level read that looks like a one-level one, and
+the extractor's header says why.
+
+**Tranches, sized by cases completed rather than by cases mentioning a verb.**
+Six cases need more than one operation, so the two counts differ: adding
+`GetInstalledCertificateIds` is named by eight rows and finishes six of them,
+because `TC_M_20` and `TC_M_21` want `DeleteCertificate` and
+`InstallCertificate` as well. Greedy from the four the union has, which leaves
+**81** of the 147 short of a verb. `bun tools/extract-201-operations.ts
+--tranches` is what prints this table — no PDF, just the row file and the
+contract — and `tests/oca-201-operations.sh` holds the two together:
+
+| # | operation | cases it completes | still blocked after |
+|---|---|---|---|
+| 1 | `SetChargingProfile` | 13 | 68 |
+| 2 | `UpdateFirmware` | 10 | 58 |
+| 3 | `ChangeAvailability` | 9 | 49 |
+| 4 | `GetChargingProfiles` | 8 | 41 |
+| 5 | `CustomerInformation` | 6 | 35 |
+| 6 | `GetInstalledCertificateIds` | 6 | 29 |
+| 7 | `InstallCertificate` | 5 | 24 |
+| 8 | `RequestStartTransaction` | 5 | 19 |
+| 9 | `GetLog` | 4 | 15 |
+| 10 | `CertificateSigned` | 3 | 12 |
+| 11 | `ClearChargingProfile` | 3 | 9 |
+| 12 | `ClearCache` | 2 | 7 |
+| 13 | `DeleteCertificate` | 2 | 5 |
+| 14 | `GetCompositeSchedule` | 2 | 3 |
+| 15 | `SetNetworkProfile` | 2 | 1 |
+| 16 | `RequestStopTransaction` | 1 | 0 |
+
+The right-hand column is the number a tranche is worth arguing about, and it is
+not the number of scenarios that become writable: a verb removes *one* blocker,
+and 57 of the 147 never had that blocker while every one of them has another.
+`tck/specs/OCA-201-SLICE.txt`'s reason column is where the rest are named, and
+#71 — nothing checks that a declared capability is implemented — is what a
+vocabulary growing sixteen more times makes urgent.
 
 A scenario issue may implement fewer than the list holds and say why — which
 the first one did, leaving `TC_B_06` and `TC_B_09` to the device-model

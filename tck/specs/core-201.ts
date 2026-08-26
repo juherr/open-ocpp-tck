@@ -51,8 +51,10 @@
  * THE SETUP IS INLINE, AND IT DUPLICATES. `ocppVersion` plus
  * `runsSimTemplate: false` is repeated once per scenario, and the three
  * Reset scenarios repeat the same drive-then-check shape with one member
- * changed. That is deliberate: OCPP 2.0.1 Part 6 defines 13 `Reusable State`
- * fixtures and this suite has timers and one-shot provisioning, which are not
+ * changed. That is deliberate: OCPP 2.0.1 Part 6 defines 14 `Reusable State`
+ * fixtures for the CSMS role -- 13 was this paragraph's first count, corrected
+ * when the reference was re-read for the operation measurement -- and this
+ * suite has timers and one-shot provisioning, which are not
  * the same thing -- issue #63 says to write the setup inline and note where it
  * duplicates rather than build the mechanism from one slice's evidence. This
  * paragraph is that note.
@@ -69,6 +71,7 @@ import {
   assertAllAnswered,
   assertCallPayload,
   assertEq,
+  assertLineAfter,
   assertNonEmpty,
   assertReceived,
   assertResponseStatus,
@@ -879,29 +882,89 @@ const TC_B_22: ScenarioSpec = {
   },
 };
 
+// WHAT THIS SCENARIO USED TO MEASURE, and why the change is a correction
+// rather than a widening. It drove `sim.send({ command: "heartbeat" })` and
+// asserted the CSMS answered -- the station's half of TC_F_20, and the half
+// the case does not validate. TC_F_20_CSMS is "Trigger message - Heartbeat":
+// the CSMS is the system under test, its step 1 is a TriggerMessageRequest,
+// and that step carries the case's ONLY tool validation. So the row claimed a
+// case whose measurement was absent, in the direction that reads as coverage.
+//
+// The mistake was reading the case off its title. A title names the message
+// the station is made to send; the reference organises a case by which side is
+// under test. OCA-201-SELECTION.md records the same correction against the six
+// candidate messages the milestone was scoped from -- Reset turning out to be
+// three cases, StatusNotification none -- and this is that correction arriving
+// a second time, from the other end.
 const TC_F_20: ScenarioSpec = {
   templateId: "cert201-tcf20-heartbeat",
   description:
-    "TC_F_20 Heartbeat: the CSMS answers a Heartbeat with its current time.",
+    "TC_F_20 Trigger Message: the CSMS sends TriggerMessage(Heartbeat), and the station's Heartbeat is answered with a current time.",
   ocppVersion: "OCPP-2.0.1",
   runsSimTemplate: false,
   connector: 1,
   bootWaitSecs: 4,
-  // 8 = the 6 this scenario needs, plus the 2 that were a trailing sleep() at
-  // the end of drive(). The runner sleeps holdSecs the moment drive() returns
-  // and runs nothing in between, so a wait on either side of that boundary is
-  // one wait; written on both sides it reads as two and drifts as two.
-  holdSecs: 8,
-  async drive({ sim }) {
-    // ONE HEARTBEAT ON DEMAND, not the periodic one. The charge point starts a
-    // timer at whatever interval the BootNotification response returned, and
-    // the CSMS this was measured against returns 60s (issue #57) -- so waiting
-    // for the timer would mean holding every run of this scenario open for a
-    // minute to observe a message the simulator will send on request.
-    await sim.send({ command: "heartbeat" });
+  // 12, and the 8 it replaces was measured against a drive() that no longer
+  // exists: one local sim.send. What is waited on now is a chain -- the CSMS's
+  // TriggerMessage, the station's answer, the Heartbeat it then sends, and the
+  // CSMS's answer to that -- and 8 was the shortest hold in this file while
+  // being one of its longest chains. 12 is the modal hold among this file's
+  // CSMS-driven scenarios -- TC_B_06, TC_B_09 and TC_B_21 -- and what the 1.6
+  // twin uses for this
+  // exact exchange (plus a sleep(2000) this does not need: bootWaitSecs gates
+  // the same thing). TC_B_20's note records what a window tuned in isolation
+  // costs under three-lane CI contention.
+  holdSecs: 12,
+  async drive({ cpId, csms201 }) {
+    // THE TRIGGER IS THE MEASUREMENT, and the Heartbeat is its consequence. The
+    // charge point also starts a periodic timer at whatever interval the
+    // BootNotification response returned -- 60s on the CSMS this was measured
+    // against (issue #57) -- which is why the assertions below pin the
+    // Heartbeat to this trigger rather than to its own existence.
+    await csms201.execute(cpId, {
+      action: "TriggerMessage",
+      requestedMessage: "Heartbeat",
+    });
   },
-  assert({ frames, rec }) {
+  assert({ frames, lines, rec }) {
+    assertReceived(rec, frames, "TriggerMessage", "TriggerMessage.req received");
+    // The CSMS is the system under test, so what it put on the wire is the
+    // measurement -- and `requestedMessage` is the one member this request
+    // carries, so a CSMS that reshaped the operation on the way out has
+    // nowhere to hide it.
+    assertCallPayload(
+      rec,
+      frames,
+      "received",
+      "TriggerMessage",
+      { requestedMessage: "Heartbeat" },
+      "TriggerMessage.req asks for a Heartbeat",
+    );
+    assertResponseStatus(
+      rec,
+      frames,
+      "TriggerMessage",
+      "Accepted",
+      "TriggerMessage accepted",
+      { direction: "received" },
+    );
+    // assertLineAfter, not a first-match order check, for TC_054's reason one
+    // protocol over: the periodic Heartbeat is unrelated to this trigger and
+    // can land anywhere in the log, so a first-match check is satisfied by a
+    // Heartbeat that owes nothing to the request under test.
+    assertLineAfter(
+      rec,
+      lines,
+      /Received: \[2,.*"TriggerMessage"/,
+      /Sent: \[2,.*"Heartbeat"/,
+      "requested Heartbeat sent after TriggerMessage",
+    );
     assertSent(rec, frames, "Heartbeat", "Heartbeat.req sent");
+    // Heartbeat only. `assertAllAnswered` counts CALLs the charge point
+    // SENT, which is the direction every OCA `_CSMS` obligation is in, and
+    // TriggerMessage travels the other way -- pointed at it, the check finds
+    // nothing to count and reports UNEXERCISED forever. That the trigger was
+    // answered is `assertResponseStatus`'s job above, on `received`.
     assertAllAnswered(rec, frames, "Heartbeat");
     assertResponseTimestamp(
       rec,

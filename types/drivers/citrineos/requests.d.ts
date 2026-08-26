@@ -69,10 +69,13 @@ export declare function toCitrineRequest(op: CsmsOperation16, refs: CitrineRefs,
  * rather than declaring one with holes in it.
  *
  * The module for each action is CitrineOS's, not the OCPP specification's:
- * `Reset` is Configuration's and the two device-model actions are
- * Monitoring's, read off the `@AsMessageEndpoint` decorators in
+ * `Reset` and `TriggerMessage` are Configuration's and the two device-model
+ * actions are Monitoring's, read off the `@AsMessageEndpoint` decorators in
  * `packages/core/src/modules/{Configuration,Monitoring}/src/module/2/MessageApi.ts`.
- * There is no rule to derive it from, the same way there is none for 1.6.
+ * There is no rule to derive it from, the same way there is none for 1.6 --
+ * and that both actions with a 1.6 namesake happen to share their namesake's
+ * module is a fact about this arrangement, not one to route by: the two
+ * device-model actions have no namesake to agree with.
  */
 export declare function toCitrineRequest201(op: CsmsOperation201): CitrineRequest;
 export {};

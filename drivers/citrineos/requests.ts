@@ -145,10 +145,13 @@ export async function toCitrineRequest(
  * rather than declaring one with holes in it.
  *
  * The module for each action is CitrineOS's, not the OCPP specification's:
- * `Reset` is Configuration's and the two device-model actions are
- * Monitoring's, read off the `@AsMessageEndpoint` decorators in
+ * `Reset` and `TriggerMessage` are Configuration's and the two device-model
+ * actions are Monitoring's, read off the `@AsMessageEndpoint` decorators in
  * `packages/core/src/modules/{Configuration,Monitoring}/src/module/2/MessageApi.ts`.
- * There is no rule to derive it from, the same way there is none for 1.6.
+ * There is no rule to derive it from, the same way there is none for 1.6 --
+ * and that both actions with a 1.6 namesake happen to share their namesake's
+ * module is a fact about this arrangement, not one to route by: the two
+ * device-model actions have no namesake to agree with.
  */
 export function toCitrineRequest201(op: CsmsOperation201): CitrineRequest {
   return { ocppVersion: "2.0.1", ...route201(op) };
@@ -183,6 +186,18 @@ function route201(op: CsmsOperation201): CitrineRoute {
         module: "monitoring",
         action: "setVariables",
         body: { setVariableData: op.variables },
+      };
+
+    // Configuration's, like 1.6's -- see this function's doc comment for the
+    // module table and for why it is not derivable. `evse` is omitted because
+    // the contract has no member for it: TC_F_20 triggers a station-wide
+    // Heartbeat, and tck/driver.ts's NOT BUILT note is where the member
+    // arrives if a case ever scopes one to an EVSE.
+    case "TriggerMessage":
+      return {
+        module: "configuration",
+        action: "triggerMessage",
+        body: { requestedMessage: op.requestedMessage },
       };
 
     default:

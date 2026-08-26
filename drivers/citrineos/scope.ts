@@ -248,10 +248,17 @@ const V2_SCOPE = {
       "that answerable are written by provision and by prepareStation. " +
       "Issue #86.",
   ),
+  // WHAT THIS ROW USED TO SAY, kept because it is the shape of the mistake and
+  // not a typo: "nothing to express either -- the heartbeat is sent by the
+  // charge point on request". That was true of the scenario and false of the
+  // case. TC_F_20 is Trigger Message, its one tool validation is the CSMS
+  // sending TriggerMessage, and this row declared a scenario that never asked
+  // this driver for anything. A scope row can only be as right as the scenario
+  // it describes.
   "cert201-tcf20-heartbeat": d(
-    "Driven green. Nothing to express either: the heartbeat is sent by the " +
-      "charge point on request, and the CSMS answering it with a parseable " +
-      "currentTime is the measurement.",
+    "Driven green. TriggerMessage routes through Configuration on the 2.0.1 " +
+      "path exactly as its 1.6 namesake does, and requestedMessage reaches " +
+      "the wire as the driver spelled it.",
   ),
   // THE TWO ROWS #63 PREDICTED WOULD NEED A DEVICE MODEL, and the prediction
   // was wrong in a way worth keeping written down. It read #57 §A's four
