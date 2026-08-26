@@ -20,9 +20,11 @@
 # needs is one directory up, and the editor will autocomplete it. A convention
 # loses that argument; a red build wins it.
 #
-# `export ... from` counts, and that is not pedantry: index.ts is nothing but
-# re-exports, and a re-export reaches outside the directory exactly as an
-# import does.
+# `export ... from` counts, and so does `import(...)`. Neither is pedantry:
+# index.ts is nothing but re-exports, and a re-export reaches outside the
+# directory exactly as an import does -- while a dynamic import is the one
+# spelling that carries no whitespace before its quote, so a pattern written
+# for the static form reads every import in the tree and misses it.
 #
 # WHAT THIS DOES NOT CHECK. Whether the library is CORRECT against the format
 # is tools/trace-conformance.sh, which needs the network and the
@@ -48,9 +50,16 @@ if [ ! -d "$subtree" ]; then
 fi
 
 # `<file>:<line>:<from|import> "<specifier>"`, one per occurrence.
+#
+# THE OPTIONAL PAREN IS NOT DECORATION. `import("../tck/ocpp")` has no space
+# between the keyword and the quote, so a pattern demanding one -- which this
+# was -- reads every static import and no dynamic one. That is the same hole as
+# the `./../` spelling below, in the other axis: a specifier the guard cannot
+# see is a specifier the guard permits, and a lazily-imported tie back to this
+# repository is exactly as fatal to the move as an eager one.
 found=$(
   git grep -n --untracked -oE \
-    "(from|import)[[:space:]]+[\"'][^\"']+[\"']" -- "$subtree"
+    "(from|import)[[:space:]]*\\(?[[:space:]]*[\"'][^\"']+[\"']" -- "$subtree"
 )
 status=$?
 if [ "$status" -gt 1 ]; then
