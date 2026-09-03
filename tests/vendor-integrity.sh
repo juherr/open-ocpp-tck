@@ -18,8 +18,11 @@
 # repository (shiv3/ocpp-cp-simulator#271): such a row keeps the upstream path
 # and the fork-point digest, pins no local bytes and carries no patch. What is
 # verified instead is the Apache-2.0 §4(b) notice itself — the file's first
-# lines must name the upstream path and the pinned commit — and NOTICE must
-# list the file (A10).
+# lines must name the upstream path and the FORK commit, in a JSDoc block so
+# it reaches the published declarations — and NOTICE must list the file (A10).
+# v3 also renames `local-upstreamable` to `local-native`: with the runner
+# ceded, those files are this repository's own rather than queued for an
+# upstream pull request.
 #
 # v1 had a single digest column with a single meaning ("this is what upstream
 # shipped"), which is unfalsifiable for a file we modified: the pin recorded
@@ -97,12 +100,18 @@ verbatim_count=0
 patched_rows=""
 forked_rows=""
 
-# The pinned commit, for A12: a forked file's header must cite the commit the
-# manifest pins, so the two cannot name different fork points.
+# The FORK commit, for A12 — deliberately not `Pinned commit`. The pin is where
+# the verbatim rows were last imported from and moves on every re-import; the
+# fork commit is where the forked files stopped tracking upstream and never
+# moves. Validating headers against the pin would mean a re-import of an
+# unrelated verbatim file silently invalidated every forked file's §4(b)
+# notice, or forced a rewrite of ten headers that describe an event that did
+# not happen.
 # shellcheck disable=SC2016  # \1 is a sed backreference, not a shell expansion.
-pin="$(sed -n 's/^Pinned commit: \*\*`\([0-9a-f]\{40\}\)`\*\*.*/\1/p' "$manifest" | head -1)"
-if [ -z "$pin" ]; then
-  echo "FAIL: $manifest does not state a pinned commit — forked rows have no fork point to cite." >&2
+fork="$(sed -n 's/^### Fork commit: `\([0-9a-f]\{40\}\)`.*/\1/p' "$manifest" | head -1)"
+if [ -z "$fork" ]; then
+  echo "FAIL: $manifest states no '### Fork commit: <sha>' heading — forked rows have no fork point to cite." >&2
+  echo "  → this is a separate fact from 'Pinned commit'; see the fork section of $manifest." >&2
   exit 1
 fi
 
@@ -113,10 +122,10 @@ while IFS=$'\t' read -r path origin up_src up_sha loc_sha patch_rel; do
   # A1 — the origin vocabulary is closed. An origin outside the set is checked
   # by nothing: the row exists but pins no property.
   case "$origin" in
-    upstream-verbatim | upstream-patched | upstream-forked | local-upstreamable | local-private) ;;
+    upstream-verbatim | upstream-patched | upstream-forked | local-native | local-private) ;;
     *)
       echo "FAIL[$path]: unknown origin '$origin' in $manifest." >&2
-      echo "  → one of: upstream-verbatim, upstream-patched, upstream-forked, local-upstreamable, local-private." >&2
+      echo "  → one of: upstream-verbatim, upstream-patched, upstream-forked, local-native, local-private." >&2
       status=1
       continue
       ;;
@@ -134,7 +143,7 @@ while IFS=$'\t' read -r path origin up_src up_sha loc_sha patch_rel; do
   # A2 — local rows pin nothing. Pinning a file under active development makes
   # re-pinning a reflex, and a reflex re-pin is how a spec digest gets bumped
   # without anyone reading the diff. Keep the pins rare so they stay loud.
-  if [ "$origin" = "local-upstreamable" ] || [ "$origin" = "local-private" ]; then
+  if [ "$origin" = "local-native" ] || [ "$origin" = "local-private" ]; then
     for cell in "$up_src" "$up_sha" "$loc_sha" "$patch_rel"; do
       if ! is_empty_cell "$cell"; then
         echo "FAIL[$path]: a '$origin' row must leave upstream path, both digests and patch empty ('—')." >&2
@@ -179,9 +188,21 @@ while IFS=$'\t' read -r path origin up_src up_sha loc_sha patch_rel; do
       echo "FAIL[$path]: no 'Derived from shiv3/ocpp-cp-simulator $up_src' notice in the first three lines." >&2
       echo "  → Apache-2.0 §4(b): a forked file must say what it was forked from." >&2
       status=1
-    elif ! head -3 "$local_path" | grep -Fq "@ $pin"; then
-      echo "FAIL[$path]: the Derived-from notice does not cite the pinned commit $pin." >&2
-      echo "  → the header and $manifest name different fork points; one of them is wrong." >&2
+    elif ! head -3 "$local_path" | grep -Fq "@ $fork"; then
+      echo "FAIL[$path]: the Derived-from notice does not cite the fork commit $fork." >&2
+      echo "  → the header and $manifest's '### Fork commit' name different fork points; one is wrong." >&2
+      status=1
+    fi
+
+    # A13 — the notice has to survive into the published declarations. These
+    # files ship as a package, and `types/**.d.ts` is what a consumer reads;
+    # a `//` line comment is dropped by tsc, a JSDoc block before the first
+    # retained declaration is not. Requiring the block shape here is what
+    # keeps §4(b) attached to the artifact rather than only to the source.
+    if head -3 "$local_path" | grep -Eq '^[[:space:]]*//.*Derived from shiv3/ocpp-cp-simulator'; then
+      echo "FAIL[$path]: the Derived-from notice is a // line comment." >&2
+      echo "  → tsc drops those, so it never reaches types/. Put it in the file's" >&2
+      echo "    leading /** */ block, as the other forked files do." >&2
       status=1
     fi
     continue

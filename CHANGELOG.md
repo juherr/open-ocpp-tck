@@ -104,6 +104,24 @@ Released as `0.3.0`. The documented install ref already points at that tag, so
 
 ### Changed
 
+- `local-upstreamable` is now **`local-native`**. The name described a queue —
+  files of ours waiting for an upstream pull request — and with the runner
+  ceded there is no such queue: the driver contract, the scope and standing
+  tables, the drivers and the CLI are native here. Thirty-nine rows, the
+  origin vocabulary in `tests/vendor-integrity.sh`, and the prose in
+  `VENDOR.md`, `AGENTS.md`, `README.md` and `NOTICE`
+- `VENDOR.md` gains a **`### Fork commit`** heading, and
+  `tests/vendor-integrity.sh` validates forked headers against it instead of
+  against `Pinned commit`. The two were the same line and are two different
+  facts: the pin moves whenever an `upstream-verbatim` row is re-imported, the
+  fork point never does. Sharing one line meant a future re-import would either
+  invalidate ten §4(b) notices or force a rewrite of ten headers describing an
+  event that did not happen
+- Every forked file's provenance notice is now a **JSDoc block**, so `tsc`
+  carries it into `types/**/*.d.ts` — what a consumer of this package actually
+  reads. `assert.ts`, `sim.ts` and `main.ts` had `//` line comments, which tsc
+  drops; all ten forked declarations now carry the notice, and a new guard
+  (A13) fails on the line-comment shape
 - The runner layer — `tck/main.ts`, `sim.ts`, `assert.ts`, `spec-types.ts` and
   the five spec modules — is **forked, not vendored**. Upstream agreed in
   [shiv3/ocpp-cp-simulator#271](https://github.com/shiv3/ocpp-cp-simulator/issues/271)

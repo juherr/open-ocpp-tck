@@ -63,7 +63,8 @@ Files that are NOT vendored (written for this project): the driver contract
 and its helpers under tck/ (driver.ts, driver-registry.ts, scope.ts,
 capabilities.ts, unverifiable.ts, wait.ts, time.ts, index.ts), the reference
 driver under drivers/steve/, and bin/ocpp-tck.ts. VENDOR.md marks each of them
-`local-upstreamable`; they are offered upstream under the same licence.
+`local-native`: they are this project's own work, published here under the
+same licence as the forked half.
 
 Apache-2.0 obligations
 ----------------------

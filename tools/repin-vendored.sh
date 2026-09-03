@@ -111,6 +111,8 @@ repin_one() {
     upstream-forked)
       echo "repin: $path is 'upstream-forked' — maintained here since the fork, so there is" >&2
       echo "  nothing to re-pin. Edit it like any local file and keep its Derived-from header." >&2
+      echo "  (Only upstream-verbatim and upstream-patched rows pin anything: today" >&2
+      echo "   that is tck/ocpp.ts and tck/util.ts.)" >&2
       return 1
       ;;
     *)

@@ -70,14 +70,17 @@ under `tck/`:**
 
 | origin | editing it means |
 |---|---|
-| `local-upstreamable`, `local-private` | nothing to do |
+| `local-native`, `local-private` | nothing to do |
 | `upstream-forked` | nothing to do — keep the `Derived from …` header on its first lines |
 | `upstream-patched` | re-pin: `tools/repin-vendored.sh <path>` |
 | `upstream-verbatim` | also a change of origin — same command, it bootstraps the row, the patch and the digest, then names the one `NOTICE` line it will not word for you |
 
 The runner (`tck/main.ts`, `sim.ts`, `assert.ts`, `spec-types.ts`, the specs)
 is `upstream-forked` since upstream ceded it (shiv3/ocpp-cp-simulator#271), so
-a runner change is an ordinary edit. Only `tck/ocpp.ts` and `tck/util.ts` are
+a runner change is an ordinary edit — keep the leading `/** Derived from … @
+<fork commit> */` block, which the guard checks against `VENDOR.md`'s
+`### Fork commit` heading (a separate, frozen fact from `Pinned commit`, which
+only a re-import moves). Only `tck/ocpp.ts` and `tck/util.ts` are
 still `upstream-verbatim`; editing one of those is where the re-pin applies,
 and doing it *before* `bun run verify` saves a full gate run: the script
 bootstraps the patch and the digest in one step, in the only order that cannot

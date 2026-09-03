@@ -1,4 +1,26 @@
 /**
+ * Derived from shiv3/ocpp-cp-simulator scripts/steve-verify/runner/sim.ts @ 604054adb0d7d7129a26a5f1ad2d5fdc290d1ca1 (Apache-2.0). Modified: the hardcoded docker argv is now built from SimConfig; the `-v <repoRoot>:/app -w /app` bind mount and `repoRoot` are gone (the published image ships the CLI sources); the image is pinned by digest; `--network` left the default path; outgoing WS Basic auth and an optional cpId-in-path WS URL were added; every trace of the command redacts the password. The line pump, waitForLine, stop(), container cleanup and signal handlers are byte-for-byte upstream.
+ *
+ * sim.ts -- docker-spawned simulator process: launches the ocpp-cp-simulator
+ * CLI in JSON Lines mode inside a container (port of lib.sh's sim_start),
+ * feeds it JSON commands directly over the child's stdin (no intermediate
+ * feeder shell script -- lib.sh needed one only because its `docker run -d`
+ * detaches immediately; spawning attached via Bun.spawn lets this driver
+ * write commands with real timing control instead), and streams stdout back
+ * as lines for the caller to parse (ocpp.ts) or wait on.
+ *
+ * Upstream ran `oven/bun:1.3-alpine` with the checkout bind-mounted at /app.
+ * Here the published image `ghcr.io/shiv3/ocpp-cp-simulator` carries the CLI
+ * sources itself, so there is no repo to mount -- but its default entrypoint
+ * (`/usr/local/bin/entrypoint.sh`) always appends
+ * `--http-host 0.0.0.0 --unsafe-remote --web-console $HTTP_PORT`, which puts
+ * the CLI in daemon/web-console mode: it auto-connects on startup and emits
+ * `[server] …` lines instead of the JSON Lines event stream this runner
+ * parses (verified live against 0.7.5 -- see P0-FINDINGS.md §9). The
+ * entrypoint is therefore overridden back to `bun src/cli/main.ts`, which
+ * runs the very same embedded sources in true JSON Lines mode.
+ */
+/**
  * Default simulator image, PINNED BY DIGEST (repo convention: never
  * `latest`, never a bare tag). This is the multi-arch index digest of
  * `ghcr.io/shiv3/ocpp-cp-simulator:0.7.5`, resolved 2026-07-31 with

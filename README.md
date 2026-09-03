@@ -272,9 +272,10 @@ each of those files opens with a `Derived from … @ <commit>` notice that
 parser and a helper (`ocpp.ts`, `util.ts`) are still verbatim copies of modules
 upstream keeps, pinned by digest. See [`NOTICE`](NOTICE).
 
-Files marked `local-upstreamable` in `VENDOR.md` are ours and intended for an
-upstream pull request, which is why this repository is Apache-2.0 throughout
-even where the code is new.
+Files marked `local-native` in `VENDOR.md` — the driver contract, the scope
+and standing tables, the drivers, the CLI — are this repository's own, written
+and maintained here. The repository is Apache-2.0 throughout, matching the
+upstream licence the forked half carries.
 
 ## Tests
 
