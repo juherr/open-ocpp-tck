@@ -14,6 +14,13 @@
 #   local sha256    — what we ship. Changes on every deliberate edit.
 #   patch           — the difference, reverse-applied and verified here.
 #
+# v3 adds `upstream-forked` for the runner layer upstream ceded to this
+# repository (shiv3/ocpp-cp-simulator#271): such a row keeps the upstream path
+# and the fork-point digest, pins no local bytes and carries no patch. What is
+# verified instead is the Apache-2.0 §4(b) notice itself — the file's first
+# lines must name the upstream path and the pinned commit — and NOTICE must
+# list the file (A10).
+#
 # v1 had a single digest column with a single meaning ("this is what upstream
 # shipped"), which is unfalsifiable for a file we modified: the pin recorded
 # OUR bytes under a label claiming they were UPSTREAM's. Splitting the column
@@ -88,6 +95,16 @@ fi
 
 verbatim_count=0
 patched_rows=""
+forked_rows=""
+
+# The pinned commit, for A12: a forked file's header must cite the commit the
+# manifest pins, so the two cannot name different fork points.
+# shellcheck disable=SC2016  # \1 is a sed backreference, not a shell expansion.
+pin="$(sed -n 's/^Pinned commit: \*\*`\([0-9a-f]\{40\}\)`\*\*.*/\1/p' "$manifest" | head -1)"
+if [ -z "$pin" ]; then
+  echo "FAIL: $manifest does not state a pinned commit — forked rows have no fork point to cite." >&2
+  exit 1
+fi
 
 while IFS=$'\t' read -r path origin up_src up_sha loc_sha patch_rel; do
   [ -n "$path" ] || continue
@@ -96,10 +113,10 @@ while IFS=$'\t' read -r path origin up_src up_sha loc_sha patch_rel; do
   # A1 — the origin vocabulary is closed. An origin outside the set is checked
   # by nothing: the row exists but pins no property.
   case "$origin" in
-    upstream-verbatim | upstream-patched | local-upstreamable | local-private) ;;
+    upstream-verbatim | upstream-patched | upstream-forked | local-upstreamable | local-private) ;;
     *)
       echo "FAIL[$path]: unknown origin '$origin' in $manifest." >&2
-      echo "  → one of: upstream-verbatim, upstream-patched, local-upstreamable, local-private." >&2
+      echo "  → one of: upstream-verbatim, upstream-patched, upstream-forked, local-upstreamable, local-private." >&2
       status=1
       continue
       ;;
@@ -134,6 +151,39 @@ while IFS=$'\t' read -r path origin up_src up_sha loc_sha patch_rel; do
     echo "FAIL[$path]: an '$origin' row must name the upstream path it came from." >&2
     echo "  → Apache-2.0 §4(b) requires naming the file that was copied or modified." >&2
     status=1
+    continue
+  fi
+
+  # --- origin = upstream-forked --------------------------------------------
+  # A12 — a forked file pins its provenance, not its bytes. The upstream digest
+  # is the fork point and must be a digest; the local digest and the patch are
+  # forbidden (there is no upstream original to diff against any more); and
+  # the file's first three lines must carry the §4(b) notice naming the
+  # upstream path and the pinned commit. NOTICE is cross-checked in A10.
+  if [ "$origin" = "upstream-forked" ]; then
+    forked_rows="$forked_rows$path"$'\n'
+    if ! printf '%s' "$up_sha" | grep -Eq '^[0-9a-f]{64}$'; then
+      echo "FAIL[$path]: an 'upstream-forked' row must record the fork-point upstream sha256 ('$up_sha')." >&2
+      status=1
+      continue
+    fi
+    for cell in "$loc_sha" "$patch_rel"; do
+      if ! is_empty_cell "$cell"; then
+        echo "FAIL[$path]: an 'upstream-forked' row must leave the local digest and patch empty ('—')." >&2
+        echo "  → the file is maintained here; nothing about its bytes is pinned." >&2
+        status=1
+        break
+      fi
+    done
+    if ! head -3 "$local_path" | grep -Fq "Derived from shiv3/ocpp-cp-simulator $up_src"; then
+      echo "FAIL[$path]: no 'Derived from shiv3/ocpp-cp-simulator $up_src' notice in the first three lines." >&2
+      echo "  → Apache-2.0 §4(b): a forked file must say what it was forked from." >&2
+      status=1
+    elif ! head -3 "$local_path" | grep -Fq "@ $pin"; then
+      echo "FAIL[$path]: the Derived-from notice does not cite the pinned commit $pin." >&2
+      echo "  → the header and $manifest name different fork points; one of them is wrong." >&2
+      status=1
+    fi
     continue
   fi
 
@@ -297,13 +347,13 @@ if [ ! -f "$notice" ]; then
   echo "FAIL: $notice is missing — Apache-2.0 §4(b) attribution has no home." >&2
   status=1
 else
-  manifest_patched="$(printf '%s' "$patched_rows" | grep -v '^$' | sort || true)"
+  manifest_patched="$(printf '%s%s' "$patched_rows" "$forked_rows" | grep -v '^$' | sort || true)"
   notice_patched="$(
     awk '/^Files modified relative to upstream/,/^Apache-2.0 obligations/' "$notice" |
       grep -oE '^  [A-Za-z0-9_./-]+' | tr -d ' ' | sort -u || true
   )"
   if [ "$manifest_patched" != "$notice_patched" ]; then
-    echo "FAIL: $notice's modified-file list and $manifest's 'upstream-patched' rows disagree." >&2
+    echo "FAIL: $notice's modified-file list and $manifest's 'upstream-patched' + 'upstream-forked' rows disagree." >&2
     echo "  (< NOTICE, > VENDOR.md)" >&2
     diff <(printf '%s\n' "$notice_patched") <(printf '%s\n' "$manifest_patched") >&2 || true
     status=1
@@ -312,6 +362,7 @@ fi
 
 if [ "$status" -eq 0 ]; then
   patched_count="$(printf '%s' "$patched_rows" | grep -cv '^$' || true)"
-  echo "Vendored files match $manifest ($verbatim_count verbatim, $patched_count patched and reverse-verified)."
+  forked_count="$(printf '%s' "$forked_rows" | grep -cv '^$' || true)"
+  echo "Vendored files match $manifest ($verbatim_count verbatim, $patched_count patched and reverse-verified, $forked_count forked with attribution headers)."
 fi
 exit "$status"

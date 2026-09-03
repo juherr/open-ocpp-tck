@@ -1,4 +1,6 @@
 /**
+ * Derived from shiv3/ocpp-cp-simulator scripts/steve-verify/runner/specs/authorize.ts @ 604054adb0d7d7129a26a5f1ad2d5fdc290d1ca1 (Apache-2.0). Modified: the observation surface is renamed off the upstream harness's CSMS-specific records.
+ *
  * specs/authorize.ts -- TC_023 Authorize Outcome scenarios (issue #181's
  * local-start Authorize gate, default ON: every local transaction-start
  * node now sends Authorize.req and awaits Authorize.conf BEFORE

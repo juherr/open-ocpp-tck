@@ -35,20 +35,25 @@ else
 fi
 echo
 
-# Per-file drift. Rows whose origin is `local-*` have no upstream counterpart.
+# Per-file drift. Rows whose origin is `local-*` have no upstream counterpart;
+# `upstream-forked` rows are expected to differ and are reported as such —
+# what is worth knowing about them is only whether upstream still ships the
+# file at all.
 awk -F'|' 'NF == 8 && $3 !~ /origin/ {
   gsub(/^[ \t]+|[ \t]+$/, "", $2); gsub(/`/, "", $2);
   gsub(/^[ \t]+|[ \t]+$/, "", $3); gsub(/`/, "", $3);
   gsub(/^[ \t]+|[ \t]+$/, "", $4); gsub(/`/, "", $4);
   if ($3 ~ /^local-/) next;
-  print $2 "\t" $4;
-}' "$manifest" | while IFS="$(printf '\t')" read -r local_path up_path; do
+  print $2 "\t" $3 "\t" $4;
+}' "$manifest" | while IFS="$(printf '\t')" read -r local_path origin up_path; do
   [ -n "$up_path" ] || continue
   if [ ! -f "$work/upstream/$up_path" ]; then
     echo "GONE     $up_path (was vendored as $local_path)"
     continue
   fi
-  if diff -q "$work/upstream/$up_path" "$local_path" >/dev/null 2>&1; then
+  if [ "$origin" = "upstream-forked" ]; then
+    echo "FORKED   $local_path  (upstream still ships $up_path)"
+  elif diff -q "$work/upstream/$up_path" "$local_path" >/dev/null 2>&1; then
     echo "SAME     $local_path"
   else
     echo "DIFFERS  $local_path  <-  $up_path"

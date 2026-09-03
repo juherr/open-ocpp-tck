@@ -104,6 +104,15 @@ Released as `0.3.0`. The documented install ref already points at that tag, so
 
 ### Changed
 
+- The runner layer — `tck/main.ts`, `sim.ts`, `assert.ts`, `spec-types.ts` and
+  the five spec modules — is **forked, not vendored**. Upstream agreed in
+  [shiv3/ocpp-cp-simulator#271](https://github.com/shiv3/ocpp-cp-simulator/issues/271)
+  that it belongs here and will retire its own copy, so `VENDOR.md` now marks
+  those ten rows `upstream-forked`: upstream path and fork-point digest kept
+  for provenance, no local digest, no patch. `tests/vendor-integrity.sh`
+  checks the Apache-2.0 §4(b) notice on each file's first lines instead of
+  reverse-applying a patch, and the seven files that had no such notice got
+  one. `tck/ocpp.ts` and `tck/util.ts` stay `upstream-verbatim`
 - **BREAKING** — `CsmsCapabilities` gains a required `deviceModel: boolean`,
   beside `reservations` and `chargingProfiles`. An out-of-tree driver adds one
   line; a driver that does not gets a compiler error naming the field, which is
@@ -192,6 +201,10 @@ Released as `0.3.0`. The documented install ref already points at that tag, so
 
 ### Removed
 
+- `patches/` and its entry in `package.json`'s `files`. The patches were the
+  §4(b) record and the upstream pull request in one artifact; with the runner
+  forked there is no upstream original to diff against and no pull request to
+  cut. `tools/repin-vendored.sh` refuses an `upstream-forked` path by name
 - **BREAKING** — `SimTransportDefaults.extraArgs`. Nothing read it, so a driver
   stating it was ignored in silence ([#64])
 - The adaptive observation window. It was built, guarded and shipped, then

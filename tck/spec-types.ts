@@ -1,4 +1,6 @@
 /**
+ * Derived from shiv3/ocpp-cp-simulator scripts/steve-verify/runner/spec-types.ts @ 604054adb0d7d7129a26a5f1ad2d5fdc290d1ca1 (Apache-2.0). Modified: the drive/assert context carries the CSMS-neutral CsmsOperations16 / CsmsRecords contract instead of the upstream harness's CSMS-specific ops and transaction types.
+ *
  * spec-types.ts -- the shape a scenario spec (port of specs/<id>.spec.sh)
  * takes in the TypeScript runner. Task 1 wires two specs directly in
  * main.ts against this shape; Task 2 grows a specs/ directory of these.

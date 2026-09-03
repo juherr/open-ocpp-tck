@@ -1,4 +1,6 @@
 /**
+ * Derived from shiv3/ocpp-cp-simulator scripts/steve-verify/runner/specs/core.ts @ 604054adb0d7d7129a26a5f1ad2d5fdc290d1ca1 (Apache-2.0). Modified: CSMS operations are expressed as typed OCPP through the driver contract.
+ *
  * specs/core.ts -- typed port of the "Core" group's bash specs
  * (scripts/steve-verify/specs/cert16-{tc001,tc003,tc004,tc005,tc013,tc014,
  * tc017,tc018,tc019(x2),tc021,tc024,tc031,tc061,tc064}-*.spec.sh), mirroring

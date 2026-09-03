@@ -108,6 +108,11 @@ repin_one() {
 
   case "$origin" in
     upstream-patched | upstream-verbatim) ;;
+    upstream-forked)
+      echo "repin: $path is 'upstream-forked' — maintained here since the fork, so there is" >&2
+      echo "  nothing to re-pin. Edit it like any local file and keep its Derived-from header." >&2
+      return 1
+      ;;
     *)
       echo "repin: $path is '$origin' — it pins nothing, so there is nothing to re-pin." >&2
       return 1

@@ -263,12 +263,14 @@ over with a shim that would need keeping in sync.
 
 ## Provenance
 
-`tck/` is partly vendored from [`shiv3/ocpp-cp-simulator`][sim] (Apache-2.0) at
-a pinned commit. [`VENDOR.md`](VENDOR.md) records, per file, the upstream
-digest, the local digest, and a patch — and `tests/vendor-integrity.sh`
-*reverse-applies* each patch to check it still reconstructs the pinned upstream
-bytes. Apache-2.0 §4(b) is therefore satisfied by a verified artifact rather
-than by a claim in a file. See [`NOTICE`](NOTICE).
+`tck/` descends from [`shiv3/ocpp-cp-simulator`][sim] (Apache-2.0). The runner
+layer — `main.ts`, `sim.ts`, `assert.ts`, `spec-types.ts` and the specs — was
+forked at a pinned commit and is maintained here since upstream ceded it
+([shiv3/ocpp-cp-simulator#271](https://github.com/shiv3/ocpp-cp-simulator/issues/271));
+each of those files opens with a `Derived from … @ <commit>` notice that
+`tests/vendor-integrity.sh` checks against [`VENDOR.md`](VENDOR.md). The frame
+parser and a helper (`ocpp.ts`, `util.ts`) are still verbatim copies of modules
+upstream keeps, pinned by digest. See [`NOTICE`](NOTICE).
 
 Files marked `local-upstreamable` in `VENDOR.md` are ours and intended for an
 upstream pull request, which is why this repository is Apache-2.0 throughout
