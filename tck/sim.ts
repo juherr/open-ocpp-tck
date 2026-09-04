@@ -1,6 +1,6 @@
-// Derived from shiv3/ocpp-cp-simulator scripts/steve-verify/runner/sim.ts @ 604054adb0d7d7129a26a5f1ad2d5fdc290d1ca1 (Apache-2.0). Modified: the hardcoded docker argv is now built from SimConfig; the `-v <repoRoot>:/app -w /app` bind mount and `repoRoot` are gone (the published image ships the CLI sources); the image is pinned by digest; `--network` left the default path; outgoing WS Basic auth and an optional cpId-in-path WS URL were added; every trace of the command redacts the password. The line pump, waitForLine, stop(), container cleanup and signal handlers are byte-for-byte upstream.
-
 /**
+ * Derived from shiv3/ocpp-cp-simulator scripts/steve-verify/runner/sim.ts @ 604054adb0d7d7129a26a5f1ad2d5fdc290d1ca1 (Apache-2.0). Modified: the hardcoded docker argv is now built from SimConfig; the `-v <repoRoot>:/app -w /app` bind mount and `repoRoot` are gone (the published image ships the CLI sources); the image is pinned by digest; `--network` left the default path; outgoing WS Basic auth and an optional cpId-in-path WS URL were added; every trace of the command redacts the password. The line pump, waitForLine, stop(), container cleanup and signal handlers are byte-for-byte upstream.
+ *
  * sim.ts -- docker-spawned simulator process: launches the ocpp-cp-simulator
  * CLI in JSON Lines mode inside a container (port of lib.sh's sim_start),
  * feeds it JSON commands directly over the child's stdin (no intermediate

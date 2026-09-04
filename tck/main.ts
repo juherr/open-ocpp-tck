@@ -1,7 +1,7 @@
 #!/usr/bin/env bun
-// Derived from shiv3/ocpp-cp-simulator scripts/steve-verify/runner/main.ts @ 604054adb0d7d7129a26a5f1ad2d5fdc290d1ca1 (Apache-2.0). Modified: the STEVE_DRIVER=api|ui selection is replaced by a CSMS driver loaded through ./driver-registry; a per-driver scope table (./scope) is consulted BEFORE any container starts and yields the NOT APPLICABLE verdict; UnsupportedOperationError (./driver) thrown out of drive() degrades to NOT APPLICABLE with a stderr WARNING; the PARTIAL verdict and the `skipped` summary column were added; the exit code is non-zero only for FAIL/ERROR; parallel lanes derive from the resolved station list instead of the fixed CERTCP1..3 trio; the SteVe capability probe is dropped.
-
 /**
+ * Derived from shiv3/ocpp-cp-simulator scripts/steve-verify/runner/main.ts @ 604054adb0d7d7129a26a5f1ad2d5fdc290d1ca1 (Apache-2.0). Modified: the STEVE_DRIVER=api|ui selection is replaced by a CSMS driver loaded through ./driver-registry; a per-driver scope table (./scope) is consulted BEFORE any container starts and yields the NOT APPLICABLE verdict; UnsupportedOperationError (./driver) thrown out of drive() degrades to NOT APPLICABLE with a stderr WARNING; the PARTIAL verdict and the `skipped` summary column were added; the exit code is non-zero only for FAIL/ERROR; parallel lanes derive from the resolved station list instead of the fixed CERTCP1..3 trio; the SteVe capability probe is dropped.
+ *
  * main.ts -- TypeScript OCPP conformance runner CLI.
  *
  * Usage: ocpp-tck run <template-id> [--cp CP1] [--timeout N] [--connector N]
@@ -818,9 +818,10 @@ async function runScenario<D>(
 // correctness problem, not a cosmetic one, and no amount of re-sync
 // convenience buys it back.
 //
-// The divergence is cheap to carry because it is recorded: this file is
-// upstream-patched, so the delta lives in patches/tck/main.ts.patch and any
-// re-sync has to look at it. That is what the vendoring machinery is FOR.
+// The divergence is cheap to carry because this file is no longer tracking
+// upstream at all: it is `upstream-forked` since shiv3/ocpp-cp-simulator#271
+// ceded the runner layer here, so the decision above is simply ours to make.
+// The header records where it came from; there is no patch to re-sync.
 //
 // NOT BUILT, here because here is where it gets re-proposed: a second
 // selection dimension beside --group -- by domain, or by the certification

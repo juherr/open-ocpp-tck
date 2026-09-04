@@ -276,9 +276,14 @@ scan_including_comments() { # <dir> <forbidden-alternation> <why>
 # design. A driver's own names are deliberately NOT in it: `steve` and
 # `citrineos` name public projects, and drivers/citrineos/README.md compares
 # its gaps to the SteVe driver's on purpose -- documentation, not disclosure.
-for public_dir in "$core_dir" "$drivers_dir" "$subtree/patches" "$subtree/bin"; do
+# `patches/` used to be scanned here and is gone with the fork (#271): there is
+# no upstream pull request to cut a diff for any more. The reason the scan
+# exists has not changed -- this repository is public, and a private CSMS's
+# name in a comment is that party's business -- so every directory that still
+# ships is still swept.
+for public_dir in "$core_dir" "$drivers_dir" "$subtree/bin" "$subtree/tools"; do
   scan_including_comments "$public_dir" "$unowned_names" \
-    "names a third party's private CSMS — comments and patches included, because this repository is public and patches/ becomes an upstream pull request"
+    "names a third party's private CSMS — comments included, because this repository is public"
 done
 
 # --- layering --------------------------------------------------------------

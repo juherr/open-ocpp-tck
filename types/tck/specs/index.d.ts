@@ -1,4 +1,6 @@
 /**
+ * Derived from shiv3/ocpp-cp-simulator scripts/steve-verify/runner/specs/index.ts @ 604054adb0d7d7129a26a5f1ad2d5fdc290d1ca1 (Apache-2.0). Modified: "authorize" is folded into the "all" group.
+ *
  * specs/index.ts -- re-exports the ported spec groups. main.ts builds its
  * own registry (GROUPS/ALL_SPECS/SPECS_BY_TEMPLATE_ID) directly from these
  * group modules; this file exists as the single public entry point for

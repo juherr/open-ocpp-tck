@@ -20,32 +20,37 @@ Imported from    : scripts/steve-verify/runner/  and
 Purpose of the fork
 -------------------
 The upstream harness drives a SteVe CSMS. This copy keeps the scenario
-specifications and the OCPP-J assertion engine verbatim and replaces only
-the CSMS-facing driver, so the same certification scenarios can be run
-against a different CSMS.
+specifications and the OCPP-J assertion engine and replaces the CSMS-facing
+driver, so the same certification scenarios can be run against a different
+CSMS. Since shiv3/ocpp-cp-simulator#271 upstream has ceded the runner layer
+to this repository: the files below are FORKED — maintained here, no longer
+tracking upstream — rather than patched copies of an upstream original.
 
 Files modified relative to upstream
 -----------------------------------
-  tck/spec-types.ts PATCHED    the drive/assert context carries the neutral
+Each carries, in its first lines, a notice naming the upstream file and
+commit it derives from and what was changed at the fork:
+  tck/spec-types.ts FORKED     the drive/assert context carries the neutral
                                CsmsOperations16/CsmsRecords contract instead of
                                SteVe's SteveOps/SteveTx
-  tck/specs/index.ts PATCHED    "authorize" is folded into the "all" group
-  tck/specs/core.ts PATCHED    CSMS operations expressed as typed OCPP
-  tck/specs/authorize.ts PATCHED    observation surface renamed off SteVe's
-  tck/specs/authlist-reservation.ts PATCHED    CSMS operations expressed as typed OCPP
-  tck/specs/remotetrigger-smartcharging.ts PATCHED    CSMS operations expressed as typed OCPP
-  tck/specs/firmware.ts PATCHED    CSMS operations expressed as typed OCPP
-  tck/assert.ts     PATCHED    per-check SKIPPED degradation
+  tck/specs/index.ts FORKED     "authorize" is folded into the "all" group
+  tck/specs/core.ts FORKED     CSMS operations expressed as typed OCPP
+  tck/specs/authorize.ts FORKED     observation surface renamed off SteVe's
+  tck/specs/authlist-reservation.ts FORKED     CSMS operations expressed as typed OCPP
+  tck/specs/remotetrigger-smartcharging.ts FORKED     CSMS operations expressed as typed OCPP
+  tck/specs/firmware.ts FORKED     CSMS operations expressed as typed OCPP
+  tck/assert.ts     FORKED     per-check SKIPPED degradation
                                (UNVERIFIABLE_PREFIX sentinel)
-  tck/sim.ts        PATCHED    config-driven docker argv, published image
+  tck/sim.ts        FORKED     config-driven docker argv, published image
                                pinned by digest, no repo bind-mount,
                                outgoing WS Basic auth, secret redaction
-  tck/main.ts       PATCHED    driver loaded from a module specifier, scope
+  tck/main.ts       FORKED     driver loaded from a module specifier, scope
                                table, NOT APPLICABLE + PARTIAL verdicts,
                                exit-code policy, station-derived lanes,
                                "authorize" folded into the "all" group
-This list and the `upstream-patched` rows of VENDOR.md are two statements of
-the same fact; tests/vendor-integrity.sh fails if they disagree.
+This list and the `upstream-forked` (and any `upstream-patched`) rows of
+VENDOR.md are two statements of the same fact; tests/vendor-integrity.sh
+fails if they disagree.
 (They did: runner/tsconfig.json was listed here as ADAPTED while VENDOR.md
 called it verbatim. The file is byte-for-byte identical to upstream — verified
 2026-07-31 against the pinned commit — so this list was the wrong one.)
@@ -58,18 +63,21 @@ Files that are NOT vendored (written for this project): the driver contract
 and its helpers under tck/ (driver.ts, driver-registry.ts, scope.ts,
 capabilities.ts, unverifiable.ts, wait.ts, time.ts, index.ts), the reference
 driver under drivers/steve/, and bin/ocpp-tck.ts. VENDOR.md marks each of them
-`local-upstreamable`; they are offered upstream under the same licence.
+`local-native`: they are this project's own work, published here under the
+same licence as the forked half.
 
 Apache-2.0 obligations
 ----------------------
   - §4(a) The full license text is retained in LICENSE, which is the
     upstream project's own Apache-2.0 licence, unmodified.
-  - §4(b) Every modified file carries a prominent notice in its first line
-    stating that it is derived from the upstream file and what was changed,
-    and patches/*.patch holds the exact diff against its upstream original.
-    tests/vendor-integrity.sh reverse-applies each patch and checks
-    that it reconstructs the pinned upstream digest, so the record cannot rot
-    into an unverifiable claim.
+  - §4(b) Every modified file carries a prominent notice in its first lines
+    stating the upstream file and commit it is derived from and what was
+    changed. tests/vendor-integrity.sh checks all three parts against the
+    VENDOR.md row for every forked file -- the upstream path, the fork commit,
+    and the "Modified:" clause -- and checks that the notice survives into the
+    published declaration under types/, which is the copy a consumer of this
+    package reads. It reverse-applies the patch of any patched file. The
+    record therefore cannot rot into an unverifiable claim.
   - §4(c) Upstream copyright, attribution and doc comments are retained in
     every vendored file, including where interfaces were renamed.
   - §4(d) Upstream ships NO NOTICE file at commit 604054ad (verified

@@ -64,20 +64,27 @@ counterparts are `ocpp-tck driver selftest` (seconds, needs a running CSMS) and
 
 ## Vendored files: re-pin before verifying
 
-Part of `tck/` is copied or patched from `shiv3/ocpp-cp-simulator`, and
-`VENDOR.md`'s inventory pins a digest per file. **Check the row's origin before
-editing anything under `tck/`:**
+Part of `tck/` descends from `shiv3/ocpp-cp-simulator`, and `VENDOR.md`'s
+inventory says per file how. **Check the row's origin before editing anything
+under `tck/`:**
 
 | origin | editing it means |
 |---|---|
-| `local-upstreamable`, `local-private` | nothing to do |
+| `local-native`, `local-private` | nothing to do |
+| `upstream-forked` | nothing to do — keep the `Derived from …` header on its first lines |
 | `upstream-patched` | re-pin: `tools/repin-vendored.sh <path>` |
 | `upstream-verbatim` | also a change of origin — same command, it bootstraps the row, the patch and the digest, then names the one `NOTICE` line it will not word for you |
 
-`tck/main.ts` is `upstream-patched`, so any change to the runner needs the
-re-pin. Doing it *before* `bun run verify` saves a full gate run; the script
-regenerates the patch and the digest in one step, in the only order that
-cannot record a digest for bytes that no longer exist.
+The runner (`tck/main.ts`, `sim.ts`, `assert.ts`, `spec-types.ts`, the specs)
+is `upstream-forked` since upstream ceded it (shiv3/ocpp-cp-simulator#271), so
+a runner change is an ordinary edit — keep the leading `/** Derived from … @
+<fork commit> */` block, which the guard checks against `VENDOR.md`'s
+`### Fork commit` heading (a separate, frozen fact from `Pinned commit`, which
+only a re-import moves). Only `tck/ocpp.ts` and `tck/util.ts` are
+still `upstream-verbatim`; editing one of those is where the re-pin applies,
+and doing it *before* `bun run verify` saves a full gate run: the script
+bootstraps the patch and the digest in one step, in the only order that cannot
+record a digest for bytes that no longer exist.
 
 ## Generated artifacts, committed on purpose
 
@@ -92,7 +99,7 @@ because a diff is reviewable where a digest is not.
 | `tck/specs/OCA-201-SLICE.txt` | hand-maintained, not generated | `tests/oca-201-slice.sh` |
 | `tck/specs/OCA-201-OPERATIONS.txt` | `bun tools/extract-201-operations.ts <part6.pdf>` — the reference is not in the tree, so this is hand-committed from a run you do, and `--diff` re-checks it | `tests/oca-201-operations.sh` |
 | `OCA-201-SELECTION.md`'s tranche table | `bun tools/extract-201-operations.ts --tranches` — derived from the row file and the driver contract, no reference needed | `tests/oca-201-operations.sh` |
-| `patches/**`, `VENDOR.md` digests | `tools/repin-vendored.sh <path>` | `tests/vendor-integrity.sh` |
+| `VENDOR.md` digests (and `patches/**`, should a row become `upstream-patched` again) | `tools/repin-vendored.sh <path>` | `tests/vendor-integrity.sh` |
 
 Never hand-edit them. The diff of `types/` **is** the change to this package's
 public API — read it before committing.

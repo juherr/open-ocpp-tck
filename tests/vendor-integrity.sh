@@ -14,6 +14,16 @@
 #   local sha256    — what we ship. Changes on every deliberate edit.
 #   patch           — the difference, reverse-applied and verified here.
 #
+# v3 adds `upstream-forked` for the runner layer upstream ceded to this
+# repository (shiv3/ocpp-cp-simulator#271): such a row keeps the upstream path
+# and the fork-point digest, pins no local bytes and carries no patch. What is
+# verified instead is the Apache-2.0 §4(b) notice itself — the file's first
+# lines must name the upstream path and the FORK commit, in a JSDoc block so
+# it reaches the published declarations — and NOTICE must list the file (A10).
+# v3 also renames `local-upstreamable` to `local-native`: with the runner
+# ceded, those files are this repository's own rather than queued for an
+# upstream pull request.
+#
 # v1 had a single digest column with a single meaning ("this is what upstream
 # shipped"), which is unfalsifiable for a file we modified: the pin recorded
 # OUR bytes under a label claiming they were UPSTREAM's. Splitting the column
@@ -88,6 +98,22 @@ fi
 
 verbatim_count=0
 patched_rows=""
+forked_rows=""
+
+# The FORK commit, for A12 — deliberately not `Pinned commit`. The pin is where
+# the verbatim rows were last imported from and moves on every re-import; the
+# fork commit is where the forked files stopped tracking upstream and never
+# moves. Validating headers against the pin would mean a re-import of an
+# unrelated verbatim file silently invalidated every forked file's §4(b)
+# notice, or forced a rewrite of ten headers that describe an event that did
+# not happen.
+# shellcheck disable=SC2016  # \1 is a sed backreference, not a shell expansion.
+fork="$(sed -n 's/^### Fork commit: `\([0-9a-f]\{40\}\)`.*/\1/p' "$manifest" | head -1)"
+if [ -z "$fork" ]; then
+  echo "FAIL: $manifest states no '### Fork commit: <sha>' heading — forked rows have no fork point to cite." >&2
+  echo "  → this is a separate fact from 'Pinned commit'; see the fork section of $manifest." >&2
+  exit 1
+fi
 
 while IFS=$'\t' read -r path origin up_src up_sha loc_sha patch_rel; do
   [ -n "$path" ] || continue
@@ -96,10 +122,10 @@ while IFS=$'\t' read -r path origin up_src up_sha loc_sha patch_rel; do
   # A1 — the origin vocabulary is closed. An origin outside the set is checked
   # by nothing: the row exists but pins no property.
   case "$origin" in
-    upstream-verbatim | upstream-patched | local-upstreamable | local-private) ;;
+    upstream-verbatim | upstream-patched | upstream-forked | local-native | local-private) ;;
     *)
       echo "FAIL[$path]: unknown origin '$origin' in $manifest." >&2
-      echo "  → one of: upstream-verbatim, upstream-patched, local-upstreamable, local-private." >&2
+      echo "  → one of: upstream-verbatim, upstream-patched, upstream-forked, local-native, local-private." >&2
       status=1
       continue
       ;;
@@ -117,7 +143,7 @@ while IFS=$'\t' read -r path origin up_src up_sha loc_sha patch_rel; do
   # A2 — local rows pin nothing. Pinning a file under active development makes
   # re-pinning a reflex, and a reflex re-pin is how a spec digest gets bumped
   # without anyone reading the diff. Keep the pins rare so they stay loud.
-  if [ "$origin" = "local-upstreamable" ] || [ "$origin" = "local-private" ]; then
+  if [ "$origin" = "local-native" ] || [ "$origin" = "local-private" ]; then
     for cell in "$up_src" "$up_sha" "$loc_sha" "$patch_rel"; do
       if ! is_empty_cell "$cell"; then
         echo "FAIL[$path]: a '$origin' row must leave upstream path, both digests and patch empty ('—')." >&2
@@ -134,6 +160,88 @@ while IFS=$'\t' read -r path origin up_src up_sha loc_sha patch_rel; do
     echo "FAIL[$path]: an '$origin' row must name the upstream path it came from." >&2
     echo "  → Apache-2.0 §4(b) requires naming the file that was copied or modified." >&2
     status=1
+    continue
+  fi
+
+  # --- origin = upstream-forked --------------------------------------------
+  # A12 — a forked file pins its provenance, not its bytes. The upstream digest
+  # is the fork point and must be a digest; the local digest and the patch are
+  # forbidden (there is no upstream original to diff against any more); and
+  # the file's first three lines must carry the §4(b) notice naming the
+  # upstream path and the pinned commit. NOTICE is cross-checked in A10.
+  if [ "$origin" = "upstream-forked" ]; then
+    forked_rows="$forked_rows$path"$'\n'
+    # NOTE ON WHAT THIS DIGEST IS. For a patched row the digest is checkable
+    # offline: reverse-applying the patch has to reproduce it. A forked row
+    # has no patch, so nothing here can re-derive the fork-point bytes, and
+    # this check is a FORMAT check. Correlating the digest with the pinned
+    # commit needs upstream, which means the network -- so
+    # `tools/vendor-diff.sh` does it, and this file stays deterministic and
+    # offline. Both halves are stated in VENDOR.md so neither is mistaken for
+    # the other.
+    if ! printf '%s' "$up_sha" | grep -Eq '^[0-9a-f]{64}$'; then
+      echo "FAIL[$path]: an 'upstream-forked' row must record the fork-point upstream sha256 ('$up_sha')." >&2
+      status=1
+      continue
+    fi
+    for cell in "$loc_sha" "$patch_rel"; do
+      if ! is_empty_cell "$cell"; then
+        echo "FAIL[$path]: an 'upstream-forked' row must leave the local digest and patch empty ('—')." >&2
+        echo "  → the file is maintained here; nothing about its bytes is pinned." >&2
+        status=1
+        break
+      fi
+    done
+    if ! head -3 "$local_path" | grep -Fq "Derived from shiv3/ocpp-cp-simulator $up_src"; then
+      echo "FAIL[$path]: no 'Derived from shiv3/ocpp-cp-simulator $up_src' notice in the first three lines." >&2
+      echo "  → Apache-2.0 §4(b): a forked file must say what it was forked from." >&2
+      status=1
+    elif ! head -3 "$local_path" | grep -Fq "@ $fork"; then
+      echo "FAIL[$path]: the Derived-from notice does not cite the fork commit $fork." >&2
+      echo "  → the header and $manifest's '### Fork commit' name different fork points; one is wrong." >&2
+      status=1
+    elif ! head -3 "$local_path" | grep -Eq 'Modified:[[:space:]]*[^[:space:]]'; then
+      # Apache-2.0 §4(b) asks for a prominent notice stating that the file was
+      # CHANGED, not merely where it came from. The patch used to carry that;
+      # with patches/ gone this sentence is the only place it is stated, so a
+      # header trimmed back to its provenance would satisfy every other check
+      # here and drop the obligation.
+      echo "FAIL[$path]: the notice says where the file came from but not what changed." >&2
+      echo "  → add the 'Modified: …' clause. Apache-2.0 §4(b) wants the change" >&2
+      echo "    stated, and since patches/ is gone this sentence is where it lives." >&2
+      status=1
+    fi
+
+    # A13 — the notice has to survive into the PUBLISHED DECLARATIONS. These
+    # files ship as a package and `types/**/*.d.ts` is what a consumer reads,
+    # so that is where the check looks: tsc keeps a leading `/** */` block and
+    # drops both `//` lines and ordinary `/* */` blocks, and a shape heuristic
+    # here would pass the one it silently loses. Checking the artifact costs
+    # nothing extra and cannot disagree with what is shipped.
+    declaration="types/${path%.ts}.d.ts"
+    if [ ! -f "$declaration" ]; then
+      # Skipping when the file is absent would let a build-configuration
+      # change stop emitting a declaration and take the published notice with
+      # it, silently. Every forked file has one today.
+      echo "FAIL[$path]: no published declaration at $declaration." >&2
+      echo "  → run bun run build:types. If this file genuinely emits none, the" >&2
+      echo "    §4(b) notice reaches no consumer of the package and this guard" >&2
+      echo "    needs a decision rather than an exemption." >&2
+      status=1
+    else
+      if ! grep -Fq "Derived from shiv3/ocpp-cp-simulator $up_src" "$declaration"; then
+        echo "FAIL[$path]: the Derived-from notice is missing from $declaration." >&2
+        echo "  → tsc keeps a leading /** */ block and drops // lines and plain" >&2
+        echo "    /* */ blocks. Put the notice in the file's JSDoc header and run" >&2
+        echo "    bun run build:types." >&2
+        status=1
+      elif ! grep -Fq "Modified:" "$declaration"; then
+        echo "FAIL[$path]: $declaration carries the provenance but not the change." >&2
+        echo "  → the 'Modified: …' clause has to reach the published declaration" >&2
+        echo "    too; that is the copy a consumer of this package reads." >&2
+        status=1
+      fi
+    fi
     continue
   fi
 
@@ -297,13 +405,13 @@ if [ ! -f "$notice" ]; then
   echo "FAIL: $notice is missing — Apache-2.0 §4(b) attribution has no home." >&2
   status=1
 else
-  manifest_patched="$(printf '%s' "$patched_rows" | grep -v '^$' | sort || true)"
+  manifest_patched="$(printf '%s%s' "$patched_rows" "$forked_rows" | grep -v '^$' | sort || true)"
   notice_patched="$(
     awk '/^Files modified relative to upstream/,/^Apache-2.0 obligations/' "$notice" |
       grep -oE '^  [A-Za-z0-9_./-]+' | tr -d ' ' | sort -u || true
   )"
   if [ "$manifest_patched" != "$notice_patched" ]; then
-    echo "FAIL: $notice's modified-file list and $manifest's 'upstream-patched' rows disagree." >&2
+    echo "FAIL: $notice's modified-file list and $manifest's 'upstream-patched' + 'upstream-forked' rows disagree." >&2
     echo "  (< NOTICE, > VENDOR.md)" >&2
     diff <(printf '%s\n' "$notice_patched") <(printf '%s\n' "$manifest_patched") >&2 || true
     status=1
@@ -312,6 +420,7 @@ fi
 
 if [ "$status" -eq 0 ]; then
   patched_count="$(printf '%s' "$patched_rows" | grep -cv '^$' || true)"
-  echo "Vendored files match $manifest ($verbatim_count verbatim, $patched_count patched and reverse-verified)."
+  forked_count="$(printf '%s' "$forked_rows" | grep -cv '^$' || true)"
+  echo "Vendored files match $manifest ($verbatim_count verbatim, $patched_count patched and reverse-verified, $forked_count forked with attribution headers)."
 fi
 exit "$status"

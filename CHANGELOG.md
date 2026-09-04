@@ -104,6 +104,33 @@ Released as `0.3.0`. The documented install ref already points at that tag, so
 
 ### Changed
 
+- `local-upstreamable` is now **`local-native`**. The name described a queue —
+  files of ours waiting for an upstream pull request — and with the runner
+  ceded there is no such queue: the driver contract, the scope and standing
+  tables, the drivers and the CLI are native here. Thirty-nine rows, the
+  origin vocabulary in `tests/vendor-integrity.sh`, and the prose in
+  `VENDOR.md`, `AGENTS.md`, `README.md` and `NOTICE`
+- `VENDOR.md` gains a **`### Fork commit`** heading, and
+  `tests/vendor-integrity.sh` validates forked headers against it instead of
+  against `Pinned commit`. The two were the same line and are two different
+  facts: the pin moves whenever an `upstream-verbatim` row is re-imported, the
+  fork point never does. Sharing one line meant a future re-import would either
+  invalidate ten §4(b) notices or force a rewrite of ten headers describing an
+  event that did not happen
+- Every forked file's provenance notice is now a **JSDoc block**, so `tsc`
+  carries it into `types/**/*.d.ts` — what a consumer of this package actually
+  reads. `assert.ts`, `sim.ts` and `main.ts` had `//` line comments, which tsc
+  drops; all ten forked declarations now carry the notice, and a new guard
+  (A13) fails on the line-comment shape
+- The runner layer — `tck/main.ts`, `sim.ts`, `assert.ts`, `spec-types.ts` and
+  the five spec modules — is **forked, not vendored**. Upstream agreed in
+  [shiv3/ocpp-cp-simulator#271](https://github.com/shiv3/ocpp-cp-simulator/issues/271)
+  that it belongs here and will retire its own copy, so `VENDOR.md` now marks
+  those ten rows `upstream-forked`: upstream path and fork-point digest kept
+  for provenance, no local digest, no patch. `tests/vendor-integrity.sh`
+  checks the Apache-2.0 §4(b) notice on each file's first lines instead of
+  reverse-applying a patch, and the seven files that had no such notice got
+  one. `tck/ocpp.ts` and `tck/util.ts` stay `upstream-verbatim`
 - **BREAKING** — `CsmsCapabilities` gains a required `deviceModel: boolean`,
   beside `reservations` and `chargingProfiles`. An out-of-tree driver adds one
   line; a driver that does not gets a compiler error naming the field, which is
@@ -192,6 +219,10 @@ Released as `0.3.0`. The documented install ref already points at that tag, so
 
 ### Removed
 
+- `patches/` and its entry in `package.json`'s `files`. The patches were the
+  §4(b) record and the upstream pull request in one artifact; with the runner
+  forked there is no upstream original to diff against and no pull request to
+  cut. `tools/repin-vendored.sh` refuses an `upstream-forked` path by name
 - **BREAKING** — `SimTransportDefaults.extraArgs`. Nothing read it, so a driver
   stating it was ignored in silence ([#64])
 - The adaptive observation window. It was built, guarded and shipped, then

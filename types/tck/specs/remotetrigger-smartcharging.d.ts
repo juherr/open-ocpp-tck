@@ -1,4 +1,6 @@
 /**
+ * Derived from shiv3/ocpp-cp-simulator scripts/steve-verify/runner/specs/remotetrigger-smartcharging.ts @ 604054adb0d7d7129a26a5f1ad2d5fdc290d1ca1 (Apache-2.0). Modified: CSMS operations are expressed as typed OCPP through the driver contract.
+ *
  * specs/remotetrigger-smartcharging.ts -- typed port of the "RemoteTrigger +
  * SmartCharging" bash specs (scripts/steve-verify/specs/cert16-{tc010,tc011,
  * tc012,tc026,tc028,tc054,tc055,tc056,tc057,tc059,tc066,tc067}-*.spec.sh),

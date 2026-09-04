@@ -1,4 +1,6 @@
 /**
+ * Derived from shiv3/ocpp-cp-simulator scripts/steve-verify/runner/specs/authlist-reservation.ts @ 604054adb0d7d7129a26a5f1ad2d5fdc290d1ca1 (Apache-2.0). Modified: CSMS operations are expressed as typed OCPP through the driver contract.
+ *
  * specs/authlist-reservation.ts -- typed port of the "LocalAuthList +
  * Reservation" bash specs (scripts/steve-verify/specs/cert16-{tc042(x2),
  * tc043(x4),reservation-basic,tc048(x4),tc051,tc052}-*.spec.sh), mirroring

@@ -10,6 +10,47 @@ Upstream ships **no `NOTICE` file** at that commit (verified 2026-07-31:
 therefore imposes nothing here. Re-check this on every re-import: the refresh
 procedure below does it.
 
+## Upstream decision: the runner layer is forked, not vendored
+
+Upstream agreed in [shiv3/ocpp-cp-simulator#271](https://github.com/shiv3/ocpp-cp-simulator/issues/271)
+that the certification runner — `scripts/steve-verify/runner/` and the
+assertion helpers it re-exports — belongs here, and that upstream keeps the
+generic charge-point machinery (scenario engine, `inboundPolicy`, quirks,
+assertions and reports, the `cert16-*` templates) and will retire its own copy
+of the runner. From that point the files this repository had been *patching*
+are files it *owns*: they are maintained here, they no longer track upstream,
+and a change to one of them is an ordinary edit rather than a re-pin.
+
+What that changes in this manifest:
+
+- Every `upstream-patched` row became `upstream-forked`. The row still names
+  the upstream path and the digest upstream shipped at the fork point — that
+  is the provenance Apache-2.0 §4(b) rests on — but carries no local digest
+  and no patch, because there is no upstream original left to diff against.
+- `patches/` is gone. Its two jobs were a verifiable §4(b) record and a
+  mechanically applicable upstream pull request; the second no longer exists,
+  and the first is now the `Derived from … @ <commit>` header on the file's
+  first lines, which `tests/vendor-integrity.sh` checks per row.
+- `upstream-verbatim` rows are unchanged. `tck/ocpp.ts` and `tck/util.ts`
+  are copies of modules upstream keeps, and stay pinned and re-importable
+  until upstream exports them from its package.
+
+### Fork commit: `604054adb0d7d7129a26a5f1ad2d5fdc290d1ca1`
+
+**Frozen, and deliberately a separate fact from `Pinned commit` above.** The
+pin is where the `upstream-verbatim` rows were last imported from, and it
+moves whenever they are re-imported. The fork commit is where this repository
+stopped tracking upstream for the forked files, and it never moves — a file
+does not become forked at a later commit because an unrelated file was
+re-imported. `tests/vendor-integrity.sh` validates every forked file's
+`Derived from … @ <commit>` header against **this** line, so a future re-pin
+changes one and leaves the other alone instead of putting the two rules in
+conflict.
+
+Today the two happen to name the same commit, which is exactly why they are
+written out separately: a single line serving both purposes would look
+correct until the first re-import and could not be told apart afterwards.
+
 ## File inventory
 
 Every file under this subtree has exactly one row. The schema separates two
@@ -28,75 +69,101 @@ facts that a single digest column cannot tell apart:
 |---|---|---|---|---|
 | `upstream-verbatim` | required | required, **==** local | required | forbidden |
 | `upstream-patched` | required | required, **!=** local | required | required, must reverse-apply |
-| `local-upstreamable` | `—` | `—` | `—` | `—` |
+| `upstream-forked` | required | required (the fork point) | `—` | `—` |
+| `local-native` | `—` | `—` | `—` | `—` |
 | `local-private` | `—` | `—` | `—` | `—` |
+
+`upstream-forked` rows pin the **past**, not the present: the upstream digest
+is what upstream shipped at the fork commit, frozen so the fork point stays a
+checkable fact, and the file itself is edited freely. **Where it is checked
+matters.** A patched row's digest is verifiable offline, because reversing its
+patch has to reproduce it; a forked row has no patch, so
+`tests/vendor-integrity.sh` can only confirm the digest is shaped like one.
+Correlating it with the fork commit needs the upstream bytes, so
+`tools/vendor-diff.sh` does it — it fetches that commit and re-hashes every
+forked row's original. Run it when the provenance itself is in question; the
+offline guard stays deterministic and network-free. What the guard holds
+them to is attribution, in three parts: the file's first three lines must
+carry `Derived from shiv3/ocpp-cp-simulator <upstream path> @ <fork commit>`
+**and a `Modified:` clause** — Apache-2.0 §4(b) asks for the change to be
+stated, and with `patches/` gone that sentence is the only place it is — the
+notice must survive into `types/**/*.d.ts`, and `NOTICE` must list the file.
+Nothing else about a forked file is pinned.
 
 `local-*` rows pin **nothing**, deliberately. Pinning a file under active
 development turns re-pinning into a reflex, and a reflex re-pin is exactly how
 a spec digest gets bumped without anyone reading the diff. The integrity check
 must stay a rare, loud signal.
 
-`local-upstreamable` vs `local-private` is the contribution boundary made
-machine-readable: `local-upstreamable` files are ours but destined for the
-upstream PR, `local-private` files never leave the repository they sit in.
-Every row here is currently one of the first two: a driver for a private CSMS
-lives in its own repository and depends on this one as a package, which is the
-strongest available demonstration that the core names no CSMS.
+`local-native` vs `local-private` is the distribution boundary made
+machine-readable: `local-native` files are this repository's own — written
+here, maintained here, published in this package — and `local-private` files
+never leave the repository they sit in. Every row here is currently
+`local-native`: a driver for a private CSMS lives in its own repository and
+depends on this one as a package, which is the strongest available
+demonstration that the core names no CSMS.
+
+The origin was called `local-upstreamable` while the runner was a patch set
+against `shiv3/ocpp-cp-simulator` and these files were queued for an upstream
+pull request. With the runner layer ceded to this repository
+([shiv3/ocpp-cp-simulator#271](https://github.com/shiv3/ocpp-cp-simulator/issues/271))
+there is no such queue: the driver contract, the scope and standing tables and
+the drivers are native here, and the name now says so.
 
 | path | origin | upstream path @ `604054a…` | upstream sha256 | local sha256 | patch |
 |---|---|---|---|---|---|
-| `tck/spec-types.ts` | `upstream-patched` | `scripts/steve-verify/runner/spec-types.ts` | `db4b29ab5ee0c623c950a52a999ef4e4c0a916dab0b6cfebe8fa8eabc5da0d26` | `9020e8e6be458d37b5f3d3e61d0071caf8e885812bbf0c20df95b66d0f329994` | `patches/tck/spec-types.ts.patch` |
+| `tck/spec-types.ts` | `upstream-forked` | `scripts/steve-verify/runner/spec-types.ts` | `db4b29ab5ee0c623c950a52a999ef4e4c0a916dab0b6cfebe8fa8eabc5da0d26` | `—` | `—` |
 | `tck/util.ts` | `upstream-verbatim` | `scripts/steve-verify/runner/util.ts` | `ba62ed29c79e04533e0725739c9c0d514caadb7bff8146e46688c867432eee9e` | `ba62ed29c79e04533e0725739c9c0d514caadb7bff8146e46688c867432eee9e` | `—` |
 | `tck/ocpp.ts` | `upstream-verbatim` | `src/cp/application/verification/ocpp.ts` | `a3f99c1b77b30d0ab0b22556b65aca05332d68f4b4b8d566a500d2036065368f` | `a3f99c1b77b30d0ab0b22556b65aca05332d68f4b4b8d566a500d2036065368f` | `—` |
 | `tsconfig.json` | `upstream-verbatim` | `scripts/steve-verify/runner/tsconfig.json` | `b632b69c836000d80209c183b57d43ac917e3a1d50f042af65112bdf234d1931` | `b632b69c836000d80209c183b57d43ac917e3a1d50f042af65112bdf234d1931` | `—` |
-| `tck/specs/core.ts` | `upstream-patched` | `scripts/steve-verify/runner/specs/core.ts` | `ef26b803ffee2d2fa5d809ebb2e066475ed33cb7fd527aeb43d5b416566f0125` | `36a3ea0e6a474323f780c96920a3bc53c2e14e1aa39ef7274a3688352e4159fa` | `patches/tck/specs/core.ts.patch` |
-| `tck/specs/authorize.ts` | `upstream-patched` | `scripts/steve-verify/runner/specs/authorize.ts` | `aaf1c5f2b4888df41cd1f0b8637b47eedc376ff2d61d29841d3668d26b66e7da` | `a627d704d62ccc5e47c60974859a12975827a4727da57cd3fd01a1bc96b57062` | `patches/tck/specs/authorize.ts.patch` |
-| `tck/specs/authlist-reservation.ts` | `upstream-patched` | `scripts/steve-verify/runner/specs/authlist-reservation.ts` | `3ee302032025a889053d108d0813cc644819e58879b6cd554d56f85b804d0cd6` | `8f3097e79a857a1aaf45289b7a9e4a4eef053d6d00f959b788906baf5c40f3fe` | `patches/tck/specs/authlist-reservation.ts.patch` |
-| `tck/specs/remotetrigger-smartcharging.ts` | `upstream-patched` | `scripts/steve-verify/runner/specs/remotetrigger-smartcharging.ts` | `f0d2b720c8b6343d08e2506f4d6e4fcbf68069bb586e5bfea841ca9e37fdbca2` | `aaed49f79f5766f5077c9b76119a2e5e9ff52d93e406f733c2dcb8a5dbc31849` | `patches/tck/specs/remotetrigger-smartcharging.ts.patch` |
-| `tck/specs/firmware.ts` | `upstream-patched` | `scripts/steve-verify/runner/specs/firmware.ts` | `e1bc6c288fe5c56e2cceae6f4ea650e901d852637ecdec914fc7ccdbdd5d1fe8` | `1d2861adcc10368608995bb6d52b69ac5b80c535f67f25b1f666a5d15f549eac` | `patches/tck/specs/firmware.ts.patch` |
-| `tck/specs/index.ts` | `upstream-patched` | `scripts/steve-verify/runner/specs/index.ts` | `be8595765f4d66965bfd58498622c26a696962fabae8a2700f080ae5cd55d832` | `fb27277e3bbe10d32219e24a9d7d04f79c657d51b41f5ecd538ae635d9973524` | `patches/tck/specs/index.ts.patch` |
-| `tck/assert.ts` | `upstream-patched` | `src/cp/application/verification/assert.ts` | `2431f5f6c0df997d4d821d9af55689c1f0f2df199de1e9e4ed6f3fbaad4fc89e` | `57adac06ea55693abc1a7bfe49940950a4ef3f73ba1452910f4aa2ec49266538` | `patches/tck/assert.ts.patch` |
-| `tck/sim.ts` | `upstream-patched` | `scripts/steve-verify/runner/sim.ts` | `2bf2f78afe3434e7139cd62c3ff6d70f02defd39dd700611e7c5f7614260cd35` | `bd345ee0ccb9166590fc8d0e1efd08151fb4318c4cb54a34ea67d26ed79a0e39` | `patches/tck/sim.ts.patch` |
-| `tck/main.ts` | `upstream-patched` | `scripts/steve-verify/runner/main.ts` | `a757b0d35d29c7627336c0e858ad7d2f305a33c0acad819b5296f3847382f4e2` | `19779edd3be5d430ebf9732300164865e51b995fdb3e3d1faf48bb67cab77d65` | `patches/tck/main.ts.patch` |
-| `tck/driver.ts` | `local-upstreamable` | `—` | `—` | `—` | `—` |
-| `tck/index.ts` | `local-upstreamable` | `—` | `—` | `—` | `—` |
-| `tck/driver-registry.ts` | `local-upstreamable` | `—` | `—` | `—` | `—` |
-| `tck/capabilities.ts` | `local-upstreamable` | `—` | `—` | `—` | `—` |
-| `tck/scope.ts` | `local-upstreamable` | `—` | `—` | `—` | `—` |
-| `tck/expected.ts` | `local-upstreamable` | `—` | `—` | `—` | `—` |
-| `tck/standing.ts` | `local-upstreamable` | `—` | `—` | `—` | `—` |
-| `tck/op-warn.ts` | `local-upstreamable` | `—` | `—` | `—` | `—` |
-| `tck/time.ts` | `local-upstreamable` | `—` | `—` | `—` | `—` |
-| `tck/trace.ts` | `local-upstreamable` | `—` | `—` | `—` | `—` |
-| `tck/unverifiable.ts` | `local-upstreamable` | `—` | `—` | `—` | `—` |
-| `tck/wait.ts` | `local-upstreamable` | `—` | `—` | `—` | `—` |
-| `bin/ocpp-tck.ts` | `local-upstreamable` | `—` | `—` | `—` | `—` |
-| `tck/specs/core-201.ts` | `local-upstreamable` | `—` | `—` | `—` | `—` |
-| `tck/specs/ASSERT-INVENTORY.txt` | `local-upstreamable` | `—` | `—` | `—` | `—` |
-| `tck/specs/DRIVE-TRACE.txt` | `local-upstreamable` | `—` | `—` | `—` | `—` |
-| `tck/specs/OCA-OBLIGATIONS.txt` | `local-upstreamable` | `—` | `—` | `—` | `—` |
-| `tck/specs/OCA-201-SLICE.txt` | `local-upstreamable` | `—` | `—` | `—` | `—` |
-| `tck/specs/OCA-201-OPERATIONS.txt` | `local-upstreamable` | `—` | `—` | `—` | `—` |
-| `drivers/steve/index.ts` | `local-upstreamable` | `—` | `—` | `—` | `—` |
-| `drivers/steve/forms.ts` | `local-upstreamable` | `—` | `—` | `—` | `—` |
-| `drivers/steve/records.ts` | `local-upstreamable` | `—` | `—` | `—` | `—` |
-| `drivers/steve/api-client.ts` | `local-upstreamable` | `—` | `—` | `—` | `—` |
-| `drivers/steve/ui-client.ts` | `local-upstreamable` | `—` | `—` | `—` | `—` |
-| `drivers/steve/scope.ts` | `local-upstreamable` | `—` | `—` | `—` | `—` |
-| `drivers/steve/provision.ts` | `local-upstreamable` | `—` | `—` | `—` | `—` |
-| `drivers/citrineos/index.ts` | `local-upstreamable` | `—` | `—` | `—` | `—` |
-| `drivers/citrineos/config.ts` | `local-upstreamable` | `—` | `—` | `—` | `—` |
-| `drivers/citrineos/api-client.ts` | `local-upstreamable` | `—` | `—` | `—` | `—` |
-| `drivers/citrineos/graphql-client.ts` | `local-upstreamable` | `—` | `—` | `—` | `—` |
-| `drivers/citrineos/http.ts` | `local-upstreamable` | `—` | `—` | `—` | `—` |
-| `drivers/citrineos/requests.ts` | `local-upstreamable` | `—` | `—` | `—` | `—` |
-| `drivers/citrineos/profiles.ts` | `local-upstreamable` | `—` | `—` | `—` | `—` |
-| `drivers/citrineos/records.ts` | `local-upstreamable` | `—` | `—` | `—` | `—` |
-| `drivers/citrineos/scope.ts` | `local-upstreamable` | `—` | `—` | `—` | `—` |
-| `drivers/citrineos/expected.ts` | `local-upstreamable` | `—` | `—` | `—` | `—` |
-| `drivers/citrineos/variant.ts` | `local-upstreamable` | `—` | `—` | `—` | `—` |
-| `drivers/citrineos/provision.ts` | `local-upstreamable` | `—` | `—` | `—` | `—` |
-| `drivers/citrineos/device-model.ts` | `local-upstreamable` | `—` | `—` | `—` | `—` |
+| `tck/specs/core.ts` | `upstream-forked` | `scripts/steve-verify/runner/specs/core.ts` | `ef26b803ffee2d2fa5d809ebb2e066475ed33cb7fd527aeb43d5b416566f0125` | `—` | `—` |
+| `tck/specs/authorize.ts` | `upstream-forked` | `scripts/steve-verify/runner/specs/authorize.ts` | `aaf1c5f2b4888df41cd1f0b8637b47eedc376ff2d61d29841d3668d26b66e7da` | `—` | `—` |
+| `tck/specs/authlist-reservation.ts` | `upstream-forked` | `scripts/steve-verify/runner/specs/authlist-reservation.ts` | `3ee302032025a889053d108d0813cc644819e58879b6cd554d56f85b804d0cd6` | `—` | `—` |
+| `tck/specs/remotetrigger-smartcharging.ts` | `upstream-forked` | `scripts/steve-verify/runner/specs/remotetrigger-smartcharging.ts` | `f0d2b720c8b6343d08e2506f4d6e4fcbf68069bb586e5bfea841ca9e37fdbca2` | `—` | `—` |
+| `tck/specs/firmware.ts` | `upstream-forked` | `scripts/steve-verify/runner/specs/firmware.ts` | `e1bc6c288fe5c56e2cceae6f4ea650e901d852637ecdec914fc7ccdbdd5d1fe8` | `—` | `—` |
+| `tck/specs/index.ts` | `upstream-forked` | `scripts/steve-verify/runner/specs/index.ts` | `be8595765f4d66965bfd58498622c26a696962fabae8a2700f080ae5cd55d832` | `—` | `—` |
+| `tck/assert.ts` | `upstream-forked` | `src/cp/application/verification/assert.ts` | `2431f5f6c0df997d4d821d9af55689c1f0f2df199de1e9e4ed6f3fbaad4fc89e` | `—` | `—` |
+| `tck/sim.ts` | `upstream-forked` | `scripts/steve-verify/runner/sim.ts` | `2bf2f78afe3434e7139cd62c3ff6d70f02defd39dd700611e7c5f7614260cd35` | `—` | `—` |
+| `tck/main.ts` | `upstream-forked` | `scripts/steve-verify/runner/main.ts` | `a757b0d35d29c7627336c0e858ad7d2f305a33c0acad819b5296f3847382f4e2` | `—` | `—` |
+| `tck/driver.ts` | `local-native` | `—` | `—` | `—` | `—` |
+| `tck/index.ts` | `local-native` | `—` | `—` | `—` | `—` |
+| `tck/driver-registry.ts` | `local-native` | `—` | `—` | `—` | `—` |
+| `tck/capabilities.ts` | `local-native` | `—` | `—` | `—` | `—` |
+| `tck/scope.ts` | `local-native` | `—` | `—` | `—` | `—` |
+| `tck/expected.ts` | `local-native` | `—` | `—` | `—` | `—` |
+| `tck/standing.ts` | `local-native` | `—` | `—` | `—` | `—` |
+| `tck/op-warn.ts` | `local-native` | `—` | `—` | `—` | `—` |
+| `tck/time.ts` | `local-native` | `—` | `—` | `—` | `—` |
+| `tck/trace.ts` | `local-native` | `—` | `—` | `—` | `—` |
+| `tck/unverifiable.ts` | `local-native` | `—` | `—` | `—` | `—` |
+| `tck/wait.ts` | `local-native` | `—` | `—` | `—` | `—` |
+| `bin/ocpp-tck.ts` | `local-native` | `—` | `—` | `—` | `—` |
+| `tck/specs/core-201.ts` | `local-native` | `—` | `—` | `—` | `—` |
+| `tck/specs/ASSERT-INVENTORY.txt` | `local-native` | `—` | `—` | `—` | `—` |
+| `tck/specs/DRIVE-TRACE.txt` | `local-native` | `—` | `—` | `—` | `—` |
+| `tck/specs/OCA-OBLIGATIONS.txt` | `local-native` | `—` | `—` | `—` | `—` |
+| `tck/specs/OCA-201-SLICE.txt` | `local-native` | `—` | `—` | `—` | `—` |
+| `tck/specs/OCA-201-OPERATIONS.txt` | `local-native` | `—` | `—` | `—` | `—` |
+| `drivers/steve/index.ts` | `local-native` | `—` | `—` | `—` | `—` |
+| `drivers/steve/forms.ts` | `local-native` | `—` | `—` | `—` | `—` |
+| `drivers/steve/records.ts` | `local-native` | `—` | `—` | `—` | `—` |
+| `drivers/steve/api-client.ts` | `local-native` | `—` | `—` | `—` | `—` |
+| `drivers/steve/ui-client.ts` | `local-native` | `—` | `—` | `—` | `—` |
+| `drivers/steve/scope.ts` | `local-native` | `—` | `—` | `—` | `—` |
+| `drivers/steve/provision.ts` | `local-native` | `—` | `—` | `—` | `—` |
+| `drivers/citrineos/index.ts` | `local-native` | `—` | `—` | `—` | `—` |
+| `drivers/citrineos/config.ts` | `local-native` | `—` | `—` | `—` | `—` |
+| `drivers/citrineos/api-client.ts` | `local-native` | `—` | `—` | `—` | `—` |
+| `drivers/citrineos/graphql-client.ts` | `local-native` | `—` | `—` | `—` | `—` |
+| `drivers/citrineos/http.ts` | `local-native` | `—` | `—` | `—` | `—` |
+| `drivers/citrineos/requests.ts` | `local-native` | `—` | `—` | `—` | `—` |
+| `drivers/citrineos/profiles.ts` | `local-native` | `—` | `—` | `—` | `—` |
+| `drivers/citrineos/records.ts` | `local-native` | `—` | `—` | `—` | `—` |
+| `drivers/citrineos/scope.ts` | `local-native` | `—` | `—` | `—` | `—` |
+| `drivers/citrineos/expected.ts` | `local-native` | `—` | `—` | `—` | `—` |
+| `drivers/citrineos/variant.ts` | `local-native` | `—` | `—` | `—` | `—` |
+| `drivers/citrineos/provision.ts` | `local-native` | `—` | `—` | `—` | `—` |
+| `drivers/citrineos/device-model.ts` | `local-native` | `—` | `—` | `—` | `—` |
 
 Deliberately **not** imported from upstream: `steve-api.ts` (SteVe 3.13.0 REST
 client, 763 lines), `capability-probe.ts` (probes a live SteVe container),
@@ -123,13 +190,23 @@ Copying those shims verbatim would import nothing. The **implementations** in
 
 ## Editing a vendored file
 
-Changing an `upstream-patched` file means its patch and its local digest must
-change with it, in that order — and the one way to get it wrong is to record
+An `upstream-forked` file is edited like any local file: keep its first-line
+`Derived from …` header, and the guard is satisfied. Nothing to re-pin.
+
+Changing an `upstream-patched` file — there are none today, the origin stays
+defined for a file that is patched again — means its patch and its local
+digest must change with it, in that order — and the one way to get it wrong is to record
 the digest and then touch the file again. One command does both:
 
 ```sh
-tools/repin-vendored.sh tck/main.ts
+tools/repin-vendored.sh <path>          # e.g. tck/ocpp.ts, once it is patched
 ```
+
+`<path>` has to be a row the script can act on: `upstream-verbatim` or
+`upstream-patched`. It **refuses an `upstream-forked` path by name** — those
+are maintained here and pin nothing — so `tools/repin-vendored.sh tck/main.ts`
+is not a working example any more, and the only two paths it accepts today are
+`tck/ocpp.ts` and `tck/util.ts`.
 
 It reconstructs the upstream bytes by reverse-applying HEAD's patch to HEAD's
 copy of the file, refuses unless that reconstruction matches the `upstream
@@ -159,13 +236,18 @@ cd /tmp/ocpp-upstream && git checkout <new-sha>
 test -f NOTICE && echo "ACTION REQUIRED: reproduce upstream NOTICE"
 
 # 2. Re-copy every `upstream-verbatim` file, re-apply every patch, then update
-#    BOTH digest columns of every upstream-* row:
+#    BOTH digest columns of every upstream-verbatim / upstream-patched row.
+#    `upstream-forked` rows are NOT refreshed: their upstream digest and the
+#    `Fork commit` heading above are the fork point, which does not move. Only
+#    `Pinned commit` follows a re-import.
 shasum -a 256 /tmp/ocpp-upstream/<upstream path>          # → upstream sha256
 shasum -a 256 <path>                   # → local sha256
 
-# 3. Regenerate every patch so it still reconstructs the new upstream bytes:
-diff -u /tmp/ocpp-upstream/<upstream path> scripts/ocpp-verify/<path> \
-  > patches/<name>.patch
+# 3. Regenerate every patch (none today) so it still reconstructs the new
+#    upstream bytes. patches/ does not exist while no row is patched, and the
+#    redirect will not create its parent:
+mkdir -p "$(dirname "patches/<path>.patch")"
+diff -u /tmp/ocpp-upstream/<upstream path> <path> > patches/<path>.patch
 
 # 4. The guard proves steps 2 and 3 were done consistently:
 bash tests/vendor-integrity.sh
