@@ -87,6 +87,7 @@ build_fixture() {
     printf 'alpha\nbeta\ngamma\n' > "$fixture/upstream-patched-src"
     printf 'alpha\nBETA\ngamma\n' > src/patched.ts
     printf 'delta\nepsilon\n' > src/verbatim.ts
+    printf 'zeta\n' > src/forked.ts
 
     {
       printf -- '--- a/upstream/patched.ts (upstream @ %s)\n' "$PIN"
@@ -97,6 +98,8 @@ build_fixture() {
     up_patched=$(sha256_of "$fixture/upstream-patched-src")
     loc_patched=$(sha256_of src/patched.ts)
     verbatim=$(sha256_of src/verbatim.ts)
+    # A forked row pins the fork point only: no local digest, no patch.
+    up_forked=$(sha256_of src/forked.ts)
 
     {
       echo "# Fixture manifest"
@@ -107,6 +110,7 @@ build_fixture() {
       echo '|---|---|---|---|---|---|'
       echo "| \`src/patched.ts\` | \`upstream-patched\` | \`upstream/patched.ts\` | \`$up_patched\` | \`$loc_patched\` | \`patches/src/patched.ts.patch\` |"
       echo "| \`src/verbatim.ts\` | \`upstream-verbatim\` | \`upstream/verbatim.ts\` | \`$verbatim\` | \`$verbatim\` | \`—\` |"
+      echo "| \`src/forked.ts\` | \`upstream-forked\` | \`upstream/forked.ts\` | \`$up_forked\` | \`—\` | \`—\` |"
     } > VENDOR.md
 
     git add -A
@@ -218,6 +222,21 @@ if run_repin src/absent.ts; then
   fail "a path that is not on disk — accepted"
 else
   assert_refused "a path that is not on disk" "does not exist"
+fi
+
+# ---------------------------------------------------------------- 6
+#
+# The forked origin, which pins nothing at all. Without a case here, deleting
+# that branch would leave the suite green: the path would fall through to the
+# `*)` arm and still be refused, just for the wrong reason and with a message
+# that sends the reader looking for a missing manifest row. The message is
+# what distinguishes the rule under test from the one behind it -- the same
+# argument the header makes about every refusal in this file.
+reset_fixture
+if run_repin src/forked.ts; then
+  fail "an upstream-forked path — accepted, and it pins nothing to re-pin"
+else
+  assert_refused "an upstream-forked path" "maintained here since the fork"
 fi
 
 echo

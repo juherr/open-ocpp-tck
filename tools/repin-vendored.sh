@@ -33,7 +33,11 @@
 # says the patch is not committed. That is the safety rule doing its job, not a
 # failure of the bootstrap.
 #
-# Usage: tools/repin-vendored.sh tck/main.ts [tck/sim.ts ...]
+# Usage: tools/repin-vendored.sh tck/ocpp.ts [tck/util.ts ...]
+#
+# The paths it accepts are the `upstream-verbatim` and `upstream-patched` rows
+# of VENDOR.md -- today `tck/ocpp.ts` and `tck/util.ts`. An `upstream-forked`
+# path is refused: those are maintained here and pin nothing.
 #
 # IT TAKES SEVERAL PATHS, and that is not a convenience. The integrity check at
 # the end is repository-wide, so re-pinning two edited files one command at a
@@ -47,7 +51,7 @@ set -euo pipefail
 cd "$(dirname "$0")/.." || exit 1
 
 if [ "$#" -eq 0 ]; then
-  echo "Usage: tools/repin-vendored.sh <path>...   (e.g. tck/main.ts tck/sim.ts)" >&2
+  echo "Usage: tools/repin-vendored.sh <path>...   (e.g. tck/ocpp.ts tck/util.ts)" >&2
   exit 2
 fi
 

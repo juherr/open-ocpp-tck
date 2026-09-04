@@ -194,16 +194,21 @@ while IFS=$'\t' read -r path origin up_src up_sha loc_sha patch_rel; do
       status=1
     fi
 
-    # A13 — the notice has to survive into the published declarations. These
-    # files ship as a package, and `types/**.d.ts` is what a consumer reads;
-    # a `//` line comment is dropped by tsc, a JSDoc block before the first
-    # retained declaration is not. Requiring the block shape here is what
-    # keeps §4(b) attached to the artifact rather than only to the source.
-    if head -3 "$local_path" | grep -Eq '^[[:space:]]*//.*Derived from shiv3/ocpp-cp-simulator'; then
-      echo "FAIL[$path]: the Derived-from notice is a // line comment." >&2
-      echo "  → tsc drops those, so it never reaches types/. Put it in the file's" >&2
-      echo "    leading /** */ block, as the other forked files do." >&2
-      status=1
+    # A13 — the notice has to survive into the PUBLISHED DECLARATIONS. These
+    # files ship as a package and `types/**/*.d.ts` is what a consumer reads,
+    # so that is where the check looks: tsc keeps a leading `/** */` block and
+    # drops both `//` lines and ordinary `/* */` blocks, and a shape heuristic
+    # here would pass the one it silently loses. Checking the artifact costs
+    # nothing extra and cannot disagree with what is shipped.
+    declaration="types/${path%.ts}.d.ts"
+    if [ -f "$declaration" ]; then
+      if ! grep -Fq "Derived from shiv3/ocpp-cp-simulator $up_src" "$declaration"; then
+        echo "FAIL[$path]: the Derived-from notice is missing from $declaration." >&2
+        echo "  → tsc keeps a leading /** */ block and drops // lines and plain" >&2
+        echo "    /* */ blocks. Put the notice in the file's JSDoc header and run" >&2
+        echo "    bun run build:types." >&2
+        status=1
+      fi
     fi
     continue
   fi
