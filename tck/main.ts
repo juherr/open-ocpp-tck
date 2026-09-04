@@ -818,9 +818,10 @@ async function runScenario<D>(
 // correctness problem, not a cosmetic one, and no amount of re-sync
 // convenience buys it back.
 //
-// The divergence is cheap to carry because it is recorded: this file is
-// upstream-patched, so the delta lives in patches/tck/main.ts.patch and any
-// re-sync has to look at it. That is what the vendoring machinery is FOR.
+// The divergence is cheap to carry because this file is no longer tracking
+// upstream at all: it is `upstream-forked` since shiv3/ocpp-cp-simulator#271
+// ceded the runner layer here, so the decision above is simply ours to make.
+// The header records where it came from; there is no patch to re-sync.
 //
 // NOT BUILT, here because here is where it gets re-proposed: a second
 // selection dimension beside --group -- by domain, or by the certification
