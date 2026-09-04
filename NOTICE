@@ -72,9 +72,12 @@ Apache-2.0 obligations
     upstream project's own Apache-2.0 licence, unmodified.
   - §4(b) Every modified file carries a prominent notice in its first lines
     stating the upstream file and commit it is derived from and what was
-    changed. tests/vendor-integrity.sh checks that notice against the
-    VENDOR.md row for every forked file, and reverse-applies the patch of any
-    patched file, so the record cannot rot into an unverifiable claim.
+    changed. tests/vendor-integrity.sh checks all three parts against the
+    VENDOR.md row for every forked file -- the upstream path, the fork commit,
+    and the "Modified:" clause -- and checks that the notice survives into the
+    published declaration under types/, which is the copy a consumer of this
+    package reads. It reverse-applies the patch of any patched file. The
+    record therefore cannot rot into an unverifiable claim.
   - §4(c) Upstream copyright, attribution and doc comments are retained in
     every vendored file, including where interfaces were renamed.
   - §4(d) Upstream ships NO NOTICE file at commit 604054ad (verified

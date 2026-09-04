@@ -192,6 +192,16 @@ while IFS=$'\t' read -r path origin up_src up_sha loc_sha patch_rel; do
       echo "FAIL[$path]: the Derived-from notice does not cite the fork commit $fork." >&2
       echo "  → the header and $manifest's '### Fork commit' name different fork points; one is wrong." >&2
       status=1
+    elif ! head -3 "$local_path" | grep -Fq "Modified:"; then
+      # Apache-2.0 §4(b) asks for a prominent notice stating that the file was
+      # CHANGED, not merely where it came from. The patch used to carry that;
+      # with patches/ gone this sentence is the only place it is stated, so a
+      # header trimmed back to its provenance would satisfy every other check
+      # here and drop the obligation.
+      echo "FAIL[$path]: the notice says where the file came from but not what changed." >&2
+      echo "  → add the 'Modified: …' clause. Apache-2.0 §4(b) wants the change" >&2
+      echo "    stated, and since patches/ is gone this sentence is where it lives." >&2
+      status=1
     fi
 
     # A13 — the notice has to survive into the PUBLISHED DECLARATIONS. These
@@ -207,6 +217,11 @@ while IFS=$'\t' read -r path origin up_src up_sha loc_sha patch_rel; do
         echo "  → tsc keeps a leading /** */ block and drops // lines and plain" >&2
         echo "    /* */ blocks. Put the notice in the file's JSDoc header and run" >&2
         echo "    bun run build:types." >&2
+        status=1
+      elif ! grep -Fq "Modified:" "$declaration"; then
+        echo "FAIL[$path]: $declaration carries the provenance but not the change." >&2
+        echo "  → the 'Modified: …' clause has to reach the published declaration" >&2
+        echo "    too; that is the copy a consumer of this package reads." >&2
         status=1
       fi
     fi

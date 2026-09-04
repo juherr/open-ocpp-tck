@@ -76,9 +76,12 @@ facts that a single digest column cannot tell apart:
 `upstream-forked` rows pin the **past**, not the present: the upstream digest
 is what upstream shipped at the pinned commit, frozen so the fork point stays a
 checkable fact, and the file itself is edited freely. What the guard holds
-them to is attribution — the file's first three lines must carry
-`Derived from shiv3/ocpp-cp-simulator <upstream path> @ <fork commit>`, and
-`NOTICE` must list the file. Nothing else about a forked file is pinned.
+them to is attribution, in three parts: the file's first three lines must
+carry `Derived from shiv3/ocpp-cp-simulator <upstream path> @ <fork commit>`
+**and a `Modified:` clause** — Apache-2.0 §4(b) asks for the change to be
+stated, and with `patches/` gone that sentence is the only place it is — the
+notice must survive into `types/**/*.d.ts`, and `NOTICE` must list the file.
+Nothing else about a forked file is pinned.
 
 `local-*` rows pin **nothing**, deliberately. Pinning a file under active
 development turns re-pinning into a reflex, and a reflex re-pin is exactly how
