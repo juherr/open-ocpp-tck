@@ -50,7 +50,17 @@ echo
 # rather than pretending to have checked.
 # shellcheck disable=SC2016  # \1 is a sed backreference, not a shell expansion.
 fork=$(sed -n 's/^### Fork commit: `\([0-9a-f]\{40\}\)`.*/\1/p' "$manifest" | head -1)
-if [ -n "$fork" ] && git -C "$work/upstream" cat-file -e "$fork^{commit}" 2>/dev/null; then
+if [ -z "$fork" ]; then
+  echo "NOT VERIFIED: $manifest states no '### Fork commit', so no forked row could be checked."
+  echo
+elif ! git -C "$work/upstream" cat-file -e "$fork^{commit}" 2>/dev/null; then
+  # Silence here would read as success: the FORKED lines below still print,
+  # and the one check that correlates a recorded digest with upstream bytes
+  # would simply not have run.
+  echo "NOT VERIFIED: the fork commit $fork is unreachable from upstream (force-push or rebase)."
+  echo "  No forked row's digest was checked. The recorded fork point is now only a claim."
+  echo
+else
   echo "fork commit         : $fork"
   # Rows into a file first: a `while` on the right of a pipe runs in a
   # subshell, and the mismatch count would not survive it.
