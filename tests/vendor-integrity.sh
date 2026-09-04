@@ -171,6 +171,14 @@ while IFS=$'\t' read -r path origin up_src up_sha loc_sha patch_rel; do
   # upstream path and the pinned commit. NOTICE is cross-checked in A10.
   if [ "$origin" = "upstream-forked" ]; then
     forked_rows="$forked_rows$path"$'\n'
+    # NOTE ON WHAT THIS DIGEST IS. For a patched row the digest is checkable
+    # offline: reverse-applying the patch has to reproduce it. A forked row
+    # has no patch, so nothing here can re-derive the fork-point bytes, and
+    # this check is a FORMAT check. Correlating the digest with the pinned
+    # commit needs upstream, which means the network -- so
+    # `tools/vendor-diff.sh` does it, and this file stays deterministic and
+    # offline. Both halves are stated in VENDOR.md so neither is mistaken for
+    # the other.
     if ! printf '%s' "$up_sha" | grep -Eq '^[0-9a-f]{64}$'; then
       echo "FAIL[$path]: an 'upstream-forked' row must record the fork-point upstream sha256 ('$up_sha')." >&2
       status=1
@@ -192,7 +200,7 @@ while IFS=$'\t' read -r path origin up_src up_sha loc_sha patch_rel; do
       echo "FAIL[$path]: the Derived-from notice does not cite the fork commit $fork." >&2
       echo "  → the header and $manifest's '### Fork commit' name different fork points; one is wrong." >&2
       status=1
-    elif ! head -3 "$local_path" | grep -Fq "Modified:"; then
+    elif ! head -3 "$local_path" | grep -Eq 'Modified:[[:space:]]*[^[:space:]]'; then
       # Apache-2.0 §4(b) asks for a prominent notice stating that the file was
       # CHANGED, not merely where it came from. The patch used to carry that;
       # with patches/ gone this sentence is the only place it is stated, so a
@@ -211,7 +219,16 @@ while IFS=$'\t' read -r path origin up_src up_sha loc_sha patch_rel; do
     # here would pass the one it silently loses. Checking the artifact costs
     # nothing extra and cannot disagree with what is shipped.
     declaration="types/${path%.ts}.d.ts"
-    if [ -f "$declaration" ]; then
+    if [ ! -f "$declaration" ]; then
+      # Skipping when the file is absent would let a build-configuration
+      # change stop emitting a declaration and take the published notice with
+      # it, silently. Every forked file has one today.
+      echo "FAIL[$path]: no published declaration at $declaration." >&2
+      echo "  → run bun run build:types. If this file genuinely emits none, the" >&2
+      echo "    §4(b) notice reaches no consumer of the package and this guard" >&2
+      echo "    needs a decision rather than an exemption." >&2
+      status=1
+    else
       if ! grep -Fq "Derived from shiv3/ocpp-cp-simulator $up_src" "$declaration"; then
         echo "FAIL[$path]: the Derived-from notice is missing from $declaration." >&2
         echo "  → tsc keeps a leading /** */ block and drops // lines and plain" >&2

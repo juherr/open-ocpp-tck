@@ -74,8 +74,15 @@ facts that a single digest column cannot tell apart:
 | `local-private` | `—` | `—` | `—` | `—` |
 
 `upstream-forked` rows pin the **past**, not the present: the upstream digest
-is what upstream shipped at the pinned commit, frozen so the fork point stays a
-checkable fact, and the file itself is edited freely. What the guard holds
+is what upstream shipped at the fork commit, frozen so the fork point stays a
+checkable fact, and the file itself is edited freely. **Where it is checked
+matters.** A patched row's digest is verifiable offline, because reversing its
+patch has to reproduce it; a forked row has no patch, so
+`tests/vendor-integrity.sh` can only confirm the digest is shaped like one.
+Correlating it with the fork commit needs the upstream bytes, so
+`tools/vendor-diff.sh` does it — it fetches that commit and re-hashes every
+forked row's original. Run it when the provenance itself is in question; the
+offline guard stays deterministic and network-free. What the guard holds
 them to is attribution, in three parts: the file's first three lines must
 carry `Derived from shiv3/ocpp-cp-simulator <upstream path> @ <fork commit>`
 **and a `Modified:` clause** — Apache-2.0 §4(b) asks for the change to be
