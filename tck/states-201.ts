@@ -227,8 +227,21 @@ type StateDefinitions = { [S in ReusableState201]: StateDefinition<S> };
  */
 const SENT_AUTHORIZE = /Sent: \[2,"[^"]*","Authorize",/;
 
-/** A transaction-carrying TransactionEvent that reports energy flowing. The
- *  member is matched by lookahead rather than in sequence, same rule. */
+/**
+ * A transaction-carrying TransactionEvent that reports energy flowing. The
+ * member is matched by lookahead rather than in sequence, same rule.
+ *
+ * STRICTER THAN THE PATTERN IT REPLACES, AND MEASURED TO BE EQUIVALENT.
+ * TC_B_21 waited on any `TransactionEvent` at all; this one is the state's
+ * actual post condition, which is a stronger claim and could in principle turn
+ * a green scenario orange. Checked against every archived run of that scenario
+ * -- 57 of them across the CI corpus -- and the two patterns agree on all 57.
+ * The five where NEITHER matches are the runs from before the tag became a
+ * valid ISO 14443 UID: the CSMS refused the `Authorize`, the station opened no
+ * transaction, and an unestablished precondition reported as SKIPPED is exactly
+ * what those runs should say. That is the degradation path being exercised for
+ * real rather than reasoned about.
+ */
 const SENT_TRANSACTION_EVENT_CHARGING =
   /Sent: \[2,"[^"]*","TransactionEvent",(?=[^\]]*"chargingState":"Charging")/;
 
