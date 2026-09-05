@@ -252,6 +252,15 @@ export const CERT_201_SCENARIOS = [
   "cert201-tcg07-connector-inoperative",
   "cert201-tcg08-connector-operative",
   "cert201-tcj01-clock-aligned-meter-values",
+  "cert201-tck01-set-tx-default-profile",
+  "cert201-tck03-set-station-max-profile",
+  "cert201-tck04-replace-profile",
+  "cert201-tck10-set-default-profile-all-evses",
+  "cert201-tck19-set-recurring-profile",
+  "cert201-tck43-composite-schedule-evse",
+  "cert201-tck44-composite-schedule-station",
+  "cert201-tck60-set-tx-profile",
+  "cert201-tck70-stack-profiles",
 ] as const;
 
 /** Scenarios the local-auth-list gap costs on v1. Named here rather than in

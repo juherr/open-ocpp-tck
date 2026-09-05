@@ -436,6 +436,106 @@ const V2_SCOPE = {
       "in one scenario. Same measurement, same member, and its answer is " +
       "what says whether the connector-scoped pair are two cases here or one.",
   ),
+
+  // --- OCPP 2.0.1 Smart Charging, NOT YET MEASURED ------------------------
+  // CONDITIONAL for the block above's reason, and these nine are the first
+  // 2.0.1 rows where the CSMS is not a pass-through at all: the SmartCharging
+  // endpoints VALIDATE BEFORE THEY DISPATCH. A dozen of Part 2's K01 rules are
+  // checked in the CSMS, and a request that fails one is answered HTTP 200
+  // with `success: false` and puts NOTHING on the websocket -- so the failure
+  // mode these rows are open on is not a reshaped request, it is no request at
+  // all with an empty frame log to read it from. Every rule was read in the
+  // pinned image's sources and every scenario is written against it; whether
+  // that reading is complete is what the first sweep answers.
+  //
+  // TWO QUESTIONS ARE SHARED BY ALL NINE. Does a request survive that
+  // validation -- which is a question about our profiles rather than about the
+  // CSMS, and the one a red run here is likeliest to be about. And does a
+  // profile survive the CSMS as a STRUCTURE: `ChangeAvailability` established
+  // that a nested `evse` object of two scalars reaches the wire, and a
+  // charging profile is an object carrying an array of objects carrying an
+  // array of objects, which is a different claim.
+  //
+  // NO FEATURE IDENTIFIER on any of them, by the rule the blocks above state:
+  // mandatory cases with no conditional feature behind them. Smart Charging is
+  // a certification profile rather than a feature this scope table can hang a
+  // row on.
+  "cert201-tck01-set-tx-default-profile": c(
+    "Does a whole ChargingProfileType reach the wire unaltered -- purpose, " +
+      "kind, stack level, identifier, the schedule's unit and duration, the " +
+      "period's limit, and the validity window? This row is the widest single " +
+      "payload this driver has ever put to this CSMS, and the window is the " +
+      "half with a known way to go wrong: the endpoint compares validFrom and " +
+      "validTo against its OWN clock before dispatch, so a container whose " +
+      "time has drifted from the runner's refuses a request this scenario " +
+      "back-dated by a minute precisely to survive that.",
+  ),
+  "cert201-tck03-set-station-max-profile": c(
+    "Does the pair (ChargingStationMaxProfile, evseId 0) survive together? " +
+      "The endpoint refuses that purpose at any other EVSE and the station " +
+      "rejects it on arrival, so the two ends agree -- which means a CSMS " +
+      "that moved the scope produces a Rejected rather than a reshaped " +
+      "request, and this row is where that is told from a dispatch failure.",
+  ),
+  "cert201-tck04-replace-profile": c(
+    "Does a second profile under one identifier reach the wire at all? This " +
+      "is the most delicate row of the nine and the reason is a CSMS rule " +
+      "rather than a wire one: a profile whose station, stack level, purpose " +
+      "and EVSE an ACTIVE one already holds is refused unless its validTo is " +
+      "strictly later. The scenario's two windows ascend by a minute, which " +
+      "also makes a re-run against a database that still holds the first " +
+      "run's profile pass -- and whether an accepted SetChargingProfile " +
+      "leaves the first profile active by the time the second is sent is a " +
+      "race this deployment runs through a GetChargingProfiles of its own.",
+  ),
+  "cert201-tck10-set-default-profile-all-evses": c(
+    "The row above's structure with the scope the case is about: does " +
+      "evseId 0 stay 0 for a TxDefaultProfile? For this request 0 means every " +
+      "EVSE rather than the station's own cap, so a CSMS that helpfully " +
+      "resolved it to a real EVSE has sent TC_K_01's request, and nothing but " +
+      "that one member tells the two apart.",
+  ),
+  "cert201-tck19-set-recurring-profile": c(
+    "Do recurrencyKind and the schedule's duration both survive? The pinned " +
+      "station REJECTS a Recurring profile carrying no recurrencyKind, so a " +
+      "CSMS that dropped the member turns this row red at the station rather " +
+      "than at an assertion -- which is a distinction this row is open on, " +
+      "because a Rejected status and a missing member are two different " +
+      "findings and only one of them is the CSMS's.",
+  ),
+  "cert201-tck43-composite-schedule-evse": c(
+    "Does a GetCompositeSchedule for a named EVSE reach the wire? It is the " +
+      "one endpoint here that reads the DEVICE MODEL before dispatching -- it " +
+      "resolves the EVSE with a null connectorId, which is the row " +
+      "provision.ts started writing for exactly this -- so a red run is as " +
+      "likely to be about the fixture as about the CSMS, and telling those " +
+      "apart is what the first sweep buys. The rate unit is asked for as " +
+      "watts because a deployment declaring a RateUnit member list refuses " +
+      "anything outside it, silently.",
+  ),
+  "cert201-tck44-composite-schedule-station": c(
+    "The row above's question at evseId 0, where the CSMS skips the EVSE " +
+      "lookup entirely -- so the pair is also how a fixture problem is told " +
+      "from a routing one: this row green beside that one red is the device " +
+      "model, both red is the endpoint.",
+  ),
+  "cert201-tck60-set-tx-profile": c(
+    "Does a TxProfile naming a running transaction reach the wire, and does " +
+      "the identifier survive as the STRING the station minted? Three things " +
+      "have to hold at once and none of them has been measured: the CSMS " +
+      "finds the transaction by that string, it finds an EVSE row with a null " +
+      "connectorId, and no active profile already holds this stack level " +
+      "against that transaction. It is also the only 2.0.1 transaction " +
+      "traffic in this suite besides cert201-tcb21's and cert201-tce10's.",
+  ),
+  "cert201-tck70-stack-profiles": c(
+    "Do two profiles at two stack levels both reach the wire? Nothing here " +
+      "is expressible only if they do -- the two requests are independent -- " +
+      "so what this row is open on is the negative: a CSMS that coalesced " +
+      "them, or refused the second because it read two profiles at one EVSE " +
+      "as a conflict, is the finding, and TC_K_04 is the row that says the " +
+      "same CSMS accepts a replacement.",
+  ),
 } satisfies ScopeTable;
 
 /**
