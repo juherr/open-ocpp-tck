@@ -515,17 +515,30 @@ Numbers are the **parallel pass**, before `--retry-failed-isolated`, because
 that is what the sweep prints; the retry column says which of those failures
 were lane artifacts.
 
-THE PINNED DIGEST HAS NO ROW HERE, and that is the table working rather than
-the table being stale. `v2.0.0-beta3` is what `compose.yaml` pins — it was
-taken for the crash citrineos-core#830 fixes, which this suite measured 53
-times. A row is added only for a full run, none has been taken at beta3 yet,
-and writing one from the beta1 sweep would be recording a measurement nobody
-made. What the next full sweep owes is the check that names the bump correct:
-`grep -rc 'citrine-db.*OCPPMessages_requestMessageId_fkey' results/csms-citrineos.log`
-must be 0, against 53 across the archived beta1 artifacts.
+THE beta3 ROW IS ONE RUN, NOT TWO, and the rule above asks for two. It is
+recorded because the check it was taken for is unambiguous and because the
+run is a CI artifact anyone can re-download, not because one run settles
+reproducibility. The second run is still owed.
+
+What it was taken for: `grep -c 'OCPPMessages_requestMessageId_fkey'` over
+`csms-citrineos.log` returns **0**, against 53 across the archived beta1
+artifacts — and the log carries the corrective migration
+`20260806120000-fix-ocpp-message-correlation-trigger` and one `AFTER INSERT`,
+so the zero is the fix having run rather than the trigger having gone missing.
+The flake count moved with it: two lane flakes at beta1, **zero** here, which
+is what removing a crash class predicts and is the part a verdict count alone
+would not show.
+
+THE COLUMN HEADERS ARE OLDER THAN THE SUITE. `authorize`'s three scenarios are
+inside `run-all` now, so the beta3 row's sweep is 54 scenarios in one pass and
+the separate `--group authorize` sweep the rule names is redundant for it. The
+headers are left as they are until a row needs them to mean something else:
+renaming a column rewrites the two rows above it, which were measured under
+the arrangement the headers describe.
 
 | CitrineOS | digest | validated | `all` (44), parallel pass | `authorize` (3) |
 |---|---|---|---|---|
+| `v2.0.0-beta3` — **current pin**, `CITRINE_VARIANT=v2` | `sha256:ddd8e987…` | 2026-09-05 | 38 PASS, 5 PARTIAL, 7 N/A, 4 EXPECTED FAIL — **0 flakes**, all four confirmed isolated; the 54-scenario sweep, `authorize` included | in the sweep: 2 PASS, 1 EXPECTED FAIL (`tc023-3`) |
 | `v2.0.0-beta1` — superseded pin, `CITRINE_VARIANT=v2` | `sha256:58800f45…` | 2026-08-11 | 34 PASS, 7 N/A, 3 FAIL — two lane flakes PASS on isolated retry, `tc044-2` confirmed | 2 PASS, 1 FAIL (`tc023-3`) |
 | `v1.9.1` — `CITRINE_VARIANT=v1` | `sha256:4f879151…` | 2026-08-11 | 16 PASS, 13 N/A, 15 FAIL — **all 15 confirmed on isolated retry, no flakes** | 2 PASS, 1 FAIL (`tc023-3`) |
 | `v2.0.0-beta1` — same pin, GraphQL transport | `sha256:58800f45…` | 2026-08-12 | 37 PASS, 7 N/A, **0 FAIL, and no flakes** — the parallel pass needed no isolated retry at all | 2 PASS, 1 FAIL (`tc023-3`) |
