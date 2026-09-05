@@ -73,6 +73,7 @@ import {
   assertEq,
   assertLineAfter,
   assertNonEmpty,
+  assertNotSent,
   assertReceived,
   assertResponseStatus,
   assertSent,
@@ -458,6 +459,171 @@ function assertVariableValueSent(
     rec.fail(
       description,
       `attributeValue is ${JSON.stringify(value)}, expected the string ${JSON.stringify(expected)}`,
+    );
+    return;
+  }
+  rec.pass(description);
+}
+
+/**
+ * The CSMS's verdict on an idToken the charge point presented: the CALLRESULT
+ * answering `action` carries an `idTokenInfo` whose `status` is one of
+ * `expected`.
+ *
+ * A SIBLING OF assertIdTagInfoStatus RATHER THAN A REUSE OF IT, and the two
+ * are one letter apart in a way that would fail quietly. OCPP 1.6 spells the
+ * member `idTagInfo` and 2.0.1 spells it `idTokenInfo`; assert.ts's helper
+ * reads the 1.6 name, so pointed at a 2.0.1 frame it reports "expected
+ * idTagInfo.status=Accepted, got status=undefined" -- true, and a statement
+ * about a member the message does not have rather than about the CSMS.
+ *
+ * A SET RATHER THAN ONE VALUE, because the cases this serves are written that
+ * way: an unknown token may be reported `Invalid` OR `Unknown`, and which of
+ * the two a conformant CSMS picks is its own business. Collapsing the set to
+ * whichever one the CSMS in front of us happens to send would turn an
+ * obligation into a measurement of one implementation, and the next CSMS would
+ * be filed against for a legal answer.
+ *
+ * SENT, NOT RECEIVED, and there is no option to change it: every case that
+ * asks this question asks it about a request the CHARGE POINT made -- an
+ * Authorize, a TransactionEvent -- which is the direction every OCA `_CSMS`
+ * obligation is in. A direction parameter would be a member with one caller.
+ *
+ * HERE AND NOT IN assert.ts, by the rule assertResponseTimestamp above states:
+ * `idTokenInfo` is a member of two 2.0.1 messages, and assert.ts is
+ * message-agnostic by construction.
+ */
+function assertIdTokenInfoStatus(
+  rec: AssertRecorder,
+  frames: readonly Frame[],
+  action: string,
+  expected: readonly string[],
+  description: string,
+): void {
+  const call = findCall(frames, "sent", action);
+  if (!call) {
+    rec.fail(description, `no Sent CALL found for action=${action}`);
+    return;
+  }
+  const response = findResponseFor(frames, call);
+  if (!response) {
+    rec.fail(
+      description,
+      `no response frame found for uniqueId=${call.uniqueId} (${action})`,
+    );
+    return;
+  }
+  if (response.kind !== "callresult") {
+    rec.fail(
+      description,
+      `expected CALLRESULT, got CALLERROR ${response.errorCode}: ${response.errorDescription}`,
+    );
+    return;
+  }
+  const status = (
+    response.payload as { idTokenInfo?: { status?: unknown } } | null
+  )?.idTokenInfo?.status;
+  if (typeof status !== "string" || !expected.includes(status)) {
+    rec.fail(
+      description,
+      `idTokenInfo.status is ${JSON.stringify(status)}, expected one of ${expected.join(" or ")} (uniqueId=${call.uniqueId})`,
+    );
+    return;
+  }
+  rec.pass(`${description} (got ${status})`);
+}
+
+/**
+ * The first CALL the charge point sent for `action` presents `expected` as its
+ * `idToken.idToken`.
+ *
+ * WHAT IT PINS IS THE QUESTION, WHERE THE HELPER ABOVE PINS THE ANSWER. A
+ * scenario carrying only the verdict check can be answered `Unknown` about a
+ * token nobody asked about -- a mistyped `tagId` produces exactly that, green,
+ * and the artifact records a conformance claim the run never made. The two
+ * belong together and every caller here writes both.
+ *
+ * IT MEASURES THE STATION AND IS HERE ANYWAY, which is the same argument
+ * TC_B_01's `reason: "PowerUp"` check rests on: the value is the scenario's
+ * own input travelling back through the simulator, so what it actually
+ * establishes is that this run put the token we believe it put on the wire.
+ *
+ * `assertCallPayload` is the shape next door and cannot be made to fit: it
+ * compares members with `Object.is`, so every value it can check is a scalar,
+ * and `idToken` is an object.
+ */
+function assertIdTokenSent(
+  rec: AssertRecorder,
+  frames: readonly Frame[],
+  action: string,
+  expected: string,
+  description: string,
+): void {
+  const call = findCall(frames, "sent", action);
+  if (!call) {
+    rec.fail(description, `no Sent CALL found for action=${action}`);
+    return;
+  }
+  const token = (call.payload as { idToken?: { idToken?: unknown } } | null)
+    ?.idToken?.idToken;
+  if (token !== expected) {
+    rec.fail(
+      description,
+      `idToken.idToken is ${JSON.stringify(token)}, expected ${JSON.stringify(expected)}`,
+    );
+    return;
+  }
+  rec.pass(description);
+}
+
+/**
+ * The first CALL the charge point sent for `action` addresses an EVSE and
+ * carries at least one sampled value.
+ *
+ * WHY A SHAPE CHECK AND NOT A VALUE ONE. What a meter reports is the station's
+ * business, and this suite has no opinion about kWh. What it does have an
+ * opinion about is which PROTOCOL produced the frame: OCPP 1.6's
+ * MeterValues.req addresses a `connectorId` and carries its readings as
+ * strings, 2.0.1's addresses an `evseId` and carries them as numbers under
+ * `meterValue[].sampledValue[]`. A scenario that ran on the wrong version
+ * would otherwise reach its answered-check and pass it -- the failure
+ * `ScenarioSpec.ocppVersion` exists for, arriving in the one message this
+ * scenario has.
+ *
+ * `evseId` IS NOT COMPARED TO A NUMBER, deliberately. Which EVSE the pinned
+ * image maps a connector onto is the station's topology, and a literal here
+ * would be this suite's belief about it rather than a measurement --
+ * assertStatusesRecorded's note above makes the same choice for the same
+ * reason.
+ */
+function assertMeterValueSampled(
+  rec: AssertRecorder,
+  frames: readonly Frame[],
+  action: string,
+  description: string,
+): void {
+  const call = findCall(frames, "sent", action);
+  if (!call) {
+    rec.fail(description, `no Sent CALL found for action=${action}`);
+    return;
+  }
+  const payload = call.payload as Record<string, unknown> | null;
+  if (typeof payload?.evseId !== "number") {
+    rec.fail(
+      description,
+      `evseId is ${JSON.stringify(payload?.evseId)}, so the request addresses no EVSE`,
+    );
+    return;
+  }
+  const meterValue = payload.meterValue;
+  const first = Array.isArray(meterValue)
+    ? (meterValue[0] as { sampledValue?: unknown } | null)
+    : null;
+  const sampled = first?.sampledValue;
+  if (!Array.isArray(sampled) || sampled.length === 0) {
+    rec.fail(
+      description,
+      `meterValue[0].sampledValue is ${JSON.stringify(sampled)}, so the request reports no reading`,
     );
     return;
   }
@@ -976,9 +1142,412 @@ const TC_F_20: ScenarioSpec = {
   },
 };
 
+const TC_C_02: ScenarioSpec = {
+  templateId: "cert201-tcc02-authorize-invalid",
+  description:
+    "TC_C_02 Local start transaction: the station presents an idToken the CSMS does not know, and the CSMS reports it as not valid.",
+  ocppVersion: "OCPP-2.0.1",
+  runsSimTemplate: false,
+  connector: 1,
+  bootWaitSecs: 4,
+  // 10, the shortest hold in this file, and the chain is why: one local
+  // sim.send, one Authorize.req, one answer. That is TC_B_22's shape -- a
+  // single round trip with nothing after it -- and 10 is what TC_B_22 has run
+  // at. Nothing here waits on a reboot, on a second boot, or on a station
+  // timer, which is what the longer holds above are paying for.
+  holdSecs: 10,
+  async drive({ sim }) {
+    // EIGHT HEXADECIMAL CHARACTERS, AND THAT IS THE HALF THAT IS NOT
+    // ARBITRARY. The station types every 2.0.1 idToken `ISO14443` -- a literal
+    // in the pinned image, not a setting -- and a CSMS is entitled to validate
+    // that type's format (a card UID: 4 or 7 bytes, so 8 or 14 hex characters)
+    // BEFORE looking anything up. A `CERT…` spelling is answered with a
+    // CALLERROR about the shape, which is not the verdict this case is about,
+    // and the scenario would be measuring a format check.
+    //
+    // AND IT MUST BE A TOKEN NOTHING SEEDS, which is the other half: the case
+    // asks the CSMS about a token it does not know, so a collision with any
+    // driver's fixture turns the expected answer into `Accepted`. It is not a
+    // named constant for TC_B_22's reason -- an identifier renders as `·` in
+    // ASSERT-INVENTORY.txt and DRIVE-TRACE.txt, so the token the run puts on
+    // the wire would stop being pinned by either artifact. Two literals thirty
+    // lines apart is the price of them meaning what they say.
+    await sim.send({ command: "authorize", params: { tagId: "CE71FFFF" } });
+  },
+  assert({ frames, rec }) {
+    assertSent(rec, frames, "Authorize", "Authorize.req sent");
+    // WHICH TOKEN WAS PUT TO THE CSMS, before what it answered. Without this
+    // the check below is satisfied by an `Unknown` about a token this run
+    // never sent, which is what a mistyped tagId produces -- green, and a
+    // conformance claim about an exchange that did not happen.
+    assertIdTokenSent(
+      rec,
+      frames,
+      "Authorize",
+      "CE71FFFF",
+      "Authorize.req presents the unknown idToken this scenario asked about",
+    );
+    // The CSMS owes an AuthorizeResponse, and a CALLERROR is not one. This is
+    // also the check that catches the format rejection the comment above
+    // guards against: were the token misshapen, the answer would be a
+    // CALLERROR and the status check below would report it as a missing
+    // verdict rather than as the shape problem it is.
+    assertAllAnswered(rec, frames, "Authorize");
+    // THE CASE'S ONE TOOL VALIDATION, and both values are the case's. Which of
+    // the two a CSMS picks for a token it has never seen is its own business,
+    // so pinning either one alone would file against a conformant CSMS for
+    // choosing the other.
+    assertIdTokenInfoStatus(
+      rec,
+      frames,
+      "Authorize",
+      ["Invalid", "Unknown"],
+      "the CSMS reports the idToken as not valid",
+    );
+  },
+};
+
+/** What TC_E_10 established before it read the CSMS's answer to the start. */
+interface AuthorizedStartPrecondition {
+  started: boolean;
+}
+
+const TC_E_10: ScenarioSpec<AuthorizedStartPrecondition> = {
+  templateId: "cert201-tce10-start-authorized",
+  description:
+    "TC_E_10 Start transaction options: the station authorizes an idToken and then starts a transaction on it, and the CSMS accepts both.",
+  ocppVersion: "OCPP-2.0.1",
+  runsSimTemplate: false,
+  connector: 1,
+  bootWaitSecs: 4,
+  // 12, and the reasoning is about what is left OUTSTANDING when drive()
+  // returns rather than about the whole exchange. drive() blocks on the
+  // Started TransactionEvent reaching the wire and then sleeps, so the
+  // Authorize round trip and the Started one are already paid for by the time
+  // this window opens; what it has to cover is the Ended event drive() sends
+  // last and the answer to it -- one round trip, plus the answer to the
+  // Started event if the CSMS was still working on it. That is the same shape
+  // TC_B_06 and TC_B_09 hold at 12, and this file's note there records that 12
+  // is the value that has run green under three-lane CI contention where
+  // shorter windows tuned in isolation have not.
+  holdSecs: 12,
+  async drive({ connector, sim }) {
+    // ONE COMMAND FOR THE CASE'S FIRST FOUR STEPS, which is a fact about the
+    // pinned image rather than a shortcut. `AuthorizeBeforeLocalStart` is true
+    // by default there, so `start_transaction` sends the Authorize.req itself,
+    // WAITS for the answer, and only then emits the Started TransactionEvent
+    // -- triggerReason `Authorized`, which is the value this case's Started
+    // event is defined by. Sending a separate `authorize` first would put a
+    // second, unrelated Authorize on the wire and leave the assertions below
+    // reading whichever came first.
+    //
+    // THE TAG IS THE ONE A DRIVER PROVISIONS, and it is spelled here rather
+    // than shared with TC_B_21 for the artifact reason TC_C_02's note above
+    // gives. TC_B_21's comment carries the argument for its shape.
+    await sim.send({
+      command: "start_transaction",
+      params: { connector, tagId: "CE712001" },
+    });
+    // THE PRECONDITION IS REPORTED, NOT ASSUMED, exactly as TC_B_21 does it
+    // and for a sharper reason: the station will not start a local
+    // transaction at all when the CSMS answers the Authorize with anything
+    // other than `Accepted`. That refusal is the station behaving correctly,
+    // so the absence of a Started event is not a finding about it -- the
+    // finding is the Authorize status, which is checked unconditionally below.
+    // 15s rather than TC_B_21's 10 because this wait sits BEHIND the station's
+    // own 10s Authorize gate, not in front of it.
+    let started = true;
+    try {
+      await sim.waitForLine(/Sent: \[2,.*"TransactionEvent"/, 15_000);
+    } catch (err) {
+      started = false;
+      process.stderr.write(
+        `[runner] WARN: no TransactionEvent within 15s -- the CSMS did not accept the idToken, so this case's start never happened (${
+          err instanceof Error ? err.message : String(err)
+        })\n`,
+      );
+    }
+    // Long enough for the Started event's answer to land before the Ended one
+    // is queued behind it, so the two verdicts below are about two exchanges
+    // rather than about one queue.
+    await sleep(2000);
+    // TEARDOWN, AND NOT PART OF THE CASE. `runsSimTemplate: false` moves the
+    // wind-down onto drive() (see ScenarioSpec), and a transaction left open
+    // is a row the next scenario on this station trips over. The Ended event
+    // it produces is asserted on only by `assertAllAnswered` below, which is
+    // an obligation the CSMS owes every TransactionEvent whatever caused it.
+    await sim.send({ command: "stop_transaction", params: { connector } });
+    return { started };
+  },
+  assert({ frames, rec, driveState }) {
+    // FIRST, so a reader of results/ meets the cause before the consequence.
+    const description = "the CSMS accepted the idToken, so the station started";
+    if (driveState.started) {
+      rec.pass(description);
+    } else {
+      rec.skip(
+        description,
+        `${UNEXERCISED_PREFIX} no TransactionEvent reached the wire within 15s, so the station refused the local start and this case's second half never happened`,
+      );
+    }
+    assertSent(rec, frames, "Authorize", "Authorize.req sent");
+    assertIdTokenSent(
+      rec,
+      frames,
+      "Authorize",
+      "CE712001",
+      "Authorize.req presents the provisioned idToken",
+    );
+    assertAllAnswered(rec, frames, "Authorize");
+    // THE CASE'S FIRST TOOL VALIDATION, and it stays unconditional on purpose:
+    // it is the check the precondition above depends on, so degrading it with
+    // the precondition would leave a CSMS that refused a provisioned token
+    // reported as orange everywhere and red nowhere.
+    assertIdTokenInfoStatus(
+      rec,
+      frames,
+      "Authorize",
+      ["Accepted"],
+      "the CSMS accepted the idToken",
+    );
+    if (driveState.started) {
+      assertSent(rec, frames, "TransactionEvent", "TransactionEvent.req sent");
+      // WHAT MAKES THIS CASE THIS CASE. `eventType` and `triggerReason`
+      // together are how the wire says "the transaction started because the
+      // driver was authorized" rather than because a cable went in or energy
+      // began to flow -- the neighbouring E01 cases differ from this one in
+      // exactly that member. `assertCallPayload` matches ANY sent
+      // TransactionEvent carrying both, which is what keeps the Ended event
+      // drive() sends afterwards from being read as this one: it spells
+      // `eventType` differently.
+      assertCallPayload(
+        rec,
+        frames,
+        "sent",
+        "TransactionEvent",
+        { eventType: "Started", triggerReason: "Authorized" },
+        "the Started TransactionEvent says the transaction started on an authorization",
+      );
+      assertIdTokenSent(
+        rec,
+        frames,
+        "TransactionEvent",
+        "CE712001",
+        "the Started TransactionEvent carries the idToken that was authorized",
+      );
+      // The case's second tool validation. The CSMS answers a Started event
+      // carrying an idToken with its verdict on that token AGAIN, and the case
+      // requires it to say the same thing it said to the Authorize -- a CSMS
+      // that accepted the token and then declined the transaction on it is the
+      // finding this reaches and nothing above can.
+      assertIdTokenInfoStatus(
+        rec,
+        frames,
+        "TransactionEvent",
+        ["Accepted"],
+        "the CSMS accepted the transaction the idToken started",
+      );
+    } else {
+      rec.skip(
+        "the CSMS accepted the transaction the idToken started",
+        `${UNEXERCISED_PREFIX} the station never sent a Started TransactionEvent, so there is no second verdict to read`,
+      );
+    }
+    // Unconditional, and it degrades itself: with no TransactionEvent on the
+    // wire this reports UNEXERCISED rather than accusing the CSMS of not
+    // answering something nobody sent (assertAllAnswered's rule 1).
+    assertAllAnswered(rec, frames, "TransactionEvent");
+  },
+};
+
+// WHAT THIS CASE ASKS FOR THAT THE PINNED IMAGE CANNOT SPELL, written down
+// because the gap is invisible from the assertions and a reader will otherwise
+// re-derive it. TC_F_27's scenario column is one exchange and its tool
+// validations are `N/a`, so what a conformance tool checks here is not a
+// payload member: it is that the CSMS survives being told the station does not
+// implement what it asked for. There is no wire assertion for "survives", so
+// this scenario manufactures one -- a Heartbeat afterwards, and the CSMS's
+// answer to it. That exchange is deliberately absent from OCA-OBLIGATIONS.txt:
+// the case obliges no HeartbeatResponse, and the check is our evidence that
+// the session outlived the refusal rather than something the reference asks
+// for.
+const TC_F_27: ScenarioSpec = {
+  templateId: "cert201-tcf27-trigger-not-implemented",
+  description:
+    "TC_F_27 Trigger Message: the CSMS asks for a message this station does not implement, is answered NotImplemented, and goes on serving the station.",
+  ocppVersion: "OCPP-2.0.1",
+  runsSimTemplate: false,
+  connector: 1,
+  bootWaitSecs: 4,
+  // 12, by comparison with TC_F_20 above, which is the same chain one leg
+  // shorter here: there the CSMS's trigger, the station's answer, the
+  // Heartbeat the trigger PRODUCED and the answer to that; here the trigger,
+  // the refusal, and then a Heartbeat this scenario sends locally rather than
+  // waits for the station to be driven into. So 12 is TC_F_20's measured value
+  // covering one round trip less, and the margin is deliberate rather than
+  // spare -- TC_B_20's note records what a window tuned to its own chain costs
+  // under three-lane CI contention.
+  holdSecs: 12,
+  async drive({ cpId, sim, csms201 }) {
+    // FirmwareStatusNotification IS A LITERAL AND THE CHOICE IS THE CASE. It
+    // has to be a value the 2.0.1 MessageTriggerEnumType has -- or the CSMS
+    // rejects the request locally and nothing reaches the wire -- AND one the
+    // pinned image does not implement, which is every value outside the four
+    // its handler answers `Accepted` for (BootNotification, Heartbeat,
+    // StatusNotification, MeterValues). Firmware status is the furthest of
+    // those from anything this station does: it has no firmware update to
+    // report on, so the negative check below cannot be satisfied by traffic
+    // that would have happened anyway.
+    await csms201.execute(cpId, {
+      action: "TriggerMessage",
+      requestedMessage: "FirmwareStatusNotification",
+    });
+    // Long enough for the refusal to be answered before the Heartbeat is
+    // queued behind it, so `assertLineAfter` below is reading an ordering the
+    // CSMS produced rather than one this scenario forced.
+    await sleep(2000);
+    await sim.send({ command: "heartbeat" });
+  },
+  assert({ frames, lines, rec }) {
+    assertReceived(rec, frames, "TriggerMessage", "TriggerMessage.req received");
+    // The CSMS is the system under test, so what it put on the wire is the
+    // measurement -- and here it is the whole of it. A CSMS that quietly
+    // substituted a message it knows the station handles would be answered
+    // `Accepted`, and this scenario would become TC_F_20 with a different name
+    // on it: every other check below would still pass.
+    assertCallPayload(
+      rec,
+      frames,
+      "received",
+      "TriggerMessage",
+      { requestedMessage: "FirmwareStatusNotification" },
+      "TriggerMessage.req asks for the message the station does not implement",
+    );
+    assertResponseStatus(
+      rec,
+      frames,
+      "TriggerMessage",
+      "NotImplemented",
+      "TriggerMessage refused as not implemented",
+      { direction: "received" },
+    );
+    // THE REFUSAL WAS REAL, not a status the station sent while doing the
+    // thing anyway. Cheap, and it is the only check that distinguishes a
+    // station answering NotImplemented from one answering it wrongly.
+    assertNotSent(
+      rec,
+      frames,
+      "FirmwareStatusNotification",
+      "sent",
+      "no FirmwareStatusNotification followed the refusal",
+    );
+    // assertLineAfter rather than a first-match order check, for TC_F_20's
+    // reason: the charge point also runs a periodic Heartbeat timer at
+    // whatever interval the BootNotification response returned, so a
+    // first-match check can be satisfied by a Heartbeat that owes nothing to
+    // anything this scenario did.
+    assertLineAfter(
+      rec,
+      lines,
+      /Received: \[2,.*"TriggerMessage"/,
+      /Sent: \[2,.*"Heartbeat"/,
+      "the station still reaches the CSMS after the refusal",
+    );
+    // AND THE CSMS STILL ANSWERS IT, which is the case's Purpose in the only
+    // form the wire has. A CSMS that treated an unimplemented trigger as a
+    // fault -- dropped the session, stopped answering, wedged the station's
+    // queue -- passes every check above and fails this one.
+    assertResponseTimestamp(
+      rec,
+      frames,
+      "Heartbeat",
+      "currentTime",
+      "the CSMS answered the station's next request with a current time",
+    );
+  },
+};
+
+// WHAT THIS CASE ASKS FOR THAT THE PINNED IMAGE CANNOT SPELL, and it is two
+// members rather than TC_F_27's zero. The case's station-side message carries
+// `sampledValue.context` as the clock-aligned reading context, and its note
+// says the readings arrive one configured interval apart. The pinned image
+// drops `context` from every 2.0.1 sampled value (issue #114) and has no
+// clock-aligned scheduler on the 2.0.1 path at all, so this scenario sends
+// three readings on its own clock instead. NEITHER MEMBER CARRIES A TOOL
+// VALIDATION -- the case's are `N/a`, and both belong to the test tool's own
+// behaviour rather than to the CSMS's -- so what is measured here is the whole
+// of what the case measures of a CSMS: that it answered.
+//
+// AND WHY THE CASE IS STILL THIS ONE. Of the mandatory J cases, this is the
+// only one whose station-side message is a bare MeterValuesRequest with no
+// transaction behind it; every "Sampled Meter Values" case carries its
+// readings inside a TransactionEvent, and the other clock-aligned ones all
+// require a transaction. So an idle station sending MeterValues is
+// unambiguously this case's stimulus, which is the test the E-block cases
+// declined in OCA-201-SLICE.txt fail.
+const TC_J_01: ScenarioSpec = {
+  templateId: "cert201-tcj01-clock-aligned-meter-values",
+  description:
+    "TC_J_01 Clock-aligned Meter Values: an idle station reports its meter three times and the CSMS answers every one.",
+  ocppVersion: "OCPP-2.0.1",
+  runsSimTemplate: false,
+  connector: 1,
+  bootWaitSecs: 4,
+  // 10, and what it covers is one round trip rather than three: drive() sends
+  // the three readings itself and spaces them, so the first two are answered
+  // while it is still running and only the last is outstanding when this
+  // window opens. That is TC_B_22's and TC_C_02's shape, and their value.
+  // Raising it would buy nothing here -- assertAllAnswered's rule 3 already
+  // forgives a CALL the log ended on, which is exactly what a third reading
+  // answered a moment too late would be.
+  holdSecs: 10,
+  async drive({ connector, sim }) {
+    // THREE, BECAUSE THE CASE SAYS THREE -- its note ends the test after the
+    // third reading, and `minimum: 3` below is what makes that a requirement
+    // rather than a habit. Spaced rather than burst: three readings inside one
+    // tick would reach the CSMS as one queue and say nothing about whether it
+    // can answer a repeated request, which is the only thing this case asks
+    // of it.
+    await sim.send({ command: "send_meter_value", params: { connector } });
+    await sleep(2000);
+    await sim.send({ command: "send_meter_value", params: { connector } });
+    await sleep(2000);
+    await sim.send({ command: "send_meter_value", params: { connector } });
+  },
+  assert({ frames, rec }) {
+    // FIRST, because it is what separates this case from its neighbour. A
+    // TransactionEvent on the wire would mean the readings arrived with a
+    // transaction running, which is TC_J_02 -- a different mandatory case, and
+    // one this row does not claim. SKIPPED rather than FAIL for TC_B_21's
+    // reason: a station that had a transaction open is not a CSMS that did
+    // anything wrong, and orange says the suite did not ask what it meant to.
+    const idle = "no transaction was running when the meter reported";
+    if (findCall(frames, "sent", "TransactionEvent") === undefined) {
+      rec.pass(idle);
+    } else {
+      rec.skip(
+        idle,
+        `${UNEXERCISED_PREFIX} a TransactionEvent reached the wire, so these readings were taken during a transaction and this case's distinguishing condition did not hold`,
+      );
+    }
+    assertSent(rec, frames, "MeterValues", "MeterValues.req sent");
+    assertMeterValueSampled(
+      rec,
+      frames,
+      "MeterValues",
+      "MeterValues.req is the OCPP 2.0.1 request (an evseId and a sampled reading)",
+    );
+    // THE CASE'S ONE CSMS OBLIGATION, three times over. `minimum: 3` is what
+    // keeps the count a requirement: fewer readings on the wire is the
+    // scenario not having asked, which reports UNEXERCISED rather than
+    // accusing the CSMS of not answering messages nobody sent.
+    assertAllAnswered(rec, frames, "MeterValues", undefined, { minimum: 3 });
+  },
+};
+
 /**
- * The scenarios, in case order -- the seven of `OCA-201-SLICE.txt`'s 147 that
- * are implemented. The other 140 are declined there rather than here, with
+ * The scenarios, in case order -- the eleven of `OCA-201-SLICE.txt`'s 147 that
+ * are implemented. The other 136 are declined there rather than here, with
  * the reason in the row: one place per fact, and the guard reads that one.
  */
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
@@ -989,5 +1558,9 @@ export const CORE_201_SPECS: ScenarioSpec<any>[] = [
   TC_B_20,
   TC_B_21,
   TC_B_22,
+  TC_C_02,
+  TC_E_10,
   TC_F_20,
+  TC_F_27,
+  TC_J_01,
 ];

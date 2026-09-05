@@ -81,8 +81,21 @@ cert16-tc023-3-authorize-blocked          Authorize                      assertI
 # OCA-COVERAGE.md is the provenance for every row above. The guard reading this
 # file is namespace-agnostic on purpose -- whether a row is about 1.6 or 2.0.1
 # has no bearing on whether it has a check behind it.
+#
+# AND ONE SCENARIO IS DELIBERATELY ABSENT, said here because its absence looks
+# like an omission. cert201-tcf27-trigger-not-implemented drives a Heartbeat
+# and reads the answer, which is the shape of every row below -- but TC_F_27
+# obliges no HeartbeatResponse. Its scenario column is one exchange in the
+# other direction and its tool validations are `N/a`, so the Heartbeat is this
+# suite's evidence that the session outlived the refusal rather than something
+# the reference asks the CSMS for. A row here would claim otherwise, and this
+# table's whole value is that a row can be looked up.
 cert201-tcb01-cold-boot                   BootNotification               assertResponseStatus   TC_B_01
 cert201-tcb01-cold-boot                   StatusNotification             assertAllAnswered      TC_B_01
 cert201-tcb20-reset-accepted              BootNotification               assertAllAnswered      TC_B_20
 cert201-tcb21-reset-scheduled             TransactionEvent               assertAllAnswered      TC_B_21
+cert201-tcc02-authorize-invalid           Authorize                      assertAllAnswered      TC_C_02
+cert201-tce10-start-authorized            Authorize                      assertAllAnswered      TC_E_10
+cert201-tce10-start-authorized            TransactionEvent               assertAllAnswered      TC_E_10
 cert201-tcf20-heartbeat                   Heartbeat                      assertAllAnswered      TC_F_20
+cert201-tcj01-clock-aligned-meter-values  MeterValues                    assertAllAnswered      TC_J_01
