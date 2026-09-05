@@ -27,17 +27,18 @@
  *   4. BRANCH SELECTION READS THE CONDITION AND NOTHING ELSE, and the planner
  *      is pure. A state is a transition, not a script.
  *   5. A STATE A SCENARIO NAMES HAS A RUNNABLE PLAN, and the edge graph
- *      terminates. Twelve of the fourteen states are declared with no reach
+ *      terminates. Eleven of the fourteen states are declared with no reach
  *      this build can execute; naming one must fail HERE, at build time, and
  *      not as an orange scenario for a reason the build already knew.
  *
  * WHY IT IS A GUARD AND NOT A SWEEP, and why TypeScript, like
  * tests/expected-failure-standing.ts. Reaching claim 1's second row means a
  * CSMS, a container and a station already in a named condition. Reaching claim
- * 2's row means a five-state chain re-entered from its far end -- eleven of the
- * twelve states involved have no reach this build can execute, so no sweep,
- * live or offline, could ever run it. `planStates` is a total function of a
- * declaration and a starting condition precisely so this file can be a table.
+ * 2's row means a five-state chain re-entered from its far end -- and only two
+ * of the five states that chain names have a reach this build can execute, so
+ * no sweep, live or offline, could ever run it. `planStates` is a total
+ * function of a declaration and a starting condition precisely so this file
+ * can be a table.
  *
  * CLAIMS 1 AND 2 ALSO PIN THE FIVE EDGES. Their expected step sequences are
  * derived orders: EnergyTransferStarted -> Authorized in claim 1, and the whole
@@ -232,7 +233,7 @@ for (const state of REUSABLE_STATES_201) {
 
 check(
   REUSABLE_STATES_201.filter((state) => !isPlanned(state)).join(",") ===
-    "Authorized,EnergyTransferStarted",
+    "Authorized,EnergyTransferStarted,Unavailable",
   "the set of states with a reach this build can execute has changed. That " +
     "is a legitimate thing to do -- say so in the pull request, and move " +
     "OCA-201-SLICE.txt's reasons that cite a planned state by name. Got: " +

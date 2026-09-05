@@ -148,10 +148,11 @@ export type CertificateUse201 =
  * marking it, so the failure is silent.
  */
 export type StateInvocation =
-  // --- the two with a reach ------------------------------------------------
+  // --- the three with a reach ----------------------------------------------
   | { state: "Authorized"; connectorId: number; idToken: string }
   | { state: "EnergyTransferStarted"; connectorId: number; idToken: string }
-  // --- the twelve planned: the reference's parameter shape -----------------
+  | { state: "Unavailable"; evseId: number }
+  // --- the eleven planned: the reference's parameter shape -----------------
   | { state: "Booted"; model: string }
   | { state: "CertificateInstalled"; certificateType: CertificateUse201 }
   | { state: "EVConnectedPostSession" }
@@ -162,8 +163,7 @@ export type StateInvocation =
   | { state: "ISO15118SmartCharging"; evseId: number }
   | { state: "RenewChargingStationCertificate" }
   | { state: "Reserved"; evseId: number; idToken: string }
-  | { state: "StopAuthorized"; transactionDurationSecs: number }
-  | { state: "Unavailable"; evseId: number };
+  | { state: "StopAuthorized"; transactionDurationSecs: number };
 
 /** The invocation shape for one state, so a definition's callbacks are typed
  *  against their own parameters rather than against the whole union. */
@@ -221,7 +221,7 @@ interface StateDefinition<S extends ReusableState201> {
 type StateDefinitions = { [S in ReusableState201]: StateDefinition<S> };
 
 // ---------------------------------------------------------------------------
-// The two states with a reach.
+// The three states with a reach.
 // ---------------------------------------------------------------------------
 
 /**
@@ -284,6 +284,57 @@ const reachEnergyTransferCharging: NonNullable<
   ReachSegment<"EnergyTransferStarted">["run"]
 > = async (ctx) => {
   await ctx.sim.waitForLine(SENT_TRANSACTION_EVENT_CHARGING, REACH_TIMEOUT_MS);
+};
+
+/**
+ * The station reporting a connector it will no longer serve.
+ *
+ * THE POST CONDITION AND NOT THE ANSWER, which is the choice worth stating.
+ * The `ChangeAvailabilityResponse` arrives first and says `Accepted`, and
+ * waiting on it would be waiting on the CSMS's dispatch rather than on the
+ * station's condition -- a station that answered Accepted and then did nothing
+ * would satisfy it. A CALLRESULT also carries no action name in OCPP-J, so
+ * there is nothing to match it by that is not a uniqueId this function does
+ * not have. The `StatusNotification` is what the condition IS, and it is the
+ * frame the scenarios then go on to measure the CSMS's answer to.
+ *
+ * Matched by lookahead for `SENT_AUTHORIZE`'s reason: nothing here pins member
+ * order.
+ */
+const SENT_STATUS_UNAVAILABLE =
+  /Sent: \[2,"[^"]*","StatusNotification",(?=[^\]]*"connectorStatus":"Unavailable")/;
+
+/**
+ * The first fixture whose reach is a CSMS operation rather than a station
+ * command, which is what {@link CSMS_INITIATED} said was still owed.
+ *
+ * ONE SEGMENT, unguarded: unlike `EnergyTransferStarted` this state's reference
+ * definition branches on nothing, and a request that finds the EVSE already
+ * inoperative is answered and re-reported rather than refused -- so the same
+ * sequence establishes the condition from anywhere.
+ *
+ * `evse` CARRIES `id` AND NOT `connectorId`, and that is the reference's own
+ * parameter shape rather than a simplification: this state takes an EVSE. A
+ * scenario that needs the connector-scoped or the station-wide request writes
+ * it inline, which is what two of the six ChangeAvailability scenarios do --
+ * widening this invocation to carry the other two modes would make our
+ * declaration say something about Part 6 that Part 6 does not.
+ *
+ * A DRIVER THAT CANNOT DISPATCH IT throws `UnsupportedOperationError`, which
+ * `establishStates` deliberately does not catch: the runner turns it into NOT
+ * APPLICABLE, and a fixture asking for an operation the driver has not
+ * declared means the same thing as a scenario doing so.
+ */
+const reachUnavailable: NonNullable<ReachSegment<"Unavailable">["run"]> = async (
+  ctx,
+  invocation,
+) => {
+  await ctx.csms201.execute(ctx.cpId, {
+    action: "ChangeAvailability",
+    operationalStatus: "Inoperative",
+    evse: { id: invocation.evseId },
+  });
+  await ctx.sim.waitForLine(SENT_STATUS_UNAVAILABLE, REACH_TIMEOUT_MS);
 };
 
 const AUTHORIZED: StateDefinition<"Authorized"> = {
@@ -360,14 +411,19 @@ const ENERGY_TRANSFER_STARTED: StateDefinition<"EnergyTransferStarted"> = {
   ],
 };
 
+const UNAVAILABLE: StateDefinition<"Unavailable"> = {
+  establishes: (condition) => ({ ...condition, state: "Unavailable" }),
+  reach: [{ run: reachUnavailable }],
+};
+
 // ---------------------------------------------------------------------------
-// The twelve with none. Each carries the reference's parameter shape, its edge
+// The eleven with none. Each carries the reference's parameter shape, its edge
 // and its post condition -- all facts, all type-checked -- and a reason in
 // place of a reach.
 // ---------------------------------------------------------------------------
 
-/** The blocker twelve of the fourteen share, in one place so twelve copies
- *  cannot drift into twelve slightly different claims. */
+/** The blocker five of the fourteen share, in one place so five copies cannot
+ *  drift into five slightly different claims. */
 const TRANSACTION_EVENT_BUILDER =
   "the pinned simulator's 2.0.1 TransactionEvent builder hard-codes " +
   "triggerReason, stoppedReason and chargingState, so the station cannot be " +
@@ -490,10 +546,7 @@ const STATE_DEFINITIONS: StateDefinitions = {
     reach: [{ run: null, planned: TRANSACTION_EVENT_BUILDER }],
   },
 
-  Unavailable: {
-    establishes: (condition) => ({ ...condition, state: "Unavailable" }),
-    reach: [{ run: null, planned: CSMS_INITIATED }],
-  },
+  Unavailable: UNAVAILABLE,
 };
 
 /** Whether a state has a reach this build can execute at all -- derived from

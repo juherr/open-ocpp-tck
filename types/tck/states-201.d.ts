@@ -128,6 +128,9 @@ export type StateInvocation = {
     connectorId: number;
     idToken: string;
 } | {
+    state: "Unavailable";
+    evseId: number;
+} | {
     state: "Booted";
     model: string;
 } | {
@@ -159,9 +162,6 @@ export type StateInvocation = {
 } | {
     state: "StopAuthorized";
     transactionDurationSecs: number;
-} | {
-    state: "Unavailable";
-    evseId: number;
 };
 /** What an establisher is given. Narrower than DriveContext on purpose: a
  *  fixture puts the station into a condition, it does not measure anything, so
