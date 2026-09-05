@@ -252,6 +252,41 @@ GROUP core-201
   SPEC cert201-tck19-set-recurring-profile
     OP 201:SetChargingProfile [0, 1, 19, 8000, 86400, 9119, 9119, <ts>, <ts>, <ts>, daily, recurring, txdefaultprofile, w]
     -> driveState keys=[]
+  SPEC cert201-tck29-profiles-in-transaction
+    STATE Authorized [1, ce712001] segment=0
+    SIM send {"command":"start_transaction","params":{"connector":1,"tagId":"CE712001"}}
+    SIM wait-for-line Sent: \[2,"[^"]*","Authorize", 15000
+    STATE EnergyTransferStarted [1, ce712001] segment=0
+    SIM wait-for-line Sent: \[2,"([^"]*)","TransactionEvent",(?=[^\]]*"chargingState":"Charging") 15000
+    SIM wait-for-line Received: \[3,"<uniqueId>" 15000
+    OP 201:SetChargingProfile [0, 0, 11000, 29, 9229, 9229, <ts>, <ts>, <ts>, absolute, txdefaultprofile, w]
+    OP 201:GetChargingProfiles [0, 7229, cso, ems, other, so]
+    SIM send {"command":"stop_transaction","params":{"connector":1}}
+    -> driveState keys=[]
+  SPEC cert201-tck30-profiles-evse
+    OP 201:SetChargingProfile [0, 1, 30, 7400, 9230, 9230, <ts>, <ts>, <ts>, absolute, txdefaultprofile, w]
+    OP 201:GetChargingProfiles [1, 7230, cso, ems, other, so]
+    -> driveState keys=[]
+  SPEC cert201-tck32-profiles-by-id
+    OP 201:SetChargingProfile [0, 1, 32, 6000, 9232, 9232, <ts>, <ts>, <ts>, absolute, txdefaultprofile, w]
+    OP 201:GetChargingProfiles [7232, 9232]
+    -> driveState keys=[]
+  SPEC cert201-tck33-profiles-by-stack-level
+    OP 201:SetChargingProfile [0, 1, 33, 8000, 9233, 9233, <ts>, <ts>, <ts>, absolute, txdefaultprofile, w]
+    OP 201:GetChargingProfiles [1, 33, 7233]
+    -> driveState keys=[]
+  SPEC cert201-tck34-profiles-by-limit-source
+    OP 201:SetChargingProfile [0, 1, 34, 9000, 9234, 9234, <ts>, <ts>, <ts>, absolute, txdefaultprofile, w]
+    OP 201:GetChargingProfiles [1, 7234, cso]
+    -> driveState keys=[]
+  SPEC cert201-tck35-profiles-by-purpose
+    OP 201:SetChargingProfile [0, 1, 35, 5000, 9235, 9235, <ts>, <ts>, <ts>, absolute, txdefaultprofile, w]
+    OP 201:GetChargingProfiles [1, 7235, txdefaultprofile]
+    -> driveState keys=[]
+  SPEC cert201-tck36-profiles-by-purpose-stack
+    OP 201:SetChargingProfile [0, 1, 36, 4000, 9236, 9236, <ts>, <ts>, <ts>, absolute, txdefaultprofile, w]
+    OP 201:GetChargingProfiles [1, 36, 7236, txdefaultprofile]
+    -> driveState keys=[]
   SPEC cert201-tck43-composite-schedule-evse
     OP 201:GetCompositeSchedule [1, 3600, w]
     -> driveState keys=[]

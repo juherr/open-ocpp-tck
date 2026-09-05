@@ -294,6 +294,39 @@ FILE core-201.ts
       ·.pass(·)
       RETURN
     ·.fail(·, ·)
+  HELPER assertChargingProfilesRequested
+    IF
+      ·.fail(·, ·)
+      RETURN
+    NULLISH
+    IF
+    IF
+      OR
+        OR
+      ·.fail(·, ·)
+      RETURN
+    FOROF
+      IF
+    FOROF
+      IF
+    IF
+      ·.pass(·)
+      RETURN
+    ·.fail(·, ·)
+  HELPER assertChargingProfilesAnswered
+    IF
+      ·.fail(·, ·)
+      RETURN
+    IF
+      ·.fail(·, ·)
+      RETURN
+    IF
+      ·.fail(·, ·)
+      RETURN
+    IF
+      ·.pass(·)
+      RETURN
+    ·.fail(·, ·)
   SPEC cert201-tcb06-get-variables connector=1 bootWaitSecs=4 holdSecs=12 ocppVersion="OCPP-2.0.1" runsSimTemplate=false
     assertReceived(·, ·, "GetVariables", "GetVariables.req received")
     assertVariableRequested(·, ·, "GetVariables", "getVariableData", ·, ·, ·)
@@ -470,6 +503,42 @@ FILE core-201.ts
     assertCompositeScheduleRequested(·, ·, 0, {evseId:0,duration:3600,chargingRateUnit:"W"}, "GetCompositeSchedule.req asks the grid connection point, at evseId 0, for an hour of schedule in watts")
     assertCallCount(·, ·, "received", "GetCompositeSchedule", 1, "the CSMS asked once, rather than once per EVSE")
     assertResponseStatus(·, ·, "GetCompositeSchedule", "Accepted", "GetCompositeSchedule accepted", {direction:"received"})
+  SPEC cert201-tck29-profiles-in-transaction connector=1 bootWaitSecs=4 holdSecs=15 ocppVersion="OCPP-2.0.1" runsSimTemplate=false states=[{state:"EnergyTransferStarted",connectorId:1,idToken:"CE712001"}]
+    assertStateEstablished(·, ·, "EnergyTransferStarted", "a transaction was running when the profiles were asked for")
+    assertResponseStatus(·, ·, "SetChargingProfile", "Accepted", "the station holds the profile this case asks it to report", {direction:"received"})
+    assertChargingProfilesRequested(·, ·, 7229, 0, {chargingLimitSource:["CSO","EMS","SO","Other"]}, "GetChargingProfiles.req asks the charging station itself, at evseId 0, across every limit source")
+    assertChargingProfilesAnswered(·, ·, 7229, "Accepted", "the station accepted the query rather than answering NoProfiles")
+    assertAllAnswered(·, ·, "ReportChargingProfiles")
+  SPEC cert201-tck30-profiles-evse connector=1 bootWaitSecs=4 holdSecs=15 ocppVersion="OCPP-2.0.1" runsSimTemplate=false
+    assertResponseStatus(·, ·, "SetChargingProfile", "Accepted", "the station holds the profile this case asks it to report", {direction:"received"})
+    assertChargingProfilesRequested(·, ·, 7230, 1, {chargingLimitSource:["CSO","EMS","SO","Other"]}, "GetChargingProfiles.req asks EVSE 1 across every limit source")
+    assertChargingProfilesAnswered(·, ·, 7230, "Accepted", "the station accepted the query rather than answering NoProfiles")
+    assertAllAnswered(·, ·, "ReportChargingProfiles")
+  SPEC cert201-tck32-profiles-by-id connector=1 bootWaitSecs=4 holdSecs=15 ocppVersion="OCPP-2.0.1" runsSimTemplate=false
+    assertResponseStatus(·, ·, "SetChargingProfile", "Accepted", "the station holds the profile this case asks it to report", {direction:"received"})
+    assertChargingProfilesRequested(·, ·, 7232, null, {chargingProfileId:[9232]}, "GetChargingProfiles.req names profile 9232 and omits evseId, so it asks every EVSE about that one profile")
+    assertChargingProfilesAnswered(·, ·, 7232, "Accepted", "the station accepted the query rather than answering NoProfiles")
+    assertAllAnswered(·, ·, "ReportChargingProfiles")
+  SPEC cert201-tck33-profiles-by-stack-level connector=1 bootWaitSecs=4 holdSecs=15 ocppVersion="OCPP-2.0.1" runsSimTemplate=false
+    assertResponseStatus(·, ·, "SetChargingProfile", "Accepted", "the station holds the profile this case asks it to report", {direction:"received"})
+    assertChargingProfilesRequested(·, ·, 7233, 1, {stackLevel:33}, "GetChargingProfiles.req narrows EVSE 1 to stack level 33 and to nothing else")
+    assertChargingProfilesAnswered(·, ·, 7233, "Accepted", "the station accepted the query rather than answering NoProfiles")
+    assertAllAnswered(·, ·, "ReportChargingProfiles")
+  SPEC cert201-tck34-profiles-by-limit-source connector=1 bootWaitSecs=4 holdSecs=15 ocppVersion="OCPP-2.0.1" runsSimTemplate=false
+    assertResponseStatus(·, ·, "SetChargingProfile", "Accepted", "the station holds the profile this case asks it to report", {direction:"received"})
+    assertChargingProfilesRequested(·, ·, 7234, 1, {chargingLimitSource:["CSO"]}, "GetChargingProfiles.req narrows EVSE 1 to the CSO limit source and to nothing else")
+    assertChargingProfilesAnswered(·, ·, 7234, "Accepted", "the station accepted the query rather than answering NoProfiles")
+    assertAllAnswered(·, ·, "ReportChargingProfiles")
+  SPEC cert201-tck35-profiles-by-purpose connector=1 bootWaitSecs=4 holdSecs=15 ocppVersion="OCPP-2.0.1" runsSimTemplate=false
+    assertResponseStatus(·, ·, "SetChargingProfile", "Accepted", "the station holds the profile this case asks it to report", {direction:"received"})
+    assertChargingProfilesRequested(·, ·, 7235, 1, {chargingProfilePurpose:"TxDefaultProfile"}, "GetChargingProfiles.req narrows EVSE 1 to the TxDefaultProfile purpose and to nothing else")
+    assertChargingProfilesAnswered(·, ·, 7235, "Accepted", "the station accepted the query rather than answering NoProfiles")
+    assertAllAnswered(·, ·, "ReportChargingProfiles")
+  SPEC cert201-tck36-profiles-by-purpose-stack connector=1 bootWaitSecs=4 holdSecs=15 ocppVersion="OCPP-2.0.1" runsSimTemplate=false
+    assertResponseStatus(·, ·, "SetChargingProfile", "Accepted", "the station holds the profile this case asks it to report", {direction:"received"})
+    assertChargingProfilesRequested(·, ·, 7236, 1, {chargingProfilePurpose:"TxDefaultProfile",stackLevel:36}, "GetChargingProfiles.req narrows EVSE 1 to the TxDefaultProfile purpose AND stack level 36")
+    assertChargingProfilesAnswered(·, ·, 7236, "Accepted", "the station accepted the query rather than answering NoProfiles")
+    assertAllAnswered(·, ·, "ReportChargingProfiles")
 
 FILE core.ts
   HELPER assertGetConfigurationUnfiltered
