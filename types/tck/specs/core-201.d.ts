@@ -75,8 +75,8 @@
  */
 import type { ScenarioSpec } from "../spec-types";
 /**
- * The scenarios, in case order -- the twenty-six of `OCA-201-SLICE.txt`'s 147
- * that are implemented. The other 121 are declined there rather than here,
+ * The scenarios, in case order -- the thirty-three of `OCA-201-SLICE.txt`'s 147
+ * that are implemented. The other 114 are declined there rather than here,
  * with the reason in the row: one place per fact, and the guard reads that one.
  */
 export declare const CORE_201_SPECS: ScenarioSpec<any>[];

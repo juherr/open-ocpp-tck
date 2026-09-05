@@ -89,7 +89,13 @@ import {
   type AssertRecorder,
 } from "../assert";
 import type { CsmsRecords } from "../driver";
-import { findAllCalls, findCall, findResponseFor, type Frame } from "../ocpp";
+import {
+  findAllCalls,
+  findCall,
+  findResponseFor,
+  type CallFrame,
+  type Frame,
+} from "../ocpp";
 import type { ScenarioSpec } from "../spec-types";
 import { assertStateEstablished } from "../states-201";
 import { sleep } from "../util";
@@ -1038,6 +1044,187 @@ function assertCompositeScheduleRequested(
   rec.fail(
     description,
     `expected ${JSON.stringify(expected)}; got ${wrong.join(", ")}`,
+  );
+}
+
+/**
+ * A criterion member's value, as a scenario writes it. Arrays because two of
+ * `ChargingProfileCriterionType`'s four members are arrays on the wire.
+ */
+type CriterionValue = string | number | readonly string[] | readonly number[];
+
+/**
+ * The one received `GetChargingProfiles` carrying `requestId`, or why there is
+ * not exactly one.
+ *
+ * BY requestId AND NOT BY OCCURRENCE, which is the difference between this
+ * lookup and `receivedCallPayload` above, and it is forced by the deployment
+ * rather than chosen. The pinned CSMS sends a `GetChargingProfiles` OF ITS OWN
+ * off every accepted `SetChargingProfile` -- the traffic TC_K_01's header
+ * records -- so every scenario below puts two of these on the wire and only one
+ * of them is the case. Which arrives first is a race between the CSMS's
+ * response handler and the scenario's next call, so an occurrence index would
+ * measure the wrong request some fraction of the time and never say so. The
+ * requestId is the scenario's own and the CSMS's is generated, which makes the
+ * pairing exact.
+ *
+ * EXACTLY ONE, ASSERTED. Two received requests carrying one requestId would
+ * mean the CSMS's generated identifier collided with the scenario's, and then
+ * the criterion checks below would be reading whichever came first. Failing
+ * loudly on the count is the only way that is visible at all.
+ *
+ * NOT NAMED `assert*` AND TAKES NO RECORDER, by `receivedCallPayload`'s rule.
+ */
+type ProfilesQuery =
+  | { call: CallFrame; payload: Record<string, unknown> }
+  | { error: string };
+
+function chargingProfilesQuery(
+  frames: readonly Frame[],
+  requestId: number,
+): ProfilesQuery {
+  const matching = findAllCalls(frames, "received", "GetChargingProfiles").filter(
+    (call) => {
+      const payload = call.payload;
+      return (
+        typeof payload === "object" &&
+        payload !== null &&
+        !Array.isArray(payload) &&
+        (payload as Record<string, unknown>).requestId === requestId
+      );
+    },
+  );
+  if (matching.length !== 1) {
+    return {
+      error:
+        `${matching.length} received CALL(s) for action=GetChargingProfiles carry ` +
+        `requestId=${requestId}, where the scenario sent exactly one`,
+    };
+  }
+  return {
+    call: matching[0],
+    payload: matching[0].payload as Record<string, unknown>,
+  };
+}
+
+/**
+ * The CSMS asked for profiles at `evseId` under exactly `criterion`.
+ *
+ * THE MEMBER SET IS THE MEASUREMENT, and that is why this compares it in BOTH
+ * directions rather than checking the members the scenario named. Five of the
+ * seven cases below differ in nothing but which members of the criterion are
+ * present: "narrow to a stack level" and "narrow to a purpose and a stack
+ * level" are the same request plus one member. A helper that only checked the
+ * members it was given would let TC_K_36's traffic satisfy TC_K_33 -- the
+ * failure `tests/get-configuration-filter.ts` records one protocol over, where
+ * a scenario measured a spelling because nothing distinguished it from its
+ * neighbour.
+ *
+ * `evseId` NULL MEANS "MUST BE ABSENT", by `assertChangeAvailabilityScope`'s
+ * rule and for a sharper reason here: absent means every EVSE and 0 means the
+ * charging station itself, so a CSMS that resolved an omitted member to 0 has
+ * sent TC_K_29's request where TC_K_32 asked for every EVSE's.
+ *
+ * ARRAYS COMPARED AS JSON, order included. The wire order is what the scenario
+ * sent, `chargingLimitSource` is where two cases differ by contents rather than
+ * by shape, and a set comparison would make `["CSO"]` and the four-value list
+ * interchangeable.
+ */
+function assertChargingProfilesRequested(
+  rec: AssertRecorder,
+  frames: readonly Frame[],
+  requestId: number,
+  /** The `evseId` the request must carry, or null for one that must omit it
+   *  and so ask about every EVSE. */
+  evseId: number | null,
+  criterion: Readonly<Record<string, CriterionValue>>,
+  description: string,
+): void {
+  const found = chargingProfilesQuery(frames, requestId);
+  if ("error" in found) {
+    rec.fail(description, found.error);
+    return;
+  }
+  const sentEvseId = found.payload.evseId ?? null;
+  const wrong: string[] = [];
+  if (!Object.is(sentEvseId, evseId)) {
+    wrong.push(`evseId=${JSON.stringify(found.payload.evseId)}`);
+  }
+  const sent = found.payload.chargingProfile;
+  if (typeof sent !== "object" || sent === null || Array.isArray(sent)) {
+    rec.fail(
+      description,
+      `chargingProfile is ${JSON.stringify(sent)}, which is not a ChargingProfileCriterionType object`,
+    );
+    return;
+  }
+  const members = sent as Record<string, unknown>;
+  for (const [key, value] of Object.entries(criterion)) {
+    if (JSON.stringify(members[key]) !== JSON.stringify(value)) {
+      wrong.push(`${key}=${JSON.stringify(members[key])}`);
+    }
+  }
+  // THE OTHER DIRECTION: a member the scenario did not ask to narrow on.
+  for (const key of Object.keys(members)) {
+    if (!(key in criterion)) {
+      wrong.push(`${key}=${JSON.stringify(members[key])} narrows what this case does not`);
+    }
+  }
+  if (wrong.length === 0) {
+    rec.pass(description);
+    return;
+  }
+  rec.fail(
+    description,
+    `expected evseId=${JSON.stringify(evseId)} and exactly ${JSON.stringify(criterion)}; ` +
+      `got ${wrong.join(", ")}`,
+  );
+}
+
+/**
+ * The station answered THAT request with `status`.
+ *
+ * A SECOND HELPER RATHER THAN `assertResponseStatus`, for the reason above:
+ * that one correlates by occurrence, and the occurrence a scenario means is
+ * decided by a race with the CSMS's own request. This correlates the CALL by
+ * requestId and then the response by uniqueId, which is the same pairing
+ * `findResponseFor` makes everywhere else -- only the way in differs.
+ */
+function assertChargingProfilesAnswered(
+  rec: AssertRecorder,
+  frames: readonly Frame[],
+  requestId: number,
+  expectedStatus: string,
+  description: string,
+): void {
+  const found = chargingProfilesQuery(frames, requestId);
+  if ("error" in found) {
+    rec.fail(description, found.error);
+    return;
+  }
+  const response = findResponseFor(frames, found.call);
+  if (!response) {
+    rec.fail(
+      description,
+      `no response frame found for uniqueId=${found.call.uniqueId} (GetChargingProfiles)`,
+    );
+    return;
+  }
+  if (response.kind === "callerror") {
+    rec.fail(
+      description,
+      `expected CALLRESULT, got CALLERROR ${response.errorCode}: ${response.errorDescription}`,
+    );
+    return;
+  }
+  const status = (response.payload as { status?: unknown } | null)?.status;
+  if (status === expectedStatus) {
+    rec.pass(description);
+    return;
+  }
+  rec.fail(
+    description,
+    `expected status=${expectedStatus}, got status=${String(status)} (uniqueId=${found.call.uniqueId})`,
   );
 }
 
@@ -3337,9 +3524,626 @@ const TC_K_44: ScenarioSpec = {
   },
 };
 
+
+// ---------------------------------------------------------------------------
+// GetChargingProfiles -- seven cases, and every one of them installs a profile
+// first.
+//
+// THE PRECONDITION IS THE SAME FOR ALL SEVEN AND IT IS NOT A CONVENIENCE. A
+// station holding nothing answers `NoProfiles` and sends no report, so a case
+// about which profiles come back has nothing to come back. Neither end of this
+// deployment offers another way to put one there: the CSMS declares no 2.0.1
+// data endpoint a driver could seed through, and the pinned simulator's profile
+// store is in-memory and writable only over the wire. So each scenario's
+// `drive()` sends the `SetChargingProfile` that makes its own subject exist and
+// then the request the case is about -- the first 2.0.1 scenarios here to need
+// two operations, and the reason the Smart Charging pair had to land first.
+//
+// AND THE SETUP IS ASSERTED, not assumed. `SetChargingProfile` is refused
+// before dispatch by a dozen of Part 2's K01 rules with nothing on the wire --
+// the block above states them -- so a run where the profile never arrived and
+// one where the CSMS mis-sent the query look identical from the report alone.
+// Every scenario below reads the setup's status first, which is TC_B_21's rule
+// about meeting the cause before the consequence.
+//
+// THREE THINGS THE PINNED CSMS DOES THAT SHAPE THESE, measured in its sources
+// at the digest compose.yaml pins, beside the four the block above records:
+//
+//   1. IT SENDS A `GetChargingProfiles` OF ITS OWN, off every accepted
+//      `SetChargingProfile`, carrying a generated requestId, NO `evseId` and a
+//      criterion of `chargingLimitSource: ["CSO"]`. So the setup each scenario
+//      needs also puts a second request of the very action under test on the
+//      wire, and which of the two arrives first is a race. Nothing below
+//      indexes by occurrence: the scenario's own `requestId` is what selects
+//      its request, and `chargingProfilesQuery` refuses a run where more than
+//      one carries it.
+//   2. IT REFUSES A CRITERION THAT NARROWS NOTHING. Its K09.FR.03 check wants
+//      `chargingProfileId` alone, or at least one of `chargingProfilePurpose`,
+//      `stackLevel` and `chargingLimitSource` beside it -- and the test is
+//      truthiness, so `{}` is refused and so is a `stackLevel` of 0. An empty
+//      criterion is legal on the wire and unreachable through this CSMS, which
+//      is why the two cases that scope by EVSE alone ask for all four limit
+//      sources rather than for none: four values is the whole enumeration, so
+//      it narrows nothing while satisfying the gate. The CSMS spells that list
+//      itself after a `ClearChargingProfile`.
+//   3. THE PROFILES IT INSTALLS ARE ITS OWN. It stamps `chargingLimitSource`
+//      CSO on every profile it persists, which is why TC_K_34 asks for CSO and
+//      not for one of the other three.
+//
+// AND ONE THE STATION DOES, which decides the same member from the other end:
+// it short-circuits to `NoProfiles` for any `chargingLimitSource` list not
+// containing CSO, before looking at a single stored profile. Both ends agree,
+// so CSO is the only value TC_K_34 could be written on.
+//
+// WHAT SEPARATES THE SEVEN IS WHICH MEMBERS OF THE CRITERION ARE PRESENT,
+// exactly as `evse`'s members separate the six ChangeAvailability scenarios --
+// and further in, because five of these differ in nothing else at all.
+// `assertChargingProfilesRequested` therefore compares the member set in BOTH
+// directions; the note on it says what a one-directional check would let pass.
+//
+// NO `assertReceived` AND NO `assertCallCount`, and both omissions are the
+// deployment's doing rather than an oversight. `assertReceived` would be
+// satisfied by the CSMS's own request in a run where the scenario's never
+// arrived, which is the one failure it exists to catch. `assertCallCount` would
+// be counting two requests of which one is not the case's; the fan-out it
+// guards against is caught instead by `chargingProfilesQuery` refusing a second
+// request under one requestId.
+// ---------------------------------------------------------------------------
+
+const TC_K_29: ScenarioSpec = {
+  templateId: "cert201-tck29-profiles-in-transaction",
+  description:
+    "TC_K_29 Get Charging Profiles: with a transaction running, the CSMS asks the charging station itself which profiles it holds and the station reports them.",
+  ocppVersion: "OCPP-2.0.1",
+  runsSimTemplate: false,
+  connector: 1,
+  bootWaitSecs: 4,
+  // 15, TC_K_01's chain: the setup's own three round trips are paid for inside
+  // drive() by the sleep between the two requests, so what this window covers
+  // is the query, the station's answer, its report and the answer to that.
+  holdSecs: 15,
+  // THE PRECONDITION IS THE CASE'S OWN and it is what separates this scenario
+  // from TC_K_30, which asks the same question of an EVSE with nothing running.
+  // The reach waits for the CSMS to ANSWER the TransactionEvent that opened the
+  // transaction, which is why nothing below waits again -- see
+  // tck/states-201.ts, where that half is argued. Literals for TC_B_21's
+  // reason.
+  states: [{ state: "EnergyTransferStarted", connectorId: 1, idToken: "CE712001" }],
+  async drive({ cpId, connector, sim, csms201 }) {
+    const now = Date.now();
+    // `evseId: 0` ON BOTH REQUESTS, AND THAT IS THE CASE. For this query 0
+    // means the charging station itself rather than every EVSE, so the profile
+    // the query has to find must be installed at the station -- a
+    // `TxDefaultProfile`, because the station scope is the one place a
+    // `TxProfile` may not go and this scenario is not about the transaction's
+    // own profile.
+    await csms201.execute(cpId, {
+      action: "SetChargingProfile",
+      evseId: 0,
+      chargingProfile: {
+        id: 9229,
+        stackLevel: 29,
+        chargingProfilePurpose: "TxDefaultProfile",
+        chargingProfileKind: "Absolute",
+        validFrom: new Date(now - PROFILE_BACKDATE_MS),
+        validTo: new Date(now + 3_600_000),
+        chargingSchedule: [
+          {
+            id: 9229,
+            startSchedule: new Date(now - PROFILE_BACKDATE_MS),
+            chargingRateUnit: "W",
+            chargingSchedulePeriod: [{ startPeriod: 0, limit: 11000 }],
+          },
+        ],
+      },
+    });
+    // Long enough for the setup's whole exchange -- the station's answer, the
+    // CSMS's own GetChargingProfiles and the station's report -- to land before
+    // the query is queued behind it. TC_K_04's reason for its own sleep.
+    await sleep(2000);
+    await csms201.execute(cpId, {
+      action: "GetChargingProfiles",
+      requestId: 7229,
+      evseId: 0,
+      chargingProfile: {
+        chargingLimitSource: ["CSO", "EMS", "SO", "Other"],
+      },
+    });
+    await sleep(2000);
+    // TEARDOWN, AND NOT PART OF THE CASE -- TC_K_60's rule: `runsSimTemplate:
+    // false` moves the wind-down onto drive(), and a transaction left open is a
+    // row the next scenario on this station trips over.
+    await sim.send({ command: "stop_transaction", params: { connector } });
+  },
+  assert({ frames, rec, fixtures }) {
+    // FIRST, and SKIPPED rather than FAIL when it did not hold -- TC_B_21's
+    // rule. Unlike TC_K_60 the query below does not depend on the transaction,
+    // so the rest of the checks still run and still mean what they say; what an
+    // unestablished fixture costs is the case's premise, not its request.
+    assertStateEstablished(
+      rec,
+      fixtures,
+      "EnergyTransferStarted",
+      "a transaction was running when the profiles were asked for",
+    );
+    assertResponseStatus(
+      rec,
+      frames,
+      "SetChargingProfile",
+      "Accepted",
+      "the station holds the profile this case asks it to report",
+      { direction: "received" },
+    );
+    assertChargingProfilesRequested(
+      rec,
+      frames,
+      7229,
+      0,
+      { chargingLimitSource: ["CSO", "EMS", "SO", "Other"] },
+      "GetChargingProfiles.req asks the charging station itself, at evseId 0, across every limit source",
+    );
+    assertChargingProfilesAnswered(
+      rec,
+      frames,
+      7229,
+      "Accepted",
+      "the station accepted the query rather than answering NoProfiles",
+    );
+    // THE OTHER HALF OF THE CASE: the station's report is a request in its own
+    // right, and a CSMS that never answered it has left the exchange open.
+    assertAllAnswered(rec, frames, "ReportChargingProfiles");
+  },
+};
+
+const TC_K_30: ScenarioSpec = {
+  templateId: "cert201-tck30-profiles-evse",
+  description:
+    "TC_K_30 Get Charging Profiles: the CSMS asks one named EVSE which profiles it holds and the station reports them.",
+  ocppVersion: "OCPP-2.0.1",
+  runsSimTemplate: false,
+  connector: 1,
+  bootWaitSecs: 4,
+  // 15, TC_K_29's chain without the fixture and the teardown.
+  holdSecs: 15,
+  async drive({ cpId, csms201 }) {
+    const now = Date.now();
+    await csms201.execute(cpId, {
+      action: "SetChargingProfile",
+      evseId: 1,
+      chargingProfile: {
+        id: 9230,
+        stackLevel: 30,
+        chargingProfilePurpose: "TxDefaultProfile",
+        chargingProfileKind: "Absolute",
+        validFrom: new Date(now - PROFILE_BACKDATE_MS),
+        validTo: new Date(now + 3_600_000),
+        chargingSchedule: [
+          {
+            id: 9230,
+            startSchedule: new Date(now - PROFILE_BACKDATE_MS),
+            chargingRateUnit: "W",
+            chargingSchedulePeriod: [{ startPeriod: 0, limit: 7400 }],
+          },
+        ],
+      },
+    });
+    await sleep(2000);
+    // `evseId: 1` AND EVERY LIMIT SOURCE, WHICH IS THE CASE. The scope is one
+    // named EVSE and nothing about the profiles is narrowed -- the four-value
+    // list is the whole enumeration, which is how this CSMS's K09.FR.03 gate
+    // lets a request narrow nothing. TC_K_29 is the same request at evseId 0
+    // and TC_K_34 the same scope narrowed to one source.
+    await csms201.execute(cpId, {
+      action: "GetChargingProfiles",
+      requestId: 7230,
+      evseId: 1,
+      chargingProfile: {
+        chargingLimitSource: ["CSO", "EMS", "SO", "Other"],
+      },
+    });
+  },
+  assert({ frames, rec }) {
+    assertResponseStatus(
+      rec,
+      frames,
+      "SetChargingProfile",
+      "Accepted",
+      "the station holds the profile this case asks it to report",
+      { direction: "received" },
+    );
+    assertChargingProfilesRequested(
+      rec,
+      frames,
+      7230,
+      1,
+      { chargingLimitSource: ["CSO", "EMS", "SO", "Other"] },
+      "GetChargingProfiles.req asks EVSE 1 across every limit source",
+    );
+    assertChargingProfilesAnswered(
+      rec,
+      frames,
+      7230,
+      "Accepted",
+      "the station accepted the query rather than answering NoProfiles",
+    );
+    assertAllAnswered(rec, frames, "ReportChargingProfiles");
+  },
+};
+
+const TC_K_32: ScenarioSpec = {
+  templateId: "cert201-tck32-profiles-by-id",
+  description:
+    "TC_K_32 Get Charging Profiles: the CSMS asks for one profile by the identifier it installed it under, and the station reports that one.",
+  ocppVersion: "OCPP-2.0.1",
+  runsSimTemplate: false,
+  connector: 1,
+  bootWaitSecs: 4,
+  // 15, TC_K_30's chain exactly.
+  holdSecs: 15,
+  async drive({ cpId, csms201 }) {
+    const now = Date.now();
+    await csms201.execute(cpId, {
+      action: "SetChargingProfile",
+      evseId: 1,
+      chargingProfile: {
+        id: 9232,
+        stackLevel: 32,
+        chargingProfilePurpose: "TxDefaultProfile",
+        chargingProfileKind: "Absolute",
+        validFrom: new Date(now - PROFILE_BACKDATE_MS),
+        validTo: new Date(now + 3_600_000),
+        chargingSchedule: [
+          {
+            id: 9232,
+            startSchedule: new Date(now - PROFILE_BACKDATE_MS),
+            chargingRateUnit: "W",
+            chargingSchedulePeriod: [{ startPeriod: 0, limit: 6000 }],
+          },
+        ],
+      },
+    });
+    await sleep(2000);
+    // `evseId` OMITTED, AND THAT IS PART OF THE CASE. An identifier names one
+    // profile wherever it sits, so this is the one scenario here that asks
+    // about every EVSE -- and the only way to say so is to leave the member
+    // out: absent means every EVSE where 0 means the station itself. It is also
+    // the one criterion this CSMS requires to travel ALONE: its K09.FR.03 check
+    // refuses a request carrying an identifier beside a purpose, a stack level
+    // or a limit source.
+    await csms201.execute(cpId, {
+      action: "GetChargingProfiles",
+      requestId: 7232,
+      chargingProfile: { chargingProfileId: [9232] },
+    });
+  },
+  assert({ frames, rec }) {
+    assertResponseStatus(
+      rec,
+      frames,
+      "SetChargingProfile",
+      "Accepted",
+      "the station holds the profile this case asks it to report",
+      { direction: "received" },
+    );
+    assertChargingProfilesRequested(
+      rec,
+      frames,
+      7232,
+      null,
+      { chargingProfileId: [9232] },
+      "GetChargingProfiles.req names profile 9232 and omits evseId, so it asks every EVSE about that one profile",
+    );
+    assertChargingProfilesAnswered(
+      rec,
+      frames,
+      7232,
+      "Accepted",
+      "the station accepted the query rather than answering NoProfiles",
+    );
+    assertAllAnswered(rec, frames, "ReportChargingProfiles");
+  },
+};
+
+const TC_K_33: ScenarioSpec = {
+  templateId: "cert201-tck33-profiles-by-stack-level",
+  description:
+    "TC_K_33 Get Charging Profiles: the CSMS narrows one EVSE's profiles to a single stack level and the station reports those.",
+  ocppVersion: "OCPP-2.0.1",
+  runsSimTemplate: false,
+  connector: 1,
+  bootWaitSecs: 4,
+  // 15, TC_K_30's chain exactly.
+  holdSecs: 15,
+  async drive({ cpId, csms201 }) {
+    const now = Date.now();
+    await csms201.execute(cpId, {
+      action: "SetChargingProfile",
+      evseId: 1,
+      chargingProfile: {
+        id: 9233,
+        stackLevel: 33,
+        chargingProfilePurpose: "TxDefaultProfile",
+        chargingProfileKind: "Absolute",
+        validFrom: new Date(now - PROFILE_BACKDATE_MS),
+        validTo: new Date(now + 3_600_000),
+        chargingSchedule: [
+          {
+            id: 9233,
+            startSchedule: new Date(now - PROFILE_BACKDATE_MS),
+            chargingRateUnit: "W",
+            chargingSchedulePeriod: [{ startPeriod: 0, limit: 8000 }],
+          },
+        ],
+      },
+    });
+    await sleep(2000);
+    // ONE MEMBER AND NO OTHER, which is what makes this TC_K_33 rather than
+    // TC_K_36. A stack level BESIDE a purpose is the pair case; a purpose
+    // instead of it is TC_K_35. The value is this scenario's own stack level
+    // because no other scenario in the suite claims it -- they share a station
+    // across a sweep and the CSMS's active-profile rule is per stack level.
+    await csms201.execute(cpId, {
+      action: "GetChargingProfiles",
+      requestId: 7233,
+      evseId: 1,
+      chargingProfile: { stackLevel: 33 },
+    });
+  },
+  assert({ frames, rec }) {
+    assertResponseStatus(
+      rec,
+      frames,
+      "SetChargingProfile",
+      "Accepted",
+      "the station holds the profile this case asks it to report",
+      { direction: "received" },
+    );
+    assertChargingProfilesRequested(
+      rec,
+      frames,
+      7233,
+      1,
+      { stackLevel: 33 },
+      "GetChargingProfiles.req narrows EVSE 1 to stack level 33 and to nothing else",
+    );
+    assertChargingProfilesAnswered(
+      rec,
+      frames,
+      7233,
+      "Accepted",
+      "the station accepted the query rather than answering NoProfiles",
+    );
+    assertAllAnswered(rec, frames, "ReportChargingProfiles");
+  },
+};
+
+const TC_K_34: ScenarioSpec = {
+  templateId: "cert201-tck34-profiles-by-limit-source",
+  description:
+    "TC_K_34 Get Charging Profiles: the CSMS narrows one EVSE's profiles to a single charging limit source and the station reports those.",
+  ocppVersion: "OCPP-2.0.1",
+  runsSimTemplate: false,
+  connector: 1,
+  bootWaitSecs: 4,
+  // 15, TC_K_30's chain exactly.
+  holdSecs: 15,
+  async drive({ cpId, csms201 }) {
+    const now = Date.now();
+    await csms201.execute(cpId, {
+      action: "SetChargingProfile",
+      evseId: 1,
+      chargingProfile: {
+        id: 9234,
+        stackLevel: 34,
+        chargingProfilePurpose: "TxDefaultProfile",
+        chargingProfileKind: "Absolute",
+        validFrom: new Date(now - PROFILE_BACKDATE_MS),
+        validTo: new Date(now + 3_600_000),
+        chargingSchedule: [
+          {
+            id: 9234,
+            startSchedule: new Date(now - PROFILE_BACKDATE_MS),
+            chargingRateUnit: "W",
+            chargingSchedulePeriod: [{ startPeriod: 0, limit: 9000 }],
+          },
+        ],
+      },
+    });
+    await sleep(2000);
+    // `"CSO"` AND NOT ONE OF THE OTHER THREE, and the choice is made twice
+    // over by the deployment rather than by the case. The CSMS stamps every
+    // profile it installs as the charging station operator's, so nothing here
+    // carries any other source; and the station short-circuits to `NoProfiles`
+    // for any list that does not contain CSO, before it looks at a profile at
+    // all. Either end alone would settle it. What makes this TC_K_34 rather
+    // than TC_K_30 is that the list is ONE value where that scenario sends the
+    // whole enumeration -- and the CSMS's own unprompted query, which carries
+    // this same one-value list, is told apart by omitting `evseId`.
+    await csms201.execute(cpId, {
+      action: "GetChargingProfiles",
+      requestId: 7234,
+      evseId: 1,
+      chargingProfile: { chargingLimitSource: ["CSO"] },
+    });
+  },
+  assert({ frames, rec }) {
+    assertResponseStatus(
+      rec,
+      frames,
+      "SetChargingProfile",
+      "Accepted",
+      "the station holds the profile this case asks it to report",
+      { direction: "received" },
+    );
+    assertChargingProfilesRequested(
+      rec,
+      frames,
+      7234,
+      1,
+      { chargingLimitSource: ["CSO"] },
+      "GetChargingProfiles.req narrows EVSE 1 to the CSO limit source and to nothing else",
+    );
+    assertChargingProfilesAnswered(
+      rec,
+      frames,
+      7234,
+      "Accepted",
+      "the station accepted the query rather than answering NoProfiles",
+    );
+    assertAllAnswered(rec, frames, "ReportChargingProfiles");
+  },
+};
+
+const TC_K_35: ScenarioSpec = {
+  templateId: "cert201-tck35-profiles-by-purpose",
+  description:
+    "TC_K_35 Get Charging Profiles: the CSMS narrows one EVSE's profiles to a single purpose and the station reports those.",
+  ocppVersion: "OCPP-2.0.1",
+  runsSimTemplate: false,
+  connector: 1,
+  bootWaitSecs: 4,
+  // 15, TC_K_30's chain exactly.
+  holdSecs: 15,
+  async drive({ cpId, csms201 }) {
+    const now = Date.now();
+    await csms201.execute(cpId, {
+      action: "SetChargingProfile",
+      evseId: 1,
+      chargingProfile: {
+        id: 9235,
+        stackLevel: 35,
+        chargingProfilePurpose: "TxDefaultProfile",
+        chargingProfileKind: "Absolute",
+        validFrom: new Date(now - PROFILE_BACKDATE_MS),
+        validTo: new Date(now + 3_600_000),
+        chargingSchedule: [
+          {
+            id: 9235,
+            startSchedule: new Date(now - PROFILE_BACKDATE_MS),
+            chargingRateUnit: "W",
+            chargingSchedulePeriod: [{ startPeriod: 0, limit: 5000 }],
+          },
+        ],
+      },
+    });
+    await sleep(2000);
+    // ONE MEMBER AND NO OTHER, TC_K_33's rule on the other axis. The purpose
+    // asked for is the one the setup installed, so a station that answers
+    // NoProfiles here is answering about a criterion it was not sent.
+    await csms201.execute(cpId, {
+      action: "GetChargingProfiles",
+      requestId: 7235,
+      evseId: 1,
+      chargingProfile: { chargingProfilePurpose: "TxDefaultProfile" },
+    });
+  },
+  assert({ frames, rec }) {
+    assertResponseStatus(
+      rec,
+      frames,
+      "SetChargingProfile",
+      "Accepted",
+      "the station holds the profile this case asks it to report",
+      { direction: "received" },
+    );
+    assertChargingProfilesRequested(
+      rec,
+      frames,
+      7235,
+      1,
+      { chargingProfilePurpose: "TxDefaultProfile" },
+      "GetChargingProfiles.req narrows EVSE 1 to the TxDefaultProfile purpose and to nothing else",
+    );
+    assertChargingProfilesAnswered(
+      rec,
+      frames,
+      7235,
+      "Accepted",
+      "the station accepted the query rather than answering NoProfiles",
+    );
+    assertAllAnswered(rec, frames, "ReportChargingProfiles");
+  },
+};
+
+const TC_K_36: ScenarioSpec = {
+  templateId: "cert201-tck36-profiles-by-purpose-stack",
+  description:
+    "TC_K_36 Get Charging Profiles: the CSMS narrows one EVSE's profiles by purpose and stack level together and the station reports those.",
+  ocppVersion: "OCPP-2.0.1",
+  runsSimTemplate: false,
+  connector: 1,
+  bootWaitSecs: 4,
+  // 15, TC_K_30's chain exactly.
+  holdSecs: 15,
+  async drive({ cpId, csms201 }) {
+    const now = Date.now();
+    await csms201.execute(cpId, {
+      action: "SetChargingProfile",
+      evseId: 1,
+      chargingProfile: {
+        id: 9236,
+        stackLevel: 36,
+        chargingProfilePurpose: "TxDefaultProfile",
+        chargingProfileKind: "Absolute",
+        validFrom: new Date(now - PROFILE_BACKDATE_MS),
+        validTo: new Date(now + 3_600_000),
+        chargingSchedule: [
+          {
+            id: 9236,
+            startSchedule: new Date(now - PROFILE_BACKDATE_MS),
+            chargingRateUnit: "W",
+            chargingSchedulePeriod: [{ startPeriod: 0, limit: 4000 }],
+          },
+        ],
+      },
+    });
+    await sleep(2000);
+    // BOTH MEMBERS, WHICH IS THE WHOLE DIFFERENCE FROM TC_K_33 AND TC_K_35.
+    // Each of those sends one of these two and nothing else, so a CSMS that
+    // dropped either member here has sent one of their requests instead -- and
+    // the criterion's member set is the only thing on the wire that says which
+    // of the three a request is.
+    await csms201.execute(cpId, {
+      action: "GetChargingProfiles",
+      requestId: 7236,
+      evseId: 1,
+      chargingProfile: {
+        chargingProfilePurpose: "TxDefaultProfile",
+        stackLevel: 36,
+      },
+    });
+  },
+  assert({ frames, rec }) {
+    assertResponseStatus(
+      rec,
+      frames,
+      "SetChargingProfile",
+      "Accepted",
+      "the station holds the profile this case asks it to report",
+      { direction: "received" },
+    );
+    assertChargingProfilesRequested(
+      rec,
+      frames,
+      7236,
+      1,
+      { chargingProfilePurpose: "TxDefaultProfile", stackLevel: 36 },
+      "GetChargingProfiles.req narrows EVSE 1 to the TxDefaultProfile purpose AND stack level 36",
+    );
+    assertChargingProfilesAnswered(
+      rec,
+      frames,
+      7236,
+      "Accepted",
+      "the station accepted the query rather than answering NoProfiles",
+    );
+    assertAllAnswered(rec, frames, "ReportChargingProfiles");
+  },
+};
+
 /**
- * The scenarios, in case order -- the twenty-six of `OCA-201-SLICE.txt`'s 147
- * that are implemented. The other 121 are declined there rather than here,
+ * The scenarios, in case order -- the thirty-three of `OCA-201-SLICE.txt`'s 147
+ * that are implemented. The other 114 are declined there rather than here,
  * with the reason in the row: one place per fact, and the guard reads that one.
  */
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
@@ -3366,6 +4170,13 @@ export const CORE_201_SPECS: ScenarioSpec<any>[] = [
   TC_K_04,
   TC_K_10,
   TC_K_19,
+  TC_K_29,
+  TC_K_30,
+  TC_K_32,
+  TC_K_33,
+  TC_K_34,
+  TC_K_35,
+  TC_K_36,
   TC_K_43,
   TC_K_44,
   TC_K_60,

@@ -55,33 +55,42 @@
 #                                                one, where the scenario says it>
 #
 # A REASON IS WRITTEN PER GROUP, NOT PER CASE, and the repetition below is that
-# rather than a placeholder. Twenty-six reasons cover the 121 declined rows,
+# rather than a placeholder. Twenty-five reasons cover the 114 declined rows,
 # because that is the granularity the decision was actually taken at: a block's
 # cases are blocked by one missing thing -- an operation the
 # `CsmsOperation201` union does not have, a station-side message the pinned
 # image cannot spell, a transport seam that does not exist. Splitting one
 # reason into ten copies with the case id changed would read as ten decisions
 # and be one. If a case is blocked by something its neighbours are not, it gets
-# its own row text; five do -- TC_A_12, TC_B_58, TC_G_20, TC_K_15 and TC_K_31 --
-# and TC_C_37 and TC_C_38 share a sixth, which is the same shape one size up.
+# its own row text; seven do -- TC_A_12, TC_B_58, TC_G_20, TC_K_05, TC_K_15,
+# TC_K_31 and TC_K_37 -- and TC_C_37 and TC_C_38 share an eighth, which is the
+# same shape one size up. Two of the seven arrived by a tranche NARROWING a
+# group reason rather than by a case being alone from the start, which is the
+# usual way this number grows.
 # TC_K_10 used to have one for the other reason a row can be alone -- the
 # blocker was its neighbours', the profile that makes it mandatory was not --
 # and it is implemented now, which is what that shape usually turns into.
 #
-# AND WHAT THE SMART CHARGING TRANCHE DID TO THE K BLOCK, which is the third
+# AND WHAT THE SMART CHARGING TRANCHES DID TO THE K BLOCK, which is the third
 # correction this file has recorded and the cheapest to have missed. Every K row
 # declined on "charging profile operations are CSMS-initiated and none is among
-# `CsmsOperation201`'s members", and two of them now are. Nine rows became
-# implemented; the eleven still blocked by a charging-profile verb say WHICH
-# verb -- ClearChargingProfile, GetChargingProfiles, RequestStartTransaction --
-# because a sentence claiming the whole class is missing is now false about the
-# class and true about the row, which is the reading that stops the next author
-# looking. Two of the fifteen the tranche unblocked stayed declined for reasons
-# that are theirs alone and are written on their rows: TC_K_15 wants an
-# RPC-level answer the pinned simulator cannot produce, TC_K_31 a continued
-# report it cannot mark. Shipping TC_K_31 on the request half alone would
-# measure a spelling, which is what tests/get-configuration-filter.ts exists
-# to record about the protocol next door.
+# `CsmsOperation201`'s members", and three of them now are. Nine rows became
+# implemented with the second tranche and seven more with the third; the four
+# still blocked by a charging-profile verb say WHICH verb --
+# ClearChargingProfile, RequestStartTransaction -- because a sentence claiming
+# the whole class is missing is now false about the class and true about the
+# row, which is the reading that stops the next author looking. TC_K_05 needs
+# both a verb the union has and one it has not, so its row now says that rather
+# than naming the class. Two of the fifteen the second tranche unblocked stayed
+# declined for reasons that are theirs alone and are written on their rows:
+# TC_K_15 wants an RPC-level answer the pinned simulator cannot produce,
+# TC_K_31 a continued report it cannot mark. TC_K_31 is also the one row the
+# THIRD tranche did not move: its verb arrived and its reason did not change,
+# because the blocker was never the verb. Shipping it on the request half alone
+# would measure a spelling, which is what tests/get-configuration-filter.ts
+# exists to record about the protocol next door -- and now that its seven
+# neighbours are implemented, the request it would send is one TC_K_30 already
+# puts on the wire.
 #
 # AND WHAT MEASURING THE CASES DID TO THOSE REASONS, because it is the cost of
 # writing them per group before anything read Part 6. They were drawn from Part
@@ -198,20 +207,20 @@ TC_J_11    not-implemented    every other reading in this block arrives inside a
 TC_K_01    cert201-tck01-set-tx-default-profile
 TC_K_03    cert201-tck03-set-station-max-profile
 TC_K_04    cert201-tck04-replace-profile
-TC_K_05    not-implemented    Smart Charging and ISO 15118 Support. ClearChargingProfile and GetChargingProfiles are CSMS-initiated and neither is among CsmsOperation201's members. The two verbs the Smart Charging tranche did add are not the ones this case drives.
+TC_K_05    not-implemented    Smart Charging and ISO 15118 Support. This case needs ClearChargingProfile beside the GetChargingProfiles the third tranche added, and ClearChargingProfile is CSMS-initiated and is not among CsmsOperation201's members. Half a case's vocabulary is not a case.
 TC_K_06    not-implemented    Smart Charging and ISO 15118 Support. ClearChargingProfile is CSMS-initiated and is not among CsmsOperation201's members. The two verbs the Smart Charging tranche did add are not the one this case drives.
 TC_K_08    not-implemented    Smart Charging and ISO 15118 Support. ClearChargingProfile is CSMS-initiated and is not among CsmsOperation201's members. The two verbs the Smart Charging tranche did add are not the one this case drives.
 TC_K_10    cert201-tck10-set-default-profile-all-evses
 TC_K_15    not-implemented    the station must answer an RPC-level NotSupported CALLERROR, and the pinned simulator's 2.0.1 dispatcher raises only FormationViolation and NotImplemented. Its one-shot response-override seam, whose table does list NotSupported, is read by the OCPP 1.6 handler alone -- consumeResponseOverride has two call sites and both are 1.6 -- so no command can make the station produce this answer. Not the charging profile operation, which the suite now sends.
 TC_K_19    cert201-tck19-set-recurring-profile
-TC_K_29    not-implemented    Smart Charging and ISO 15118 Support. GetChargingProfiles is CSMS-initiated and is not among CsmsOperation201's members. The two verbs the Smart Charging tranche did add are not the one this case drives.
-TC_K_30    not-implemented    Smart Charging and ISO 15118 Support. GetChargingProfiles is CSMS-initiated and is not among CsmsOperation201's members. The two verbs the Smart Charging tranche did add are not the one this case drives.
+TC_K_29    cert201-tck29-profiles-in-transaction
+TC_K_30    cert201-tck30-profiles-evse
 TC_K_31    not-implemented    the station must send a CONTINUED ReportChargingProfiles, and the pinned simulator's payload literal is {requestId, chargingLimitSource, evseId, chargingProfile} with no tbc member -- contrast its NotifyReport, which sets tbc false explicitly. The request half IS expressible now that the charging profile operations exist, and shipping it on that alone would measure a spelling rather than the case: nothing on the wire would tell it from TC_K_30, which is the get-configuration-filter.ts failure one protocol over.
-TC_K_32    not-implemented    Smart Charging and ISO 15118 Support. GetChargingProfiles is CSMS-initiated and is not among CsmsOperation201's members. The two verbs the Smart Charging tranche did add are not the one this case drives.
-TC_K_33    not-implemented    Smart Charging and ISO 15118 Support. GetChargingProfiles is CSMS-initiated and is not among CsmsOperation201's members. The two verbs the Smart Charging tranche did add are not the one this case drives.
-TC_K_34    not-implemented    Smart Charging and ISO 15118 Support. GetChargingProfiles is CSMS-initiated and is not among CsmsOperation201's members. The two verbs the Smart Charging tranche did add are not the one this case drives.
-TC_K_35    not-implemented    Smart Charging and ISO 15118 Support. GetChargingProfiles is CSMS-initiated and is not among CsmsOperation201's members. The two verbs the Smart Charging tranche did add are not the one this case drives.
-TC_K_36    not-implemented    Smart Charging and ISO 15118 Support. GetChargingProfiles is CSMS-initiated and is not among CsmsOperation201's members. The two verbs the Smart Charging tranche did add are not the one this case drives.
+TC_K_32    cert201-tck32-profiles-by-id
+TC_K_33    cert201-tck33-profiles-by-stack-level
+TC_K_34    cert201-tck34-profiles-by-limit-source
+TC_K_35    cert201-tck35-profiles-by-purpose
+TC_K_36    cert201-tck36-profiles-by-purpose-stack
 TC_K_37    not-implemented    Smart Charging. RequestStartTransaction is CSMS-initiated and is not among CsmsOperation201's members. The two verbs the Smart Charging tranche did add are not the one this case drives.
 TC_K_43    cert201-tck43-composite-schedule-evse
 TC_K_44    cert201-tck44-composite-schedule-station
