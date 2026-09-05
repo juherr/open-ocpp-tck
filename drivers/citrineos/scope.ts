@@ -536,6 +536,81 @@ const V2_SCOPE = {
       "as a conflict, is the finding, and TC_K_04 is the row that says the " +
       "same CSMS accepts a replacement.",
   ),
+  // --- OCPP 2.0.1 GetChargingProfiles, NOT YET MEASURED -------------------
+  // CONDITIONAL for the block above's reason, and these seven carry ONE
+  // question none of the nine above had: every one of them installs a profile
+  // and then asks for it back, so a red row here is either the setup, the
+  // query or the station -- three causes where the block above has two. The
+  // per-row text below is what each one is open on beyond that.
+  //
+  // AND ONE FACT THAT IS THIS DEPLOYMENT'S ALONE. An accepted
+  // SetChargingProfile makes this CSMS send a GetChargingProfiles OF ITS OWN,
+  // so every scenario here puts two requests of the action under test on the
+  // wire and only one is the case. The scenarios select theirs by requestId
+  // rather than by position, and a run where the CSMS's generated identifier
+  // collides with a scenario's is a FAIL naming the count -- deliberately, so
+  // that a collision cannot quietly move which request was measured.
+  "cert201-tck29-profiles-in-transaction": c(
+    "Does a query scoped to the charging station itself survive with its " +
+      "evseId 0 intact, while a transaction is running? Two things could go " +
+      "wrong invisibly: a CSMS that dropped the member has asked about every " +
+      "EVSE instead, which is a different case, and a CSMS that resolved 0 to " +
+      "a real EVSE has asked TC_K_30's question. The transaction is the " +
+      "case's precondition rather than the query's subject, so the fixture " +
+      "failing costs the premise and not the request -- the row above " +
+      "cert201-tcb21 states that rule.",
+  ),
+  "cert201-tck30-profiles-evse": c(
+    "Does a criterion that narrows NOTHING reach the wire as the four-value " +
+      "list the scenario sent? This CSMS refuses an empty criterion before " +
+      "dispatch -- at least one of purpose, stack level or limit source must " +
+      "be present -- so the whole enumeration is how a request says 'all of " +
+      "them' here, and whether that list survives re-ordered, truncated or " +
+      "collapsed to CSO is what this row is open on. Collapsed to CSO is " +
+      "TC_K_34's request.",
+  ),
+  "cert201-tck32-profiles-by-id": c(
+    "Does an OMITTED evseId stay omitted? This is the only scenario in the " +
+      "suite that asks about every EVSE, and the only way to say so is by " +
+      "absence -- 0 means the charging station itself. It is also the one " +
+      "criterion this CSMS requires to travel alone: an identifier beside a " +
+      "purpose, a stack level or a limit source is refused before dispatch, " +
+      "so a CSMS that helpfully added one has produced an empty frame log " +
+      "rather than a reshaped request.",
+  ),
+  "cert201-tck33-profiles-by-stack-level": c(
+    "Does a stackLevel-only criterion reach the wire with exactly that one " +
+      "member? The three narrowing rows -- this, TC_K_35 and TC_K_36 -- " +
+      "differ in nothing else on the wire, so a CSMS that added a member " +
+      "of its own has sent one of the others' requests. Note the CSMS's own " +
+      "gate is truthiness-based, so a stack level of 0 would be refused " +
+      "before dispatch; the scenario uses its own non-zero level.",
+  ),
+  "cert201-tck34-profiles-by-limit-source": c(
+    "Does a one-value chargingLimitSource survive, and is CSO the value both " +
+      "ends agree on? The CSMS stamps CSO on every profile it installs and " +
+      "the station short-circuits to NoProfiles for any list without it, so " +
+      "the value is not the case's choice -- what this row measures is that " +
+      "the list arrives with one element rather than four (TC_K_30's " +
+      "request) and with an evseId rather than none (the CSMS's own " +
+      "unprompted query, which carries this same one-value list).",
+  ),
+  "cert201-tck35-profiles-by-purpose": c(
+    "TC_K_33's question on the other axis: does a purpose-only criterion " +
+      "reach the wire with exactly that one member? The station maps the " +
+      "purpose through a table that does not know " +
+      "ChargingStationExternalConstraints, so a CSMS that substituted a " +
+      "purpose is answered NoProfiles rather than with a reshaped report -- " +
+      "which is why the status is asserted beside the request.",
+  ),
+  "cert201-tck36-profiles-by-purpose-stack": c(
+    "Do TWO criterion members travel together? This is the row the pair " +
+      "above is a control for: both members present is this case, either one " +
+      "alone is one of theirs, and nothing else on the wire tells the three " +
+      "apart. A CSMS that dropped a member it did not understand is the " +
+      "finding, and it is invisible to any check that only looks for the " +
+      "members it was told to expect.",
+  ),
 } satisfies ScopeTable;
 
 /**

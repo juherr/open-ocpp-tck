@@ -318,6 +318,34 @@ export const STEVE_SCOPE: ScopeTable = {
     status: "NOT_APPLICABLE",
     reason: NO_OCPP_201,
   },
+  "cert201-tck29-profiles-in-transaction": {
+    status: "NOT_APPLICABLE",
+    reason: NO_OCPP_201,
+  },
+  "cert201-tck30-profiles-evse": {
+    status: "NOT_APPLICABLE",
+    reason: NO_OCPP_201,
+  },
+  "cert201-tck32-profiles-by-id": {
+    status: "NOT_APPLICABLE",
+    reason: NO_OCPP_201,
+  },
+  "cert201-tck33-profiles-by-stack-level": {
+    status: "NOT_APPLICABLE",
+    reason: NO_OCPP_201,
+  },
+  "cert201-tck34-profiles-by-limit-source": {
+    status: "NOT_APPLICABLE",
+    reason: NO_OCPP_201,
+  },
+  "cert201-tck35-profiles-by-purpose": {
+    status: "NOT_APPLICABLE",
+    reason: NO_OCPP_201,
+  },
+  "cert201-tck36-profiles-by-purpose-stack": {
+    status: "NOT_APPLICABLE",
+    reason: NO_OCPP_201,
+  },
   "cert201-tck43-composite-schedule-evse": {
     status: "NOT_APPLICABLE",
     reason: NO_OCPP_201,
