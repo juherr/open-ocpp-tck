@@ -137,6 +137,7 @@ the drivers are native here, and the name now says so.
 | `tck/trace.ts` | `local-native` | `—` | `—` | `—` | `—` |
 | `tck/unverifiable.ts` | `local-native` | `—` | `—` | `—` | `—` |
 | `tck/wait.ts` | `local-native` | `—` | `—` | `—` | `—` |
+| `tck/states-201.ts` | `local-native` | `—` | `—` | `—` | `—` |
 | `bin/ocpp-tck.ts` | `local-native` | `—` | `—` | `—` | `—` |
 | `tck/specs/core-201.ts` | `local-native` | `—` | `—` | `—` | `—` |
 | `tck/specs/ASSERT-INVENTORY.txt` | `local-native` | `—` | `—` | `—` | `—` |

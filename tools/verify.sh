@@ -85,6 +85,11 @@ run "a request that never reached the CSMS says so" bun tests/citrineos-transpor
 # SEQUENCE of writes, and a CSMS answers a right fixture and a wrong one with
 # the same empty StatusNotificationResponse.
 run "the 2.0.1 device-model fixture keeps its shape" bun tests/citrineos-device-model-fixture.ts
+# And in-process because its subject is a PLAN. Reaching the row that matters
+# -- a five-state chain re-entered from its far end -- needs eleven states this
+# build has no reach for, so no sweep could ever run it; and the rule it holds
+# is one `&&` away from being a visited set, which is wrong only there.
+run "a Reusable State plan follows the condition" bun tests/state-plan-201.ts
 run "core is CSMS-neutral" bash tests/generic-core.sh
 # The one reading in this repository that lives in the workflow rather than in
 # a file the gate can run -- so it is a file now, and this is what runs it.

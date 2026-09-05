@@ -24,7 +24,7 @@ error.
 ## The gate
 
 `bun run verify` is every check CI runs before it starts a container —
-typecheck, committed declarations, three driver scope checks, ten in-process
+typecheck, committed declarations, three driver scope checks, eleven in-process
 guards and fifteen shell guards — with one exit code, and every step runs even
 after one fails, where CI enumerates them and stops at the first.
 
@@ -56,6 +56,7 @@ bun tests/trace-frames.ts
 bun tests/steve-ui-session-race.ts
 bun tests/citrineos-transport-classification.ts
 bun tests/citrineos-device-model-fixture.ts
+bun tests/state-plan-201.ts
 bash tests/cert201-declares-its-version.sh
 bash tests/cert201-scope-rows.sh       # both read tck/specs/ASSERT-INVENTORY.txt,
                                        # so a NEW scenario reaches them only once
@@ -127,7 +128,7 @@ There is no unit-test framework and no `*.test.ts`. `tests/` holds offline
 guards, each with a header stating the property it protects. `bun run test`
 chains them — note `bun test` is Bun's own runner and finds nothing here.
 
-Shell is the default, and the ten TypeScript ones are TypeScript because
+Shell is the default, and the eleven TypeScript ones are TypeScript because
 what they assert is unreachable through the CLI. `driver-env-scope.ts`: a
 driver's declarations follow the env they are *resolved* with, where the CLI
 can only ever pass `process.env`. `expected-failure-standing.ts`: the rule that
@@ -170,7 +171,7 @@ cost a container and a misconfiguration to stage. What it holds is a line, not
 a behaviour: which failures `warnOpFailed` lets out, so it is wrong in two
 directions and half of its table asserts the *negative* — that a request the
 CSMS answered stays an ordinary failure.
-`citrineos-device-model-fixture.ts`: the last one, and the one whose subject is
+`citrineos-device-model-fixture.ts`: the one whose subject is
 least visible from anywhere else. It holds a SEQUENCE of writes — which rows
 `provision` seeds, which one the prepare hook points back, which ones teardown
 refuses to remove — against a CSMS that answers a right fixture and a wrong one
@@ -178,6 +179,23 @@ with the same empty `StatusNotificationResponse`. There is no wire assertion
 that could tell them apart, and the live measurement that can is four lines in
 a CSMS log rather than a verdict. So the seam again: the provisioner takes its
 `fetch`, and the guard answers from a store.
+`state-plan-201.ts`: the last one, and the only one whose subject never touches
+a CSMS at all. What a scenario DECLARES — the OCPP 2.0.1 `Reusable State`s its
+case takes as a precondition — is not what the runner RUNS: `tck/states-201.ts`
+folds the states' own post conditions into a condition, executes a dependency
+edge only where that condition says the system is not already there, and picks
+a state's branch from it. Every step of that is a decision no sweep can show
+you, and the row that decides whether the rule is right — re-entering
+`EnergyTransferStarted` after the `EVDisconnected` chain, where deduplicating
+by a visited set silently drops an `Authorize` — walks a chain of five states
+of which most have no reach this build can execute, so no sweep, live or
+offline, could reach it. `planStates` is a total function for that reason, the
+same split `tck/standing.ts` is. Its third claim is the odd one and belongs
+with the rest anyway: a `states:` written as anything but a literal renders `·`
+and is then OMITTED from `ASSERT-INVENTORY.txt`, so the guard RUNS the
+extractor rather than reading the committed file — a guard comparing two
+committed files goes green on a declaration factored out after the artifact was
+generated.
 
 Two guards build a fixture instead of reading the tree, and they are the two
 that test the scripts under `tools/` which *write*.
@@ -213,7 +231,7 @@ weaker than its comment, and only the mutation nobody had to run said so.
 Stopping at the obvious ones is not rigour, it is luck: the guard ships, and
 its header is now a false claim about what the build checks.
 
-## Ten boundaries the guards enforce
+## Eleven boundaries the guards enforce
 
 - **The gate is one list.** `tools/verify.sh` and the workflow's `check` job
   must run the same commands in the same order, minus the CI-only setup the
@@ -297,6 +315,18 @@ its header is now a false claim about what the build checks.
 - **A scenario's assertions and its CSMS call sequence may not change.**
   Changing what a scenario measures is legitimate and moves the two committed
   artifacts above — say why in the pull request. (`tests/spec-invariants.sh`)
+- **A declared OCPP 2.0.1 `Reusable State` is one this build can establish, and
+  its parameters reach the committed artifact.** `tck/states-201.ts` holds the
+  fourteen Part 6 defines for the CSMS role; two have a reach and twelve are
+  declared `planned` with a reason, which is what lets `OCA-201-SLICE.txt` cite
+  a missing fixture by name instead of restating a blocker. Naming a planned
+  one fails here rather than at run time, because a scenario that would go
+  orange for something the build already knew is a scenario the build should
+  have refused. The other half is the one with nothing else watching it: the
+  `states:` declaration is DATA on the spec object, and a non-literal renders
+  `·` and is then omitted from `ASSERT-INVENTORY.txt` rather than marked — so a
+  fixture re-pointed at another connector or another tag moves no committed
+  artifact and no diff says so. (`tests/state-plan-201.ts`)
 - **The documented install command installs the contract the documents
   describe.** Every tracked `*.md` citing a `github:<owner>/<repo>#<ref>`
   install command names this repository and the same ref, and then that ref is

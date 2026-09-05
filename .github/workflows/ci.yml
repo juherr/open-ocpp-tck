@@ -142,6 +142,14 @@ jobs:
       - name: The 2.0.1 device-model fixture keeps its shape
         run: bun tests/citrineos-device-model-fixture.ts
 
+      # In-process because its subject is a PLAN, not a run. The row that
+      # matters -- re-entering EnergyTransferStarted after the EVDisconnected
+      # chain, where deduplicating by a visited set silently drops an Authorize
+      # -- walks five states of which eleven in the graph have no reach this
+      # build can execute, so no sweep, live or offline, could reach it.
+      - name: A Reusable State plan follows the condition
+        run: bun tests/state-plan-201.ts
+
       - name: Core names no CSMS
         run: bash tests/generic-core.sh
 
