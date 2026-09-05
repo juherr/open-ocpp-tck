@@ -270,6 +270,30 @@ export const STEVE_SCOPE: ScopeTable = {
     status: "NOT_APPLICABLE",
     reason: NO_OCPP_201,
   },
+  "cert201-tcg03-evse-inoperative": {
+    status: "NOT_APPLICABLE",
+    reason: NO_OCPP_201,
+  },
+  "cert201-tcg04-evse-operative": {
+    status: "NOT_APPLICABLE",
+    reason: NO_OCPP_201,
+  },
+  "cert201-tcg05-station-inoperative": {
+    status: "NOT_APPLICABLE",
+    reason: NO_OCPP_201,
+  },
+  "cert201-tcg06-station-operative": {
+    status: "NOT_APPLICABLE",
+    reason: NO_OCPP_201,
+  },
+  "cert201-tcg07-connector-inoperative": {
+    status: "NOT_APPLICABLE",
+    reason: NO_OCPP_201,
+  },
+  "cert201-tcg08-connector-operative": {
+    status: "NOT_APPLICABLE",
+    reason: NO_OCPP_201,
+  },
   "cert201-tcj01-clock-aligned-meter-values": {
     status: "NOT_APPLICABLE",
     reason: NO_OCPP_201,

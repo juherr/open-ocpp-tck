@@ -373,6 +373,69 @@ const V2_SCOPE = {
       "device-model row a meter reading lands in that this driver can look up " +
       "-- so what it reports is the wire obligation alone, three times over.",
   ),
+
+  // --- OCPP 2.0.1 ChangeAvailability, NOT YET MEASURED --------------------
+  // CONDITIONAL for the block above's reason, and these six are the first
+  // 2.0.1 rows where what is unknown is THIS DRIVER'S OWN ROUTE as well as the
+  // CSMS's behaviour. `configuration/changeAvailability` was read off an
+  // @AsMessageEndpoint decorator on the v2 line, which is what variant.ts
+  // requires before an action may be declared routed -- and a decorator that
+  // exists says the endpoint is bound, not that a request through it reaches
+  // the wire intact. DRIVABLE would assert a measurement nobody has taken.
+  //
+  // ONE QUESTION IS SHARED BY ALL SIX and is the reason this block is worth
+  // reading as a block: does `evse` survive the CSMS as an OBJECT? Every
+  // other 2.0.1 operation this driver dispatches carries scalars, and the
+  // three addressing scopes these cases are about are spelled by which members
+  // of a nested object are present. A CSMS that flattened it, defaulted it, or
+  // dropped it turns the station-wide request into the EVSE-scoped one and
+  // back; TC_B_22 established that a scalar `evseId` reaches the wire
+  // untouched, and that says nothing about a nested one.
+  //
+  // NO FEATURE IDENTIFIER, by the rule the block above states: six mandatory
+  // cases with no conditional feature behind them.
+  "cert201-tcg03-evse-inoperative": c(
+    "Does an evse object carrying only `id` reach the wire with only `id`? " +
+      "This row is also the first whose request is sent by a FIXTURE rather " +
+      "than by the scenario -- tck/states-201.ts's `Unavailable` -- so it " +
+      "additionally answers whether a CSMS-initiated Reusable State works " +
+      "against this deployment at all. And whether the station's resulting " +
+      "StatusNotification is answered, which issue #86's shape makes a real " +
+      "question for 2.0.1 handlers here.",
+  ),
+  "cert201-tcg04-evse-operative": c(
+    "The row above's question with the other operationalStatus, and one " +
+      "more: two ChangeAvailability requests reach this station in one " +
+      "scenario, so it is also where a CSMS that coalesced or reordered them " +
+      "would show. Nothing in this suite has put two of one 2.0.1 operation " +
+      "to this CSMS before.",
+  ),
+  "cert201-tcg05-station-inoperative": c(
+    "Does an OMITTED evse stay omitted? This is the row where a CSMS that " +
+      "helpfully fills in a default -- evse id 0, or an empty object -- turns " +
+      "a station-wide request into something else, and the schema would not " +
+      "stop it: `evse` is optional and `additionalProperties` is true. The " +
+      "station answers a different question depending on which arrives.",
+  ),
+  "cert201-tcg06-station-operative": c(
+    "The row above's question with the other operationalStatus, sent twice " +
+      "in one scenario for TC_G_04's reason. Nothing here is expressible only " +
+      "if the omission holds, which is why this row and that one are opened " +
+      "on the same fact from two directions.",
+  ),
+  "cert201-tcg07-connector-inoperative": c(
+    "Does `evse.connectorId` reach the wire at all? It is the only member " +
+      "distinguishing this case from TC_G_03 -- the pinned station ignores it, " +
+      "so the answer is visible ONLY in the request the CSMS sent, and a CSMS " +
+      "that dropped it would make these two scenarios one measurement " +
+      "reported twice. That is what this row is open on and what the first " +
+      "sweep settles.",
+  ),
+  "cert201-tcg08-connector-operative": c(
+    "The row above's question with the other operationalStatus, sent twice " +
+      "in one scenario. Same measurement, same member, and its answer is " +
+      "what says whether the connector-scoped pair are two cases here or one.",
+  ),
 } satisfies ScopeTable;
 
 /**

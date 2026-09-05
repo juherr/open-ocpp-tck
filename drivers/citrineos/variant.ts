@@ -245,6 +245,12 @@ export const CERT_201_SCENARIOS = [
   "cert201-tce10-start-authorized",
   "cert201-tcf20-heartbeat",
   "cert201-tcf27-trigger-not-implemented",
+  "cert201-tcg03-evse-inoperative",
+  "cert201-tcg04-evse-operative",
+  "cert201-tcg05-station-inoperative",
+  "cert201-tcg06-station-operative",
+  "cert201-tcg07-connector-inoperative",
+  "cert201-tcg08-connector-operative",
   "cert201-tcj01-clock-aligned-meter-values",
 ] as const;
 
