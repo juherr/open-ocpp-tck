@@ -105,3 +105,4 @@ cert201-tcg06-station-operative           StatusNotification             assertA
 cert201-tcg07-connector-inoperative       StatusNotification             assertAllAnswered      TC_G_07
 cert201-tcg08-connector-operative         StatusNotification             assertAllAnswered      TC_G_08
 cert201-tcj01-clock-aligned-meter-values  MeterValues                    assertAllAnswered      TC_J_01
+cert201-tck60-set-tx-profile              TransactionEvent               assertAllAnswered      TC_K_60

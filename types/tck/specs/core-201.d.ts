@@ -56,16 +56,18 @@
  * duplicated rather than build a mechanism from five scenarios' evidence; the
  * evidence arrived when the selection rule turned out to pick 147 cases, at
  * which point a handful of copies becomes a class of copies that drift while
- * each one still reads reasonably. Three scenarios declare a state today --
- * TC_B_21, TC_G_03 and TC_G_04 -- and their `states:` field is what the
+ * each one still reads reasonably. Four scenarios declare a state today --
+ * TC_B_21, TC_G_03, TC_G_04 and TC_K_60, whose `TxProfile` has no transaction
+ * to name without one -- and their `states:` field is what the
  * mechanism reads. TC_G_03 is the one whose state IS the case: Part 6 gives it
  * no tool validation of its own, so it has no drive() at all and the fixture's
  * traffic is what its assertions read.
  *
  * WHAT STILL DUPLICATES, deliberately: `ocppVersion` plus
  * `runsSimTemplate: false` on every scenario, the three Reset scenarios'
- * shared drive-then-check shape with one member changed, and the six
- * ChangeAvailability ones' with two. Those are not
+ * shared drive-then-check shape with one member changed, the six
+ * ChangeAvailability ones' with two, and the seven charging-profile ones'
+ * literal profiles. Those are not
  * fixtures. Factoring either into a shared constant renders it `·` in
  * `ASSERT-INVENTORY.txt` and stops it being pinned, which is the trade TC_B_22
  * spells out for its two literals and which applies to every declaration in
@@ -73,8 +75,8 @@
  */
 import type { ScenarioSpec } from "../spec-types";
 /**
- * The scenarios, in case order -- the seventeen of `OCA-201-SLICE.txt`'s 147
- * that are implemented. The other 130 are declined there rather than here,
+ * The scenarios, in case order -- the twenty-six of `OCA-201-SLICE.txt`'s 147
+ * that are implemented. The other 121 are declined there rather than here,
  * with the reason in the row: one place per fact, and the guard reads that one.
  */
 export declare const CORE_201_SPECS: ScenarioSpec<any>[];
