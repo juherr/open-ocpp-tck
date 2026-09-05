@@ -208,7 +208,7 @@ export async function toCitrineRequest(
  *
  * The module for each action is CitrineOS's, not the OCPP specification's:
  * `Reset`, `TriggerMessage` and `ChangeAvailability` are Configuration's, the
- * two device-model actions are Monitoring's, and the three charging-profile
+ * two device-model actions are Monitoring's, and the four charging-profile
  * actions are SmartCharging's, read off the `@AsMessageEndpoint` decorators in
  * `packages/core/src/modules/{Configuration,Monitoring,SmartCharging}/src/module/2/MessageApi.ts`.
  * There is no rule to derive it from, the same way there is none for 1.6 --
@@ -361,6 +361,34 @@ function route201(op: CsmsOperation201, variant: CitrineVariant): CitrineRoute {
           ...body({ requestId: op.requestId, evseId: op.evseId }),
           chargingProfile: op.chargingProfile,
         },
+      };
+
+    // SmartCharging's fourth and last, and the only 2.0.1 request in the
+    // contract whose two members this deployment treats as MUTUALLY EXCLUSIVE.
+    // Its K10.FR.02 check refuses a body carrying both and refuses one carrying
+    // neither, each with an HTTP 200 `{success:false}` and no frame -- which
+    // `send` classifies as a non-dispatch, so a scenario that spells the pair
+    // gets an ERROR naming the rule rather than a red assertion. Nothing is
+    // enforced here: the contract keeps both optional (see the note on the arm)
+    // and a mapper that dropped one to make the pair legal would be deciding
+    // which half of a scenario's request was the real one.
+    //
+    // BOTH THROUGH body(), unlike GetChargingProfiles' criterion. There is no
+    // "empty means all" spelling to protect here -- an absent criterion IS the
+    // clear-by-identifier request -- so dropping `undefined` is exactly right,
+    // and `evseId: 0` inside the criterion survives it because body() drops
+    // only `undefined`. That last part matters: 0 addresses the charging
+    // station itself, and this CSMS's own gate reads the member for truthiness,
+    // so a 0 that survives our mapper is still refused by theirs. The refusal
+    // is theirs to make and ours to report.
+    case "ClearChargingProfile":
+      return {
+        module: "smartcharging",
+        action: "clearChargingProfile",
+        body: body({
+          chargingProfileId: op.chargingProfileId,
+          chargingProfileCriteria: op.chargingProfileCriteria,
+        }),
       };
 
     default:

@@ -384,6 +384,23 @@ export const CSMS_OPERATION_16_ACTIONS = everyOneOf<CsmsOperation16Action>()([
 // stored answers `NoProfiles`, so each scenario sends a `SetChargingProfile`
 // before the request it is about -- the first time one 2.0.1 case needs two
 // arms of this union, and the reason the pair above had to land first.
+//
+// THE NINTH CLOSES SMART CHARGING, and it is the first arm bought for a block
+// rather than for a head count. `ClearChargingProfile` completes three cases --
+// TC_K_05, TC_K_06 and TC_K_08 -- where six of the eight verbs still unbought
+// carry more. It goes first anyway because those three are the LAST three of
+// the twenty-one Smart Charging cases the rule selects that no simulator
+// limitation blocks: after it the block is 19 of 21, and the two left over
+// (TC_K_15, TC_K_31) are declined on the pinned station's payload builder
+// rather than on this union. Finishing a block is worth more than two cases of
+// a block nobody has started, because a block finished is a claim that can be
+// made about a CSMS.
+//
+// AND IT IS THE FIRST ARM WHOSE CASES MEASURE A REFUSAL. TC_K_08 clears a
+// profile that was never installed, and the station is expected to answer
+// `Unknown` -- the only negative answer anywhere in the Smart Charging block.
+// Every other case here reads `Accepted`, which means every other case here
+// would also pass against a CSMS that said `Accepted` to anything.
 // ---------------------------------------------------------------------------
 
 /** OCPP 2.0.1 `ResetEnumType`. Not OCPP 1.6's Hard/Soft -- see the note on
@@ -657,6 +674,29 @@ export interface ChargingProfileCriterion201 {
   chargingLimitSource?: [ChargingLimitSource201, ...ChargingLimitSource201[]];
 }
 
+/**
+ * OCPP 2.0.1 `ClearChargingProfileType` -- which of the profiles a station
+ * holds a `ClearChargingProfile` is asking it to forget.
+ *
+ * A DIFFERENT TYPE FROM {@link ChargingProfileCriterion201}, and the two are
+ * near enough to be worth saying why. That one selects what to REPORT and this
+ * one what to REMOVE; the wire gives them different names, different members --
+ * this one has `evseId` INSIDE it where the query carries it as a sibling --
+ * and different cardinalities, since nothing here is a list. Folding them into
+ * one shape would let a scenario ask to clear by `chargingLimitSource`, which
+ * is not a thing the request can express.
+ *
+ * OPTIONAL AND OMISSIBLE, unlike the query's criterion: the schema requires no
+ * member of the request at all, so `undefined` here is a request that clears by
+ * identifier alone. That is TC_K_08's request and TC_K_05's.
+ */
+export interface ClearChargingProfileCriteria201 {
+  /** Absent = every EVSE; 0 = the station itself. Omit, never send null. */
+  evseId?: number;
+  chargingProfilePurpose?: ChargingProfilePurpose201;
+  stackLevel?: number;
+}
+
 export type CsmsOperation201 =
   // TRIED AND REJECTED, here because here is where it gets re-proposed:
   // folding the two `Reset` arms -- this one and CsmsOperation16's -- into one
@@ -772,6 +812,24 @@ export type CsmsOperation201 =
       /** Wire name kept: the body IS the OCPP payload. Required by the schema
        *  even when every criterion inside it is optional. */
       chargingProfile: ChargingProfileCriterion201;
+    }
+  // THE TWO MEMBERS ARE ALTERNATIVES ON THIS DEPLOYMENT AND NOT ON THE WIRE,
+  // which is the one thing about this arm a driver author has to know and the
+  // type cannot say. The OCPP schema makes both optional and forbids no
+  // combination; the pinned CSMS refuses a request carrying BOTH before it
+  // reaches the wire, and refuses one carrying NEITHER -- its K10.FR.02 check,
+  // and a `success:false` rather than a frame. Both remain optional here
+  // because the contract describes OCPP and not one CSMS, and because a driver
+  // whose CSMS accepts the pair must be able to spell it. What the scenarios do
+  // about it is a scenario's business; what a driver does is pass both through.
+  | {
+      action: "ClearChargingProfile";
+      /** The identifier the profile was installed under. One profile, not a
+       *  list -- `GetChargingProfiles`' criterion takes a list and this does
+       *  not, which is the wire's asymmetry and not ours. */
+      chargingProfileId?: number;
+      /** Absent means the request clears by identifier alone. */
+      chargingProfileCriteria?: ClearChargingProfileCriteria201;
     };
 
 export type CsmsOperation201Action = CsmsOperation201["action"];
@@ -788,6 +846,7 @@ export const CSMS_OPERATION_201_ACTIONS = everyOneOf<CsmsOperation201Action>()([
   "SetChargingProfile",
   "GetCompositeSchedule",
   "GetChargingProfiles",
+  "ClearChargingProfile",
 ]);
 
 /**
@@ -898,6 +957,17 @@ export const SAMPLE_OPERATION_201: {
     action: "GetChargingProfiles",
     requestId: 1,
     chargingProfile: {},
+  },
+  // BY IDENTIFIER AND NOTHING ELSE, which is the cheapest thing the arm admits
+  // and also the only one of its three spellings that the pinned CSMS accepts
+  // unconditionally. A sample carrying both members would be refused before
+  // dispatch by the deployment this table's per-action half runs a mapper for,
+  // and a sample carrying neither would be refused too -- so the rule "the
+  // cheapest value the arm admits" and "a value that could actually be sent"
+  // agree here, which they are not obliged to.
+  ClearChargingProfile: {
+    action: "ClearChargingProfile",
+    chargingProfileId: 1,
   },
 };
 

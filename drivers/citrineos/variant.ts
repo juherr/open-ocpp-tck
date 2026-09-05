@@ -165,8 +165,8 @@ export const NO_OCPP_201_ON_V1 =
  * rather than two agreeing statements.
  *
  * v2 IS EMPTY TODAY, and empty is the honest answer rather than an oversight:
- * all eight actions the contract defines were read off `@AsMessageEndpoint`
- * decorators on the v2 line, so nothing is owed a row. The union grows twelve
+ * all nine actions the contract defines were read off `@AsMessageEndpoint`
+ * decorators on the v2 line, so nothing is owed a row. The union grows eleven
  * more times -- see the header above {@link CsmsOperation201} -- and each arm
  * arrives the same way: `route201`'s `assertNever` turns it into a compile
  * error, and the author then either writes a case pointing at an endpoint they
@@ -255,6 +255,9 @@ export const CERT_201_SCENARIOS = [
   "cert201-tck01-set-tx-default-profile",
   "cert201-tck03-set-station-max-profile",
   "cert201-tck04-replace-profile",
+  "cert201-tck05-clear-reported-profile",
+  "cert201-tck06-clear-profile-by-criteria",
+  "cert201-tck08-clear-unknown-profile",
   "cert201-tck10-set-default-profile-all-evses",
   "cert201-tck19-set-recurring-profile",
   "cert201-tck29-profiles-in-transaction",

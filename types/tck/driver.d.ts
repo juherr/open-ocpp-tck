@@ -351,6 +351,28 @@ export interface ChargingProfileCriterion201 {
     /** At most four on the wire. */
     chargingLimitSource?: [ChargingLimitSource201, ...ChargingLimitSource201[]];
 }
+/**
+ * OCPP 2.0.1 `ClearChargingProfileType` -- which of the profiles a station
+ * holds a `ClearChargingProfile` is asking it to forget.
+ *
+ * A DIFFERENT TYPE FROM {@link ChargingProfileCriterion201}, and the two are
+ * near enough to be worth saying why. That one selects what to REPORT and this
+ * one what to REMOVE; the wire gives them different names, different members --
+ * this one has `evseId` INSIDE it where the query carries it as a sibling --
+ * and different cardinalities, since nothing here is a list. Folding them into
+ * one shape would let a scenario ask to clear by `chargingLimitSource`, which
+ * is not a thing the request can express.
+ *
+ * OPTIONAL AND OMISSIBLE, unlike the query's criterion: the schema requires no
+ * member of the request at all, so `undefined` here is a request that clears by
+ * identifier alone. That is TC_K_08's request and TC_K_05's.
+ */
+export interface ClearChargingProfileCriteria201 {
+    /** Absent = every EVSE; 0 = the station itself. Omit, never send null. */
+    evseId?: number;
+    chargingProfilePurpose?: ChargingProfilePurpose201;
+    stackLevel?: number;
+}
 export type CsmsOperation201 = {
     action: "Reset";
     type: ResetType201;
@@ -412,12 +434,20 @@ export type CsmsOperation201 = {
     /** Wire name kept: the body IS the OCPP payload. Required by the schema
      *  even when every criterion inside it is optional. */
     chargingProfile: ChargingProfileCriterion201;
+} | {
+    action: "ClearChargingProfile";
+    /** The identifier the profile was installed under. One profile, not a
+     *  list -- `GetChargingProfiles`' criterion takes a list and this does
+     *  not, which is the wire's asymmetry and not ours. */
+    chargingProfileId?: number;
+    /** Absent means the request clears by identifier alone. */
+    chargingProfileCriteria?: ClearChargingProfileCriteria201;
 };
 export type CsmsOperation201Action = CsmsOperation201["action"];
 /** Every 2.0.1 action name. Same job as {@link CSMS_OPERATION_16_ACTIONS},
  *  and a SECOND list rather than an extension of it -- see the note on
  *  {@link CsmsOperation201}'s `Reset` arm for why the two must not merge. */
-export declare const CSMS_OPERATION_201_ACTIONS: readonly ["Reset", "GetVariables", "SetVariables", "TriggerMessage", "ChangeAvailability", "SetChargingProfile", "GetCompositeSchedule", "GetChargingProfiles"];
+export declare const CSMS_OPERATION_201_ACTIONS: readonly ["Reset", "GetVariables", "SetVariables", "TriggerMessage", "ChangeAvailability", "SetChargingProfile", "GetCompositeSchedule", "GetChargingProfiles", "ClearChargingProfile"];
 /**
  * One well-formed operation per action, and its job is to make the union above
  * expensive to grow in exactly one place.
