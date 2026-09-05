@@ -368,6 +368,22 @@ export const CSMS_OPERATION_16_ACTIONS = everyOneOf<CsmsOperation16Action>()([
 // raises, the other a continued `ReportChargingProfiles` its payload literal
 // cannot set `tbc` on. Their slice rows now say THAT, because "no charging
 // profile operation exists" stopped being true here.
+//
+// THE EIGHTH IS THE HEAD OF THE TABLE AGAIN, and it is bought alone where the
+// pair above was bought together. `GetChargingProfiles` is what
+// tck/specs/OCA-201-OPERATIONS.txt puts first once the Smart Charging pair is
+// spent -- eight cases need it -- and nothing else on that table shares its
+// module the way `GetCompositeSchedule` shared `SetChargingProfile`'s, so
+// there is no second verb whose wiring is already paid for. Reading the eight
+// in Part 6 found SEVEN writable; the eighth is `TC_K_31`, which was already
+// declined on the pinned simulator's `ReportChargingProfiles` payload literal
+// rather than on this verb, and stays declined for that reason.
+//
+// AND EVERY ONE OF THE SEVEN NEEDS A PROFILE INSTALLED FIRST, which is a fact
+// about this arm's cases rather than about the arm. A station with nothing
+// stored answers `NoProfiles`, so each scenario sends a `SetChargingProfile`
+// before the request it is about -- the first time one 2.0.1 case needs two
+// arms of this union, and the reason the pair above had to land first.
 // ---------------------------------------------------------------------------
 
 /** OCPP 2.0.1 `ResetEnumType`. Not OCPP 1.6's Hard/Soft -- see the note on
@@ -600,6 +616,47 @@ export interface ChargingProfile201 {
   transactionId?: string;
 }
 
+/**
+ * OCPP 2.0.1 `ChargingLimitSourceEnumType`, whole.
+ *
+ * WHO SET THE LIMIT, which is a thing 1.6 has no vocabulary for at all -- there
+ * is no homonym here to argue about, so this type needs none of the notes the
+ * four above carry. `CSO` is the charging station operator, i.e. the CSMS
+ * itself; `EMS` an energy management system, `SO` the system operator, `Other`
+ * anything else.
+ *
+ * Complete rather than minimal, by {@link MessageTrigger201}'s rule: an enum
+ * value costs a driver nothing to pass through, and adding one later is the
+ * breaking direction for a driver that switches on it exhaustively.
+ */
+export type ChargingLimitSource201 = "EMS" | "Other" | "SO" | "CSO";
+
+/**
+ * OCPP 2.0.1 `ChargingProfileCriterionType` -- which of the profiles a station
+ * holds a `GetChargingProfiles` is asking about.
+ *
+ * EVERY MEMBER IS OPTIONAL AND THE OBJECT IS NOT. The schema requires the
+ * `chargingProfile` member of the request and requires nothing inside it, so
+ * `{}` is the legal way to spell "all of them" and there is no way to spell it
+ * by omission. That asymmetry is the reason this is a named type rather than an
+ * inline shape: a driver that "helpfully" drops an empty criterion has sent a
+ * request the schema rejects.
+ *
+ * TUPLES RATHER THAN ARRAYS, for {@link ChargingSchedule201}'s reason: the
+ * schema says 1..N, so an empty array is not a value either member can take,
+ * and a driver forwarding one verbatim is forwarding something already known to
+ * be well-sized. The four the wire allows in `chargingLimitSource` are not
+ * expressible as a tuple bound without spelling four arms, and the enum has
+ * exactly four values, so the bound is stated rather than typed.
+ */
+export interface ChargingProfileCriterion201 {
+  chargingProfilePurpose?: ChargingProfilePurpose201;
+  stackLevel?: number;
+  chargingProfileId?: [number, ...number[]];
+  /** At most four on the wire. */
+  chargingLimitSource?: [ChargingLimitSource201, ...ChargingLimitSource201[]];
+}
+
 export type CsmsOperation201 =
   // TRIED AND REJECTED, here because here is where it gets re-proposed:
   // folding the two `Reset` arms -- this one and CsmsOperation16's -- into one
@@ -689,6 +746,32 @@ export type CsmsOperation201 =
       /** Absent means the station picks. Present, it is what the returned
        *  schedule's limits are expressed in. */
       chargingRateUnit?: ChargingRateUnit201;
+    }
+  // NOT A HOMONYM AT ALL, which is the first arm here that is not, and it is
+  // worth one line because the four notes above have trained a reader to look
+  // for the 1.6 counterpart. There is none: OCPP 1.6 has no request that asks a
+  // station which profiles it holds, so nothing about this arm is a decision
+  // between two spellings. What it does inherit is the shape those notes argue
+  // for -- the criterion travels as the OCPP object rather than flattened into
+  // four sibling members, for `ChangeAvailability`'s reason: which members of
+  // it are PRESENT is the whole of what separates one case from the next, and a
+  // driver that rebuilt it from four optionals would have to decide what an
+  // absent one means.
+  | {
+      action: "GetChargingProfiles";
+      /** The station echoes it in every `ReportChargingProfiles` it answers
+       *  with, so it is how a report is tied back to the request that asked
+       *  for it. Required by the schema; a scenario chooses the value. */
+      requestId: number;
+      /** Absent = every EVSE; 0 = the station itself. Omit, never send null.
+       *  NOT `SetChargingProfile`'s required member and not
+       *  `GetCompositeSchedule`'s either -- this is the one charging-profile
+       *  request of the three whose scope has an absence to give a meaning
+       *  to. */
+      evseId?: number;
+      /** Wire name kept: the body IS the OCPP payload. Required by the schema
+       *  even when every criterion inside it is optional. */
+      chargingProfile: ChargingProfileCriterion201;
     };
 
 export type CsmsOperation201Action = CsmsOperation201["action"];
@@ -704,6 +787,7 @@ export const CSMS_OPERATION_201_ACTIONS = everyOneOf<CsmsOperation201Action>()([
   "ChangeAvailability",
   "SetChargingProfile",
   "GetCompositeSchedule",
+  "GetChargingProfiles",
 ]);
 
 /**
@@ -804,6 +888,16 @@ export const SAMPLE_OPERATION_201: {
     action: "GetCompositeSchedule",
     evseId: 0,
     duration: 1,
+  },
+  // `evseId` OMITTED and the criterion EMPTY, by this table's rule: the
+  // cheapest thing the arm admits. The empty object is not a shortcut for an
+  // absent one -- the schema requires the member and requires nothing inside it
+  // -- so this is also the sample that pushes a mapper's one plausible mistake
+  // through, dropping a criterion because it has no members to send.
+  GetChargingProfiles: {
+    action: "GetChargingProfiles",
+    requestId: 1,
+    chargingProfile: {},
   },
 };
 

@@ -312,6 +312,45 @@ export interface ChargingProfile201 {
      *  `TxProfile` may carry it. */
     transactionId?: string;
 }
+/**
+ * OCPP 2.0.1 `ChargingLimitSourceEnumType`, whole.
+ *
+ * WHO SET THE LIMIT, which is a thing 1.6 has no vocabulary for at all -- there
+ * is no homonym here to argue about, so this type needs none of the notes the
+ * four above carry. `CSO` is the charging station operator, i.e. the CSMS
+ * itself; `EMS` an energy management system, `SO` the system operator, `Other`
+ * anything else.
+ *
+ * Complete rather than minimal, by {@link MessageTrigger201}'s rule: an enum
+ * value costs a driver nothing to pass through, and adding one later is the
+ * breaking direction for a driver that switches on it exhaustively.
+ */
+export type ChargingLimitSource201 = "EMS" | "Other" | "SO" | "CSO";
+/**
+ * OCPP 2.0.1 `ChargingProfileCriterionType` -- which of the profiles a station
+ * holds a `GetChargingProfiles` is asking about.
+ *
+ * EVERY MEMBER IS OPTIONAL AND THE OBJECT IS NOT. The schema requires the
+ * `chargingProfile` member of the request and requires nothing inside it, so
+ * `{}` is the legal way to spell "all of them" and there is no way to spell it
+ * by omission. That asymmetry is the reason this is a named type rather than an
+ * inline shape: a driver that "helpfully" drops an empty criterion has sent a
+ * request the schema rejects.
+ *
+ * TUPLES RATHER THAN ARRAYS, for {@link ChargingSchedule201}'s reason: the
+ * schema says 1..N, so an empty array is not a value either member can take,
+ * and a driver forwarding one verbatim is forwarding something already known to
+ * be well-sized. The four the wire allows in `chargingLimitSource` are not
+ * expressible as a tuple bound without spelling four arms, and the enum has
+ * exactly four values, so the bound is stated rather than typed.
+ */
+export interface ChargingProfileCriterion201 {
+    chargingProfilePurpose?: ChargingProfilePurpose201;
+    stackLevel?: number;
+    chargingProfileId?: [number, ...number[]];
+    /** At most four on the wire. */
+    chargingLimitSource?: [ChargingLimitSource201, ...ChargingLimitSource201[]];
+}
 export type CsmsOperation201 = {
     action: "Reset";
     type: ResetType201;
@@ -358,12 +397,27 @@ export type CsmsOperation201 = {
     /** Absent means the station picks. Present, it is what the returned
      *  schedule's limits are expressed in. */
     chargingRateUnit?: ChargingRateUnit201;
+} | {
+    action: "GetChargingProfiles";
+    /** The station echoes it in every `ReportChargingProfiles` it answers
+     *  with, so it is how a report is tied back to the request that asked
+     *  for it. Required by the schema; a scenario chooses the value. */
+    requestId: number;
+    /** Absent = every EVSE; 0 = the station itself. Omit, never send null.
+     *  NOT `SetChargingProfile`'s required member and not
+     *  `GetCompositeSchedule`'s either -- this is the one charging-profile
+     *  request of the three whose scope has an absence to give a meaning
+     *  to. */
+    evseId?: number;
+    /** Wire name kept: the body IS the OCPP payload. Required by the schema
+     *  even when every criterion inside it is optional. */
+    chargingProfile: ChargingProfileCriterion201;
 };
 export type CsmsOperation201Action = CsmsOperation201["action"];
 /** Every 2.0.1 action name. Same job as {@link CSMS_OPERATION_16_ACTIONS},
  *  and a SECOND list rather than an extension of it -- see the note on
  *  {@link CsmsOperation201}'s `Reset` arm for why the two must not merge. */
-export declare const CSMS_OPERATION_201_ACTIONS: readonly ["Reset", "GetVariables", "SetVariables", "TriggerMessage", "ChangeAvailability", "SetChargingProfile", "GetCompositeSchedule"];
+export declare const CSMS_OPERATION_201_ACTIONS: readonly ["Reset", "GetVariables", "SetVariables", "TriggerMessage", "ChangeAvailability", "SetChargingProfile", "GetCompositeSchedule", "GetChargingProfiles"];
 /**
  * One well-formed operation per action, and its job is to make the union above
  * expensive to grow in exactly one place.

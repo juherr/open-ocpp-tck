@@ -81,7 +81,7 @@ export declare function toCitrineRequest(op: CsmsOperation16, refs: CitrineRefs,
  *
  * The module for each action is CitrineOS's, not the OCPP specification's:
  * `Reset`, `TriggerMessage` and `ChangeAvailability` are Configuration's, the
- * two device-model actions are Monitoring's, and the two charging-profile
+ * two device-model actions are Monitoring's, and the three charging-profile
  * actions are SmartCharging's, read off the `@AsMessageEndpoint` decorators in
  * `packages/core/src/modules/{Configuration,Monitoring,SmartCharging}/src/module/2/MessageApi.ts`.
  * There is no rule to derive it from, the same way there is none for 1.6 --

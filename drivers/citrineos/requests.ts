@@ -208,7 +208,7 @@ export async function toCitrineRequest(
  *
  * The module for each action is CitrineOS's, not the OCPP specification's:
  * `Reset`, `TriggerMessage` and `ChangeAvailability` are Configuration's, the
- * two device-model actions are Monitoring's, and the two charging-profile
+ * two device-model actions are Monitoring's, and the three charging-profile
  * actions are SmartCharging's, read off the `@AsMessageEndpoint` decorators in
  * `packages/core/src/modules/{Configuration,Monitoring,SmartCharging}/src/module/2/MessageApi.ts`.
  * There is no rule to derive it from, the same way there is none for 1.6 --
@@ -337,6 +337,30 @@ function route201(op: CsmsOperation201, variant: CitrineVariant): CitrineRoute {
           duration: op.duration,
           chargingRateUnit: op.chargingRateUnit,
         }),
+      };
+
+    // SmartCharging's third, and the one whose body is closest to a
+    // pass-through: no dates to render, no nested arrays to rebuild, so
+    // profile201Body's member-by-member argument does not apply and the
+    // criterion goes through as the contract built it -- `ChangeAvailability`'s
+    // `evse` treatment, for its reason. Which members of it are PRESENT is what
+    // the cases measure.
+    //
+    // `evseId` THROUGH body() AND THE CRITERION NOT. An absent evseId must be
+    // OMITTED -- 2.0.1 reads its absence as "every EVSE" where 0 addresses the
+    // station itself -- and body() drops only `undefined`, so the two stay
+    // different requests. `chargingProfile` never goes through it: an EMPTY
+    // criterion is a defined value the schema requires, and dropping it would
+    // turn "ask about all of them" into a request CitrineOS validates away
+    // before dispatch.
+    case "GetChargingProfiles":
+      return {
+        module: "smartcharging",
+        action: "getChargingProfiles",
+        body: {
+          ...body({ requestId: op.requestId, evseId: op.evseId }),
+          chargingProfile: op.chargingProfile,
+        },
       };
 
     default:
