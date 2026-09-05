@@ -135,7 +135,7 @@ project network by *service* name, and only the container names move.
 
 [`compose.yaml`](compose.yaml) pins **`v2.0.0-beta3`** by digest:
 
-```
+```text
 ghcr.io/citrineos/citrineos-server:v2.0.0-beta3@sha256:ddd8e98791b4f75523cf6a2aa3fd7cc35bd15bfb019d1461200e2c2e65462fd5
 ```
 
