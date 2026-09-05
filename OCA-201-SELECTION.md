@@ -578,6 +578,11 @@ leaves it leaves by a decision someone can find.
 
 A `Reusable State` fixture mechanism used to be on this list, named as a gap
 rather than built, on the grounds that inlining a state per scenario was cheaper
-than a mechanism. At seven scenarios it was. Part 6 defines 13 of them for the
+than a mechanism. At seven scenarios it was. Part 6 defines 14 of them for the
 CSMS role, and at 147 cases the copies drift and each one reads reasonably, so
-it is now in scope and has an issue.
+it is now in scope and has an issue. THIRTEEN WAS THIS PAGE'S FIRST COUNT and
+it was not a miscount: thirteen of the fourteen carry the label `Reusable
+State` and the fourteenth is labelled `Memory State`, while the case that
+invokes it calls it a reusable state in its own text. So thirteen counts
+labels and fourteen counts fixtures a case can name, which is the number a
+mechanism has to serve. `tck/specs/core-201.ts` carried the correction first.

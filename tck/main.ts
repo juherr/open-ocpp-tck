@@ -782,8 +782,8 @@ async function runScenario<D>(
 // Spec registry -- five groups mirror the upstream group names and array
 // membership/order exactly (47 scenarios: 15 core + 13 authlist-reservation +
 // 12 remotetrigger-smartcharging + 4 firmware + 3 authorize), and one has no
-// upstream counterpart at all: core-201, the 5 OCPP 2.0.1 scenarios written
-// here rather than ported. 52 in total.
+// upstream counterpart at all: core-201, the 7 OCPP 2.0.1 scenarios written
+// here rather than ported. 54 in total.
 //
 // A SIXTH BUCKET, NOT A SECOND AXIS, and the difference is worth stating here
 // because the note further down forbids the second. --group selects
