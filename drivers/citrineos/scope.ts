@@ -611,6 +611,41 @@ const V2_SCOPE = {
       "finding, and it is invisible to any check that only looks for the " +
       "members it was told to expect.",
   ),
+  // --- OCPP 2.0.1 ClearChargingProfile, NOT YET MEASURED -----------------
+  // CONDITIONAL for the block above's reason. What is new in these three is
+  // that two of the three CAUSES are gone: nothing here is queried back, so a
+  // red row is the request or the station and not a report that never came.
+  // What replaces it is narrower and worse to debug -- this CSMS's K10.FR.02
+  // check refuses a request carrying both members and one carrying neither
+  // BEFORE dispatch, with an HTTP 200 and no frame, so a reshaped request
+  // shows up as an empty trace rather than as a wrong one.
+  "cert201-tck05-clear-reported-profile": c(
+    "Does the identifier the CSMS clears come from the station's report? " +
+      "Every other row here compares a request against a literal; this one " +
+      "compares it against another frame, because a CSMS that ignored the " +
+      "report and cleared what it had installed would satisfy every " +
+      "literal-based check while measuring nothing. It is also the only row " +
+      "in the block whose request the CSMS could not have built before the " +
+      "run started.",
+  ),
+  "cert201-tck06-clear-profile-by-criteria": c(
+    "Do three criterion members travel together, and does an evseId of 1 " +
+      "reach the wire beside them? This CSMS gates the criteria on " +
+      "truthiness, so an evseId of 0 -- the charging station itself -- would " +
+      "be refused before dispatch and there is no case here that needs it. " +
+      "What the row is open on is whether the purpose survives: the station " +
+      "maps it through a table, and a purpose it cannot map is answered " +
+      "Unknown, which is TC_K_08's answer to TC_K_06's request.",
+  ),
+  "cert201-tck08-clear-unknown-profile": c(
+    "Does the station DECLINE, and does the CSMS carry a negative answer " +
+      "back unchanged? This is the only case in the Smart Charging block " +
+      "that expects anything other than Accepted, so it is the only one that " +
+      "would notice a CSMS answering Accepted to everything. Its risk is its " +
+      "own precondition rather than the CSMS: the identifier must be one no " +
+      "other scenario installs, since a sweep shares one station and an " +
+      "installed 9308 would turn the expected Unknown into an Accepted.",
+  ),
 } satisfies ScopeTable;
 
 /**

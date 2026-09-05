@@ -310,6 +310,18 @@ export const STEVE_SCOPE: ScopeTable = {
     status: "NOT_APPLICABLE",
     reason: NO_OCPP_201,
   },
+  "cert201-tck05-clear-reported-profile": {
+    status: "NOT_APPLICABLE",
+    reason: NO_OCPP_201,
+  },
+  "cert201-tck06-clear-profile-by-criteria": {
+    status: "NOT_APPLICABLE",
+    reason: NO_OCPP_201,
+  },
+  "cert201-tck08-clear-unknown-profile": {
+    status: "NOT_APPLICABLE",
+    reason: NO_OCPP_201,
+  },
   "cert201-tck10-set-default-profile-all-evses": {
     status: "NOT_APPLICABLE",
     reason: NO_OCPP_201,
