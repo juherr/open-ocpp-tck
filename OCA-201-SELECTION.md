@@ -172,8 +172,8 @@ The other half of that gap was whether a list this long may be committed at
 all, given that the references are CC BY-ND, and it is
 [answered](#what-may-be-committed-here-and-what-may-not): it may.
 
-Twenty-six of the 147 are implemented and 121 decline with a reason. Those
-reasons are written per group rather than per case — 26 of them across the 121 —
+Thirty-three of the 147 are implemented and 114 decline with a reason. Those
+reasons are written per group rather than per case — 25 of them across the 114 —
 and the file's header says why that is the granularity the decision was taken
 at rather than a placeholder. What a guard still cannot say is whether these
 are the *right* 147, and that is [unchanged](#the-guard).
@@ -198,6 +198,19 @@ payload literal cannot mark. Those two are the first rows here declined on the
 station rather than on the vocabulary *after* the vocabulary arrived, which is
 the shape a tranche leaves behind and the reason a tranche's cases are read
 before its verb is written.
+
+**Seven more arrived with the third, and it is the first tranche bought
+alone.** `GetChargingProfiles` headed the table once the Smart Charging pair was
+spent — eight cases need it — and no second verb shares its module the way
+`GetCompositeSchedule` shared `SetChargingProfile`'s, so there was nothing whose
+wiring was already paid for. Reading the eight in *Part 6* found seven writable.
+The eighth is `TC_K_31`, and it is the first row here a tranche arrives for and
+does **not** move: it was already declined on the pinned simulator's report
+payload rather than on the verb, so its verb landing changed nothing about it.
+That is worth naming as a shape rather than as a fact about one row — a tranche
+is sized by cases *blocked on the verb*, and a row blocked on two things is
+bought by neither. `TC_K_05`, which needs `ClearChargingProfile` beside this one,
+is the same shape seen a step earlier.
 
 **Four of the first eleven arrived by falsifying a reason rather than by adding
 an operation**, which is worth naming because it is the cheapest way this number
@@ -235,7 +248,7 @@ trigger and `CsmsOperation201` carries the verb.
 
 ## How wide a vocabulary the 147 ask for
 
-**Twenty kinds of operation**, against the seven the contract carries. Ninety of the 147 drive at
+**Twenty kinds of operation**, against the eight the contract carries. Ninety of the 147 drive at
 least one CSMS-initiated request and **57 drive none at all** — a case that only
 observes charge-point-initiated traffic needs no verb, which is why "add the
 rest of the 2.0.1 messages" was the wrong shape for this and why the answer is
@@ -255,33 +268,32 @@ the extractor's header says why.
 Six cases need more than one operation, so the two counts differ: adding
 `GetInstalledCertificateIds` is named by eight rows and finishes six of them,
 because `TC_M_20` and `TC_M_21` want `DeleteCertificate` and
-`InstallCertificate` as well. Greedy from the seven the union has, which leaves
-**57** of the 147 short of a verb. `bun tools/extract-201-operations.ts
+`InstallCertificate` as well. Greedy from the eight the union has, which leaves
+**49** of the 147 short of a verb. `bun tools/extract-201-operations.ts
 --tranches` is what prints this table — no PDF, just the row file and the
 contract — and `tests/oca-201-operations.sh` holds the two together:
 
 | # | operation | cases it completes | still blocked after |
 |---|---|---|---|
-| 1 | `UpdateFirmware` | 10 | 47 |
-| 2 | `GetChargingProfiles` | 8 | 39 |
-| 3 | `CustomerInformation` | 6 | 33 |
-| 4 | `GetInstalledCertificateIds` | 6 | 27 |
-| 5 | `InstallCertificate` | 5 | 22 |
-| 6 | `RequestStartTransaction` | 5 | 17 |
-| 7 | `GetLog` | 4 | 13 |
-| 8 | `CertificateSigned` | 3 | 10 |
-| 9 | `ClearChargingProfile` | 3 | 7 |
-| 10 | `ClearCache` | 2 | 5 |
-| 11 | `DeleteCertificate` | 2 | 3 |
-| 12 | `SetNetworkProfile` | 2 | 1 |
-| 13 | `RequestStopTransaction` | 1 | 0 |
+| 1 | `UpdateFirmware` | 10 | 39 |
+| 2 | `CustomerInformation` | 6 | 33 |
+| 3 | `GetInstalledCertificateIds` | 6 | 27 |
+| 4 | `InstallCertificate` | 5 | 22 |
+| 5 | `RequestStartTransaction` | 5 | 17 |
+| 6 | `GetLog` | 4 | 13 |
+| 7 | `CertificateSigned` | 3 | 10 |
+| 8 | `ClearChargingProfile` | 3 | 7 |
+| 9 | `ClearCache` | 2 | 5 |
+| 10 | `DeleteCertificate` | 2 | 3 |
+| 11 | `SetNetworkProfile` | 2 | 1 |
+| 12 | `RequestStopTransaction` | 1 | 0 |
 
 The right-hand column is the number a tranche is worth arguing about, and it is
 not the number of scenarios that become writable: a verb removes *one* blocker,
 and 57 of the 147 never had that blocker while every one of them has another.
 `tck/specs/OCA-201-SLICE.txt`'s reason column is where the rest are named, and
 #71 — nothing checks that a declared capability is implemented — is what a
-vocabulary growing thirteen more times makes urgent; it is now checked, by
+vocabulary growing twelve more times makes urgent; it is now checked, by
 `tests/capability-parity.ts`.
 
 A scenario issue may implement fewer than the list holds and say why — which

@@ -10,7 +10,7 @@
  * the same client. So "the record path answers" is not one property among
  * many: it is a precondition of every verdict a sweep produces. A sweep whose
  * record path is dead does not report a CSMS that failed conformance -- it
- * reports 73 rows that measured nothing, one container each. That is the shape
+ * reports 80 rows that measured nothing, one container each. That is the shape
  * `preflight()` in main.ts exists to convert into a single refusal, stated in
  * its own words two hundred lines above where this is called: a per-scenario
  * complaint about a process-wide fact is one cause rendered as a table nobody

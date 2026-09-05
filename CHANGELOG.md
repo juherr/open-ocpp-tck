@@ -25,6 +25,44 @@ Released as `0.3.0`. The documented install ref already points at that tag, so
   against a CSMS that had been answering since it booted, so a check that runs
   once before the first container cannot see them. `tck/readiness.ts` carries
   the measurement where the warm-up gate would be re-proposed ([#119])
+- `GetChargingProfiles` joins `CsmsOperation201` — the third operation tranche
+  and the first bought alone: it heads
+  `tck/specs/OCA-201-OPERATIONS.txt` once the Smart Charging pair is spent, with
+  eight cases needing it, and no second verb shares its module. It is also the
+  first arm in that union with **no OCPP 1.6 homonym** — 1.6 has no request that
+  asks a station which profiles it holds — so the notes arguing which of two
+  spellings to keep say nothing about it. `ChargingProfileCriterion201` and
+  `ChargingLimitSource201` are new; the criterion is a named type because every
+  member of it is optional and the criterion itself is not, so `{}` is the legal
+  way to spell "all of them" and a driver that drops an empty one has sent a
+  request the schema rejects. `evseId` is optional here where the other two
+  charging-profile arms require it: absent means every EVSE, 0 means the
+  charging station itself. `drivers/citrineos` routes it through
+  `smartcharging/getChargingProfiles` ([#114])
+- Seven OCPP 2.0.1 scenarios, taking the slice from 26 implemented cases to 33
+  and the suite from 73 scenarios to 80. `cert201-tck29-profiles-in-transaction`
+  (`TC_K_29`: the charging station's own profiles, asked for while a transaction
+  runs), `cert201-tck30-profiles-evse` (`TC_K_30`),
+  `cert201-tck32-profiles-by-id` (`TC_K_32`: one profile by identifier, with
+  `evseId` omitted so the question is asked of every EVSE),
+  `cert201-tck33-profiles-by-stack-level`, `cert201-tck35-profiles-by-purpose`
+  and `cert201-tck36-profiles-by-purpose-stack` (`TC_K_33`, `TC_K_35`, `TC_K_36`:
+  one criterion member, the other, and both together — three requests that
+  differ in nothing else on the wire), and
+  `cert201-tck34-profiles-by-limit-source` (`TC_K_34`). Each installs a profile
+  first, because a station holding nothing answers `NoProfiles` and neither end
+  of this deployment offers another way to seed one. None has met a live CSMS —
+  every scope row is `CONDITIONAL` and states the question the first sweep
+  settles ([#114])
+- Three assertion helpers for that action, and the first compares the
+  criterion's member set in **both** directions. Five of the seven cases differ
+  in nothing but which members are present, so a helper that only checked the
+  members it was given would let `TC_K_36`'s traffic satisfy `TC_K_33` — the
+  failure `tests/get-configuration-filter.ts` records one protocol over. They
+  also select their request by `requestId` rather than by occurrence: the pinned
+  CSMS sends a `GetChargingProfiles` of its own off every accepted
+  `SetChargingProfile`, so the action under test appears twice on every one of
+  these runs and which arrives first is a race ([#114])
 - `SetChargingProfile` and `GetCompositeSchedule` join `CsmsOperation201` — the
   second operation tranche, bought as a pair because
   `tck/specs/OCA-201-OPERATIONS.txt` sizes it that way: thirteen selected cases

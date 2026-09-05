@@ -12,7 +12,7 @@ It reports the answer rather than flattering it.
 1 `FAIL` out of the 47 OCPP 1.6 scenarios.** The 7 OCPP 2.0.1 ones came later
 and in three measurements: four `PASS` on 2026-08-19, `TC_B_21` on 2026-08-20
 once its fixture existed, and `TC_B_06` / `TC_B_09` on 2026-08-21. **All 7
-`PASS`**; nineteen more were registered afterwards and have not been swept —
+`PASS`**; twenty-six more were registered afterwards and have not been swept —
 see [OCPP 2.0.1](#ocpp-201) below.
 
 That run needed no isolated retry at all, which had never happened before —
@@ -74,14 +74,14 @@ bun bin/ocpp-tck.ts driver provision      # idTags + the 2.0.1 device model
 bun bin/ocpp-tck.ts driver verify         # read-only: are they there?
 bun bin/ocpp-tck.ts driver selftest       # seconds: every record query, once
 
-bun run e2e                               # the whole suite: 73 scenarios
+bun run e2e                               # the whole suite: 80 scenarios
 
 docker compose -f drivers/citrineos/compose.yaml down -v
 ```
 
 `bun run e2e` and not `run-all`, for the retry pass: `--retry-failed-isolated`
 re-runs a parallel lane's failures sequentially, which is the mode the runner
-calls reliable. Both cover the same 73 scenarios — the `authorize` group used
+calls reliable. Both cover the same 80 scenarios — the `authorize` group used
 to sit outside `all`, so a bare `run-all` reported 44/47 as "no failures" and
 skipped exactly the three scenarios that prove `driver provision` seeded
 anything. `bun run e2e:smoke` is the short loop while iterating.
@@ -304,6 +304,7 @@ from the action, which is the only reason a table is needed:
 | `GetDiagnostics` | `reporting/getDiagnostics` |
 | `SetChargingProfile` | `smartcharging/setChargingProfile` |
 | `GetCompositeSchedule` | `smartcharging/getCompositeSchedule` |
+| `GetChargingProfiles` | `smartcharging/getChargingProfiles` |
 | `ClearChargingProfile` | `smartcharging/clearChargingProfile` |
 | `ReserveNow`, `CancelReservation` | **none** — see the gaps below |
 
@@ -356,6 +357,7 @@ the same client — `/ocpp/2.0.1/…` instead of `/ocpp/1.6/…`. The routing is
 | `ChangeAvailability` | `configuration/changeAvailability` |
 | `SetChargingProfile` | `smartcharging/setChargingProfile` |
 | `GetCompositeSchedule` | `smartcharging/getCompositeSchedule` |
+| `GetChargingProfiles` | `smartcharging/getChargingProfiles` |
 
 The module is CitrineOS's rather than the specification's, read off the
 `@AsMessageEndpoint` decorators in the pinned image; `toCitrineRequest201`'s
@@ -382,6 +384,24 @@ with a **null** `connectorId`. A rule that fails answers HTTP 200 with
 an empty frame log rather than a rejected request — which is why the device
 model this driver provisions carries an EVSE row per addressed `evseId`, and why
 the `cert201-tck*` scenarios compute their validity windows from the clock.
+
+**`getChargingProfiles` is the third, and it refuses a criterion that narrows
+nothing.** Its K09.FR.03 check wants `chargingProfileId` alone, or at least one
+of `chargingProfilePurpose`, `stackLevel` and `chargingLimitSource` beside it —
+and the test is truthiness, so an empty criterion is refused and so is a
+`stackLevel` of 0, both the same silent HTTP 200 as above. An empty criterion is
+legal on the wire and unreachable through this CSMS, which is why the scenarios
+that scope by EVSE alone ask for all four limit sources: four values is the
+whole enumeration, so it narrows nothing while satisfying the gate.
+
+**And it sends one of these itself.** Every accepted `SetChargingProfile` makes
+this CSMS deactivate the station's CSO profiles and send a
+`GetChargingProfiles` with a generated `requestId`, no `evseId` and a one-value
+`["CSO"]` criterion — so a scenario driving this operation sees TWO requests of
+it on the wire and only one is its own. The `cert201-tck2*` / `cert201-tck3*`
+scenarios select theirs by `requestId` rather than by position, because which of
+the two arrives first is a race. It also stamps `CSO` on every profile it
+persists, which is why those scenarios ask for that source and no other.
 
 Declared for the **v2 line only**. Nobody has pointed a 2.0.1 station at
 v1.9.1 here, and a driver declaring a surface on the strength of a version
