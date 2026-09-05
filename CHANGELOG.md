@@ -12,6 +12,29 @@ Released as `0.3.0`. The documented install ref already points at that tag, so
 
 ### Added
 
+- A reader for the one CSMS failure the verdict table cannot carry:
+  `drivers/citrineos/redelivery-loops.ts` counts messages the pinned CSMS
+  redelivers without bound. When a CSMS-initiated request is dispatched to a
+  charge point that has disconnected, this deployment re-enqueues and re-logs it
+  forever; the loop lasts for the rest of the run and the loops **accumulate**.
+  Measured across three archived sweeps: **1** loop → healthy, **2** → healthy,
+  **11** → the CSMS stopped answering for the last 25 minutes, 38 stations never
+  saw their `BootNotification.conf`, eight scenarios went red as collateral —
+  and the sweep still **exited 0**, because every scenario it killed was
+  reclassified by `--retry-failed-isolated` or was a declared expected failure.
+  One loop and none look identical in the summary, and one is how the run with
+  eleven started. CI now captures the CSMS log on every sweep, prints the count,
+  and deletes the log again when nothing wanted it — so the artifact cost is
+  unchanged for runs that used to skip the capture. A loop never fails the job:
+  it is a finding about the CSMS, and the smallest sweep measured still starts
+  one. What *does* fail the job is the reader no longer recognising the log
+  ([#119], [#56])
+- `tests/citrineos-redelivery-loops.ts`, whose load-bearing claim is the
+  refusal. The envelope pattern is bound to one deployment's log format, key
+  order included, so the way that reader fails is by matching **nothing** and
+  reporting a healthy sweep — green, with the CSMS looping exactly as before.
+  Two of its five rows exist to tell "nothing matched" from "nothing was there".
+  All four mutations go red on their own row and no other ([#119])
 - `ClearChargingProfile` joins `CsmsOperation201` — the fourth and last Smart
   Charging operation, and the first bought for a **block** rather than for a
   head count. It completes three cases where six of the eight verbs still
@@ -550,6 +573,7 @@ releases from 141 commits would mean writing detail nobody measured.
 [0.1.0-notes]: https://github.com/juherr/open-ocpp-tck/releases/tag/v0.1.0
 [#25]: https://github.com/juherr/open-ocpp-tck/issues/25
 [#55]: https://github.com/juherr/open-ocpp-tck/pull/55
+[#56]: https://github.com/juherr/open-ocpp-tck/issues/56
 [#64]: https://github.com/juherr/open-ocpp-tck/pull/64
 [#65]: https://github.com/juherr/open-ocpp-tck/pull/65
 [#67]: https://github.com/juherr/open-ocpp-tck/pull/67
