@@ -24,7 +24,7 @@ error.
 ## The gate
 
 `bun run verify` is every check CI runs before it starts a container —
-typecheck, committed declarations, three driver scope checks, twelve in-process
+typecheck, committed declarations, three driver scope checks, thirteen in-process
 guards and fifteen shell guards — with one exit code, and every step runs even
 after one fails, where CI enumerates them and stops at the first.
 
@@ -52,6 +52,7 @@ bun tests/expected-failure-standing.ts
 bun tests/assert-answered.ts
 bun tests/get-configuration-filter.ts
 bun tests/foreign-sweep-scope.ts
+bun tests/csms-readiness-gate.ts
 bun tests/sim-docker-argv.ts
 bun tests/trace-frames.ts
 bun tests/steve-ui-session-race.ts
@@ -129,7 +130,7 @@ There is no unit-test framework and no `*.test.ts`. `tests/` holds offline
 guards, each with a header stating the property it protects. `bun run test`
 chains them — note `bun test` is Bun's own runner and finds nothing here.
 
-Shell is the default, and the twelve TypeScript ones are TypeScript because
+Shell is the default, and the thirteen TypeScript ones are TypeScript because
 what they assert is unreachable through the CLI. `driver-env-scope.ts`: a
 driver's declarations follow the env they are *resolved* with, where the CLI
 can only ever pass `process.env`. `capability-parity.ts`: the same reason and
@@ -156,6 +157,15 @@ a spelling and no sweep, offline or live, could say so.
 version would start a container per row on the daemon this repository's own
 sweeps share — and the rule is what can be wrong, so `classifyForeignSims` is
 exported without the daemon in it, the same split `tck/standing.ts` is.
+`csms-readiness-gate.ts`: the other preflight rule, and the same split for a
+longer list of reasons — a CSMS that accepts a connection and never answers, a
+driver that declines a core method, a probe that hangs for good are three
+states neither bundled CSMS can be asked for, and the direction that fails
+*silently* is the one worth the guard: a gate that waited on every rejection
+would spend its whole budget on a driver that was never going to answer, which
+looks exactly like a slow CSMS. So `awaitCsmsReady` takes its probe and its
+clock, and the runner keeps `Date.now`, `setTimeout` and one call into the
+contract.
 `sim-docker-argv.ts`: `buildDockerArgs` is pure and its one caller spawns
 docker in the next statement, so the argv a scenario would run is not printable
 from a shell — and `defaultSimConfig` resolving the env it is *handed* is the

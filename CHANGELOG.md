@@ -12,6 +12,19 @@ Released as `0.3.0`. The documented install ref already points at that tag, so
 
 ### Added
 
+- A CSMS readiness gate in the runner's preflight: `run` and `run-all` now
+  require one record query to be answered before anything is dispatched, and
+  wait up to 150s for it — the larger of the two cold-boot allowances the
+  bundled compose files give a CSMS, so the gate is never the first thing to
+  give up on a server that is merely booting. A CSMS that is not up stops the
+  run with one sentence instead of a container and an ERROR row per scenario.
+  A driver that cannot answer the probe — `create()` wants a credential, the
+  method is declined — reports that the gate did not apply and the run proceeds
+  unchanged. It is deliberately **not** a fix for [#119]: the artifact that
+  issue cites has its three failures dispatched eleven minutes into the sweep,
+  against a CSMS that had been answering since it booted, so a check that runs
+  once before the first container cannot see them. `tck/readiness.ts` carries
+  the measurement where the warm-up gate would be re-proposed ([#119])
 - `SetChargingProfile` and `GetCompositeSchedule` join `CsmsOperation201` — the
   second operation tranche, bought as a pair because
   `tck/specs/OCA-201-OPERATIONS.txt` sizes it that way: thirteen selected cases
@@ -476,3 +489,4 @@ releases from 141 commits would mean writing detail nobody measured.
 [#87]: https://github.com/juherr/open-ocpp-tck/issues/87
 [#105]: https://github.com/juherr/open-ocpp-tck/issues/105
 [#114]: https://github.com/juherr/open-ocpp-tck/issues/114
+[#119]: https://github.com/juherr/open-ocpp-tck/issues/119

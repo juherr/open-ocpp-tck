@@ -112,6 +112,15 @@ jobs:
       - name: The foreign-sweep refusal sees every namespace
         run: bun tests/foreign-sweep-scope.ts
 
+      # The other preflight rule, in-process for a longer version of the same
+      # reason: every row needs a CSMS engineered a chosen way -- one that
+      # accepts a connection and never answers, one whose driver declines a core
+      # method, one whose probe hangs for good. None is a state either bundled
+      # CSMS can be asked for, and the direction that fails silently is a gate
+      # that waits on a rejection waiting cannot fix.
+      - name: The readiness gate waits on one thing only
+        run: bun tests/csms-readiness-gate.ts
+
       # In-process because `buildDockerArgs` is pure and its only caller spawns
       # docker in the next statement: the argv a scenario would run is not
       # printable from a shell, and neither is a resolution from an environment

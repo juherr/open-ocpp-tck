@@ -68,6 +68,11 @@ run "an unfiltered GetConfiguration is a shape, not a spelling" bun tests/get-co
 # checking it from a shell would mean starting a container per row on the very
 # daemon it protects.
 run "the foreign-sweep refusal sees every namespace" bun tests/foreign-sweep-scope.ts
+# The other preflight rule, and in-process for a longer version of the same
+# reason: every row needs a CSMS engineered a chosen way -- one that accepts a
+# connection and never answers, one whose driver declines a core method, one
+# whose probe hangs for good. The seam is the probe and the clock.
+run "the readiness gate waits on one thing only" bun tests/csms-readiness-gate.ts
 # And in-process because buildDockerArgs is pure and its one caller spawns
 # docker in the next statement, so the argv a scenario would run is not
 # printable from a shell -- nor is a resolution from an environment that is not
