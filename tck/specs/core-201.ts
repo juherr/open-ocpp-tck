@@ -2643,6 +2643,12 @@ const TC_G_08: ScenarioSpec = {
 /** How far a charging-profile scenario back-dates `validFrom`. */
 const PROFILE_BACKDATE_MS = 60_000;
 
+/** What TC_K_05 clears when the station's report carried no identifier it could
+ *  read. Negative so it can be no profile any scenario installs, and so the
+ *  failure reads as a value rather than as an absence -- see the comment at the
+ *  use for why this is a sentinel rather than a throw. */
+const PROFILE_ID_UNREPORTED = -1;
+
 /** What TC_K_01 sent, so the assertion can ask whether it survived. */
 interface ProfileWindow {
   validFrom: string;
@@ -4142,8 +4148,397 @@ const TC_K_36: ScenarioSpec = {
 };
 
 /**
- * The scenarios, in case order -- the thirty-three of `OCA-201-SLICE.txt`'s 147
- * that are implemented. The other 114 are declined there rather than here,
+ * The one received `ClearChargingProfile`, compared member by member in BOTH
+ * directions.
+ *
+ * BY OCCURRENCE AND NOT BY AN IDENTIFIER, unlike `chargingProfilesQuery` above,
+ * and the difference is the deployment rather than a change of mind. The pinned
+ * CSMS sends a `GetChargingProfiles` of its own off every accepted
+ * `SetChargingProfile`; it sends no `ClearChargingProfile` of its own off
+ * anything, so the only requests of this action on the wire are the scenario's.
+ * There is also no `requestId` on this request to correlate by if it did.
+ *
+ * THE MEMBER SET IS THE MEASUREMENT, for `assertChargingProfilesRequested`'s
+ * reason and one sharper here: the three cases below differ in nothing but
+ * which of the two members they carry. Clearing by identifier and clearing by
+ * criteria are the same request minus a member, and the pinned CSMS refuses the
+ * combination outright -- so a CSMS that added the member the scenario left out
+ * has produced a request that never reached the wire at all, and a check
+ * looking only for what it was told to expect would report the absence of a
+ * frame as a missing answer rather than as a reshaped request.
+ */
+function assertClearProfileRequested(
+  rec: AssertRecorder,
+  frames: readonly Frame[],
+  occurrence: number,
+  expected: Readonly<{
+    chargingProfileId?: number;
+    chargingProfileCriteria?: Readonly<Record<string, string | number>>;
+  }>,
+  description: string,
+): void {
+  const found = receivedCallPayload(frames, occurrence, "ClearChargingProfile");
+  if ("error" in found) {
+    rec.fail(description, found.error);
+    return;
+  }
+  const wrong: string[] = [];
+  if (!Object.is(found.payload.chargingProfileId, expected.chargingProfileId)) {
+    wrong.push(`chargingProfileId=${JSON.stringify(found.payload.chargingProfileId)}`);
+  }
+  const sent = found.payload.chargingProfileCriteria;
+  const want = expected.chargingProfileCriteria;
+  if (want === undefined) {
+    if (sent !== undefined) {
+      wrong.push(
+        `chargingProfileCriteria=${JSON.stringify(sent)} narrows what this case clears by identifier`,
+      );
+    }
+  } else if (typeof sent !== "object" || sent === null || Array.isArray(sent)) {
+    wrong.push(`chargingProfileCriteria=${JSON.stringify(sent)}, which is not an object`);
+  } else {
+    const members = sent as Record<string, unknown>;
+    for (const [key, value] of Object.entries(want)) {
+      if (!Object.is(members[key], value)) {
+        wrong.push(`chargingProfileCriteria.${key}=${JSON.stringify(members[key])}`);
+      }
+    }
+    for (const key of Object.keys(members)) {
+      if (!(key in want)) {
+        wrong.push(
+          `chargingProfileCriteria.${key}=${JSON.stringify(members[key])} narrows what this case does not`,
+        );
+      }
+    }
+  }
+  if (wrong.length === 0) {
+    rec.pass(description);
+    return;
+  }
+  rec.fail(
+    description,
+    `expected ${JSON.stringify(expected)}; got ${wrong.join(", ")}`,
+  );
+}
+
+/**
+ * The identifier the `ClearChargingProfile` carried is the one the station's
+ * own `ReportChargingProfiles` announced, and not a value written into the
+ * scenario.
+ *
+ * THIS IS TC_K_05's WHOLE POINT and it is why the check reads two frames rather
+ * than comparing one against a literal. The case is the CSMS learning what a
+ * station holds and then acting on what it learned; a scenario that installed
+ * profile N and then cleared profile N would pass every check here while
+ * measuring nothing, because the CSMS never had to read the report. Deriving
+ * the expected value FROM the report is what makes the round trip the subject.
+ *
+ * THE REPORT IS SELECTED BY requestId, by `chargingProfilesQuery`'s rule: the
+ * CSMS's own unprompted query produces a report too, and it carries the CSMS's
+ * generated identifier rather than the scenario's.
+ */
+function assertClearedTheReportedProfile(
+  rec: AssertRecorder,
+  frames: readonly Frame[],
+  requestId: number,
+  description: string,
+): void {
+  const reports = findAllCalls(frames, "sent", "ReportChargingProfiles").filter(
+    (call) =>
+      typeof call.payload === "object" &&
+      call.payload !== null &&
+      !Array.isArray(call.payload) &&
+      (call.payload as Record<string, unknown>).requestId === requestId,
+  );
+  if (reports.length !== 1) {
+    rec.fail(
+      description,
+      `${reports.length} sent ReportChargingProfiles carry requestId=${requestId}, where the station owes exactly one`,
+    );
+    return;
+  }
+  const profiles = (reports[0].payload as { chargingProfile?: unknown })
+    .chargingProfile;
+  if (!Array.isArray(profiles) || profiles.length === 0) {
+    rec.fail(
+      description,
+      `the report carries chargingProfile=${JSON.stringify(profiles)}, so there is no identifier to have learned`,
+    );
+    return;
+  }
+  const reportedId = (profiles[0] as { id?: unknown }).id;
+  const cleared = receivedCallPayload(frames, 0, "ClearChargingProfile");
+  if ("error" in cleared) {
+    rec.fail(description, cleared.error);
+    return;
+  }
+  if (Object.is(cleared.payload.chargingProfileId, reportedId)) {
+    rec.pass(description);
+    return;
+  }
+  rec.fail(
+    description,
+    `the station reported profile ${JSON.stringify(reportedId)} and the CSMS cleared ${JSON.stringify(cleared.payload.chargingProfileId)}`,
+  );
+}
+
+const TC_K_05: ScenarioSpec = {
+  templateId: "cert201-tck05-clear-reported-profile",
+  description:
+    "TC_K_05 Clear Charging Profile: the CSMS reads which profiles a station holds and then clears one by the identifier the station reported.",
+  ocppVersion: "OCPP-2.0.1",
+  runsSimTemplate: false,
+  connector: 1,
+  bootWaitSecs: 4,
+  // 20, the longest in the block: three CSMS requests where TC_K_30's chain has
+  // two, and the middle one is answered by a station-initiated report the last
+  // one has to wait for.
+  holdSecs: 20,
+  async drive({ cpId, csms201, sim }) {
+    const now = Date.now();
+    await csms201.execute(cpId, {
+      action: "SetChargingProfile",
+      evseId: 1,
+      chargingProfile: {
+        id: 9305,
+        stackLevel: 5,
+        chargingProfilePurpose: "TxDefaultProfile",
+        chargingProfileKind: "Absolute",
+        validFrom: new Date(now - PROFILE_BACKDATE_MS),
+        validTo: new Date(now + 3_600_000),
+        chargingSchedule: [
+          {
+            id: 9305,
+            startSchedule: new Date(now - PROFILE_BACKDATE_MS),
+            chargingRateUnit: "W",
+            chargingSchedulePeriod: [{ startPeriod: 0, limit: 5000 }],
+          },
+        ],
+      },
+    });
+    await sleep(2000);
+    await csms201.execute(cpId, {
+      action: "GetChargingProfiles",
+      requestId: 7305,
+      evseId: 1,
+      chargingProfile: { stackLevel: 5 },
+    });
+    // WAIT FOR THE REPORT, DO NOT SLEEP FOR IT. The next request is built from
+    // what this line carries, so a fixed pause would race the station and a
+    // slow one would make the scenario clear `undefined`. The requestId in the
+    // lookahead is the scenario's own -- the CSMS sends an unprompted query of
+    // its own off the accepted SetChargingProfile above and the station answers
+    // that one with a report too.
+    const line = await sim.waitForLine(
+      /Sent: \[2,"[^"]*","ReportChargingProfiles",(?=[^\]]*"requestId":7305)/,
+      10_000,
+    );
+    // A SENTINEL AND NOT A THROW, which is the opposite of what this wants to
+    // be and is forced by tools/extract-drive-trace.ts: it walks drive() with a
+    // stub simulator, so the line it hands back matches nothing, and a throw
+    // here would end the walk before the request this case is ABOUT was
+    // recorded. The pinned trace would then be silent about the step most worth
+    // pinning. Nothing is hidden by it -- the sentinel is not a profile any
+    // scenario installs, so the station answers Unknown, and
+    // assertClearedTheReportedProfile reads the reported id off the wire and
+    // fails naming both values. A bad parse is a red scenario either way; this
+    // way the artifact still says what the scenario does.
+    //
+    // The pattern is the pinned station's payload exactly: `chargingProfile` is
+    // the last member of the report and `id` the first of a profile inside it.
+    const reportedId = Number(
+      /"chargingProfile":\[\{"id":(\d+)/.exec(line)?.[1] ?? PROFILE_ID_UNREPORTED,
+    );
+    // BY IDENTIFIER AND NOTHING ELSE. The pinned CSMS refuses a request that
+    // carries a criterion beside an identifier before it reaches the wire, and
+    // the case has no criterion to add anyway: the report named one profile.
+    await csms201.execute(cpId, {
+      action: "ClearChargingProfile",
+      chargingProfileId: reportedId,
+    });
+  },
+  assert({ frames, rec }) {
+    assertResponseStatus(
+      rec,
+      frames,
+      "SetChargingProfile",
+      "Accepted",
+      "the station holds the profile this case goes on to clear",
+      { direction: "received" },
+    );
+    assertChargingProfilesRequested(
+      rec,
+      frames,
+      7305,
+      1,
+      { stackLevel: 5 },
+      "GetChargingProfiles.req asks EVSE 1 for the profiles at stack level 5",
+    );
+    assertChargingProfilesAnswered(
+      rec,
+      frames,
+      7305,
+      "Accepted",
+      "the station accepted the query rather than answering NoProfiles",
+    );
+    assertClearedTheReportedProfile(
+      rec,
+      frames,
+      7305,
+      "ClearChargingProfile.req names the profile the station's own report announced",
+    );
+    assertClearProfileRequested(
+      rec,
+      frames,
+      0,
+      { chargingProfileId: 9305 },
+      "ClearChargingProfile.req clears by identifier alone, with no criteria beside it",
+    );
+    assertResponseStatus(
+      rec,
+      frames,
+      "ClearChargingProfile",
+      "Accepted",
+      "the station cleared the profile it had just reported",
+      { direction: "received" },
+    );
+    assertAllAnswered(rec, frames, "ReportChargingProfiles");
+  },
+};
+
+const TC_K_06: ScenarioSpec = {
+  templateId: "cert201-tck06-clear-profile-by-criteria",
+  description:
+    "TC_K_06 Clear Charging Profile: the CSMS clears an installed profile by purpose and stack level rather than by identifier, and the station accepts.",
+  ocppVersion: "OCPP-2.0.1",
+  runsSimTemplate: false,
+  connector: 1,
+  bootWaitSecs: 4,
+  // 12, TC_K_30's chain minus the report it waits for.
+  holdSecs: 12,
+  async drive({ cpId, csms201 }) {
+    const now = Date.now();
+    await csms201.execute(cpId, {
+      action: "SetChargingProfile",
+      evseId: 1,
+      chargingProfile: {
+        id: 9306,
+        stackLevel: 6,
+        chargingProfilePurpose: "TxDefaultProfile",
+        chargingProfileKind: "Absolute",
+        validFrom: new Date(now - PROFILE_BACKDATE_MS),
+        validTo: new Date(now + 3_600_000),
+        chargingSchedule: [
+          {
+            id: 9306,
+            startSchedule: new Date(now - PROFILE_BACKDATE_MS),
+            chargingRateUnit: "W",
+            chargingSchedulePeriod: [{ startPeriod: 0, limit: 6600 }],
+          },
+        ],
+      },
+    });
+    await sleep(2000);
+    // THREE MEMBERS AND NO IDENTIFIER, which is what makes this TC_K_06 rather
+    // than TC_K_08. The station answers `Unknown` when nothing matched, so a
+    // criterion that named a stack level nothing sits at would give TC_K_08's
+    // answer from TC_K_06's request -- the stack level is this scenario's own
+    // for that reason, since scenarios share a station across a sweep.
+    await csms201.execute(cpId, {
+      action: "ClearChargingProfile",
+      chargingProfileCriteria: {
+        evseId: 1,
+        chargingProfilePurpose: "TxDefaultProfile",
+        stackLevel: 6,
+      },
+    });
+  },
+  assert({ frames, rec }) {
+    assertResponseStatus(
+      rec,
+      frames,
+      "SetChargingProfile",
+      "Accepted",
+      "the station holds the profile this case goes on to clear",
+      { direction: "received" },
+    );
+    assertClearProfileRequested(
+      rec,
+      frames,
+      0,
+      {
+        chargingProfileCriteria: {
+          evseId: 1,
+          chargingProfilePurpose: "TxDefaultProfile",
+          stackLevel: 6,
+        },
+      },
+      "ClearChargingProfile.req clears EVSE 1's TxDefaultProfile at stack level 6, by criteria and not by identifier",
+    );
+    assertResponseStatus(
+      rec,
+      frames,
+      "ClearChargingProfile",
+      "Accepted",
+      "the station cleared a profile the criteria matched",
+      { direction: "received" },
+    );
+  },
+};
+
+const TC_K_08: ScenarioSpec = {
+  templateId: "cert201-tck08-clear-unknown-profile",
+  description:
+    "TC_K_08 Clear Charging Profile: the CSMS clears a profile identifier the station never installed, and the station declines with Unknown.",
+  ocppVersion: "OCPP-2.0.1",
+  runsSimTemplate: false,
+  connector: 1,
+  bootWaitSecs: 4,
+  // 10, the shortest in the block: one request and no setup, because the
+  // absence of a profile IS this case's precondition.
+  holdSecs: 10,
+  async drive({ cpId, csms201 }) {
+    // NOTHING IS INSTALLED FIRST, AND THAT IS THE CASE. Every other Smart
+    // Charging scenario opens with a SetChargingProfile; this one must not,
+    // because what it measures is the station's answer when the identifier
+    // matches nothing it holds. The identifier is one no other scenario in the
+    // suite installs -- they share a station across a sweep, so a value another
+    // scenario used would turn this case's `Unknown` into an `Accepted`
+    // whenever the two ran in the wrong order.
+    await csms201.execute(cpId, {
+      action: "ClearChargingProfile",
+      chargingProfileId: 9308,
+    });
+  },
+  assert({ frames, rec }) {
+    assertClearProfileRequested(
+      rec,
+      frames,
+      0,
+      { chargingProfileId: 9308 },
+      "ClearChargingProfile.req names profile 9308 and carries no criteria",
+    );
+    assertNotSent(
+      rec,
+      frames,
+      "SetChargingProfile",
+      "received",
+      "no profile was installed before the request, so the identifier matches nothing the station holds",
+    );
+    assertResponseStatus(
+      rec,
+      frames,
+      "ClearChargingProfile",
+      "Unknown",
+      "the station declined an identifier it holds no profile under",
+      { direction: "received" },
+    );
+  },
+};
+
+/**
+ * The scenarios, in case order -- the thirty-six of `OCA-201-SLICE.txt`'s 147
+ * that are implemented. The other 111 are declined there rather than here,
  * with the reason in the row: one place per fact, and the guard reads that one.
  */
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
@@ -4168,6 +4563,9 @@ export const CORE_201_SPECS: ScenarioSpec<any>[] = [
   TC_K_01,
   TC_K_03,
   TC_K_04,
+  TC_K_05,
+  TC_K_06,
+  TC_K_08,
   TC_K_10,
   TC_K_19,
   TC_K_29,
