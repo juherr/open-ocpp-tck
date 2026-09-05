@@ -237,8 +237,10 @@ type StateDefinitions = { [S in ReusableState201]: StateDefinition<S> };
 const SENT_AUTHORIZE = /Sent: \[2,"[^"]*","Authorize",/;
 
 /**
- * A transaction-carrying TransactionEvent that reports energy flowing. The
- * member is matched by lookahead rather than in sequence, same rule.
+ * A transaction-carrying TransactionEvent that reports energy flowing, and the
+ * uniqueId the CSMS owes an answer under. The member is matched by lookahead
+ * rather than in sequence, same rule; the id is captured because
+ * {@link answeredCall} is the only way to correlate the answer back.
  *
  * STRICTER THAN THE PATTERN IT REPLACES, AND MEASURED TO BE EQUIVALENT.
  * TC_B_21 waited on any `TransactionEvent` at all; this one is the state's
@@ -252,14 +254,46 @@ const SENT_AUTHORIZE = /Sent: \[2,"[^"]*","Authorize",/;
  * real rather than reasoned about.
  */
 const SENT_TRANSACTION_EVENT_CHARGING =
-  /Sent: \[2,"[^"]*","TransactionEvent",(?=[^\]]*"chargingState":"Charging")/;
+  /Sent: \[2,"([^"]*)","TransactionEvent",(?=[^\]]*"chargingState":"Charging")/;
 
-/** How long a fixture waits for the station to produce a frame. Longer than the
- *  10s TC_B_21 used inline, because two waits now run where one did and the
- *  second is looking at a line the first may already have consumed the run-up
- *  to. Not `holdSecs`: fixtures run BEFORE drive(), and the hold is the window
- *  a scenario's own traffic gets. */
+/** How long a fixture waits for a frame. Longer than the 10s TC_B_21 used
+ *  inline, because three waits now run where one did and each is looking at a
+ *  line an earlier one may already have consumed the run-up to. Measured
+ *  against the CI corpus for the wait that is new: across 47 archived
+ *  `Started`/`Charging` events the CSMS answered in 30..208ms, p50 89ms, so
+ *  this is two orders of magnitude of slack. Generous on purpose -- the only
+ *  runs that pay it are runs where the CSMS has already stopped answering.
+ *  Not `holdSecs`: fixtures run BEFORE drive(), and the hold is the window a
+ *  scenario's own traffic gets. */
 const REACH_TIMEOUT_MS = 15_000;
+
+/**
+ * The CSMS's answer to one CALL, correlated by the uniqueId that CALL carried.
+ *
+ * The uniqueId is the only thing an OCPP-J CALLRESULT carries that ties it to a
+ * request -- which is the same fact `reachUnavailable` below gives as its
+ * reason for NOT waiting on one. The difference is that here the id is in hand,
+ * so the wait is available.
+ *
+ * A CALLRESULT AND NOT AN ANSWER OF ANY KIND, and that is not this fixture
+ * judging what the CSMS said. `[4,…]` is the CSMS declining to record the
+ * transaction, so a run that got one has not reached the condition and timing
+ * out is the honest report. Whether the CSMS's silence or its error is a
+ * finding is the case's question, and `assertAllAnswered` reads the frames to
+ * answer it rather than this wait.
+ */
+function answeredCall(uniqueId: string): RegExp {
+  return new RegExp(`Received: \\[3,"${uniqueId.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")}"`);
+}
+
+/** What the uniqueId reads as when the line the first wait returned is not a
+ *  frame. Live this cannot happen -- the pattern captured the id off the line
+ *  it matched -- but `tools/extract-drive-trace.ts` answers every wait with a
+ *  placeholder, and a reach that threw there would drop this wait, every state
+ *  after it and their STATE lines from a committed artifact WITHOUT failing
+ *  anything. So the second wait is issued either way, and what DRIVE-TRACE.txt
+ *  pins is a pattern shaped like the live one. */
+const UNIQUE_ID_UNPARSED = "<uniqueId>";
 
 /** One command, because the pinned image gives no finer lever -- see the note
  *  on AUTHORIZED's segment for what it produces. Named rather than inlined so
@@ -277,13 +311,64 @@ const reachAuthorized: NonNullable<ReachSegment<"Authorized">["run"]> = async (
   await ctx.sim.waitForLine(SENT_AUTHORIZE, REACH_TIMEOUT_MS);
 };
 
-/** A wait and not a send: the command `reachAuthorized` issued is what carries
- *  the station into charging, and the pinned image emits the whole sequence off
- *  it. What is left for this state is to observe its own post condition. */
+/**
+ * Waits and not sends: the command `reachAuthorized` issued is what carries the
+ * station into charging, and the pinned image emits the whole sequence off it.
+ * What is left for this state is to observe its post condition.
+ *
+ * TWO WAITS, AND THE SECOND ONE IS THE CSMS'S. The station's `TransactionEvent`
+ * is the condition Part 6 writes; it is NOT enough for a case that then names
+ * the transaction to the CSMS, because the id is minted by the station and the
+ * CSMS only has a row for it once it has processed the event. TC_K_60 measured
+ * that gap for real: it read the id off the CALL and sent a `TxProfile` naming
+ * it 160ms later, the CSMS answered "Transaction … not found on station", and
+ * the scenario ERRORed -- twice, the isolated retry included, so not lane
+ * contention. Waiting for the CALLRESULT to that exact event closes it.
+ *
+ * WIDENING THE STATE AND NOT THE CASE, which is the decision worth arguing.
+ * Part 6's post condition for `EnergyTransferStarted` is about the STATION, so
+ * this is our model rather than a transcription of the reference's, and the
+ * file header is explicit that the reach sequence is the part that is ours to
+ * write while the post condition is what a fixture may promise. What this adds
+ * to the promise is the half a CSMS-side case cannot do without: `transactionId`
+ * is the ONE condition in this graph that exists as a row on the CSMS and gets
+ * named back to it by an operation, and a fixture that hands drive() a CSMS
+ * which cannot yet be asked about the transaction it just established has not
+ * finished establishing it. Nothing else in the fourteen has that shape, which
+ * is why the same treatment is not applied to `reachAuthorized` above.
+ *
+ * TRIED AND REJECTED, here because here is where it gets re-proposed: put the
+ * wait in TC_K_60's `drive()` instead, since TC_K_60 is the only scenario that
+ * names a transaction today. Three things against it. The scenario would have
+ * to re-derive the correlation -- capture the uniqueId, build the pattern,
+ * bound the wait -- which is this function's work done a second time by the one
+ * caller least able to check it. It would have to invent its own degradation:
+ * `establishStates` already turns a reach that times out into an unestablished
+ * state and `assertStateEstablished` already turns that into SKIPPED with
+ * `UNEXERCISED_PREFIX`, where a scenario-local wait needs its own try/catch and
+ * its own skip -- and TC_K_60's existing skip says "the station opened no
+ * transaction", which would then be printed for a run where the station opened
+ * one and the CSMS was slow. And it leaves the next case to rediscover it: the
+ * selection rule picks 147, `EnergyTransferSuspended` and `StopAuthorized` both
+ * sit downstream of this state, and the cost of being wrong is an ERROR, which
+ * reads as the harness breaking rather than as a race.
+ *
+ * MEASURED AGAINST THE CORPUS, the rule `SENT_TRANSACTION_EVENT_CHARGING` set
+ * for a strengthened wait. 62 archived `Started`/`Charging` events; 47 answered
+ * (30..208ms) and 15 not. All 15 are `cert201-tcb21-reset-scheduled` runs in
+ * which the CSMS had stalled outright -- the `Authorize` before the event is
+ * unanswered too, and no `Reset` ever reaches the wire. Those 15 are FAIL today
+ * and stay FAIL: the `Reset.req received` checks and `assertAllAnswered` are
+ * what fail, and neither is gated on the fixture. What moves is "a transaction
+ * was running when the reset was asked for", from PASS to SKIPPED, which is the
+ * more accurate of the two about a CSMS that never learnt of the transaction.
+ */
 const reachEnergyTransferCharging: NonNullable<
   ReachSegment<"EnergyTransferStarted">["run"]
 > = async (ctx) => {
-  await ctx.sim.waitForLine(SENT_TRANSACTION_EVENT_CHARGING, REACH_TIMEOUT_MS);
+  const sent = await ctx.sim.waitForLine(SENT_TRANSACTION_EVENT_CHARGING, REACH_TIMEOUT_MS);
+  const uniqueId = SENT_TRANSACTION_EVENT_CHARGING.exec(sent)?.[1] ?? UNIQUE_ID_UNPARSED;
+  await ctx.sim.waitForLine(answeredCall(uniqueId), REACH_TIMEOUT_MS);
 };
 
 /**
@@ -392,8 +477,10 @@ const ENERGY_TRANSFER_STARTED: StateDefinition<"EnergyTransferStarted"> = {
   reach: [
     {
       // The EV is not connected yet, so the transaction the `Authorized` edge
-      // opened is what carries the station into charging. A wait and not a
-      // send: the pinned image emits the whole sequence off one command.
+      // opened is what carries the station into charging. Waits and not sends:
+      // the pinned image emits the whole sequence off one command, and the
+      // second wait is the CSMS answering -- see the reach for why that half is
+      // here rather than in the one case that needs it.
       when: (condition) => !condition.evConnected,
       run: reachEnergyTransferCharging,
     },

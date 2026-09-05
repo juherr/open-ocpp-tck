@@ -2964,6 +2964,17 @@ const TC_K_60: ScenarioSpec<RunningTransaction> = {
     // row key, which is a different thing and not on the wire at all. The
     // fixture has already put the event on the log, and waitForLine scans what
     // has been seen before it waits, so this re-matches rather than blocks.
+    //
+    // AND IT RE-MATCHES A FRAME THE CSMS HAS ALREADY ANSWERED, which is the
+    // part that is not visible here. The id is the STATION's, so the CSMS has
+    // no row for it until it has processed the event -- and this scenario sent
+    // the profile 160ms after the CALL, before the answer, and got back
+    // "Transaction … not found on station" as an ERROR. The fix is in
+    // `EnergyTransferStarted`'s reach, which now also waits for the CALLRESULT
+    // to that event; the argument for putting it there rather than in the
+    // three lines below is written on that reach, including why re-deriving
+    // the wait here would report "the station opened no transaction" for a run
+    // in which it did.
     let transactionId: string | undefined;
     try {
       const line = await sim.waitForLine(SENT_TRANSACTION_ID, 15_000);
