@@ -184,7 +184,8 @@ GROUP core-201
     SIM send {"command":"start_transaction","params":{"connector":1,"tagId":"CE712001"}}
     SIM wait-for-line Sent: \[2,"[^"]*","Authorize", 15000
     STATE EnergyTransferStarted [1, ce712001] segment=0
-    SIM wait-for-line Sent: \[2,"[^"]*","TransactionEvent",(?=[^\]]*"chargingState":"Charging") 15000
+    SIM wait-for-line Sent: \[2,"([^"]*)","TransactionEvent",(?=[^\]]*"chargingState":"Charging") 15000
+    SIM wait-for-line Received: \[3,"<uniqueId>" 15000
     OP 201:Reset [onidle]
     -> driveState keys=[]
   SPEC cert201-tcb22-reset-rejected
@@ -262,7 +263,8 @@ GROUP core-201
     SIM send {"command":"start_transaction","params":{"connector":1,"tagId":"CE712001"}}
     SIM wait-for-line Sent: \[2,"[^"]*","Authorize", 15000
     STATE EnergyTransferStarted [1, ce712001] segment=0
-    SIM wait-for-line Sent: \[2,"[^"]*","TransactionEvent",(?=[^\]]*"chargingState":"Charging") 15000
+    SIM wait-for-line Sent: \[2,"([^"]*)","TransactionEvent",(?=[^\]]*"chargingState":"Charging") 15000
+    SIM wait-for-line Received: \[3,"<uniqueId>" 15000
     SIM wait-for-line Sent: \[2,"[^"]*","TransactionEvent",(?=[^\]]*"transactionId":"([^"]+)") 15000
     SIM send {"command":"stop_transaction","params":{"connector":1}}
     -> driveState keys=[transactionId]
