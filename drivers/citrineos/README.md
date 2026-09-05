@@ -132,10 +132,10 @@ project network by *service* name, and only the container names move.
 
 ## The pinned version
 
-[`compose.yaml`](compose.yaml) pins **`v2.0.0-beta1`** by digest:
+[`compose.yaml`](compose.yaml) pins **`v2.0.0-beta3`** by digest:
 
 ```
-ghcr.io/citrineos/citrineos-server:v2.0.0-beta1@sha256:58800f45acd82c976e2f55dd9aab85baee61507938bb2cb0d0f81fc70853c6ef
+ghcr.io/citrineos/citrineos-server:v2.0.0-beta3@sha256:ddd8e98791b4f75523cf6a2aa3fd7cc35bd15bfb019d1461200e2c2e65462fd5
 ```
 
 A prerelease rather than the `v1.9.1` stable, and deliberately: the OCPP 1.6
@@ -144,6 +144,30 @@ v2 line, and six scenarios need them. Pinning by digest is what makes a
 prerelease safe to depend on — `:latest` currently resolves to the same bytes,
 and will not for long.
 
+**`beta3` rather than the `beta1` this pinned until now**, because beta1 has a
+defect this suite spent a milestone measuring. The message-correlation trigger
+`beta1` installs runs entirely `BEFORE INSERT`; its CALL branch back-fills
+`"requestMessageId" = NEW.id` on a row Postgres has not inserted yet, so
+`OCPPMessages_requestMessageId_fkey` fires and the violation escapes the
+dispatcher as an unhandled rejection. What a sweep sees is a response that was
+never delivered, reported as an unanswered request — 53 of them across 43 of
+the 92 archived CitrineOS artefacts, every one at `ocpp_correlate_message()`
+line 44, which is that `UPDATE`.
+
+[citrineos-core#830][pr830] splits the trigger — the CALL side moves to
+`AFTER INSERT` where `NEW.id` is a real row, the response side stays
+`BEFORE INSERT` because it must mutate `NEW` for `RETURNING`. It merged
+2026-08-06 and `v2.0.0-beta2` was cut the same evening; the migration
+(`apps/ocpp-server/migrations/20260806120000-fix-ocpp-message-correlation-trigger.ts`)
+is absent at `beta1` and present at `beta2`, `beta3` and `main`. `beta3` is the
+newest tag, so that is what this pins.
+
+The crash *mechanism* is not fixed by that bump — only its most frequent
+trigger. See the gap table row "A failed message-audit insert still kills the
+process".
+
+[pr830]: https://github.com/citrineos/citrineos-core/pull/830
+
 Re-resolve a digest with:
 
 ```sh
@@ -151,7 +175,7 @@ T=$(curl -sS "https://ghcr.io/token?scope=repository:citrineos/citrineos-server:
      | sed -n 's/.*"token":"\([^"]*\)".*/\1/p')
 curl -sSI -H "Authorization: Bearer $T" \
   -H "Accept: application/vnd.oci.image.index.v1+json" \
-  https://ghcr.io/v2/citrineos/citrineos-server/manifests/v2.0.0-beta1 \
+  https://ghcr.io/v2/citrineos/citrineos-server/manifests/v2.0.0-beta3 \
   | grep -i docker-content-digest
 ```
 
@@ -440,10 +464,13 @@ a `reason` that cannot name the limitation is `CONDITIONAL`, not
 | **`Connectors.evseTypeConnectorId` is not the foreign key it is declared as.** The column carries `@ForeignKey(() => EvseType)` and the database has **no** constraint behind it; its own comment says "the serial int starting at 1 used in OCPP 2.0.1 to refer to the connector, unique per EVSE", and every transaction path agrees — `TransactionEvent` looks a connector up by `evseTypeConnectorId: value.evse.connectorId`. | The fixture writes the OCPP connector number there. Writing an EVSE type's key instead makes that lookup miss, so the CSMS inserts its own connector and collides with the fixture on `(stationId, connectorId)` — one `CALLERROR InternalError: Failed handling message: Validation error` per transaction, which the suite sees as an unanswered `TransactionEvent`. Measured. | `packages/core/src/dal/layers/sequelize/repository/TransactionEvent.ts`, `model/Location/Connector.ts` |
 | **`0` is falsy where an `evseId` may be `0`.** `findOrCreateEvseAndComponent` resolves a component's EVSE with `connectorId ? connectorId : null`, so filing the station-scope status — `(evseId 0, connectorId 0)` — creates a *second* EVSE type numbered 0 with a null connector and repoints the component at it. The next status's lookup filters on the pair and no longer matches. | The fixture cannot be provisioned once: `prepareStation` re-asserts the join before every scenario, and the device-model read addresses the component by name and instance rather than through it. Without the repair the warning is back on the second scenario. Measured, twice. | `packages/core/src/dal/layers/sequelize/repository/DeviceModel.ts` |
 | **No 1.6 request handler for `FirmwareStatusNotification`.** Every one the charge point sends is answered with `[4,…,"NotSupported","No handler found for action: FirmwareStatusNotification at module configuration"]` — 10 across the three TC_044 logs, and the only CALLERROR the CSMS emits anywhere in the suite. | **A non-conformance, and the suite now detects it.** OCA `TC_044_{1,2,3}_CSMS` put steps 4 and 6 on the Central System — *"The Central responds with a FirmwareStatusNotification.conf"* — and a CALLERROR is not that conf. **TC_044.1/.2/.3 fail**, each on that check alone. Until issue #11 they passed, because they asserted only the statuses the charge point *sent*. | `packages/core/src/handlers/requests/1.6/` — `DiagnosticsStatusNotification` has one, `FirmwareStatusNotification` does not. No ticket upstream. |
-| **An unhandled promise rejection kills the process.** `WebhookDispatcher.dispatchMessageReceived` persists every message; a `SequelizeForeignKeyConstraintError` on `OCPPMessages_requestMessageId_fkey` escapes as an uncaught rejection and Node exits. | Compose's `restart: unless-stopped` restarts it, so from the charge point's side it is a 1006 followed by a reconnect and a reboot — which is what `scope.ts` recorded as unexplained on TC_044.2. Observed 21 restarts across one 26h session and 2 more inside a single sequential sweep; scenarios caught mid-restart fail for reasons that have nothing to do with what they assert. **Run sequentially and re-run any isolated failure before believing it.** | Stack in the container log: `router.js onMessage` → `webhook.dispatcher.js:103` → `Base.js:57`. Whether the CALLERROR above is the trigger is *not* established — the violated key is `requestMessageId`. |
+| **A failed message-audit insert still kills the process.** `WebhookDispatcher.dispatchMessageReceived` and `dispatchMessageSent` both `await this._ocppMessageRepository.createOCPPMessage(…)` *outside* the `try` that wraps the rest of the method. Any rejection from that insert leaves the async method as an uncaught rejection, and nothing catches it: there is no `process.on('unhandledRejection')` anywhere in citrineos-core. | Node exits. Compose's `restart: unless-stopped` brings it back, so from the charge point's side it is a 1006 followed by a reconnect and a reboot; scenarios caught mid-restart fail for reasons that have nothing to do with what they assert. **Run sequentially and re-run any isolated failure before believing it.** The pinned image no longer supplies the frequent trigger (row below), so this is now a latent fault rather than an observed one — any *new* insert failure still crashes the server. | `packages/core/src/modules/OcppRouter/src/module/webhook.dispatcher.ts`. [citrineos-core#846][pr846] wraps both inserts and is merged on `next` only; `main`, `beta2` and `beta3` are unchanged. **Re-check that PR's port to `main` before removing this row.** |
+| **[FIXED at the pinned digest] The correlation trigger violated its own foreign key.** History, kept because it is what a reader chasing a 1006 will find in the archives. The `BEFORE INSERT` trigger `v2.0.0-beta1` installed back-filled `"requestMessageId" = NEW.id` from its CALL branch, on a row that did not exist yet; `OCPPMessages_requestMessageId_fkey` fired, and the rejection escaped through the row above. | 53 events across 43 of 92 archived artefacts, all at `ocpp_correlate_message()` line 44 — the back-filling `UPDATE`. 21 restarts across one 26h session and 2 more inside a single sequential sweep. A swallowed response, reported by the suite as an unanswered request. | [citrineos-core#830][pr830] splits the trigger and ships as `apps/ocpp-server/migrations/20260806120000-fix-ocpp-message-correlation-trigger.ts`, present from `v2.0.0-beta2`. **Do not hunt this FK on the pinned image: it is gone.** |
 | **No 1.6 response handler for `UnlockConnector` or `UpdateFirmware`.** The Calls are routed and sent; the CallResults are answered with the same `NotSupported` CALLERROR. | Harmless — the six affected scenarios all pass. | `packages/core/src/handlers/responses/1.6/` |
 | **`GetConfiguration` is batched server-side.** The endpoint splits a request into batches of the station's stored `GetConfigurationMaxKeys`. | *Not* a problem in practice: an unprovisioned station has no such value, so the request stays one `GetConfiguration` on the wire and both TC_019 scenarios pass. Listed because provisioning that key would change it. | `Configuration/src/module/1.6/MessageApi.ts` |
 | **`SendLocalList` requires a strictly increasing `listVersion`,** and refuses otherwise *before* anything reaches the wire. Four scenarios send version 1. | `prepareStation` clears the station's stored list version each run, so a refusal cannot masquerade as a charge point ignoring the request. | `LocalAuthListService.ts`, and [`records.ts`](records.ts) |
+
+[pr846]: https://github.com/citrineos/citrineos-core/pull/846
 
 ### Checked against the OCA reference
 
@@ -509,10 +536,15 @@ whole firmware status train.
   reconnect and a `BootNotification` that lose the charge point's firmware
   state.
 
-**Which side closes that socket is not established.** The obvious suspicion is
-the CALLERROR, and it is wrong: TC_044.1 and TC_044.3 take four of them each
-and never disconnect. It is recorded as an open question rather than as a
-CitrineOS defect, because the evidence does not support the second reading.
+**Which side closed that socket is now established, and it was not the charge
+point.** The CSMS process died. The obvious suspicion was the CALLERROR, and it
+was wrong for the reason recorded at the time — TC_044.1 and TC_044.3 take four
+of them each and never disconnect; the actual cause is the correlation-trigger
+foreign key in the gap table above, whose victim is whichever CALL happens to
+reach the audit table after its own response. [citrineos-core#830][pr830]
+states that mechanism and fixes it, and the pinned image carries the fix, so
+these three lines are history for anyone running the current pin. Re-measure
+before treating the timing margins above as the remaining explanation.
 
 ### Smaller traps, handled
 

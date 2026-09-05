@@ -35,8 +35,9 @@
  * Versions
  * --------
  * Both CitrineOS lines are supported, selected by CITRINE_VARIANT and
- * defaulting to v2 -- drivers/citrineos/compose.yaml pins v2.0.0-beta1 by
- * digest, and compose.v1.yaml overrides it with v1.9.1. v1 costs the six
+ * defaulting to v2 -- drivers/citrineos/compose.yaml pins the v2 prerelease by
+ * digest and is the one place naming which, and compose.v1.yaml overrides it
+ * with v1.9.1. v1 costs the six
  * local-auth-list scenarios, whose 1.6 endpoints exist only from the v2 line,
  * and renames the OCPP connection column. See variant.ts.
  *
@@ -83,9 +84,12 @@ import {
 
 /**
  * What the 1.6 message API does not route, for the declared variant --
- * confirmed against both running images: v2.0.0-beta1's /docs/json advertises
+ * confirmed against both running images: the v2 line's /docs/json advertises
  * 18 `/ocpp/1.6/` paths and v1.9.1's advertises 16, with `reserveNow` and
- * `cancelReservation` absent from both.
+ * `cancelReservation` absent from both. Measured on v2.0.0-beta1 and carried
+ * to the v2.0.0-beta3 pin on a file identity rather than a re-run: all four
+ * of the modules' own `src/module/1.6/MessageApi.ts` are byte-identical
+ * between the two tags.
  *
  * Declared by subtraction from the contract's own list rather than by
  * enumerating the supported ones, so that an operation added to the contract

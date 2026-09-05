@@ -153,8 +153,8 @@ const V2_SCOPE = {
 
   // --- LocalAuthListManagement --------------------------------------------
   // Drivable only from the v2 line: the 1.6 GetLocalListVersion and
-  // SendLocalList endpoints do not exist at v1.9.1. compose.yaml pins
-  // v2.0.0-beta1 for exactly these six rows; README.md documents what pinning
+  // SendLocalList endpoints do not exist at v1.9.1. compose.yaml pins a v2
+  // prerelease for exactly these six rows; README.md documents what pinning
   // v1.9.1 instead would cost.
   "cert16-tc042-1-get-local-list-version-not-supported": d(OBSERVED),
   "cert16-tc042-2-get-local-list-version-empty": d(OBSERVED),
@@ -201,19 +201,26 @@ const V2_SCOPE = {
       "thinnest timing margin of all: retrieveDate was +90s against a 110s " +
       "hold, leaving ~20s. The spec now asks for +15s. " +
       "THE 1006 THIS ROW USED TO CALL UNEXPLAINED HAS AN ANSWER, AND IT IS " +
-      "NOT THE CHARGE POINT: the CitrineOS process dies on an unhandled " +
+      "NOT THE CHARGE POINT: the CitrineOS process died on an unhandled " +
       "promise rejection -- SequelizeForeignKeyConstraintError on " +
       "OCPPMessages_requestMessageId_fkey, thrown from " +
       "WebhookDispatcher.dispatchMessageReceived while persisting a message -- " +
-      "and compose's `restart: unless-stopped` brings it straight back. From " +
+      "and compose's `restart: unless-stopped` brought it straight back. From " +
       "the charge point's side that is exactly a 1006 followed by a reconnect " +
       "and a reboot. Observed 21 restarts over one 26h session and 2 more " +
-      "inside a single sequential sweep. What is still NOT established is the " +
-      "old suspicion that the CALLERROR causes it: the violated key is " +
-      "requestMessageId, which fits 'the unhandled request was never " +
-      "persisted, a later response references it', but that chain has not " +
-      "been proven. The right next step is a CitrineOS issue for the " +
-      "unhandled rejection, which is a crash whatever triggers it.",
+      "inside a single sequential sweep. THE CHAIN IS NOW ESTABLISHED, and " +
+      "not by us: citrineos-core#830 states the mechanism and fixes it. The " +
+      "correlation trigger ran entirely BEFORE INSERT, and its CALL branch " +
+      "back-fills an already-stored response with `requestMessageId = NEW.id` " +
+      "on a row Postgres has not inserted yet -- so every CALL persisted " +
+      "after its own response violated that key. The old suspicion had the " +
+      "right shape and the wrong direction: it is not that the request was " +
+      "never persisted, it is that it was persisted second. The pinned image " +
+      "is v2.0.0-beta3, which carries the fix, so this 1006 is history on the " +
+      "digest this driver runs against -- and the crash it rode is not: a " +
+      "failed audit insert still escapes, because citrineos-core#846 sits on " +
+      "`next` only. Tracking that port to `main` is what is owed here, not a " +
+      "new issue.",
   ),
   "cert16-tc044-3-firmware-install-failed": d(
     `${FIRMWARE_STATUS_NOT_HANDLED} The cleanest demonstration of what issue ` +
