@@ -172,14 +172,21 @@ The other half of that gap was whether a list this long may be committed at
 all, given that the references are CC BY-ND, and it is
 [answered](#what-may-be-committed-here-and-what-may-not): it may.
 
-Eleven of the 147 are implemented and 136 decline with a reason. Those reasons
-are written per group rather than per case — 23 of them across the 136 — and the
-file's header says why that is the granularity the decision was taken at rather
-than a placeholder. What a guard still cannot say is whether these are the
-*right* 147, and that is [unchanged](#the-guard).
+Seventeen of the 147 are implemented and 130 decline with a reason. Those
+reasons are written per group rather than per case — 23 of them across the 130 —
+and the file's header says why that is the granularity the decision was taken
+at rather than a placeholder. What a guard still cannot say is whether these
+are the *right* 147, and that is [unchanged](#the-guard).
 
-**Four of those eleven arrived by falsifying a reason rather than by adding an
-operation**, which is worth naming because it is the cheapest way this number
+**Six of the seventeen arrived with the first operation tranche**, which is the
+other way this number moves and the expensive one. `ChangeAvailability` heads
+the table below; nine cases name it and no other operation, and reading those
+nine in *Part 6* found six writable against the pinned simulator. The other
+three are declined on a Reusable State this build cannot reach rather than on
+the verb, and their rows say which state and why.
+
+**Four of the first eleven arrived by falsifying a reason rather than by adding
+an operation**, which is worth naming because it is the cheapest way this number
 moves. `TC_C_02`, `TC_E_10`, `TC_F_27` and `TC_J_01` need no member
 `CsmsOperation201` does not already have; three of them ask a driver for
 nothing at all. What had declined them was a group reason asserting that the

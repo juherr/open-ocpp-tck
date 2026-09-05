@@ -12,6 +12,32 @@ Released as `0.3.0`. The documented install ref already points at that tag, so
 
 ### Added
 
+- `ChangeAvailability` joins `CsmsOperation201` — the first operation tranche,
+  and the first arm whose subject is an OBJECT rather than a scalar. 2.0.1 has
+  no flat `evseId` here: `evse` is optional, carries a required `id` and an
+  optional `connectorId`, and which of the three shapes reaches the wire is the
+  whole difference between addressing the charging station, an EVSE and a
+  connector. A driver flattening it makes two of the six new scenarios
+  duplicates of two others. `Evse201` is exported for it, and
+  `drivers/citrineos` routes it through `configuration/changeAvailability`
+  ([#114])
+- Six OCPP 2.0.1 scenarios, taking the slice from 11 implemented cases to 17
+  and the suite from 58 scenarios to 64. `cert201-tcg03-evse-inoperative` and
+  `cert201-tcg04-evse-operative` (`TC_G_03`, `TC_G_04`: one EVSE out of and
+  back into service), `cert201-tcg05-station-inoperative` and
+  `cert201-tcg06-station-operative` (`TC_G_05`, `TC_G_06`: the whole charging
+  station, addressed by OMITTING `evse`) and
+  `cert201-tcg07-connector-inoperative` / `cert201-tcg08-connector-operative`
+  (`TC_G_07`, `TC_G_08`: one connector, addressed by `evse.connectorId`). Each
+  asserts the scope the CSMS actually put on the wire, its answer, and that the
+  status reports the station then sends are answered. None has met a live CSMS
+  — every scope row is `CONDITIONAL` and states the question the first sweep
+  settles ([#114])
+- `Unavailable` is the third Reusable State with a reach, and the first whose
+  reach is a CSMS operation rather than a station command. `TC_G_03` has no
+  tool validation of its own — its scenario IS the execution of that state —
+  so it declares the fixture and has no `drive()` at all ([#114])
+
 - `SAMPLE_OPERATION_201` — one well-formed operation per `CsmsOperation201`
   action, typed so that an arm added to the union is a compile error until
   somebody writes a request of its shape. It is what a driver's mapper can be
@@ -39,7 +65,8 @@ Released as `0.3.0`. The documented install ref already points at that tag, so
   three group reasons that used to decline them had ruled out ([#105], [#114])
 - `tck/specs/OCA-201-OPERATIONS.txt` — which CSMS-initiated operation each of
   the 147 selected OCPP 2.0.1 cases obliges the CSMS to send. **Twenty kinds of
-  operation** between them, against the four `CsmsOperation201` now carries: 90
+  operation** between them, against the four `CsmsOperation201` carried when it
+  was written: 90
   of the 147 drive at least one, and 57 drive none at all. That is the number
   `OCA-201-SELECTION.md` said was owed and the number issue [#87] asked for, and
   the page now carries it beside a tranche table sized by cases *completed* per

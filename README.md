@@ -4,7 +4,7 @@ An OCPP conformance TCK you point at **your** CSMS: 47 OCPP 1.6 certification
 scenarios, and 11 of the 147 OCPP 2.0.1 cases the selection rule owes.
 
 It brings a real charge point (the [`ocpp-cp-simulator`][sim] CLI, in a
-digest-pinned container), drives it through 58 certification scenarios, parses
+digest-pinned container), drives it through 64 certification scenarios, parses
 the OCPP-J frames both directions, and asserts on the captured wire log. What
 it does *not* bring is any knowledge of your CSMS: telling it "reset this
 charge point" is a **driver**, and a driver is one file you write.
@@ -24,7 +24,7 @@ The `cert16-` prefix is a protocol version, not decoration. Its counterpart is
 written rule, [`OCA-201-SELECTION.md`](OCA-201-SELECTION.md) — role CSMS,
 status mandatory, on every certification profile, which is 147 cases — and the
 resulting list is [`tck/specs/OCA-201-SLICE.txt`](tck/specs/OCA-201-SLICE.txt),
-where all 147 are written down: 11 implemented, 136 declined against 23 reasons.
+where all 147 are written down: 17 implemented, 130 declined against 23 reasons.
 A `cert201-` scenario needs a driver that speaks the protocol; one that does not
 says so per scenario in its scope table, and nothing else about it changes.
 
@@ -38,7 +38,7 @@ says so per scenario in its scope table, and nothing else about it changes.
         OCPP-J                                          v
            |                                     +--------------+
     ocpp-cp-simulator  <--- JSON Lines stdin ----|   ocpp-tck   |
-      (docker, pinned)  ---- stdout wire log --->|   58 specs   |
+      (docker, pinned)  ---- stdout wire log --->|   64 specs   |
                                                  +--------------+
 ```
 
@@ -103,7 +103,7 @@ bunx ocpp-tck driver selftest    # seconds: can the driver answer the contract?
 bunx ocpp-tck run-all --group core
 ```
 
-`run-all` is the whole suite: all 58 scenarios, one command. It did not use to
+`run-all` is the whole suite: all 64 scenarios, one command. It did not use to
 be — the `authorize` group (TC_023) sat outside `all`, so "no failures, 44
 scenarios" read like a clean sweep while skipping exactly the three scenarios
 that prove the fixtures took. Working in a clone, `bun run e2e` is that sweep
@@ -159,7 +159,7 @@ re-sync, and your driver can live in a completely different repository.
 | `ocpp-tck run <template-id>` | docker + CSMS | One scenario, plus its `results/<template-id>.log` and `.jsonl` wire trace |
 | `ocpp-tck run-all [--group N] [--parallel]` | docker + CSMS | A sweep, plus `results/summary.md` |
 | `ocpp-tck check-driver [--driver SPEC]` | nothing | Offline conformance of a driver against this core |
-| `ocpp-tck list-scenarios [--json]` | nothing | The 58 registered scenarios |
+| `ocpp-tck list-scenarios [--json]` | nothing | The 64 registered scenarios |
 | `ocpp-tck print-sim-image` | nothing | The pinned simulator image digest |
 | `ocpp-tck driver selftest [--with-writes]` | CSMS | Every `CsmsRecords` method once, in seconds: does this driver answer the contract? `--with-writes` adds the `prepareStation` hook |
 | `ocpp-tck driver <verb>` | driver-defined | A bootstrap verb your driver contributes |

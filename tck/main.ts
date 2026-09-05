@@ -849,7 +849,7 @@ async function runScenario<D>(
 // membership/order exactly (47 scenarios: 15 core + 13 authlist-reservation +
 // 12 remotetrigger-smartcharging + 4 firmware + 3 authorize), and one has no
 // upstream counterpart at all: core-201, the 11 OCPP 2.0.1 scenarios written
-// here rather than ported. 58 in total.
+// here rather than ported. 64 in total.
 //
 // A SIXTH BUCKET, NOT A SECOND AXIS, and the difference is worth stating here
 // because the note further down forbids the second. --group selects
