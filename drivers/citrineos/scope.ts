@@ -363,12 +363,13 @@ const CERT_201: readonly (keyof typeof V2_SCOPE)[] = CERT_201_SCENARIOS;
  * The v1.9.1 line has a defect that most of the suite depends on, so a blanket
  * "driven green" would be wrong twice over. See V1_KNOWN.
  *
- * A third edit since: the five OCPP 2.0.1 rows are demoted whatever they say
- * on v2. They are the one group the inherit-then-edit shape gets wrong in BOTH
+ * A third edit since: every OCPP 2.0.1 row is demoted whatever it says on v2.
+ * They are the one group the inherit-then-edit shape gets wrong in BOTH
  * directions -- a DRIVABLE one would come through as "expressible on v1.9.1
  * and driven identically", which is the opposite of true, and a CONDITIONAL
  * one would come through untouched, asking a question of a line this driver
- * declares no 2.0.1 surface for at all.
+ * declares no 2.0.1 surface for at all. Which rows those are is
+ * CERT_201_SCENARIOS' to say, and the count belongs in neither file.
  */
 function v1Scope(): ScopeTable {
   const table: Record<string, ScopeEntry> = {};

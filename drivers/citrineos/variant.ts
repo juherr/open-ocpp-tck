@@ -157,10 +157,17 @@ export const NO_OCPP_201_ON_V1 =
  *
  * ONE DIRECTION OF THAT IS UNGUARDED, and it is worth knowing which.
  * `scopeCoverage` catches a row that is missing and a row that is stale; it
- * cannot catch a row that is present and NOT demoted. So a sixth `cert201-`
+ * cannot catch a row that is present and NOT demoted. So a `cert201-`
  * scenario added without a line here still gets its v2 row -- the coverage
  * check forces that -- and `v1Scope()` inherits it unchanged, leaving the v1
  * table claiming exactly what the comment above that function calls wrong.
+ *
+ * THAT IS NOT HYPOTHETICAL: it happened. `cert201-tcb06-get-variables` and
+ * `cert201-tcb09-set-variables` were registered while this list still named
+ * five ids, and for that whole time `check:driver:citrineos-v1` reported them
+ * DRIVABLE -- green, on a line whose `capabilities.operations201` is absent.
+ * The list is exhaustive over the registry by hand; keep it that way when a
+ * scenario is added.
  *
  * Unlike {@link V1_LOCAL_LIST_SCENARIOS}, this list cannot be derived from
  * anything the driver can see: a scenario's declared protocol lives on its
@@ -169,6 +176,8 @@ export const NO_OCPP_201_ON_V1 =
  */
 export const CERT_201_SCENARIOS = [
   "cert201-tcb01-cold-boot",
+  "cert201-tcb06-get-variables",
+  "cert201-tcb09-set-variables",
   "cert201-tcb20-reset-accepted",
   "cert201-tcb21-reset-scheduled",
   "cert201-tcb22-reset-rejected",
