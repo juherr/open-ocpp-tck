@@ -160,6 +160,7 @@ the drivers are native here, and the name now says so.
 | `drivers/citrineos/http.ts` | `local-native` | `—` | `—` | `—` | `—` |
 | `drivers/citrineos/requests.ts` | `local-native` | `—` | `—` | `—` | `—` |
 | `drivers/citrineos/profiles.ts` | `local-native` | `—` | `—` | `—` | `—` |
+| `drivers/citrineos/redelivery-loops.ts` | `local-native` | `—` | `—` | `—` | `—` |
 | `drivers/citrineos/records.ts` | `local-native` | `—` | `—` | `—` | `—` |
 | `drivers/citrineos/scope.ts` | `local-native` | `—` | `—` | `—` | `—` |
 | `drivers/citrineos/expected.ts` | `local-native` | `—` | `—` | `—` | `—` |
