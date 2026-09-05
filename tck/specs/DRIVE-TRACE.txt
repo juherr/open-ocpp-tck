@@ -235,3 +235,38 @@ GROUP core-201
     SIM send {"command":"send_meter_value","params":{"connector":1}}
     SIM send {"command":"send_meter_value","params":{"connector":1}}
     -> driveState keys=[]
+  SPEC cert201-tck01-set-tx-default-profile
+    OP 201:SetChargingProfile [0, 1, 1, 11000, 3600, 9101, 9101, <ts>, <ts>, <ts>, absolute, txdefaultprofile, w]
+    -> driveState keys=[startSchedule,validFrom,validTo]
+  SPEC cert201-tck03-set-station-max-profile
+    OP 201:SetChargingProfile [0, 0, 22000, 3, 9103, 9103, <ts>, <ts>, <ts>, absolute, chargingstationmaxprofile, w]
+    -> driveState keys=[]
+  SPEC cert201-tck04-replace-profile
+    OP 201:SetChargingProfile [0, 1, 4, 7400, 9104, 9104, <ts>, <ts>, <ts>, absolute, txdefaultprofile, w]
+    OP 201:SetChargingProfile [0, 1, 3700, 4, 9104, 9104, <ts>, <ts>, <ts>, absolute, txdefaultprofile, w]
+    -> driveState keys=[]
+  SPEC cert201-tck10-set-default-profile-all-evses
+    OP 201:SetChargingProfile [0, 0, 10, 6000, 9110, 9110, <ts>, <ts>, <ts>, absolute, txdefaultprofile, w]
+    -> driveState keys=[]
+  SPEC cert201-tck19-set-recurring-profile
+    OP 201:SetChargingProfile [0, 1, 19, 8000, 86400, 9119, 9119, <ts>, <ts>, <ts>, daily, recurring, txdefaultprofile, w]
+    -> driveState keys=[]
+  SPEC cert201-tck43-composite-schedule-evse
+    OP 201:GetCompositeSchedule [1, 3600, w]
+    -> driveState keys=[]
+  SPEC cert201-tck44-composite-schedule-station
+    OP 201:GetCompositeSchedule [0, 3600, w]
+    -> driveState keys=[]
+  SPEC cert201-tck60-set-tx-profile
+    STATE Authorized [1, ce712001] segment=0
+    SIM send {"command":"start_transaction","params":{"connector":1,"tagId":"CE712001"}}
+    SIM wait-for-line Sent: \[2,"[^"]*","Authorize", 15000
+    STATE EnergyTransferStarted [1, ce712001] segment=0
+    SIM wait-for-line Sent: \[2,"[^"]*","TransactionEvent",(?=[^\]]*"chargingState":"Charging") 15000
+    SIM wait-for-line Sent: \[2,"[^"]*","TransactionEvent",(?=[^\]]*"transactionId":"([^"]+)") 15000
+    SIM send {"command":"stop_transaction","params":{"connector":1}}
+    -> driveState keys=[transactionId]
+  SPEC cert201-tck70-stack-profiles
+    OP 201:SetChargingProfile [0, 1, 70, 9000, 9170, 9170, <ts>, <ts>, <ts>, absolute, txdefaultprofile, w]
+    OP 201:SetChargingProfile [0, 1, 4000, 71, 9171, 9171, <ts>, <ts>, <ts>, absolute, txdefaultprofile, w]
+    -> driveState keys=[]

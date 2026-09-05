@@ -2975,6 +2975,17 @@ const TC_K_60: ScenarioSpec<RunningTransaction> = {
         })\n`,
       );
     }
+    // WHICH ARTIFACT PINS THE REQUEST BELOW, because it is not the one a
+    // reader would check. tools/extract-drive-trace.ts runs drive() against a
+    // stub whose `waitForLine` answers `<line>`, so the parse above finds
+    // nothing and DRIVE-TRACE.txt records this scenario's waits and its
+    // teardown but no `OP 201:SetChargingProfile` -- the known limit that
+    // file's header states, reached for the first time here. ASSERT-INVENTORY
+    // .txt is what holds the profile instead: the assertions below spell the
+    // identifier, stack level, purpose, kind and limit as literals, and a
+    // drive() re-pointed without them turns the scenario red rather than
+    // quietly moving. The one member neither artifact can hold is the
+    // transaction id, which is the station's and is why this scenario exists.
     if (transactionId !== undefined) {
       const now = Date.now();
       await csms201.execute(cpId, {

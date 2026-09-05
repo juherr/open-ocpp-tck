@@ -228,6 +228,72 @@ FILE core-201.ts
       ·.pass(·)
       RETURN
     ·.fail(·, ·)
+  HELPER assertChargingProfileSent
+    IF
+      ·.fail(·, ·)
+      RETURN
+    IF
+      OR
+        OR
+      ·.fail(·, ·)
+      RETURN
+    IF
+    IF
+      ·.pass(·)
+      RETURN
+    ·.fail(·, ·)
+  HELPER assertChargingScheduleSent
+    IF
+      ·.fail(·, ·)
+      RETURN
+    IF
+      OR
+      ·.fail(·, ·)
+      RETURN
+    IF
+      OR
+      ·.fail(·, ·)
+      RETURN
+    IF
+      OR
+      ·.fail(·, ·)
+      RETURN
+    IF
+      OR
+      ·.fail(·, ·)
+      RETURN
+    IF
+      ·.pass(·)
+      RETURN
+    ·.fail(·, ·)
+  HELPER assertChargingProfileWindowSent
+    IF
+      ·.fail(·, ·)
+      RETURN
+    TERNARY
+    IF
+    IF
+    IF
+    IF
+      ·.pass(·)
+      RETURN
+    ·.fail(·, ·)
+  HELPER assertChargingProfileTransactionSent
+    IF
+      ·.fail(·, ·)
+      RETURN
+    IF
+      ·.fail(·, ·)
+      RETURN
+    ·.pass(·)
+  HELPER assertCompositeScheduleRequested
+    IF
+      ·.fail(·, ·)
+      RETURN
+    IF
+      ·.pass(·)
+      RETURN
+    ·.fail(·, ·)
   SPEC cert201-tcb06-get-variables connector=1 bootWaitSecs=4 holdSecs=12 ocppVersion="OCPP-2.0.1" runsSimTemplate=false
     assertReceived(·, ·, "GetVariables", "GetVariables.req received")
     assertVariableRequested(·, ·, "GetVariables", "getVariableData", ·, ·, ·)
@@ -346,6 +412,64 @@ FILE core-201.ts
     assertResponseStatus(·, ·, "ChangeAvailability", "Accepted", "ChangeAvailability accepted", {direction:"received",occurrence:1})
     assertLineAfter(·, ·, /Received: \[2,.*"ChangeAvailability"/, /Sent: \[2,.*"StatusNotification",(?=[^\]]*"connectorStatus":"Available")/, "the station reported the connector available after the request")
     assertAllAnswered(·, ·, "StatusNotification")
+  SPEC cert201-tck01-set-tx-default-profile connector=1 bootWaitSecs=4 holdSecs=15 ocppVersion="OCPP-2.0.1" runsSimTemplate=false
+    assertReceived(·, ·, "SetChargingProfile", "SetChargingProfile.req received")
+    assertChargingProfileSent(·, ·, 0, 1, {id:9101,stackLevel:1,chargingProfilePurpose:"TxDefaultProfile",chargingProfileKind:"Absolute"}, "SetChargingProfile.req installs an absolute TxDefaultProfile at EVSE 1")
+    assertChargingScheduleSent(·, ·, 0, {id:9101,duration:3600,chargingRateUnit:"W"}, {startPeriod:0,limit:11000}, "the schedule reaches the station with the scenario's unit, duration and limit")
+    assertChargingProfileWindowSent(·, ·, 0, ·, ·, ·, "the validity window reaches the station as the scenario computed it")
+    assertResponseStatus(·, ·, "SetChargingProfile", "Accepted", "SetChargingProfile accepted", {direction:"received"})
+  SPEC cert201-tck03-set-station-max-profile connector=1 bootWaitSecs=4 holdSecs=15 ocppVersion="OCPP-2.0.1" runsSimTemplate=false
+    assertReceived(·, ·, "SetChargingProfile", "SetChargingProfile.req received")
+    assertChargingProfileSent(·, ·, 0, 0, {id:9103,stackLevel:3,chargingProfilePurpose:"ChargingStationMaxProfile",chargingProfileKind:"Absolute"}, "SetChargingProfile.req caps the charging station itself, at evseId 0")
+    assertChargingScheduleSent(·, ·, 0, {id:9103,chargingRateUnit:"W"}, {startPeriod:0,limit:22000}, "the station-wide cap reaches the station with the scenario's limit")
+    assertResponseStatus(·, ·, "SetChargingProfile", "Accepted", "SetChargingProfile accepted", {direction:"received"})
+  SPEC cert201-tck04-replace-profile connector=1 bootWaitSecs=4 holdSecs=15 ocppVersion="OCPP-2.0.1" runsSimTemplate=false
+    assertReceived(·, ·, "SetChargingProfile", "SetChargingProfile.req received")
+    assertChargingProfileSent(·, ·, 0, 1, {id:9104,stackLevel:4,chargingProfilePurpose:"TxDefaultProfile",chargingProfileKind:"Absolute"}, "the first request installs profile 9104 at stack level 4")
+    assertChargingScheduleSent(·, ·, 0, {id:9104,chargingRateUnit:"W"}, {startPeriod:0,limit:7400}, "the first request carries the limit it was given")
+    assertChargingProfileSent(·, ·, 1, 1, {id:9104,stackLevel:4,chargingProfilePurpose:"TxDefaultProfile",chargingProfileKind:"Absolute"}, "the second request reuses profile 9104 at the same stack level")
+    assertChargingScheduleSent(·, ·, 1, {id:9104,chargingRateUnit:"W"}, {startPeriod:0,limit:3700}, "the second request replaces the limit rather than repeating the first")
+    assertCallCount(·, ·, "received", "SetChargingProfile", 2, "the CSMS sent two requests and not a third carrying the superseded profile")
+    assertResponseStatus(·, ·, "SetChargingProfile", "Accepted", "the replacing profile is accepted", {direction:"received",occurrence:1})
+  SPEC cert201-tck10-set-default-profile-all-evses connector=1 bootWaitSecs=4 holdSecs=15 ocppVersion="OCPP-2.0.1" runsSimTemplate=false
+    assertReceived(·, ·, "SetChargingProfile", "SetChargingProfile.req received")
+    assertChargingProfileSent(·, ·, 0, 0, {id:9110,stackLevel:10,chargingProfilePurpose:"TxDefaultProfile",chargingProfileKind:"Absolute"}, "SetChargingProfile.req sends a TxDefaultProfile to evseId 0, so it applies to every EVSE")
+    assertChargingScheduleSent(·, ·, 0, {id:9110,chargingRateUnit:"W"}, {startPeriod:0,limit:6000}, "the station-wide default carries the scenario's limit")
+    assertResponseStatus(·, ·, "SetChargingProfile", "Accepted", "SetChargingProfile accepted", {direction:"received"})
+  SPEC cert201-tck19-set-recurring-profile connector=1 bootWaitSecs=4 holdSecs=15 ocppVersion="OCPP-2.0.1" runsSimTemplate=false
+    assertReceived(·, ·, "SetChargingProfile", "SetChargingProfile.req received")
+    assertChargingProfileSent(·, ·, 0, 1, {id:9119,stackLevel:19,chargingProfilePurpose:"TxDefaultProfile",chargingProfileKind:"Recurring",recurrencyKind:"Daily"}, "SetChargingProfile.req carries both Recurring and the recurrency kind that says how often")
+    assertChargingScheduleSent(·, ·, 0, {id:9119,duration:86400,chargingRateUnit:"W"}, {startPeriod:0,limit:8000}, "the schedule spans the recurrence period the kind announces")
+    assertResponseStatus(·, ·, "SetChargingProfile", "Accepted", "SetChargingProfile accepted", {direction:"received"})
+  SPEC cert201-tck60-set-tx-profile connector=1 bootWaitSecs=4 holdSecs=15 ocppVersion="OCPP-2.0.1" runsSimTemplate=false states=[{state:"EnergyTransferStarted",connectorId:1,idToken:"CE712001"}]
+    assertStateEstablished(·, ·, "EnergyTransferStarted", "a transaction was running when the profile was installed")
+    IF
+      ·.skip("SetChargingProfile.req received", ·)
+      ·.skip(·, ·)
+      RETURN
+    assertReceived(·, ·, "SetChargingProfile", "SetChargingProfile.req received")
+    assertChargingProfileSent(·, ·, 0, 1, {id:9160,stackLevel:60,chargingProfilePurpose:"TxProfile",chargingProfileKind:"Absolute"}, "SetChargingProfile.req installs a TxProfile at the EVSE the transaction is on")
+    assertChargingProfileTransactionSent(·, ·, 0, ·, ·)
+    assertChargingScheduleSent(·, ·, 0, {id:9160,chargingRateUnit:"W"}, {startPeriod:0,limit:5000}, "the transaction-scoped schedule carries the scenario's limit")
+    assertResponseStatus(·, ·, "SetChargingProfile", "Accepted", "SetChargingProfile accepted", {direction:"received"})
+    assertAllAnswered(·, ·, "TransactionEvent")
+  SPEC cert201-tck70-stack-profiles connector=1 bootWaitSecs=4 holdSecs=15 ocppVersion="OCPP-2.0.1" runsSimTemplate=false
+    assertReceived(·, ·, "SetChargingProfile", "SetChargingProfile.req received")
+    assertChargingProfileSent(·, ·, 0, 1, {id:9170,stackLevel:70,chargingProfilePurpose:"TxDefaultProfile",chargingProfileKind:"Absolute"}, "the first request installs profile 9170 at stack level 70")
+    assertChargingProfileSent(·, ·, 1, 1, {id:9171,stackLevel:71,chargingProfilePurpose:"TxDefaultProfile",chargingProfileKind:"Absolute"}, "the second request installs a different profile at a higher stack level")
+    assertChargingScheduleSent(·, ·, 1, {id:9171,chargingRateUnit:"W"}, {startPeriod:0,limit:4000}, "the stacked profile carries its own limit")
+    assertCallCount(·, ·, "received", "SetChargingProfile", 2, "the CSMS sent one request per profile and no more")
+    assertResponseStatus(·, ·, "SetChargingProfile", "Accepted", "the stacked profile is accepted", {direction:"received",occurrence:1})
+  SPEC cert201-tck43-composite-schedule-evse connector=1 bootWaitSecs=4 holdSecs=10 ocppVersion="OCPP-2.0.1" runsSimTemplate=false
+    assertReceived(·, ·, "GetCompositeSchedule", "GetCompositeSchedule.req received")
+    assertCompositeScheduleRequested(·, ·, 0, {evseId:1,duration:3600,chargingRateUnit:"W"}, "GetCompositeSchedule.req asks EVSE 1 for an hour of schedule in watts")
+    assertCallCount(·, ·, "received", "GetCompositeSchedule", 1, "the CSMS asked once, rather than once per EVSE")
+    assertResponseStatus(·, ·, "GetCompositeSchedule", "Accepted", "GetCompositeSchedule accepted", {direction:"received"})
+  SPEC cert201-tck44-composite-schedule-station connector=1 bootWaitSecs=4 holdSecs=10 ocppVersion="OCPP-2.0.1" runsSimTemplate=false
+    assertReceived(·, ·, "GetCompositeSchedule", "GetCompositeSchedule.req received")
+    assertCompositeScheduleRequested(·, ·, 0, {evseId:0,duration:3600,chargingRateUnit:"W"}, "GetCompositeSchedule.req asks the grid connection point, at evseId 0, for an hour of schedule in watts")
+    assertCallCount(·, ·, "received", "GetCompositeSchedule", 1, "the CSMS asked once, rather than once per EVSE")
+    assertResponseStatus(·, ·, "GetCompositeSchedule", "Accepted", "GetCompositeSchedule accepted", {direction:"received"})
 
 FILE core.ts
   HELPER assertGetConfigurationUnfiltered
