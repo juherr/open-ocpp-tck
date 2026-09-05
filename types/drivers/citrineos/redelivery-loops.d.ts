@@ -21,6 +21,18 @@
  * the four declared expected failures. That is the gap this file fills -- a
  * number that moves BEFORE the sweep stops being able to measure anything.
  *
+ * THE MECHANISM, since knowing it is what tells a loop from a slow CSMS.
+ * `router.ts` throws `RetryMessageError('Call already in progress')` when a
+ * station already has a call outstanding, and `rabbit-mq/receiver.ts` answers it
+ * with a bare `channel.nack(message)` -- amqplib's default is `requeue: true`,
+ * and there is no delivery-count check, no cap and no delay. The broker
+ * redelivers at once, the call is still in progress, and the same message throws
+ * again. The per-station "call in progress" state is not cleared when the
+ * connection goes away, so for a station that has disconnected the loop has no
+ * exit. In the run that died, `Retrying message` appears 307,508 times against
+ * 307,584 dispatch envelopes: essentially every dispatch was a redelivery.
+ * Upstream citrineos/citrineos#223.
+ *
  * WHY THE ENVELOPE LINE AND NOT THE CORRELATION ID ALONE. Both identify a loop;
  * the envelope also carries the action and the station, which is what turns a
  * count into a lead. Every loop observed so far starts on a request to a station
