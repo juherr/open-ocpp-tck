@@ -12,6 +12,18 @@ Released as `0.3.0`. The documented install ref already points at that tag, so
 
 ### Added
 
+- Four OCPP 2.0.1 scenarios, taking the slice from 7 implemented cases to 11
+  and the suite from 54 scenarios to 58. `cert201-tcc02-authorize-invalid`
+  (`TC_C_02`: an idToken the CSMS does not know is reported `Invalid` or
+  `Unknown`), `cert201-tce10-start-authorized` (`TC_E_10`: the same token is
+  accepted on the Authorize and again on the Started `TransactionEvent`),
+  `cert201-tcf27-trigger-not-implemented` (`TC_F_27`: a `TriggerMessage` the
+  station answers `NotImplemented`, and a CSMS that goes on serving it) and
+  `cert201-tcj01-clock-aligned-meter-values` (`TC_J_01`: three `MeterValues`
+  from an idle station, every one answered). None needs a new
+  `CsmsOperation201` member and three ask a driver for nothing at all — the
+  station side is driven from the simulator's JSON-Lines CLI, which is what the
+  three group reasons that used to decline them had ruled out ([#105], [#114])
 - `tck/specs/OCA-201-OPERATIONS.txt` — which CSMS-initiated operation each of
   the 147 selected OCPP 2.0.1 cases obliges the CSMS to send. **Twenty kinds of
   operation** between them, against the four `CsmsOperation201` now carries: 90
@@ -103,6 +115,17 @@ Released as `0.3.0`. The documented install ref already points at that tag, so
 - This changelog ([#70])
 
 ### Changed
+
+- The C, E and J blocks of `tck/specs/OCA-201-SLICE.txt` declined on a premise
+  that was false — "the pinned image ships no `cert201-` template, so nothing
+  here drives that side" — and their reasons now name what actually remains: a
+  stored authorization state no scenario can ask a driver for, a
+  `TransactionEvent` member the simulator hardcodes, a `sampledValue.context`
+  it drops. Two cases are declined explicitly on that second blocker rather
+  than left to a group reason: `TC_E_02` needs a Started event whose
+  `triggerReason` says the energy transfer began, and `TC_E_16` needs one
+  carrying an idToken the CSMS rejects, which the station refuses to send at
+  all ([#105], [#114])
 
 - `local-upstreamable` is now **`local-native`**. The name described a queue —
   files of ours waiting for an upstream pull request — and with the runner
@@ -361,3 +384,5 @@ releases from 141 commits would mean writing detail nobody measured.
 [#85]: https://github.com/juherr/open-ocpp-tck/issues/85
 [#86]: https://github.com/juherr/open-ocpp-tck/issues/86
 [#87]: https://github.com/juherr/open-ocpp-tck/issues/87
+[#105]: https://github.com/juherr/open-ocpp-tck/issues/105
+[#114]: https://github.com/juherr/open-ocpp-tck/issues/114

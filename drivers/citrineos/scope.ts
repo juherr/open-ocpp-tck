@@ -41,6 +41,7 @@ const OBSERVED =
   "expresses the operation and Postgres answers the observation.";
 
 const d = (reason: string) => ({ status: "DRIVABLE" as const, reason });
+const c = (reason: string) => ({ status: "CONDITIONAL" as const, reason });
 const na = (reason: string) => ({ status: "NOT_APPLICABLE" as const, reason });
 
 /** What the first sweep answered for every driven 2.0.1 row, worded once. */
@@ -315,6 +316,62 @@ const V2_SCOPE = {
     `${RESET_201} And an evseId the station does not have survives the CSMS ` +
       "intact: the 2.0.1 ResetRequest schema constrains it no further, and " +
       "nothing validates it against the station's own EVSEs before dispatch.",
+  ),
+
+  // --- OCPP 2.0.1, NOT YET MEASURED ---------------------------------------
+  // CONDITIONAL for the reason the seven rows above were CONDITIONAL until
+  // 2026-08-19: they are expressible -- three of the four ask this driver for
+  // nothing at all, and the fourth asks for a TriggerMessage it already
+  // dispatches for TC_F_20 -- but whether the CSMS emits the message each case
+  // needs is unknown until a live run. DRIVABLE here would assert a
+  // measurement nobody has taken, which is the one thing tck/scope.ts's rules
+  // say a row may not do. Each reason below states the question the first
+  // sweep must answer; the sweep on the pull request that adds them is what
+  // answers it.
+  //
+  // NO FEATURE IDENTIFIER on any of them, and that is the rule rather than an
+  // omission: an identifier names the feature a CONDITIONAL case hangs on, and
+  // all four are mandatory cases with no conditional feature behind them. What
+  // is unknown is this deployment's behaviour, which is prose.
+  "cert201-tcc02-authorize-invalid": c(
+    "Does the 2.0.1 Authorize handler answer an idToken it has no row for " +
+      "with idTokenInfo.status Invalid or Unknown? Nothing to express -- the " +
+      "station presents the token -- and the answer is not obvious from the " +
+      "1.6 side: that handler reaches its status mapper only through the " +
+      "Accepted branch and defaults everything else to Invalid, while the " +
+      "2.0.1 handler matches the (idToken, type) PAIR, so a token absent from " +
+      "Authorizations and a token stored under another type look the same to " +
+      "it. Either value satisfies the case; a CALLERROR does not, and that is " +
+      "the outcome to watch for, because it is what an idToken failing the " +
+      "ISO14443 format check produces.",
+  ),
+  "cert201-tce10-start-authorized": c(
+    "Does the CSMS answer a Started TransactionEvent carrying an idToken it " +
+      "just accepted on an Authorize with the same Accepted verdict? Nothing " +
+      "to express again, and this is the only 2.0.1 transaction traffic in " +
+      "this suite besides cert201-tcb21's -- which established that the " +
+      "provisioned ISO14443 tag reaches an Accepted Authorize, and stopped " +
+      "there. What is untested is the second verdict: a CSMS that accepts a " +
+      "token and then declines the transaction started on it fails this case " +
+      "and no row above would notice.",
+  ),
+  "cert201-tcf27-trigger-not-implemented": c(
+    "Two questions, and the second is the case's. Does requestedMessage " +
+      "FirmwareStatusNotification reach the wire unchanged -- TC_F_20 " +
+      "established that Heartbeat does, and a value this CSMS cannot act on " +
+      "itself is a different path through the same endpoint. And does the " +
+      "CSMS go on serving the station after a TriggerMessageResponse of " +
+      "NotImplemented, which the scenario measures as an ordinary Heartbeat " +
+      "answered afterwards.",
+  ),
+  "cert201-tcj01-clock-aligned-meter-values": c(
+    "Does the CSMS answer a bare MeterValuesRequest from a station with no " +
+      "transaction running? Nothing to express, and the reason it is a real " +
+      "question is issue #86's shape: the 2.0.1 handlers here have answered a " +
+      "request, logged a warning and stored nothing before. This scenario " +
+      "does not read the CSMS back -- unlike cert201-tcb01, there is no " +
+      "device-model row a meter reading lands in that this driver can look up " +
+      "-- so what it reports is the wire obligation alone, three times over.",
   ),
 } satisfies ScopeTable;
 

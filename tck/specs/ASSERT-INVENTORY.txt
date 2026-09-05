@@ -165,6 +165,42 @@ FILE core-201.ts
       ·.fail(·, ·)
       RETURN
     ·.pass(·)
+  HELPER assertIdTokenInfoStatus
+    IF
+      ·.fail(·, ·)
+      RETURN
+    IF
+      ·.fail(·, ·)
+      RETURN
+    IF
+      ·.fail(·, ·)
+      RETURN
+    IF
+      OR
+      ·.fail(·, ·)
+      RETURN
+    ·.pass(·)
+  HELPER assertIdTokenSent
+    IF
+      ·.fail(·, ·)
+      RETURN
+    IF
+      ·.fail(·, ·)
+      RETURN
+    ·.pass(·)
+  HELPER assertMeterValueSampled
+    IF
+      ·.fail(·, ·)
+      RETURN
+    IF
+      ·.fail(·, ·)
+      RETURN
+    TERNARY
+    IF
+      OR
+      ·.fail(·, ·)
+      RETURN
+    ·.pass(·)
   SPEC cert201-tcb06-get-variables connector=1 bootWaitSecs=4 holdSecs=12 ocppVersion="OCPP-2.0.1" runsSimTemplate=false
     assertReceived(·, ·, "GetVariables", "GetVariables.req received")
     assertVariableRequested(·, ·, "GetVariables", "getVariableData", ·, ·, ·)
@@ -206,6 +242,40 @@ FILE core-201.ts
     assertSent(·, ·, "Heartbeat", "Heartbeat.req sent")
     assertAllAnswered(·, ·, "Heartbeat")
     assertResponseTimestamp(·, ·, "Heartbeat", "currentTime", "Heartbeat.conf carries a currentTime the charge point can parse")
+  SPEC cert201-tcc02-authorize-invalid connector=1 bootWaitSecs=4 holdSecs=10 ocppVersion="OCPP-2.0.1" runsSimTemplate=false
+    assertSent(·, ·, "Authorize", "Authorize.req sent")
+    assertIdTokenSent(·, ·, "Authorize", "CE71FFFF", "Authorize.req presents the unknown idToken this scenario asked about")
+    assertAllAnswered(·, ·, "Authorize")
+    assertIdTokenInfoStatus(·, ·, "Authorize", ["Invalid","Unknown"], "the CSMS reports the idToken as not valid")
+  SPEC cert201-tce10-start-authorized connector=1 bootWaitSecs=4 holdSecs=12 ocppVersion="OCPP-2.0.1" runsSimTemplate=false
+    IF
+      ·.pass(·)
+      ·.skip(·, ·)
+    assertSent(·, ·, "Authorize", "Authorize.req sent")
+    assertIdTokenSent(·, ·, "Authorize", "CE712001", "Authorize.req presents the provisioned idToken")
+    assertAllAnswered(·, ·, "Authorize")
+    assertIdTokenInfoStatus(·, ·, "Authorize", ["Accepted"], "the CSMS accepted the idToken")
+    IF
+      assertSent(·, ·, "TransactionEvent", "TransactionEvent.req sent")
+      assertCallPayload(·, ·, "sent", "TransactionEvent", {eventType:"Started",triggerReason:"Authorized"}, "the Started TransactionEvent says the transaction started on an authorization")
+      assertIdTokenSent(·, ·, "TransactionEvent", "CE712001", "the Started TransactionEvent carries the idToken that was authorized")
+      assertIdTokenInfoStatus(·, ·, "TransactionEvent", ["Accepted"], "the CSMS accepted the transaction the idToken started")
+      ·.skip("the CSMS accepted the transaction the idToken started", ·)
+    assertAllAnswered(·, ·, "TransactionEvent")
+  SPEC cert201-tcf27-trigger-not-implemented connector=1 bootWaitSecs=4 holdSecs=12 ocppVersion="OCPP-2.0.1" runsSimTemplate=false
+    assertReceived(·, ·, "TriggerMessage", "TriggerMessage.req received")
+    assertCallPayload(·, ·, "received", "TriggerMessage", {requestedMessage:"FirmwareStatusNotification"}, "TriggerMessage.req asks for the message the station does not implement")
+    assertResponseStatus(·, ·, "TriggerMessage", "NotImplemented", "TriggerMessage refused as not implemented", {direction:"received"})
+    assertNotSent(·, ·, "FirmwareStatusNotification", "sent", "no FirmwareStatusNotification followed the refusal")
+    assertLineAfter(·, ·, /Received: \[2,.*"TriggerMessage"/, /Sent: \[2,.*"Heartbeat"/, "the station still reaches the CSMS after the refusal")
+    assertResponseTimestamp(·, ·, "Heartbeat", "currentTime", "the CSMS answered the station's next request with a current time")
+  SPEC cert201-tcj01-clock-aligned-meter-values connector=1 bootWaitSecs=4 holdSecs=10 ocppVersion="OCPP-2.0.1" runsSimTemplate=false
+    IF
+      ·.pass(·)
+      ·.skip(·, ·)
+    assertSent(·, ·, "MeterValues", "MeterValues.req sent")
+    assertMeterValueSampled(·, ·, "MeterValues", "MeterValues.req is the OCPP 2.0.1 request (an evseId and a sampled reading)")
+    assertAllAnswered(·, ·, "MeterValues", ·, {minimum:3})
 
 FILE core.ts
   HELPER assertGetConfigurationUnfiltered

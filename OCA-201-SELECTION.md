@@ -172,11 +172,22 @@ The other half of that gap was whether a list this long may be committed at
 all, given that the references are CC BY-ND, and it is
 [answered](#what-may-be-committed-here-and-what-may-not): it may.
 
-Seven of the 147 are implemented and 140 decline with a reason. Those reasons
-are written per group rather than per case — 23 of them across the 140 — and the
+Eleven of the 147 are implemented and 136 decline with a reason. Those reasons
+are written per group rather than per case — 23 of them across the 136 — and the
 file's header says why that is the granularity the decision was taken at rather
 than a placeholder. What a guard still cannot say is whether these are the
 *right* 147, and that is [unchanged](#the-guard).
+
+**Four of those eleven arrived by falsifying a reason rather than by adding an
+operation**, which is worth naming because it is the cheapest way this number
+moves. `TC_C_02`, `TC_E_10`, `TC_F_27` and `TC_J_01` need no member
+`CsmsOperation201` does not already have; three of them ask a driver for
+nothing at all. What had declined them was a group reason asserting that the
+station side could not be driven without a simulator scenario template, and the
+simulator's JSON-Lines CLI drives it without one. The tranche table below is
+about the 81 rows a verb would unblock; this is the other direction, and
+`tck/specs/OCA-201-SLICE.txt`'s header records what the rewritten reasons say
+instead.
 
 **What the first slice bounded, kept because it is the worked example of
 writing the number down before the work.** Its seven cases were boot, reading

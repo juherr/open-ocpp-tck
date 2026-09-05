@@ -107,7 +107,7 @@ export declare const NO_OCPP_201_ON_V1: string;
  * `ScenarioSpec` and never reaches a driver. Whatever changes that is what
  * deletes this list.
  */
-export declare const CERT_201_SCENARIOS: readonly ["cert201-tcb01-cold-boot", "cert201-tcb06-get-variables", "cert201-tcb09-set-variables", "cert201-tcb20-reset-accepted", "cert201-tcb21-reset-scheduled", "cert201-tcb22-reset-rejected", "cert201-tcf20-heartbeat"];
+export declare const CERT_201_SCENARIOS: readonly ["cert201-tcb01-cold-boot", "cert201-tcb06-get-variables", "cert201-tcb09-set-variables", "cert201-tcb20-reset-accepted", "cert201-tcb21-reset-scheduled", "cert201-tcb22-reset-rejected", "cert201-tcc02-authorize-invalid", "cert201-tce10-start-authorized", "cert201-tcf20-heartbeat", "cert201-tcf27-trigger-not-implemented", "cert201-tcj01-clock-aligned-meter-values"];
 /** Scenarios the local-auth-list gap costs on v1. Named here rather than in
  *  scope.ts so the two cannot drift from {@link unroutedActions}. */
 export declare const V1_LOCAL_LIST_SCENARIOS: readonly ["cert16-tc042-1-get-local-list-version-not-supported", "cert16-tc042-2-get-local-list-version-empty", "cert16-tc043-1-send-local-list-not-supported", "cert16-tc043-3-send-local-list-failed", "cert16-tc043-4-send-local-list-full", "cert16-tc043-5-send-local-list-differential"];

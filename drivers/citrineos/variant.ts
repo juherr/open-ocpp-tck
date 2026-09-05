@@ -184,7 +184,11 @@ export const CERT_201_SCENARIOS = [
   "cert201-tcb20-reset-accepted",
   "cert201-tcb21-reset-scheduled",
   "cert201-tcb22-reset-rejected",
+  "cert201-tcc02-authorize-invalid",
+  "cert201-tce10-start-authorized",
   "cert201-tcf20-heartbeat",
+  "cert201-tcf27-trigger-not-implemented",
+  "cert201-tcj01-clock-aligned-meter-values",
 ] as const;
 
 /** Scenarios the local-auth-list gap costs on v1. Named here rather than in
