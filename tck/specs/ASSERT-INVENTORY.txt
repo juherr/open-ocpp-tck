@@ -186,10 +186,8 @@ FILE core-201.ts
     assertResponseStatus(·, ·, "Reset", "Accepted", "Reset accepted", {direction:"received"})
     assertResponseStatus(·, ·, "BootNotification", "Accepted", "the cold boot is accepted, so the next boot is the reset's", {direction:"sent",occurrence:0})
     assertAllAnswered(·, ·, "BootNotification", ·, {minimum:2})
-  SPEC cert201-tcb21-reset-scheduled connector=1 bootWaitSecs=4 holdSecs=12 ocppVersion="OCPP-2.0.1" runsSimTemplate=false
-    IF
-      ·.pass(·)
-      ·.skip(·, ·)
+  SPEC cert201-tcb21-reset-scheduled connector=1 bootWaitSecs=4 holdSecs=12 ocppVersion="OCPP-2.0.1" runsSimTemplate=false states=[{state:"EnergyTransferStarted",connectorId:1,idToken:"CE712001"}]
+    assertStateEstablished(·, ·, "EnergyTransferStarted", "a transaction was running when the reset was asked for")
     assertReceived(·, ·, "Reset", "Reset.req received")
     assertCallPayload(·, ·, "received", "Reset", {type:"OnIdle"}, "Reset.req asks for type=OnIdle")
     IF

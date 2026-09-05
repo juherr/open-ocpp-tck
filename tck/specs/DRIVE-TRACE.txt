@@ -180,10 +180,13 @@ GROUP core-201
     OP 201:Reset [immediate]
     -> driveState keys=[]
   SPEC cert201-tcb21-reset-scheduled
+    STATE Authorized [1, ce712001] segment=0
     SIM send {"command":"start_transaction","params":{"connector":1,"tagId":"CE712001"}}
-    SIM wait-for-line Sent: \[2,.*"TransactionEvent" 10000
+    SIM wait-for-line Sent: \[2,"[^"]*","Authorize", 15000
+    STATE EnergyTransferStarted [1, ce712001] segment=0
+    SIM wait-for-line Sent: \[2,"[^"]*","TransactionEvent",(?=[^\]]*"chargingState":"Charging") 15000
     OP 201:Reset [onidle]
-    -> driveState keys=[started]
+    -> driveState keys=[]
   SPEC cert201-tcb22-reset-rejected
     OP 201:Reset [9, immediate]
     -> driveState keys=[]

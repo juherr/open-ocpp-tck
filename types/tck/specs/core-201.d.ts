@@ -48,23 +48,24 @@
  * the question these scenarios' scope rows are open on; as a FAIL it becomes
  * "no Received CALL found", which is true and says nothing.
  *
- * THE SETUP IS INLINE, AND IT DUPLICATES. `ocppVersion` plus
- * `runsSimTemplate: false` is repeated once per scenario, and the three
- * Reset scenarios repeat the same drive-then-check shape with one member
- * changed. That is deliberate: OCPP 2.0.1 Part 6 defines 14 `Reusable State`
- * fixtures for the CSMS role -- 13 was this paragraph's first count, corrected
- * when the reference was re-read for the operation measurement -- and this
- * suite has timers and one-shot provisioning, which are not
- * the same thing -- issue #63 says to write the setup inline and note where it
- * duplicates rather than build the mechanism from one slice's evidence. This
- * paragraph is that note.
+ * THE SETUP IS NO LONGER INLINE, and what replaced it is `tck/states-201.ts`.
+ * OCPP 2.0.1 Part 6 defines 14 `Reusable State` fixtures for the CSMS role --
+ * 13 was this paragraph's first count, corrected when the reference was re-read
+ * for the operation measurement -- and a case declares the ones it takes as its
+ * precondition. Issue #63 said to write that setup inline and note where it
+ * duplicated rather than build a mechanism from five scenarios' evidence; the
+ * evidence arrived when the selection rule turned out to pick 147 cases, at
+ * which point a handful of copies becomes a class of copies that drift while
+ * each one still reads reasonably. TC_B_21 is the one scenario here that
+ * declares a state today, and its `states:` field is what the mechanism reads.
  *
- * THE EVIDENCE HAS SINCE ARRIVED, so read the paragraph above as a record of
- * why the mechanism was not built rather than as a reason to keep inlining.
- * The rule in OCA-201-SELECTION.md now selects 147 cases, at which point a
- * handful of copies becomes a class of copies, they drift, and each one reads
- * reasonably on its own -- which is the failure inlining was cheap enough to
- * risk at five and is not at 147. The fixture mechanism has its own issue.
+ * WHAT STILL DUPLICATES, deliberately: `ocppVersion` plus
+ * `runsSimTemplate: false` on every scenario, and the three Reset scenarios'
+ * shared drive-then-check shape with one member changed. Those are not
+ * fixtures. Factoring either into a shared constant renders it `·` in
+ * `ASSERT-INVENTORY.txt` and stops it being pinned, which is the trade TC_B_22
+ * spells out for its two literals and which applies to every declaration in
+ * this file.
  */
 import type { ScenarioSpec } from "../spec-types";
 /**
