@@ -192,7 +192,7 @@ moves. `TC_C_02`, `TC_E_10`, `TC_F_27` and `TC_J_01` need no member
 nothing at all. What had declined them was a group reason asserting that the
 station side could not be driven without a simulator scenario template, and the
 simulator's JSON-Lines CLI drives it without one. The tranche table below is
-about the 72 rows a verb would unblock; this is the other direction, and
+about the 57 rows a verb would unblock; this is the other direction, and
 `tck/specs/OCA-201-SLICE.txt`'s header records what the rewritten reasons say
 instead.
 
@@ -221,7 +221,7 @@ trigger and `CsmsOperation201` carries the verb.
 
 ## How wide a vocabulary the 147 ask for
 
-**Twenty kinds of operation**, against the five the contract carries. Ninety of the 147 drive at
+**Twenty kinds of operation**, against the seven the contract carries. Ninety of the 147 drive at
 least one CSMS-initiated request and **57 drive none at all** — a case that only
 observes charge-point-initiated traffic needs no verb, which is why "add the
 rest of the 2.0.1 messages" was the wrong shape for this and why the answer is
@@ -241,35 +241,33 @@ the extractor's header says why.
 Six cases need more than one operation, so the two counts differ: adding
 `GetInstalledCertificateIds` is named by eight rows and finishes six of them,
 because `TC_M_20` and `TC_M_21` want `DeleteCertificate` and
-`InstallCertificate` as well. Greedy from the five the union has, which leaves
-**72** of the 147 short of a verb. `bun tools/extract-201-operations.ts
+`InstallCertificate` as well. Greedy from the seven the union has, which leaves
+**57** of the 147 short of a verb. `bun tools/extract-201-operations.ts
 --tranches` is what prints this table — no PDF, just the row file and the
 contract — and `tests/oca-201-operations.sh` holds the two together:
 
 | # | operation | cases it completes | still blocked after |
 |---|---|---|---|
-| 1 | `SetChargingProfile` | 13 | 59 |
-| 2 | `UpdateFirmware` | 10 | 49 |
-| 3 | `GetChargingProfiles` | 8 | 41 |
-| 4 | `CustomerInformation` | 6 | 35 |
-| 5 | `GetInstalledCertificateIds` | 6 | 29 |
-| 6 | `InstallCertificate` | 5 | 24 |
-| 7 | `RequestStartTransaction` | 5 | 19 |
-| 8 | `GetLog` | 4 | 15 |
-| 9 | `CertificateSigned` | 3 | 12 |
-| 10 | `ClearChargingProfile` | 3 | 9 |
-| 11 | `ClearCache` | 2 | 7 |
-| 12 | `DeleteCertificate` | 2 | 5 |
-| 13 | `GetCompositeSchedule` | 2 | 3 |
-| 14 | `SetNetworkProfile` | 2 | 1 |
-| 15 | `RequestStopTransaction` | 1 | 0 |
+| 1 | `UpdateFirmware` | 10 | 47 |
+| 2 | `GetChargingProfiles` | 8 | 39 |
+| 3 | `CustomerInformation` | 6 | 33 |
+| 4 | `GetInstalledCertificateIds` | 6 | 27 |
+| 5 | `InstallCertificate` | 5 | 22 |
+| 6 | `RequestStartTransaction` | 5 | 17 |
+| 7 | `GetLog` | 4 | 13 |
+| 8 | `CertificateSigned` | 3 | 10 |
+| 9 | `ClearChargingProfile` | 3 | 7 |
+| 10 | `ClearCache` | 2 | 5 |
+| 11 | `DeleteCertificate` | 2 | 3 |
+| 12 | `SetNetworkProfile` | 2 | 1 |
+| 13 | `RequestStopTransaction` | 1 | 0 |
 
 The right-hand column is the number a tranche is worth arguing about, and it is
 not the number of scenarios that become writable: a verb removes *one* blocker,
 and 57 of the 147 never had that blocker while every one of them has another.
 `tck/specs/OCA-201-SLICE.txt`'s reason column is where the rest are named, and
 #71 — nothing checks that a declared capability is implemented — is what a
-vocabulary growing fifteen more times makes urgent; it is now checked, by
+vocabulary growing thirteen more times makes urgent; it is now checked, by
 `tests/capability-parity.ts`.
 
 A scenario issue may implement fewer than the list holds and say why — which

@@ -165,8 +165,8 @@ export const NO_OCPP_201_ON_V1 =
  * rather than two agreeing statements.
  *
  * v2 IS EMPTY TODAY, and empty is the honest answer rather than an oversight:
- * all five actions the contract defines were read off `@AsMessageEndpoint`
- * decorators on the v2 line, so nothing is owed a row. The union grows fifteen
+ * all seven actions the contract defines were read off `@AsMessageEndpoint`
+ * decorators on the v2 line, so nothing is owed a row. The union grows thirteen
  * more times -- see the header above {@link CsmsOperation201} -- and each arm
  * arrives the same way: `route201`'s `assertNever` turns it into a compile
  * error, and the author then either writes a case pointing at an endpoint they

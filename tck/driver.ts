@@ -338,14 +338,15 @@ export const CSMS_OPERATION_16_ACTIONS = everyOneOf<CsmsOperation16Action>()([
 // AND WHY FOUR IS NOT THE FINAL ANSWER. That page's rule now selects 147 cases
 // rather than seven, and tck/specs/OCA-201-OPERATIONS.txt measures what they
 // ask for: TWENTY kinds of operation, over 90 cases that drive one and 57 that
-// drive none. So this union grows, fifteen more times. What does NOT change is
+// drive none. So this union grows, once per operation a tranche buys. What
+// does NOT change is
 // how: the count comes from the cases selected, and a case that only observes
 // charge-point-initiated traffic still needs no arm here. Adding the rest of
 // the 2.0.1 messages because they exist is the mistake "three, not eighteen"
 // was written against, and it reads the same whichever direction the number
 // moves in.
 //
-// THE FIFTH ARM IS THE FIRST OF THOSE FIFTEEN, and it arrived the way the rule
+// THE FIFTH ARM WAS THE FIRST BOUGHT THAT WAY, and it arrived the way the rule
 // above says one should: by a measurement rather than by a shopping list.
 // tck/specs/OCA-201-OPERATIONS.txt puts ChangeAvailability first among the
 // tranches -- nine of the selected cases need it and no other operation -- and
@@ -354,6 +355,19 @@ export const CSMS_OPERATION_16_ACTIONS = everyOneOf<CsmsOperation16Action>()([
 // #114), so they stay declined with that reason in their slice rows rather
 // than with this arm's absence. One operation, six cases; the tranche is what
 // makes that trade legible before the code is written.
+//
+// THE SIXTH AND SEVENTH ARE THE SAME MOVE ONE TRANCHE UP, and they are bought
+// together because the table says to. `SetChargingProfile` is the LARGEST
+// tranche the measurement found -- thirteen cases need it -- and
+// `GetCompositeSchedule` is two cases that need nothing else; both are Smart
+// Charging, both address an EVSE the same way, and a driver wiring one has the
+// module and the addressing for the other. Reading the fifteen in Part 6 found
+// NINE writable: seven Set and both Get. Of the four that are not, two want an
+// operation this pair does not contain and two are blocked by the pinned
+// simulator -- one needs an RPC-level `NotSupported` its 2.0.1 dispatcher never
+// raises, the other a continued `ReportChargingProfiles` its payload literal
+// cannot set `tbc` on. Their slice rows now say THAT, because "no charging
+// profile operation exists" stopped being true here.
 // ---------------------------------------------------------------------------
 
 /** OCPP 2.0.1 `ResetEnumType`. Not OCPP 1.6's Hard/Soft -- see the note on
@@ -472,6 +486,120 @@ export interface SetVariableData201 {
   attributeValue: string;
 }
 
+/** OCPP 2.0.1 `ChargingProfilePurposeEnumType`, whole. NOT
+ *  {@link ChargingProfilePurpose}: 1.6 spells the station-wide purpose
+ *  `ChargePointMaxProfile` and has no external-constraints value at all. */
+export type ChargingProfilePurpose201 =
+  | "ChargingStationExternalConstraints"
+  | "ChargingStationMaxProfile"
+  | "TxDefaultProfile"
+  | "TxProfile";
+
+/** OCPP 2.0.1 `ChargingProfileKindEnumType`. */
+export type ChargingProfileKind201 = "Absolute" | "Recurring" | "Relative";
+
+/** OCPP 2.0.1 `RecurrencyKindEnumType`. */
+export type RecurrencyKind201 = "Daily" | "Weekly";
+
+// TRIED AND REJECTED, here because here is where it gets re-proposed: aliasing
+// this to {@link ChargingRateUnit}, or declaring one shared type both
+// protocols import. It is the FIRST 2.0.1/1.6 homonym whose values are
+// identical -- `"W" | "A"` on both wires -- so the three notes below, which all
+// argue from the two protocols DISAGREEING, say nothing about it and a reader
+// who has understood them will offer this merge as the obvious one they left
+// undone. It is still declined, for three reasons that do not need a
+// disagreement:
+//
+//   1. AGREEING TODAY IS A MEASUREMENT, NOT A RULE. `ChargingRateUnitType` and
+//      `ChargingRateUnitEnumType` are two enumerations in two separately
+//      maintained specifications; neither owes the other its members. A value
+//      added to one -- and 2.1 is already editing this corner -- would, through
+//      an alias, silently widen the OTHER protocol's contract for every driver
+//      that switches on it exhaustively, which is exactly the failure the
+//      `MessageTrigger201` note prices as "the breaking direction".
+//   2. AN EXCEPTION COSTS MORE THAN THE LINE IT SAVES. The arms below establish
+//      one regime for this file: two protocols, two closed vocabularies, no
+//      shared core. One aliased type makes that a rule with an exception, and
+//      the next reader has to check PER TYPE which regime applies rather than
+//      knowing it from the file. The saving is one declaration.
+//   3. THE AGREEMENT IS NOT USABLE ANYWAY. 1.6 carries the unit once per
+//      `csChargingProfiles`; 2.0.1 carries it inside each `chargingSchedule`,
+//      of which a profile may have three. A driver cannot pass a value from one
+//      vocabulary to the other without deciding which schedule it belongs to,
+//      so the shared type would be shared by nothing that runs.
+//
+// `//` rather than a doc comment, by the rule the `Reset` arm states: an
+// internal decision, not something a driver author is shipped.
+/** OCPP 2.0.1 `ChargingRateUnitEnumType`. */
+export type ChargingRateUnit201 = "W" | "A";
+
+/** OCPP 2.0.1 `ChargingSchedulePeriodType`. */
+export interface ChargingSchedulePeriod201 {
+  startPeriod: number;
+  limit: number;
+  numberPhases?: number;
+  phaseToUse?: number;
+}
+
+/**
+ * OCPP 2.0.1 `ChargingScheduleType`.
+ *
+ * `id` IS REQUIRED AND HAS NO 1.6 COUNTERPART. 1.6's chargingSchedule is
+ * anonymous -- it is identified by the profile that carries it -- where 2.0.1
+ * gives every schedule its own identifier, because a profile may carry up to
+ * three and `GetCompositeSchedule` and `NotifyEVChargingSchedule` name one.
+ *
+ * `startSchedule` is optional in the schema and NOT optional in practice for
+ * the two kinds this suite sends: 2.0.1 requires it for `Absolute` and
+ * `Recurring` and forbids it for `Relative`. That is a rule about the pair, so
+ * it is not expressible in this type without splitting the profile into three,
+ * and it is stated here rather than enforced.
+ */
+export interface ChargingSchedule201 {
+  id: number;
+  chargingRateUnit: ChargingRateUnit201;
+  /** 1..N on the wire, and the first period's `startPeriod` must be 0. */
+  chargingSchedulePeriod: [
+    ChargingSchedulePeriod201,
+    ...ChargingSchedulePeriod201[],
+  ];
+  startSchedule?: Date;
+  duration?: number;
+  minChargingRate?: number;
+}
+
+/**
+ * OCPP 2.0.1 `ChargingProfileType` -- the profile itself, INLINE.
+ *
+ * NOT A {@link ChargingProfileRef}, and the difference is the protocol's
+ * rather than this contract's. OCPP 1.6's `SetChargingProfile` is driven here
+ * through an opaque CSMS-side handle because 1.6 CSMSs keep a profile registry
+ * a scenario has to name a row of; 2.0.1 carries the whole profile in the
+ * request, so there is nothing to look up and a ref would be a key into a
+ * table no 2.0.1 driver has to have.
+ *
+ * `chargingSchedule` is a tuple of one to three because that is what the
+ * schema says, and the bound is worth keeping: a driver that forwards the
+ * array verbatim is forwarding something already known to be well-sized.
+ */
+export interface ChargingProfile201 {
+  id: number;
+  stackLevel: number;
+  chargingProfilePurpose: ChargingProfilePurpose201;
+  chargingProfileKind: ChargingProfileKind201;
+  chargingSchedule:
+    | [ChargingSchedule201]
+    | [ChargingSchedule201, ChargingSchedule201]
+    | [ChargingSchedule201, ChargingSchedule201, ChargingSchedule201];
+  recurrencyKind?: RecurrencyKind201;
+  validFrom?: Date;
+  validTo?: Date;
+  /** A STRING in 2.0.1, where 1.6's transactionId is a number -- 2.0.1 lets
+   *  the STATION mint the identifier, so it is text on the wire. Only a
+   *  `TxProfile` may carry it. */
+  transactionId?: string;
+}
+
 export type CsmsOperation201 =
   // TRIED AND REJECTED, here because here is where it gets re-proposed:
   // folding the two `Reset` arms -- this one and CsmsOperation16's -- into one
@@ -530,6 +658,37 @@ export type CsmsOperation201 =
        *  flat `evseId`. A driver must omit the member rather than send `null`
        *  or an empty object. */
       evse?: Evse201;
+    }
+  // Homonyms a fourth and fifth time, and this pair is the one where the
+  // shared arm is not even tempting: 1.6's SetChargingProfile names a profile
+  // by {@link ChargingProfileRef} and scopes it with `connectorId`, 2.0.1's
+  // carries the whole {@link ChargingProfile201} inline and scopes it with
+  // `evseId`. Not one member survives the crossing. The two GetCompositeSchedule
+  // arms are closer -- `duration` and an optional rate unit are common -- and
+  // still differ in the member that says WHERE, for the same reason. See
+  // {@link ChargingRateUnit201} for the one type in this pair whose values do
+  // agree, and why that is not an argument either.
+  | {
+      action: "SetChargingProfile";
+      /** Which EVSE the profile is installed at. 0 addresses the charging
+       *  station itself, which is what a `ChargingStationMaxProfile` requires
+       *  and what a station-wide `TxDefaultProfile` uses; a `TxProfile` needs
+       *  a real EVSE. NOT optional the way `ChangeAvailability`'s `evse` is:
+       *  2.0.1's SetChargingProfileRequest makes this member required, so
+       *  there is no absence to give a meaning to. */
+      evseId: number;
+      chargingProfile: ChargingProfile201;
+    }
+  | {
+      action: "GetCompositeSchedule";
+      /** Same addressing as above, and 0 means the grid connection point --
+       *  the station's own total rather than "every EVSE". */
+      evseId: number;
+      /** Seconds forward from now that the schedule should cover. */
+      duration: number;
+      /** Absent means the station picks. Present, it is what the returned
+       *  schedule's limits are expressed in. */
+      chargingRateUnit?: ChargingRateUnit201;
     };
 
 export type CsmsOperation201Action = CsmsOperation201["action"];
@@ -543,6 +702,8 @@ export const CSMS_OPERATION_201_ACTIONS = everyOneOf<CsmsOperation201Action>()([
   "SetVariables",
   "TriggerMessage",
   "ChangeAvailability",
+  "SetChargingProfile",
+  "GetCompositeSchedule",
 ]);
 
 /**
@@ -615,6 +776,34 @@ export const SAMPLE_OPERATION_201: {
   ChangeAvailability: {
     action: "ChangeAvailability",
     operationalStatus: "Inoperative",
+  },
+  // THE CHEAPEST PROFILE THE SCHEMA ADMITS, by this table's rule: one
+  // schedule, one period, every optional member omitted. `evseId: 0` is the
+  // station itself, which is the only scope a profile carrying no
+  // `transactionId` is unconditionally allowed at. A mapper that reshapes the
+  // nested schedule -- the thing this sample exists to push through -- fails
+  // here before a container starts.
+  SetChargingProfile: {
+    action: "SetChargingProfile",
+    evseId: 0,
+    chargingProfile: {
+      id: 1,
+      stackLevel: 0,
+      chargingProfilePurpose: "TxDefaultProfile",
+      chargingProfileKind: "Absolute",
+      chargingSchedule: [
+        {
+          id: 1,
+          chargingRateUnit: "W",
+          chargingSchedulePeriod: [{ startPeriod: 0, limit: 0 }],
+        },
+      ],
+    },
+  },
+  GetCompositeSchedule: {
+    action: "GetCompositeSchedule",
+    evseId: 0,
+    duration: 1,
   },
 };
 

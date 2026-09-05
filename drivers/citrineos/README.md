@@ -354,6 +354,8 @@ the same client — `/ocpp/2.0.1/…` instead of `/ocpp/1.6/…`. The routing is
 | `SetVariables` | `monitoring/setVariables` |
 | `TriggerMessage` | `configuration/triggerMessage` |
 | `ChangeAvailability` | `configuration/changeAvailability` |
+| `SetChargingProfile` | `smartcharging/setChargingProfile` |
+| `GetCompositeSchedule` | `smartcharging/getCompositeSchedule` |
 
 The module is CitrineOS's rather than the specification's, read off the
 `@AsMessageEndpoint` decorators in the pinned image; `toCitrineRequest201`'s
@@ -365,6 +367,21 @@ of `{ id, connectorId? }` — **no flat `evseId`**. The driver passes that objec
 through rather than unpacking it, because which of its two members are present
 is the whole difference between addressing the station, an EVSE and a
 connector.
+
+**The two SmartCharging routes validate before they dispatch, and a refusal
+never reaches the wire.** `setChargingProfile` checks the profile against a
+dozen of *Part 2*'s K01 rules before `sendCall` — among them a `validFrom` in
+the future, a `ChargingStationMaxProfile` at anything but `evseId` 0, a first
+`chargingSchedulePeriod` whose `startPeriod` is not 0, a `Recurring` or
+`Absolute` schedule with no `startSchedule`, a `TxProfile` naming a transaction
+this station does not have, and a second profile at a stack level and purpose an
+active one already holds unless the newcomer's `validTo` is strictly later.
+`getCompositeSchedule` checks that a non-zero `evseId` resolves to an EVSE row
+with a **null** `connectorId`. A rule that fails answers HTTP 200 with
+`success: false` and puts nothing on the websocket, so the symptom in a run is
+an empty frame log rather than a rejected request — which is why the device
+model this driver provisions carries an EVSE row per addressed `evseId`, and why
+the `cert201-tck*` scenarios compute their validity windows from the clock.
 
 Declared for the **v2 line only**. Nobody has pointed a 2.0.1 station at
 v1.9.1 here, and a driver declaring a surface on the strength of a version

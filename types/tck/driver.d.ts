@@ -241,6 +241,77 @@ export interface SetVariableData201 {
      *  A driver must not "helpfully" send a number. */
     attributeValue: string;
 }
+/** OCPP 2.0.1 `ChargingProfilePurposeEnumType`, whole. NOT
+ *  {@link ChargingProfilePurpose}: 1.6 spells the station-wide purpose
+ *  `ChargePointMaxProfile` and has no external-constraints value at all. */
+export type ChargingProfilePurpose201 = "ChargingStationExternalConstraints" | "ChargingStationMaxProfile" | "TxDefaultProfile" | "TxProfile";
+/** OCPP 2.0.1 `ChargingProfileKindEnumType`. */
+export type ChargingProfileKind201 = "Absolute" | "Recurring" | "Relative";
+/** OCPP 2.0.1 `RecurrencyKindEnumType`. */
+export type RecurrencyKind201 = "Daily" | "Weekly";
+/** OCPP 2.0.1 `ChargingRateUnitEnumType`. */
+export type ChargingRateUnit201 = "W" | "A";
+/** OCPP 2.0.1 `ChargingSchedulePeriodType`. */
+export interface ChargingSchedulePeriod201 {
+    startPeriod: number;
+    limit: number;
+    numberPhases?: number;
+    phaseToUse?: number;
+}
+/**
+ * OCPP 2.0.1 `ChargingScheduleType`.
+ *
+ * `id` IS REQUIRED AND HAS NO 1.6 COUNTERPART. 1.6's chargingSchedule is
+ * anonymous -- it is identified by the profile that carries it -- where 2.0.1
+ * gives every schedule its own identifier, because a profile may carry up to
+ * three and `GetCompositeSchedule` and `NotifyEVChargingSchedule` name one.
+ *
+ * `startSchedule` is optional in the schema and NOT optional in practice for
+ * the two kinds this suite sends: 2.0.1 requires it for `Absolute` and
+ * `Recurring` and forbids it for `Relative`. That is a rule about the pair, so
+ * it is not expressible in this type without splitting the profile into three,
+ * and it is stated here rather than enforced.
+ */
+export interface ChargingSchedule201 {
+    id: number;
+    chargingRateUnit: ChargingRateUnit201;
+    /** 1..N on the wire, and the first period's `startPeriod` must be 0. */
+    chargingSchedulePeriod: [
+        ChargingSchedulePeriod201,
+        ...ChargingSchedulePeriod201[]
+    ];
+    startSchedule?: Date;
+    duration?: number;
+    minChargingRate?: number;
+}
+/**
+ * OCPP 2.0.1 `ChargingProfileType` -- the profile itself, INLINE.
+ *
+ * NOT A {@link ChargingProfileRef}, and the difference is the protocol's
+ * rather than this contract's. OCPP 1.6's `SetChargingProfile` is driven here
+ * through an opaque CSMS-side handle because 1.6 CSMSs keep a profile registry
+ * a scenario has to name a row of; 2.0.1 carries the whole profile in the
+ * request, so there is nothing to look up and a ref would be a key into a
+ * table no 2.0.1 driver has to have.
+ *
+ * `chargingSchedule` is a tuple of one to three because that is what the
+ * schema says, and the bound is worth keeping: a driver that forwards the
+ * array verbatim is forwarding something already known to be well-sized.
+ */
+export interface ChargingProfile201 {
+    id: number;
+    stackLevel: number;
+    chargingProfilePurpose: ChargingProfilePurpose201;
+    chargingProfileKind: ChargingProfileKind201;
+    chargingSchedule: [ChargingSchedule201] | [ChargingSchedule201, ChargingSchedule201] | [ChargingSchedule201, ChargingSchedule201, ChargingSchedule201];
+    recurrencyKind?: RecurrencyKind201;
+    validFrom?: Date;
+    validTo?: Date;
+    /** A STRING in 2.0.1, where 1.6's transactionId is a number -- 2.0.1 lets
+     *  the STATION mint the identifier, so it is text on the wire. Only a
+     *  `TxProfile` may carry it. */
+    transactionId?: string;
+}
 export type CsmsOperation201 = {
     action: "Reset";
     type: ResetType201;
@@ -267,12 +338,32 @@ export type CsmsOperation201 = {
      *  flat `evseId`. A driver must omit the member rather than send `null`
      *  or an empty object. */
     evse?: Evse201;
+} | {
+    action: "SetChargingProfile";
+    /** Which EVSE the profile is installed at. 0 addresses the charging
+     *  station itself, which is what a `ChargingStationMaxProfile` requires
+     *  and what a station-wide `TxDefaultProfile` uses; a `TxProfile` needs
+     *  a real EVSE. NOT optional the way `ChangeAvailability`'s `evse` is:
+     *  2.0.1's SetChargingProfileRequest makes this member required, so
+     *  there is no absence to give a meaning to. */
+    evseId: number;
+    chargingProfile: ChargingProfile201;
+} | {
+    action: "GetCompositeSchedule";
+    /** Same addressing as above, and 0 means the grid connection point --
+     *  the station's own total rather than "every EVSE". */
+    evseId: number;
+    /** Seconds forward from now that the schedule should cover. */
+    duration: number;
+    /** Absent means the station picks. Present, it is what the returned
+     *  schedule's limits are expressed in. */
+    chargingRateUnit?: ChargingRateUnit201;
 };
 export type CsmsOperation201Action = CsmsOperation201["action"];
 /** Every 2.0.1 action name. Same job as {@link CSMS_OPERATION_16_ACTIONS},
  *  and a SECOND list rather than an extension of it -- see the note on
  *  {@link CsmsOperation201}'s `Reset` arm for why the two must not merge. */
-export declare const CSMS_OPERATION_201_ACTIONS: readonly ["Reset", "GetVariables", "SetVariables", "TriggerMessage", "ChangeAvailability"];
+export declare const CSMS_OPERATION_201_ACTIONS: readonly ["Reset", "GetVariables", "SetVariables", "TriggerMessage", "ChangeAvailability", "SetChargingProfile", "GetCompositeSchedule"];
 /**
  * One well-formed operation per action, and its job is to make the union above
  * expensive to grow in exactly one place.

@@ -27,6 +27,7 @@
 import {
   UnsupportedOperationError,
   assertNever,
+  type ChargingProfile201,
   type ChargingProfileRef,
   type CsmsOperation16,
   type CsmsOperation201,
@@ -103,6 +104,55 @@ function body(fields: Record<string, unknown>): Record<string, unknown> {
   );
 }
 
+/**
+ * An OCPP 2.0.1 `ChargingProfileType` as CitrineOS will accept it.
+ *
+ * THE ONLY WORK IS THE THREE DATES, and it is work rather than a pass-through
+ * for the reason `UpdateFirmware`'s `retrieveDate` is: the contract carries a
+ * `Date` because that is the type a scenario can compute a window with, and
+ * `SetChargingProfileRequestSchema` validates `format: date-time`, which is a
+ * string. `JSON.stringify` would in fact render a Date as the same ISO 8601
+ * text -- and relying on that would put the wire spelling of three members
+ * inside a serialiser nothing here declares. `toISOString()` says it.
+ *
+ * REBUILT MEMBER BY MEMBER RATHER THAN SPREAD, which costs the eleven lines
+ * below and buys the thing a spread cannot: a member added to
+ * {@link ChargingProfile201} is a member this function does not send until
+ * somebody writes it here, so a `Date`-valued one cannot reach the wire as
+ * `{}`. `body()` drops the undefined ones, so an omitted optional is omitted
+ * rather than sent as null -- which for `transactionId` is the difference
+ * between a TxProfile CitrineOS refuses and one it dispatches.
+ */
+function profile201Body(profile: ChargingProfile201): Record<string, unknown> {
+  return body({
+    id: profile.id,
+    stackLevel: profile.stackLevel,
+    chargingProfilePurpose: profile.chargingProfilePurpose,
+    chargingProfileKind: profile.chargingProfileKind,
+    recurrencyKind: profile.recurrencyKind,
+    validFrom: profile.validFrom?.toISOString(),
+    validTo: profile.validTo?.toISOString(),
+    transactionId: profile.transactionId,
+    chargingSchedule: profile.chargingSchedule.map((schedule) =>
+      body({
+        id: schedule.id,
+        startSchedule: schedule.startSchedule?.toISOString(),
+        duration: schedule.duration,
+        chargingRateUnit: schedule.chargingRateUnit,
+        minChargingRate: schedule.minChargingRate,
+        chargingSchedulePeriod: schedule.chargingSchedulePeriod.map((period) =>
+          body({
+            startPeriod: period.startPeriod,
+            limit: period.limit,
+            numberPhases: period.numberPhases,
+            phaseToUse: period.phaseToUse,
+          }),
+        ),
+      }),
+    ),
+  });
+}
+
 /** The inline profile a ref names, or a hard failure naming the ref. */
 function profileFor(ref: ChargingProfileRef): CsChargingProfile {
   const profile = profileByRef(ref);
@@ -157,12 +207,12 @@ export async function toCitrineRequest(
  * arm lands in.
  *
  * The module for each action is CitrineOS's, not the OCPP specification's:
- * `Reset`, `TriggerMessage` and `ChangeAvailability` are Configuration's and
- * the two device-model actions are Monitoring's, read off the
- * `@AsMessageEndpoint` decorators in
- * `packages/core/src/modules/{Configuration,Monitoring}/src/module/2/MessageApi.ts`.
+ * `Reset`, `TriggerMessage` and `ChangeAvailability` are Configuration's, the
+ * two device-model actions are Monitoring's, and the two charging-profile
+ * actions are SmartCharging's, read off the `@AsMessageEndpoint` decorators in
+ * `packages/core/src/modules/{Configuration,Monitoring,SmartCharging}/src/module/2/MessageApi.ts`.
  * There is no rule to derive it from, the same way there is none for 1.6 --
- * and that all three actions with a 1.6 namesake happen to share their
+ * and that all five actions with a 1.6 namesake happen to share their
  * namesake's module is a fact about this arrangement, not one to route by: the
  * two device-model actions have no namesake to agree with.
  */
@@ -245,6 +295,48 @@ function route201(op: CsmsOperation201, variant: CitrineVariant): CitrineRoute {
         module: "configuration",
         action: "changeAvailability",
         body: body({ operationalStatus: op.operationalStatus, evse: op.evse }),
+      };
+
+    // SmartCharging's, and the first 2.0.1 pair whose module is NOT the one
+    // its 1.6 namesake uses by coincidence -- both namesakes are under
+    // `smartcharging` too, and both were read off `@AsMessageEndpoint`
+    // decorators in
+    // `packages/core/src/modules/SmartCharging/src/module/2/MessageApi.ts`
+    // rather than inferred from that.
+    //
+    // WHAT MAKES THESE TWO DIFFERENT FROM EVERY ARM ABOVE: this endpoint
+    // VALIDATES BEFORE IT DISPATCHES, and a refusal is an HTTP 200 carrying
+    // `success: false` with nothing on the wire. It checks the profile against
+    // a dozen of Part 2's K01 rules -- a `validFrom` in the future, a
+    // `ChargingStationMaxProfile` anywhere but evseId 0, a first period whose
+    // `startPeriod` is not 0, a second profile at a stack level and purpose an
+    // active one already holds unless the newcomer outlives it -- so a
+    // scenario here can fail with an empty log and a correct CSMS. The
+    // scenarios carry that reasoning; the driver's job is to send what it was
+    // handed, and every one of those rules is about a value it did not choose.
+    case "SetChargingProfile":
+      return {
+        module: "smartcharging",
+        action: "setChargingProfile",
+        body: {
+          evseId: op.evseId,
+          chargingProfile: profile201Body(op.chargingProfile),
+        },
+      };
+
+    // `chargingRateUnit` is omitted rather than defaulted: absent means the
+    // station picks, and the endpoint checks a PRESENT one against the
+    // station's `RateUnit` member list before dispatching, so inventing a
+    // value is inventing a way to be refused.
+    case "GetCompositeSchedule":
+      return {
+        module: "smartcharging",
+        action: "getCompositeSchedule",
+        body: body({
+          evseId: op.evseId,
+          duration: op.duration,
+          chargingRateUnit: op.chargingRateUnit,
+        }),
       };
 
     default:
