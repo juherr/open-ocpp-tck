@@ -12,6 +12,43 @@ Released as `0.3.0`. The documented install ref already points at that tag, so
 
 ### Added
 
+- `SetChargingProfile` and `GetCompositeSchedule` join `CsmsOperation201` — the
+  second operation tranche, bought as a pair because
+  `tck/specs/OCA-201-OPERATIONS.txt` sizes it that way: thirteen selected cases
+  need the first and no other operation, two need the second and nothing else,
+  and both are Smart Charging behind one CSMS module. The profile travels
+  INLINE, unlike OCPP 1.6's opaque `ChargingProfileRef`, so
+  `ChargingProfile201`, `ChargingSchedule201`, `ChargingSchedulePeriod201` and
+  four enumerations are new rather than shared — not one member survives the
+  crossing from the 1.6 spelling. `ChargingRateUnit201` is the first 2.0.1/1.6
+  homonym whose values agree, and it is still declared twice; the note beside
+  it says why. `drivers/citrineos` routes both through `smartcharging/…`
+  ([#114])
+- Nine OCPP 2.0.1 scenarios, taking the slice from 17 implemented cases to 26
+  and the suite from 64 scenarios to 73. Seven `SetChargingProfile` cases —
+  `cert201-tck01-set-tx-default-profile` (`TC_K_01`),
+  `cert201-tck03-set-station-max-profile` (`TC_K_03`),
+  `cert201-tck04-replace-profile` (`TC_K_04`: one identifier, one stack level,
+  two limits — replace), `cert201-tck10-set-default-profile-all-evses`
+  (`TC_K_10`), `cert201-tck19-set-recurring-profile` (`TC_K_19`),
+  `cert201-tck60-set-tx-profile` (`TC_K_60`: a profile scoped to the
+  transaction the station actually opened) and `cert201-tck70-stack-profiles`
+  (`TC_K_70`: two identifiers, two stack levels — stack) — plus
+  `cert201-tck43-composite-schedule-evse` and
+  `cert201-tck44-composite-schedule-station` (`TC_K_43`, `TC_K_44`). Each
+  asserts the profile the CSMS actually put on the wire, down to the schedule's
+  unit and the period's limit. None has met a live CSMS — every scope row is
+  `CONDITIONAL` and states the question the first sweep settles ([#114])
+- `assertCallCount` — exactly N CALLs for an action and direction. Every helper
+  that reads a numbered request says nothing about what came after it, so a
+  CSMS that fanned one API call into several, retried one, or emitted a third
+  of its own leaves every indexed check passing ([#114])
+- `drivers/citrineos` provisions a second `EvseTypes` row per addressable EVSE,
+  with a **null** `connectorId`. The status handler resolves an EVSE by the
+  `(id, connectorId)` pair; the SmartCharging endpoints resolve one by
+  `connectorId IS NULL`, so the row a `StatusNotification` needs does not
+  answer a charging profile — and a request that cannot resolve its EVSE is
+  refused inside the CSMS with nothing on the websocket ([#114])
 - `ChangeAvailability` joins `CsmsOperation201` — the first operation tranche,
   and the first arm whose subject is an OBJECT rather than a scalar. 2.0.1 has
   no flat `evseId` here: `evse` is optional, carries a required `id` and an

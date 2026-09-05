@@ -537,8 +537,8 @@ headers are left as they are until a row needs them to mean something else:
 renaming a column rewrites the two rows above it, which were measured under
 the arrangement the headers describe.
 
-AND THE SUITE IS NOW OLDER THAN THE ROWS. The registry holds 64 scenarios; the
-beta3 row's 54 is what was on the wire the day it was taken, and ten
+AND THE SUITE IS NOW OLDER THAN THE ROWS. The registry holds 73 scenarios; the
+beta3 row's 54 is what was on the wire the day it was taken, and nineteen
 `cert201-` rows registered since have never been swept against any CSMS —
 their scope rows are `CONDITIONAL` and say what each one has to answer. A row
 here records a measurement, so it is not restated to cover scenarios that run

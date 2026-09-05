@@ -172,18 +172,32 @@ The other half of that gap was whether a list this long may be committed at
 all, given that the references are CC BY-ND, and it is
 [answered](#what-may-be-committed-here-and-what-may-not): it may.
 
-Seventeen of the 147 are implemented and 130 decline with a reason. Those
-reasons are written per group rather than per case — 23 of them across the 130 —
+Twenty-six of the 147 are implemented and 121 decline with a reason. Those
+reasons are written per group rather than per case — 26 of them across the 121 —
 and the file's header says why that is the granularity the decision was taken
 at rather than a placeholder. What a guard still cannot say is whether these
 are the *right* 147, and that is [unchanged](#the-guard).
 
-**Six of the seventeen arrived with the first operation tranche**, which is the
-other way this number moves and the expensive one. `ChangeAvailability` heads
-the table below; nine cases name it and no other operation, and reading those
-nine in *Part 6* found six writable against the pinned simulator. The other
-three are declined on a Reusable State this build cannot reach rather than on
-the verb, and their rows say which state and why.
+**Six of the first seventeen arrived with the first operation tranche**, which
+is the other way this number moves and the expensive one. `ChangeAvailability`
+headed the table below; nine cases name it and no other operation, and reading
+those nine in *Part 6* found six writable against the pinned simulator. The
+other three are declined on a Reusable State this build cannot reach rather
+than on the verb, and their rows say which state and why.
+
+**Nine more arrived with the second, and it is the same move at the size the
+table says to make it at.** `SetChargingProfile` headed the table with thirteen
+cases and `GetCompositeSchedule` added two that need nothing else; the two were
+bought together because both are Smart Charging, both address an EVSE the same
+way and both live behind one CSMS module, so a driver wiring one had already
+paid for the other. Reading the fifteen in *Part 6* found nine writable. Of the
+six that are not, four need a charging-profile verb this pair does not contain
+and their rows now name it; two are the pinned simulator's — `TC_K_15` wants an
+RPC-level answer its dispatcher never raises, `TC_K_31` a continued report its
+payload literal cannot mark. Those two are the first rows here declined on the
+station rather than on the vocabulary *after* the vocabulary arrived, which is
+the shape a tranche leaves behind and the reason a tranche's cases are read
+before its verb is written.
 
 **Four of the first eleven arrived by falsifying a reason rather than by adding
 an operation**, which is worth naming because it is the cheapest way this number

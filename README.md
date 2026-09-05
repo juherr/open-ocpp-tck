@@ -24,7 +24,7 @@ The `cert16-` prefix is a protocol version, not decoration. Its counterpart is
 written rule, [`OCA-201-SELECTION.md`](OCA-201-SELECTION.md) — role CSMS,
 status mandatory, on every certification profile, which is 147 cases — and the
 resulting list is [`tck/specs/OCA-201-SLICE.txt`](tck/specs/OCA-201-SLICE.txt),
-where all 147 are written down: 17 implemented, 130 declined against 23 reasons.
+where all 147 are written down: 26 implemented, 121 declined against 26 reasons.
 A `cert201-` scenario needs a driver that speaks the protocol; one that does not
 says so per scenario in its scope table, and nothing else about it changes.
 
@@ -59,8 +59,8 @@ different surfaces, and each answers a question the other cannot:
 
 | Driver | Transport | What it answers | Result |
 |---|---|---|---|
-| [`drivers/steve`](drivers/steve/README.md) | HTML manager UI + WebAPI + MariaDB | *Has the harness lost a capability?* SteVe is the CSMS the scenarios were originally written against, so a scope row that had to be demoted would mean the core dropped something. | 47 `DRIVABLE`, and the 11 OCPP 2.0.1 scenarios `NOT_APPLICABLE` |
-| [`drivers/citrineos`](drivers/citrineos/README.md) | JSON REST API + GraphQL | *Is the contract actually CSMS-neutral?* [CitrineOS](https://github.com/citrineos/citrineos-core) (LF Energy / S44) had no part in writing the scenarios and has a smaller OCPP 1.6 surface. | 31 `PASS`, 5 `PARTIAL`, 4 `FAIL`, 7 `NOT APPLICABLE` over the OCPP 1.6 scenarios; 7 OCPP 2.0.1 ones `PASS` and 4 not yet swept |
+| [`drivers/steve`](drivers/steve/README.md) | HTML manager UI + WebAPI + MariaDB | *Has the harness lost a capability?* SteVe is the CSMS the scenarios were originally written against, so a scope row that had to be demoted would mean the core dropped something. | 47 `DRIVABLE`, and the 26 OCPP 2.0.1 scenarios `NOT_APPLICABLE` |
+| [`drivers/citrineos`](drivers/citrineos/README.md) | JSON REST API + GraphQL | *Is the contract actually CSMS-neutral?* [CitrineOS](https://github.com/citrineos/citrineos-core) (LF Energy / S44) had no part in writing the scenarios and has a smaller OCPP 1.6 surface. | 31 `PASS`, 5 `PARTIAL`, 4 `FAIL`, 7 `NOT APPLICABLE` over the OCPP 1.6 scenarios; 7 OCPP 2.0.1 ones `PASS` and 19 not yet swept |
 
 An abstraction with one implementation is neutral by assertion, so the second
 driver is what turns that into a measurement — and the result is the useful
@@ -103,7 +103,7 @@ bunx ocpp-tck driver selftest    # seconds: can the driver answer the contract?
 bunx ocpp-tck run-all --group core
 ```
 
-`run-all` is the whole suite: all 64 scenarios, one command. It did not use to
+`run-all` is the whole suite: all 73 scenarios, one command. It did not use to
 be — the `authorize` group (TC_023) sat outside `all`, so "no failures, 44
 scenarios" read like a clean sweep while skipping exactly the three scenarios
 that prove the fixtures took. Working in a clone, `bun run e2e` is that sweep
