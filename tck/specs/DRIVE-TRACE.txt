@@ -246,6 +246,19 @@ GROUP core-201
     OP 201:SetChargingProfile [0, 1, 4, 7400, 9104, 9104, <ts>, <ts>, <ts>, absolute, txdefaultprofile, w]
     OP 201:SetChargingProfile [0, 1, 3700, 4, 9104, 9104, <ts>, <ts>, <ts>, absolute, txdefaultprofile, w]
     -> driveState keys=[]
+  SPEC cert201-tck05-clear-reported-profile
+    OP 201:SetChargingProfile [0, 1, 5, 5000, 9305, 9305, <ts>, <ts>, <ts>, absolute, txdefaultprofile, w]
+    OP 201:GetChargingProfiles [1, 5, 7305]
+    SIM wait-for-line Sent: \[2,"[^"]*","ReportChargingProfiles",(?=[^\]]*"requestId":7305) 10000
+    OP 201:ClearChargingProfile [-1]
+    -> driveState keys=[]
+  SPEC cert201-tck06-clear-profile-by-criteria
+    OP 201:SetChargingProfile [0, 1, 6, 6600, 9306, 9306, <ts>, <ts>, <ts>, absolute, txdefaultprofile, w]
+    OP 201:ClearChargingProfile [1, 6, txdefaultprofile]
+    -> driveState keys=[]
+  SPEC cert201-tck08-clear-unknown-profile
+    OP 201:ClearChargingProfile [9308]
+    -> driveState keys=[]
   SPEC cert201-tck10-set-default-profile-all-evses
     OP 201:SetChargingProfile [0, 0, 10, 6000, 9110, 9110, <ts>, <ts>, <ts>, absolute, txdefaultprofile, w]
     -> driveState keys=[]

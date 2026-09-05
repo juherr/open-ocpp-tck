@@ -327,6 +327,42 @@ FILE core-201.ts
       ·.pass(·)
       RETURN
     ·.fail(·, ·)
+  HELPER assertClearProfileRequested
+    IF
+      ·.fail(·, ·)
+      RETURN
+    IF
+    IF
+      IF
+      IF
+        OR
+          OR
+        FOROF
+          IF
+        FOROF
+          IF
+    IF
+      ·.pass(·)
+      RETURN
+    ·.fail(·, ·)
+  HELPER assertClearedTheReportedProfile
+    AND
+      AND
+        AND
+    IF
+      ·.fail(·, ·)
+      RETURN
+    IF
+      OR
+      ·.fail(·, ·)
+      RETURN
+    IF
+      ·.fail(·, ·)
+      RETURN
+    IF
+      ·.pass(·)
+      RETURN
+    ·.fail(·, ·)
   SPEC cert201-tcb06-get-variables connector=1 bootWaitSecs=4 holdSecs=12 ocppVersion="OCPP-2.0.1" runsSimTemplate=false
     assertReceived(·, ·, "GetVariables", "GetVariables.req received")
     assertVariableRequested(·, ·, "GetVariables", "getVariableData", ·, ·, ·)
@@ -539,6 +575,22 @@ FILE core-201.ts
     assertChargingProfilesRequested(·, ·, 7236, 1, {chargingProfilePurpose:"TxDefaultProfile",stackLevel:36}, "GetChargingProfiles.req narrows EVSE 1 to the TxDefaultProfile purpose AND stack level 36")
     assertChargingProfilesAnswered(·, ·, 7236, "Accepted", "the station accepted the query rather than answering NoProfiles")
     assertAllAnswered(·, ·, "ReportChargingProfiles")
+  SPEC cert201-tck05-clear-reported-profile connector=1 bootWaitSecs=4 holdSecs=20 ocppVersion="OCPP-2.0.1" runsSimTemplate=false
+    assertResponseStatus(·, ·, "SetChargingProfile", "Accepted", "the station holds the profile this case goes on to clear", {direction:"received"})
+    assertChargingProfilesRequested(·, ·, 7305, 1, {stackLevel:5}, "GetChargingProfiles.req asks EVSE 1 for the profiles at stack level 5")
+    assertChargingProfilesAnswered(·, ·, 7305, "Accepted", "the station accepted the query rather than answering NoProfiles")
+    assertClearedTheReportedProfile(·, ·, 7305, "ClearChargingProfile.req names the profile the station's own report announced")
+    assertClearProfileRequested(·, ·, 0, {chargingProfileId:9305}, "ClearChargingProfile.req clears by identifier alone, with no criteria beside it")
+    assertResponseStatus(·, ·, "ClearChargingProfile", "Accepted", "the station cleared the profile it had just reported", {direction:"received"})
+    assertAllAnswered(·, ·, "ReportChargingProfiles")
+  SPEC cert201-tck06-clear-profile-by-criteria connector=1 bootWaitSecs=4 holdSecs=12 ocppVersion="OCPP-2.0.1" runsSimTemplate=false
+    assertResponseStatus(·, ·, "SetChargingProfile", "Accepted", "the station holds the profile this case goes on to clear", {direction:"received"})
+    assertClearProfileRequested(·, ·, 0, {chargingProfileCriteria:{evseId:1,chargingProfilePurpose:"TxDefaultProfile",stackLevel:6}}, "ClearChargingProfile.req clears EVSE 1's TxDefaultProfile at stack level 6, by criteria and not by identifier")
+    assertResponseStatus(·, ·, "ClearChargingProfile", "Accepted", "the station cleared a profile the criteria matched", {direction:"received"})
+  SPEC cert201-tck08-clear-unknown-profile connector=1 bootWaitSecs=4 holdSecs=10 ocppVersion="OCPP-2.0.1" runsSimTemplate=false
+    assertClearProfileRequested(·, ·, 0, {chargingProfileId:9308}, "ClearChargingProfile.req names profile 9308 and carries no criteria")
+    assertNotSent(·, ·, "SetChargingProfile", "received", "no profile was installed before the request, so the identifier matches nothing the station holds")
+    assertResponseStatus(·, ·, "ClearChargingProfile", "Unknown", "the station declined an identifier it holds no profile under", {direction:"received"})
 
 FILE core.ts
   HELPER assertGetConfigurationUnfiltered
