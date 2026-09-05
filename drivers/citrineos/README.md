@@ -74,14 +74,14 @@ bun bin/ocpp-tck.ts driver provision      # idTags + the 2.0.1 device model
 bun bin/ocpp-tck.ts driver verify         # read-only: are they there?
 bun bin/ocpp-tck.ts driver selftest       # seconds: every record query, once
 
-bun run e2e                               # the whole suite: 80 scenarios
+bun run e2e                               # the whole suite: 83 scenarios
 
 docker compose -f drivers/citrineos/compose.yaml down -v
 ```
 
 `bun run e2e` and not `run-all`, for the retry pass: `--retry-failed-isolated`
 re-runs a parallel lane's failures sequentially, which is the mode the runner
-calls reliable. Both cover the same 80 scenarios — the `authorize` group used
+calls reliable. Both cover the same 83 scenarios — the `authorize` group used
 to sit outside `all`, so a bare `run-all` reported 44/47 as "no failures" and
 skipped exactly the three scenarios that prove `driver provision` seeded
 anything. `bun run e2e:smoke` is the short loop while iterating.

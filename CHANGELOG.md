@@ -12,6 +12,45 @@ Released as `0.3.0`. The documented install ref already points at that tag, so
 
 ### Added
 
+- `ClearChargingProfile` joins `CsmsOperation201` — the fourth and last Smart
+  Charging operation, and the first bought for a **block** rather than for a
+  head count. It completes three cases where six of the eight verbs still
+  unbought carry more, and it goes first anyway because those three are the last
+  three of the twenty-one Smart Charging cases the selection rule owes that no
+  simulator limitation blocks: the block is now 19 of 21, and neither of the two
+  left over (`TC_K_15`, `TC_K_31`) is waiting on this union.
+  `ClearChargingProfileCriteria201` is new and is deliberately **not**
+  `ChargingProfileCriterion201` — that one selects what to report and this one
+  what to remove, the wire gives them different members, and this one carries
+  `evseId` inside it where the query carries it as a sibling. Both members of
+  the arm stay optional because the OCPP schema forbids no combination; the
+  pinned CSMS refuses a request carrying both and one carrying neither, which is
+  a deployment's rule and not the contract's. `drivers/citrineos` routes it
+  through `smartcharging/clearChargingProfile` ([#114])
+- Three OCPP 2.0.1 scenarios, taking the slice from 33 implemented cases to 36
+  and the suite from 80 scenarios to 83.
+  `cert201-tck05-clear-reported-profile` (`TC_K_05`: the CSMS reads which
+  profiles a station holds and then clears one **by the identifier the station
+  reported**), `cert201-tck06-clear-profile-by-criteria` (`TC_K_06`: an
+  installed profile cleared by purpose and stack level rather than by
+  identifier) and `cert201-tck08-clear-unknown-profile` (`TC_K_08`: an
+  identifier the station never installed). The last of those is the only case in
+  the whole Smart Charging block that expects an answer other than `Accepted`,
+  which makes it the only one that would notice a CSMS answering `Accepted` to
+  everything. None has met a live CSMS — every scope row is `CONDITIONAL` and
+  states the question the first sweep settles ([#114])
+- Two assertion helpers for that action. `assertClearProfileRequested` compares
+  the request's member set in **both** directions, for the reason its
+  `GetChargingProfiles` sibling does and one sharper: the three cases differ in
+  nothing but which of the two members they carry, and the pinned CSMS refuses
+  the combination before dispatch — so a CSMS that added the member a scenario
+  left out produces an *empty* trace rather than a wrong one.
+  `assertClearedTheReportedProfile` is the one that makes `TC_K_05` a case
+  rather than a spelling: it reads the identifier off the station's own
+  `ReportChargingProfiles` and compares the `ClearChargingProfile` against
+  **that**, because a scenario installing profile N and then clearing profile N
+  would pass every literal-based check while never requiring the CSMS to read
+  the report ([#114])
 - A CSMS readiness gate in the runner's preflight: `run` and `run-all` now
   require one record query to be answered before anything is dispatched, and
   wait up to 150s for it — the larger of the two cold-boot allowances the

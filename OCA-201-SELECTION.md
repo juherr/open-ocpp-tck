@@ -172,8 +172,8 @@ The other half of that gap was whether a list this long may be committed at
 all, given that the references are CC BY-ND, and it is
 [answered](#what-may-be-committed-here-and-what-may-not): it may.
 
-Thirty-three of the 147 are implemented and 114 decline with a reason. Those
-reasons are written per group rather than per case — 25 of them across the 114 —
+Thirty-six of the 147 are implemented and 111 decline with a reason. Those
+reasons are written per group rather than per case — 23 of them across the 111 —
 and the file's header says why that is the granularity the decision was taken
 at rather than a placeholder. What a guard still cannot say is whether these
 are the *right* 147, and that is [unchanged](#the-guard).
@@ -268,25 +268,24 @@ the extractor's header says why.
 Six cases need more than one operation, so the two counts differ: adding
 `GetInstalledCertificateIds` is named by eight rows and finishes six of them,
 because `TC_M_20` and `TC_M_21` want `DeleteCertificate` and
-`InstallCertificate` as well. Greedy from the eight the union has, which leaves
-**49** of the 147 short of a verb. `bun tools/extract-201-operations.ts
+`InstallCertificate` as well. Greedy from the nine the union has, which leaves
+**46** of the 147 short of a verb. `bun tools/extract-201-operations.ts
 --tranches` is what prints this table — no PDF, just the row file and the
 contract — and `tests/oca-201-operations.sh` holds the two together:
 
 | # | operation | cases it completes | still blocked after |
 |---|---|---|---|
-| 1 | `UpdateFirmware` | 10 | 39 |
-| 2 | `CustomerInformation` | 6 | 33 |
-| 3 | `GetInstalledCertificateIds` | 6 | 27 |
-| 4 | `InstallCertificate` | 5 | 22 |
-| 5 | `RequestStartTransaction` | 5 | 17 |
-| 6 | `GetLog` | 4 | 13 |
-| 7 | `CertificateSigned` | 3 | 10 |
-| 8 | `ClearChargingProfile` | 3 | 7 |
-| 9 | `ClearCache` | 2 | 5 |
-| 10 | `DeleteCertificate` | 2 | 3 |
-| 11 | `SetNetworkProfile` | 2 | 1 |
-| 12 | `RequestStopTransaction` | 1 | 0 |
+| 1 | `UpdateFirmware` | 10 | 36 |
+| 2 | `CustomerInformation` | 6 | 30 |
+| 3 | `GetInstalledCertificateIds` | 6 | 24 |
+| 4 | `InstallCertificate` | 5 | 19 |
+| 5 | `RequestStartTransaction` | 5 | 14 |
+| 6 | `GetLog` | 4 | 10 |
+| 7 | `CertificateSigned` | 3 | 7 |
+| 8 | `ClearCache` | 2 | 5 |
+| 9 | `DeleteCertificate` | 2 | 3 |
+| 10 | `SetNetworkProfile` | 2 | 1 |
+| 11 | `RequestStopTransaction` | 1 | 0 |
 
 The right-hand column is the number a tranche is worth arguing about, and it is
 not the number of scenarios that become writable: a verb removes *one* blocker,
