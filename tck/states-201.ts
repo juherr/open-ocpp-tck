@@ -56,6 +56,15 @@
  * it, which reads like an oversight in the reference and is modelled as
  * written. Inferring the tidier graph is the change a re-read would authorise;
  * guessing it here would put an inference where a measurement is.
+ *
+ * NOT BUILT FOR OCPP 1.6, and here is where that gets re-proposed. Three 1.6
+ * scenarios inline a reusable state today (`tck/specs/core.ts:393`,
+ * `tck/specs/authlist-reservation.ts:355`, recorded in `OCA-COVERAGE.md`
+ * §3.22), and three copies is manageable duplication. `Reusable State` is Part
+ * 6's vocabulary; the 1.6 reference does not use it, so retrofitting this would
+ * import a model that document does not have in exchange for no reduction in
+ * copies. If the 1.6 side ever reaches a dozen it wants a mechanism of its own
+ * shape, not this one widened.
  */
 
 import { UNEXERCISED_PREFIX, type AssertRecorder } from "./assert";
@@ -665,6 +674,28 @@ export class FixtureLog {
  * operation was asked for by a fixture or by the scenario. Rethrown explicitly
  * rather than left to fall through, so a later `catch` added here cannot
  * swallow it by accident.
+ *
+ * NO TEARDOWN, and this is where it gets asked for. A fixture that opens a
+ * transaction leaves one open, exactly as the inline setup it replaces did, and
+ * a driver's `prepareStation` is what closes a stale one before the next
+ * scenario. Symmetry argues for undoing here what was done here; what stops it
+ * is that the case's own `drive()` runs after this and may have moved the
+ * station anywhere -- so a teardown would either have to observe the station,
+ * which is the thing this whole shape avoids, or unwind a condition that is no
+ * longer the one it established. The day `prepareStation` stops being enough,
+ * the honest fix is a post condition the runner drives the station BACK to, not
+ * a reversed reach.
+ *
+ * NO ASSERTIONS ON WHAT THE CSMS ANSWERS A FIXTURE, which is the other thing a
+ * reader expects to find here: Part 6 attaches tool validations to a state, and
+ * mirroring them would look like more coverage. Two reasons not to. A check
+ * emitted from this function has no row in `tck/specs/OCA-OBLIGATIONS.txt` and
+ * fails `tests/oca-obligations.sh`, which is the guard saying the same thing:
+ * an assertion nobody can trace to a case is an assertion nobody can act on.
+ * And one defective `Authorize` answer would be reported once per scenario
+ * declaring the state -- eighteen copies of one finding for
+ * `EnergyTransferStarted` across the selected cases. Judging a CSMS answer is
+ * the case's job; this one's is to reach a condition and say whether it did.
  */
 export async function establishStates(
   plan: StatePlan,
