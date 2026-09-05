@@ -36,6 +36,7 @@ import { profileByRef, type CsChargingProfile } from "./profiles";
 import {
   NO_RESERVATIONS,
   unroutedActions,
+  unroutedActions201,
   type CitrineVariant,
 } from "./variant";
 
@@ -140,9 +141,20 @@ export async function toCitrineRequest(
  * reason tck/driver.ts gives beside `CsmsOperation201`'s `Reset` arm, and
  * `Reset` being an action name in both is exactly what a shared switch would
  * lose. It needs no `refs`: nothing in the 2.0.1 slice carries an opaque ref,
- * so there is no database round-trip to hand it, and no `variant` either --
- * see `capabilitiesFor`, where the v1 line declares no 2.0.1 surface at all
- * rather than declaring one with holes in it.
+ * so there is no database round-trip to hand it.
+ *
+ * IT DOES TAKE A `variant`, and that is a reversal worth stating because the
+ * argument against it was written here and was right at the time: the v1 line
+ * declares no 2.0.1 surface at all rather than one with holes in it, so there
+ * was nothing for a variant to decide. What changed is the OTHER direction --
+ * `capabilitiesFor` declared the whole of `CSMS_OPERATION_201_ACTIONS` for v2,
+ * so an arm added to the contract was declared supported by this driver before
+ * any endpoint had been read off a decorator (issue #71). The fix is the one
+ * the 1.6 half already had: a table of what is unrouted, subtracted from the
+ * declaration and read again here, so a declared action and a POSTed request
+ * cannot disagree. A variant is what indexes that table, and v2's row being
+ * empty today is not a reason to have no parameter -- it is the row the next
+ * arm lands in.
  *
  * The module for each action is CitrineOS's, not the OCPP specification's:
  * `Reset` and `TriggerMessage` are Configuration's and the two device-model
@@ -153,11 +165,24 @@ export async function toCitrineRequest(
  * module is a fact about this arrangement, not one to route by: the two
  * device-model actions have no namesake to agree with.
  */
-export function toCitrineRequest201(op: CsmsOperation201): CitrineRequest {
-  return { ocppVersion: "2.0.1", ...route201(op) };
+export function toCitrineRequest201(
+  op: CsmsOperation201,
+  variant: CitrineVariant,
+): CitrineRequest {
+  return { ocppVersion: "2.0.1", ...route201(op, variant) };
 }
 
-function route201(op: CsmsOperation201): CitrineRoute {
+function route201(op: CsmsOperation201, variant: CitrineVariant): CitrineRoute {
+  // The same guard `route16` opens with, and for the same reason: an action
+  // this variant does not route must never be POSTed to a 404, and the reason
+  // comes from variant.ts rather than being re-derived here, which is what
+  // keeps this escape, the capability set and the scope table saying one
+  // thing. Empty for v2 today -- see UNROUTED_201 for why that is the state to
+  // build for rather than the state to code around.
+  const unrouted = unroutedActions201(variant).get(op.action);
+  if (unrouted !== undefined) {
+    throw new UnsupportedOperationError(op.action, unrouted);
+  }
   switch (op.action) {
     case "Reset":
       // An absent evseId is OMITTED, not sent as 0: 2.0.1 reads its absence as

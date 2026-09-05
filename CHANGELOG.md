@@ -12,6 +12,19 @@ Released as `0.3.0`. The documented install ref already points at that tag, so
 
 ### Added
 
+- `SAMPLE_OPERATION_201` — one well-formed operation per `CsmsOperation201`
+  action, typed so that an arm added to the union is a compile error until
+  somebody writes a request of its shape. It is what a driver's mapper can be
+  handed to answer "can this driver express what it declares", and it is
+  exported because a third-party driver owes the same check ([#71])
+- `tests/capability-parity.ts` — a capability a driver declares is one it
+  implements. `capabilities` and the parts `create(env)` returns are held to
+  each other for every environment a bundled driver's declarations are a
+  function of; a present-but-empty `operations201` fails, since absent and
+  empty are different claims; and every declared 2.0.1 action goes through the
+  driver's own mapper. `check-driver` cannot do any of it — it never calls
+  `create()`, by design ([#71])
+
 - Four OCPP 2.0.1 scenarios, taking the slice from 7 implemented cases to 11
   and the suite from 54 scenarios to 58. `cert201-tcc02-authorize-invalid`
   (`TC_C_02`: an idToken the CSMS does not know is reported `Invalid` or
@@ -254,6 +267,18 @@ Released as `0.3.0`. The documented install ref already points at that tag, so
 
 ### Fixed
 
+- `drivers/citrineos` declared `new Set(CSMS_OPERATION_201_ACTIONS)` — the
+  whole constant — as its OCPP 2.0.1 vocabulary, so every arm added to
+  `CsmsOperation201` became an operation this driver claimed to support at the
+  moment it was added, before any CitrineOS endpoint had been read off an
+  `@AsMessageEndpoint` decorator. `check-driver` could not catch it and never
+  will: it compares that declaration to the core's own list, and an added arm
+  grows both sides in the same commit. The declaration is now built by
+  subtracting an unrouted table, the way the OCPP 1.6 half already was, and
+  `toCitrineRequest201` reads the same table so a declared action and a POSTed
+  request cannot disagree. The table is empty for the v2 line today; the point
+  is that the next arm has somewhere to say "not routed yet" that is not a
+  comment ([#71])
 - `cert201-tcf20-heartbeat` measures the case it claims. `TC_F_20` is *Trigger
   message - Heartbeat*: the CSMS is the system under test, its step 1 is a
   `TriggerMessageRequest`, and that step carries the case's only tool
@@ -376,6 +401,7 @@ releases from 141 commits would mean writing detail nobody measured.
 [#67]: https://github.com/juherr/open-ocpp-tck/pull/67
 [#68]: https://github.com/juherr/open-ocpp-tck/pull/68
 [#70]: https://github.com/juherr/open-ocpp-tck/pull/70
+[#71]: https://github.com/juherr/open-ocpp-tck/issues/71
 [#73]: https://github.com/juherr/open-ocpp-tck/pull/73
 [#75]: https://github.com/juherr/open-ocpp-tck/issues/75
 [#77]: https://github.com/juherr/open-ocpp-tck/issues/77

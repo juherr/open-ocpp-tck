@@ -34,7 +34,12 @@
  * therefore always true and always useless. The presence of
  * `ocppConnectionName` is the discriminator, and that is what verify() checks.
  */
-import type { CsmsEnv, CsmsOperation16Action } from "../../tck/driver";
+import {
+  CSMS_OPERATION_201_ACTIONS,
+  type CsmsEnv,
+  type CsmsOperation16Action,
+  type CsmsOperation201Action,
+} from "../../tck/driver";
 
 export type CitrineVariant = "v1" | "v2";
 
@@ -148,6 +153,58 @@ export const NO_OCPP_201_ON_V1 =
   "substitutes a stub that throws. Drivable with CITRINE_VARIANT=v2 against a " +
   "v2 server -- and a v1 measurement, not a version comparison, is what would " +
   "change this row.";
+
+/**
+ * The 2.0.1 counterpart of {@link UNROUTED}, and it exists for what is NOT in
+ * it yet.
+ *
+ * Same shape as the 1.6 table on purpose, so the two cannot drift in style and
+ * a reader who has understood one has understood both: declared by SUBTRACTION
+ * from the contract's own list in `capabilitiesFor`, and read a second time by
+ * `route201` so the declaration and the runtime refusal come from one table
+ * rather than two agreeing statements.
+ *
+ * v2 IS EMPTY TODAY, and empty is the honest answer rather than an oversight:
+ * all four actions the contract defines were read off `@AsMessageEndpoint`
+ * decorators on the v2 line, so nothing is owed a row. The union grows sixteen
+ * more times -- see the header above {@link CsmsOperation201} -- and each arm
+ * arrives the same way: `route201`'s `assertNever` turns it into a compile
+ * error, and the author then either writes a case pointing at an endpoint they
+ * have read, or writes a row HERE saying they have not. Without this table the
+ * second option does not exist, so the only way to make the build green is to
+ * guess a module/action pair, which compiles, is declared supported, and 404s
+ * at run time. That is issue #71, and it is what
+ * `drivers/citrineos/index.ts:capabilitiesFor` used to do for the whole
+ * constant at once.
+ *
+ * v1 IS TOTAL, derived rather than spelled, and it changes no declaration:
+ * `capabilitiesFor` never reads this row, because the v1 line's answer is
+ * ABSENT rather than empty and that is decided one level up by
+ * {@link speaksOcpp201}. What it does is make `route201` refuse rather than
+ * POST, for the same reason the 1.6 guard clause exists -- so that if anything
+ * ever wires the 2.0.1 parts on v1, every action lands NOT APPLICABLE with a
+ * measured reason instead of a 404 that reads as a capability gap in the CSMS.
+ * The reason is {@link NO_OCPP_201_ON_V1}, shared with the scope rows for the
+ * reason {@link NO_RESERVATIONS} is shared: a scope row and an
+ * `UnsupportedOperationError` saying different things is the drift this module
+ * exists to prevent.
+ */
+const UNROUTED_201: Readonly<
+  Record<CitrineVariant, ReadonlyMap<CsmsOperation201Action, string>>
+> = {
+  v2: new Map(),
+  v1: new Map(
+    CSMS_OPERATION_201_ACTIONS.map((action) => [action, NO_OCPP_201_ON_V1]),
+  ),
+};
+
+/** The 2.0.1 actions this variant does not route, mapped to why. The 2.0.1
+ *  half of {@link unroutedActions}. */
+export function unroutedActions201(
+  variant: CitrineVariant,
+): ReadonlyMap<CsmsOperation201Action, string> {
+  return UNROUTED_201[variant];
+}
 
 /**
  * Scenarios the OCPP 2.0.1 declaration covers, and which v1 therefore demotes.

@@ -47,6 +47,12 @@ run "driver scope: citrineos" bun run check:driver:citrineos
 # driver claims unverified -- and the v1 table is the derived one.
 run "driver scope: citrineos (v1)" bun run check:driver:citrineos-v1
 run "driver scope follows the env" bun tests/driver-env-scope.ts
+# And beside it, because it is the other half of the same reading: that guard
+# holds a declaration to the env it was resolved with, this one holds it to the
+# parts create() returns for that env. check-driver cannot -- it never calls
+# create(), and its one rule about the 2.0.1 vocabulary compares the
+# declaration to the core's own list, which grows in the same commit.
+run "a declared capability is an implemented one" bun tests/capability-parity.ts
 # The exit-code rule, whole. Pure and offline because tck/standing.ts is a
 # module of its own -- reaching these rows through a sweep would take a
 # container per row, and engineering a CSMS that fails a chosen scenario a

@@ -249,14 +249,33 @@ That shared name is also the one thing worth remembering when throwing
 string becomes the `NOT APPLICABLE` reason in the run summary, and a bare
 `"Reset"` there reads identically whether it came from 1.6 or 2.0.1.
 
-Declare it alongside the rest, and `ocpp-tck check-driver` prints it:
+Declare it alongside the rest, and `ocpp-tck check-driver` prints it — but
+**declare what you route, not the constant**:
 
 ```ts
+// The actions your CSMS has no endpoint for, with the reason each one is
+// missing. One table, read twice: subtracted here, and consulted by the switch
+// above so the declaration and the refusal cannot say different things.
+const UNROUTED_201 = new Map([["SetVariables", "…the missing endpoint, named…"]]);
+
 capabilities: {
   // ... operations16, reservations, chargingProfiles as above
-  operations201: new Set(CSMS_OPERATION_201_ACTIONS),
+  operations201: new Set(
+    CSMS_OPERATION_201_ACTIONS.filter((action) => !UNROUTED_201.has(action)),
+  ),
 },
 ```
+
+`new Set(CSMS_OPERATION_201_ACTIONS)` is the shape to avoid, and it is not a
+style preference: this vocabulary grows, and declaring the whole constant makes
+every future arm an operation your driver claims to support the moment the core
+defines it — before you have looked for an endpoint. `check-driver` cannot warn
+you, because it compares your declaration against that same constant, so both
+sides grow in one upgrade and the check is a tautology. Subtracting a table
+gives you somewhere to write "not routed yet" that the code reads.
+`assertNever` will still stop the build until you have written a `case`; what
+the table adds is an honest answer for the case where you have looked and there
+is nothing to route to.
 
 Omitting `operations201` entirely means "this driver does not speak OCPP
 2.0.1". `check-driver` then says nothing about it — no warning, no problem —

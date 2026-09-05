@@ -24,7 +24,7 @@ error.
 ## The gate
 
 `bun run verify` is every check CI runs before it starts a container —
-typecheck, committed declarations, three driver scope checks, eleven in-process
+typecheck, committed declarations, three driver scope checks, twelve in-process
 guards and fifteen shell guards — with one exit code, and every step runs even
 after one fails, where CI enumerates them and stops at the first.
 
@@ -47,6 +47,7 @@ bun run check:driver:steve
 bun run check:driver:citrineos
 bun run check:driver:citrineos-v1     # the same driver's other release line
 bun tests/driver-env-scope.ts
+bun tests/capability-parity.ts
 bun tests/expected-failure-standing.ts
 bun tests/assert-answered.ts
 bun tests/get-configuration-filter.ts
@@ -128,10 +129,18 @@ There is no unit-test framework and no `*.test.ts`. `tests/` holds offline
 guards, each with a header stating the property it protects. `bun run test`
 chains them — note `bun test` is Bun's own runner and finds nothing here.
 
-Shell is the default, and the eleven TypeScript ones are TypeScript because
+Shell is the default, and the twelve TypeScript ones are TypeScript because
 what they assert is unreachable through the CLI. `driver-env-scope.ts`: a
 driver's declarations follow the env they are *resolved* with, where the CLI
-can only ever pass `process.env`. `expected-failure-standing.ts`: the rule that
+can only ever pass `process.env`. `capability-parity.ts`: the same reason and
+one more — what it compares a declaration against is the parts `create(env)`
+returns, which from the CLI means starting a sweep, and both halves have to be
+read for one synthetic env. Its per-action half calls the driver's mapper
+directly rather than `operations201.execute()`, because the client `execute`
+closes over is built inside `create()` with the real `fetch`; the header says
+what that weakens and why the two alternatives — exporting the driver's
+internal factory, patching the global `fetch` — cost more than it buys.
+`expected-failure-standing.ts`: the rule that
 decides whether a red sweep ends the build, which from a shell would cost a
 container per row — and, for the rows that matter, a CSMS engineered to fail a
 chosen scenario a chosen way. `tck/standing.ts` is a module of its own so that
@@ -231,7 +240,7 @@ weaker than its comment, and only the mutation nobody had to run said so.
 Stopping at the obvious ones is not rigour, it is luck: the guard ships, and
 its header is now a false claim about what the build checks.
 
-## Eleven boundaries the guards enforce
+## Twelve boundaries the guards enforce
 
 - **The gate is one list.** `tools/verify.sh` and the workflow's `check` job
   must run the same commands in the same order, minus the CI-only setup the
@@ -300,6 +309,26 @@ its header is now a false claim about what the build checks.
   and `TC_F_20` sat implemented for a milestone on a case whose only validation
   is a `TriggerMessage` no driver could be asked to send.
   (`tests/oca-201-operations.sh`)
+- **A capability a driver declares is one it implements.** A driver says what
+  it can do twice — `capabilities`, resolved offline, and the parts
+  `create(env)` returns — and `check-driver` reads only the first. It cannot
+  read the second by design: a declaration must be readable without
+  credentials. So the guard holds the two to each other for every env a bundled
+  driver's declarations are a function of, both directions, over the four
+  omissible halves; requires a present `operations201` to be non-empty, since
+  absent and empty are different claims and only one of them is ever honest
+  here; and pushes `SAMPLE_OPERATION_201`, one well-formed operation per
+  action that `tck/driver.ts` cannot compile without, through the driver's own
+  mapper. That last direction is the one nothing watched: `check-driver`'s
+  rule about `operations201` compares the declaration to
+  `CSMS_OPERATION_201_ACTIONS`, so an arm added to the contract grows both
+  sides in the same commit and the check is a tautology — CitrineOS declared
+  `new Set(CSMS_OPERATION_201_ACTIONS)`, the whole constant, and would have
+  claimed every one of the sixteen arms still to come at the moment each was
+  added. What no offline guard can add is that the route a `case` names
+  EXISTS: a plausible module/action pair compiles, is declared, and 404s, which
+  `api-client.ts` classifies as a non-dispatch rather than a capability gap.
+  (`tests/capability-parity.ts`)
 - **A demotion a driver keeps by hand covers every scenario it is about.**
   `scopeCoverage` — what `check-driver` runs — reports a scope row that is
   MISSING and one that is STALE. A demotion is neither: it is a rewrite a

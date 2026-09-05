@@ -32,7 +32,7 @@
  * therefore always true and always useless. The presence of
  * `ocppConnectionName` is the discriminator, and that is what verify() checks.
  */
-import type { CsmsEnv, CsmsOperation16Action } from "../../tck/driver";
+import { type CsmsEnv, type CsmsOperation16Action, type CsmsOperation201Action } from "../../tck/driver";
 export type CitrineVariant = "v1" | "v2";
 /** v2 by default: it is what `drivers/citrineos/compose.yaml` pins, and the
  *  only line with a complete OCPP 1.6 surface. */
@@ -79,6 +79,9 @@ export declare function speaksOcpp201(variant: CitrineVariant): boolean;
  *  identifier, by tck/scope.ts's rule: nothing here is conditional on a
  *  feature, the whole protocol is undeclared for this line. */
 export declare const NO_OCPP_201_ON_V1: string;
+/** The 2.0.1 actions this variant does not route, mapped to why. The 2.0.1
+ *  half of {@link unroutedActions}. */
+export declare function unroutedActions201(variant: CitrineVariant): ReadonlyMap<CsmsOperation201Action, string>;
 /**
  * Scenarios the OCPP 2.0.1 declaration covers, and which v1 therefore demotes.
  * Named here rather than in scope.ts for the same reason

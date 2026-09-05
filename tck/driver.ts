@@ -482,6 +482,69 @@ export const CSMS_OPERATION_201_ACTIONS = everyOneOf<CsmsOperation201Action>()([
   "TriggerMessage",
 ]);
 
+/**
+ * One well-formed operation per action, and its job is to make the union above
+ * expensive to grow in exactly one place.
+ *
+ * {@link CSMS_OPERATION_201_ACTIONS} is already bidirectional -- `everyOneOf`
+ * makes the list and the union agree about NAMES. Agreeing about names says
+ * nothing about whether anything can build one, and a name is all a driver
+ * needs to declare an operation it cannot express. This is the other half: the
+ * annotation is a mapped type over the action union whose value for each
+ * action is THAT action's arm, so an arm added to {@link CsmsOperation201} is
+ * a type error here until somebody writes a request of its shape. A compiler
+ * check rather than a guard, for the reason the note above `everyOneOf` gives
+ * -- the compiler already decides the other half, and a shell guard would be
+ * re-deciding from outside what tsc knows from inside.
+ *
+ * `Extract` rather than a plain `Record<CsmsOperation201Action,
+ * CsmsOperation201>`, which is the shape a reader reaches for first: that one
+ * types every value as the WHOLE union, so `Reset: { action: "TriggerMessage",
+ * … }` satisfies it. A table whose key and value may disagree is a table that
+ * eventually does.
+ *
+ * WHAT IT IS FOR, and it is not scenario data. Every value is the cheapest
+ * thing its arm admits, and the optional members are omitted rather than
+ * filled: the consumer is a driver's mapper, which
+ * `tests/capability-parity.ts` pushes each one through to ask whether the
+ * driver that DECLARED an action can actually express it. A scenario
+ * asserting on one of these would be asserting on a placeholder anyone is free
+ * to change. The device-model address is a real 2.0.1 one so that a mapper
+ * which looks a variable up does not fail for a reason this table invented.
+ *
+ * Exported because a third-party driver owes the same parity check, and a
+ * second table written over there is a second table free to disagree with this
+ * one.
+ */
+export const SAMPLE_OPERATION_201: {
+  readonly [A in CsmsOperation201Action]: Extract<
+    CsmsOperation201,
+    { action: A }
+  >;
+} = {
+  Reset: { action: "Reset", type: "Immediate" },
+  GetVariables: {
+    action: "GetVariables",
+    variables: [
+      {
+        component: { name: "OCPPCommCtrlr" },
+        variable: { name: "HeartbeatInterval" },
+      },
+    ],
+  },
+  SetVariables: {
+    action: "SetVariables",
+    variables: [
+      {
+        component: { name: "OCPPCommCtrlr" },
+        variable: { name: "HeartbeatInterval" },
+        attributeValue: "60",
+      },
+    ],
+  },
+  TriggerMessage: { action: "TriggerMessage", requestedMessage: "Heartbeat" },
+};
+
 // ---------------------------------------------------------------------------
 // Escapes
 // ---------------------------------------------------------------------------
