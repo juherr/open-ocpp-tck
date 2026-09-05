@@ -58,10 +58,18 @@
  */
 import * as specs from "../tck/specs/index";
 import type { DriveContext } from "../tck/spec-types";
+import {
+  establishStates,
+  planStates,
+  type PlannedStep,
+  type StateContext,
+  type StateInvocation,
+} from "../tck/states-201";
 
 interface SpecLike {
   templateId: string;
   connector?: number;
+  states?: readonly StateInvocation[];
   drive?: (ctx: Record<string, unknown>) => Promise<unknown>;
 }
 
@@ -243,6 +251,31 @@ function recordOperation(action: string, values: unknown[]): void {
   record(`OP ${action}${suffix}`);
 }
 
+/**
+ * One Reusable State the runner establishes before `drive()` -- recorded the
+ * same way an operation is, values only.
+ *
+ * WHY THE FIXTURES ARE IN THIS ARTIFACT AT ALL. A state runs OUTSIDE drive(),
+ * so nothing this file traced before would see it, and a scenario's setup would
+ * be the one part of what it does to the CSMS that no committed artifact
+ * carries. Two things only this half can show: the DEPENDENCY ORDER, since a
+ * scenario naming one state may execute several and never names the others, and
+ * the SEGMENT the condition selected, since a state is a branch and not a
+ * script. The parameters are pinned by name in ASSERT-INVENTORY.txt's SPEC
+ * line, so recording values-only here follows this file's own rule rather than
+ * spelling the same fact twice in two formats.
+ */
+function recordState(step: PlannedStep): void {
+  const values = Object.entries(step.invocation)
+    .filter(([key]) => key !== "state")
+    .flatMap(([, value]) => leafValues(value))
+    .map(normaliseValue)
+    .filter((value): value is string => value !== null)
+    .sort();
+  const suffix = values.length > 0 ? ` [${values.join(", ")}]` : "";
+  record(`STATE ${step.state}${suffix} segment=${step.segment}`);
+}
+
 /** Flattens an operation payload to its leaf values, keys discarded. */
 function leafValues(payload: unknown): unknown[] {
   if (payload === null || typeof payload !== "object") return [payload];
@@ -308,6 +341,24 @@ function coversDriveContext<const T extends Record<string, unknown>>(
   return ctx as T;
 }
 
+/**
+ * The same refusal, for the fixture mechanism's context.
+ *
+ * A SECOND HELPER RATHER THAN A GENERIC ONE, and that is the `EnvDependent`
+ * note in tck/driver.ts arriving again: folding the two into one helper
+ * parameterised by the context type is the obvious de-duplication, and the
+ * template-literal error message stops naming the missing member when you do,
+ * because `Exclude<keyof C, keyof T>` inside a generic no longer distributes to
+ * a literal union tsc can print. Twelve lines is what that error message costs.
+ */
+function coversStateContext<const T extends Record<string, unknown>>(
+  ctx: keyof StateContext extends keyof T
+    ? T
+    : `stub context omits ${Exclude<keyof StateContext, keyof T> & string}`,
+): StateContext {
+  return ctx as unknown as StateContext;
+}
+
 function observationStub(): Record<string, unknown> {
   const stub: Record<string, unknown> = {};
   for (const [method, id] of Object.entries(OBSERVATION_ALIASES)) {
@@ -368,13 +419,42 @@ for (const [groupName, groupSpecs] of discoverGroups()) {
   out.push(`GROUP ${groupName}`);
   for (const spec of groupSpecs) {
     out.push(`  SPEC ${spec.templateId}`);
-    if (!spec.drive) {
+    if (!spec.drive && !spec.states) {
       out.push("    <no drive>");
       continue;
     }
 
     trace = [];
     const records = observationStub();
+
+    // THE FIXTURES FIRST, because that is the order the runner establishes them
+    // in -- after the boot gate, before the template and before drive(). A
+    // refused plan is not a crash here: it is a build failure in
+    // tests/state-plan-201.ts, and printing the refusal is more useful in a
+    // diff than a THREW line that says nothing about which state.
+    if (spec.states && spec.states.length > 0) {
+      const plan = planStates(spec.states);
+      for (const refusal of plan.refusals) {
+        record(`STATE-REFUSED ${refusal.state} ${refusal.kind}`);
+      }
+      await establishStates(
+        plan,
+        coversStateContext({
+          cpId: CP_ID,
+          sim: simStub,
+          csms201: operations201Stub,
+          records,
+        }),
+        recordState,
+      );
+    }
+
+    if (!spec.drive) {
+      for (const line of trace) out.push(`  ${line}`);
+      out.push("    -> driveState keys=[]");
+      continue;
+    }
+
     let result: unknown;
     try {
       result = await spec.drive(

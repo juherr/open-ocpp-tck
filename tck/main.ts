@@ -1,6 +1,6 @@
 #!/usr/bin/env bun
 /**
- * Derived from shiv3/ocpp-cp-simulator scripts/steve-verify/runner/main.ts @ 604054adb0d7d7129a26a5f1ad2d5fdc290d1ca1 (Apache-2.0). Modified: the STEVE_DRIVER=api|ui selection is replaced by a CSMS driver loaded through ./driver-registry; a per-driver scope table (./scope) is consulted BEFORE any container starts and yields the NOT APPLICABLE verdict; UnsupportedOperationError (./driver) thrown out of drive() degrades to NOT APPLICABLE with a stderr WARNING; the PARTIAL verdict and the `skipped` summary column were added; the exit code is non-zero only for FAIL/ERROR; parallel lanes derive from the resolved station list instead of the fixed CERTCP1..3 trio; the SteVe capability probe is dropped.
+ * Derived from shiv3/ocpp-cp-simulator scripts/steve-verify/runner/main.ts @ 604054adb0d7d7129a26a5f1ad2d5fdc290d1ca1 (Apache-2.0). Modified: the STEVE_DRIVER=api|ui selection is replaced by a CSMS driver loaded through ./driver-registry; a per-driver scope table (./scope) is consulted BEFORE any container starts and yields the NOT APPLICABLE verdict; UnsupportedOperationError (./driver) thrown out of drive() degrades to NOT APPLICABLE with a stderr WARNING; the PARTIAL verdict and the `skipped` summary column were added; the exit code is non-zero only for FAIL/ERROR; parallel lanes derive from the resolved station list instead of the fixed CERTCP1..3 trio; the SteVe capability probe is dropped; a scenario's declared OCPP 2.0.1 Reusable States (./states-201) are planned and established between the boot gate and the scenario template.
  *
  * main.ts -- TypeScript OCPP conformance runner CLI.
  *
@@ -113,6 +113,12 @@ import {
   REMOTETRIGGER_SMARTCHARGING_SPECS,
 } from "./specs/index";
 import type { ScenarioSpec } from "./spec-types";
+import {
+  establishStates,
+  FixtureLog,
+  isRunnable,
+  planStates,
+} from "./states-201";
 import { sleep } from "./util";
 import { WaitTimeoutError } from "./wait";
 
@@ -530,6 +536,9 @@ async function runScenario<D>(
   process.stderr.write(`[runner] simulator container: ${sim.container}\n`);
 
   let driveState!: D;
+  /** What ScenarioSpec.states did. Empty unless the scenario declares any, so
+   *  a spec never branches on whether the mechanism ran. */
+  let fixtures = new FixtureLog();
   /** Set only when drive() reported an operation the CSMS cannot do. */
   let unsupported: string | undefined;
   try {
@@ -572,6 +581,62 @@ async function runScenario<D>(
       );
     }
     await sleep(bootWaitSecs * 1000);
+
+    // THE REUSABLE STATES, HERE AND NOWHERE ELSE. After the boot gate, because
+    // every fixture needs a station the CSMS has accepted; before the template
+    // and before drive(), because a fixture's whole job is to be the condition
+    // those two run against. See tck/states-201.ts for the model.
+    //
+    // INSIDE THIS try, deliberately. A CSMS-initiated state whose driver cannot
+    // dispatch throws UnsupportedOperationError, and the catch around drive()
+    // below is what turns that into NOT APPLICABLE -- which means the same
+    // thing whichever half of the scenario asked for the operation: the scope
+    // table missed it. A separate catch here would be a second answer to one
+    // question.
+    //
+    // A REFUSED PLAN IS A THROW AND NOT A DEGRADATION, and it is meant to be
+    // unreachable: tests/state-plan-201.ts fails the build on a scenario whose
+    // plan selects a segment this build has no reach for. Reaching it means a
+    // scenario got past the gate, so ERROR -- the scenario never got an answer
+    // -- is the honest verdict, and standing.ts already refuses to let a
+    // declaration excuse one.
+    if (spec.states && spec.states.length > 0) {
+      const plan = planStates(spec.states);
+      if (!isRunnable(plan)) {
+        throw new Error(
+          `${spec.templateId} declares Reusable States this build cannot ` +
+            `establish: ${plan.refusals
+              .map((refusal) =>
+                refusal.kind === "planned"
+                  ? `${refusal.state} (${refusal.reason})`
+                  : `${refusal.state} (${refusal.kind})`,
+              )
+              .join("; ")}`,
+        );
+      }
+      process.stderr.write(
+        `[runner] ${spec.templateId} declares ${spec.states.length} Reusable ` +
+          `State(s); the plan is ${plan.steps.map((step) => step.state).join(" -> ")}\n`,
+      );
+      fixtures = await establishStates(
+        plan,
+        { cpId: options.cpId, sim, csms201, records },
+        (step) =>
+          process.stderr.write(
+            `[runner] establishing Reusable State ${step.state} (segment ${step.segment})\n`,
+          ),
+      );
+      for (const outcome of fixtures.outcomes) {
+        if (outcome.established) continue;
+        process.stderr.write(
+          `[runner] WARN: Reusable State ${outcome.state} was not established ` +
+            `(${outcome.reason}) -- the scenario's precondition check will ` +
+            "report it, and this is a SKIPPED check rather than a finding " +
+            "against the CSMS\n",
+        );
+      }
+    }
+
     // BOTH STATEMENTS OR NEITHER -- see ScenarioSpec.runsSimTemplate. The wait
     // below is what the command above produces, so skipping the send and
     // keeping the wait would spend 20s proving that a scenario nobody started
@@ -758,6 +823,7 @@ async function runScenario<D>(
     rec,
     records,
     driveState,
+    fixtures,
   });
 
   for (const check of rec.results) {

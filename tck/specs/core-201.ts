@@ -48,23 +48,24 @@
  * the question these scenarios' scope rows are open on; as a FAIL it becomes
  * "no Received CALL found", which is true and says nothing.
  *
- * THE SETUP IS INLINE, AND IT DUPLICATES. `ocppVersion` plus
- * `runsSimTemplate: false` is repeated once per scenario, and the three
- * Reset scenarios repeat the same drive-then-check shape with one member
- * changed. That is deliberate: OCPP 2.0.1 Part 6 defines 14 `Reusable State`
- * fixtures for the CSMS role -- 13 was this paragraph's first count, corrected
- * when the reference was re-read for the operation measurement -- and this
- * suite has timers and one-shot provisioning, which are not
- * the same thing -- issue #63 says to write the setup inline and note where it
- * duplicates rather than build the mechanism from one slice's evidence. This
- * paragraph is that note.
+ * THE SETUP IS NO LONGER INLINE, and what replaced it is `tck/states-201.ts`.
+ * OCPP 2.0.1 Part 6 defines 14 `Reusable State` fixtures for the CSMS role --
+ * 13 was this paragraph's first count, corrected when the reference was re-read
+ * for the operation measurement -- and a case declares the ones it takes as its
+ * precondition. Issue #63 said to write that setup inline and note where it
+ * duplicated rather than build a mechanism from five scenarios' evidence; the
+ * evidence arrived when the selection rule turned out to pick 147 cases, at
+ * which point a handful of copies becomes a class of copies that drift while
+ * each one still reads reasonably. TC_B_21 is the one scenario here that
+ * declares a state today, and its `states:` field is what the mechanism reads.
  *
- * THE EVIDENCE HAS SINCE ARRIVED, so read the paragraph above as a record of
- * why the mechanism was not built rather than as a reason to keep inlining.
- * The rule in OCA-201-SELECTION.md now selects 147 cases, at which point a
- * handful of copies becomes a class of copies, they drift, and each one reads
- * reasonably on its own -- which is the failure inlining was cheap enough to
- * risk at five and is not at 147. The fixture mechanism has its own issue.
+ * WHAT STILL DUPLICATES, deliberately: `ocppVersion` plus
+ * `runsSimTemplate: false` on every scenario, and the three Reset scenarios'
+ * shared drive-then-check shape with one member changed. Those are not
+ * fixtures. Factoring either into a shared constant renders it `·` in
+ * `ASSERT-INVENTORY.txt` and stops it being pinned, which is the trade TC_B_22
+ * spells out for its two literals and which applies to every declaration in
+ * this file.
  */
 
 import {
@@ -82,6 +83,7 @@ import {
 import type { CsmsRecords } from "../driver";
 import { findAllCalls, findCall, findResponseFor, type Frame } from "../ocpp";
 import type { ScenarioSpec } from "../spec-types";
+import { assertStateEstablished } from "../states-201";
 import { sleep } from "../util";
 
 /**
@@ -726,12 +728,7 @@ const TC_B_20: ScenarioSpec = {
   },
 };
 
-/** What TC_B_21 established before it asked for the reset. */
-interface TransactionPrecondition {
-  started: boolean;
-}
-
-const TC_B_21: ScenarioSpec<TransactionPrecondition> = {
+const TC_B_21: ScenarioSpec = {
   templateId: "cert201-tcb21-reset-scheduled",
   description:
     "TC_B_21 Reset: the CSMS sends Reset(OnIdle) while a transaction is running, and the station schedules it.",
@@ -740,66 +737,41 @@ const TC_B_21: ScenarioSpec<TransactionPrecondition> = {
   connector: 1,
   bootWaitSecs: 4,
   holdSecs: 12,
-  async drive({ cpId, connector, sim, csms201 }) {
-    // THE ONE SCENARIO HERE THAT NEEDS THE STATION IN A STATE, and the state
-    // is set from the charge point rather than from the CSMS: `OnIdle` is only
-    // distinguishable from `Immediate` when there is a transaction to wait
-    // for. This is the setup Part 6 would take from a `Reusable State`, and
-    // the file header says why it is written out here instead.
-    //
-    // THE TAG'S SHAPE IS PART OF THE SETUP, and it is why this is not the
-    // `CERT-TAG-1` every 1.6 scenario authorizes with. The station sends a
-    // 2.0.1 `Authorize` idToken typed `ISO14443` -- the simulator spells that
-    // type in its own sources, so no command here can change it -- and a CSMS
-    // is entitled to validate the type's format before looking anything up.
-    // ISO 14443 is a card UID: 4 or 7 bytes, so 8 or 14 hexadecimal
-    // characters, which no `CERT…` spelling can be. A driver that wants this
-    // case measured provisions this tag; one that does not still reaches the
-    // SKIPPED path below rather than a false Reset finding.
-    await sim.send({
-      command: "start_transaction",
-      params: { connector, tagId: "CE712001" },
-    });
-    // THE PRECONDITION IS REPORTED, NOT ASSUMED, and this is why the scenario
-    // returns anything at all. `OnIdle` against an idle station is answered
-    // `Accepted`, which is correct of the station and correct of a CSMS that
-    // dispatched faithfully -- so a scenario that only checked for `Scheduled`
-    // would print "expected Scheduled, got Accepted" and file a finding
-    // against a Reset that did exactly what it was asked. Threading the
-    // outcome into assert() lets the artifact name the transaction as the
-    // thing that did not happen.
-    let started = true;
-    try {
-      await sim.waitForLine(/Sent: \[2,.*"TransactionEvent"/, 10_000);
-    } catch (err) {
-      started = false;
-      process.stderr.write(
-        `[runner] WARN: no TransactionEvent within 10s -- the Reset below will be answered as if the station were idle (${
-          err instanceof Error ? err.message : String(err)
-        })\n`,
-      );
-    }
+  // THE ONE SCENARIO HERE THAT NEEDS THE STATION IN A STATE, and Part 6 names
+  // that state: `OnIdle` is only distinguishable from `Immediate` when there is
+  // a transaction to wait for. `Authorized` is not written here even though the
+  // fixture executes it -- the edge is a fact about the reference and
+  // tck/states-201.ts derives it, where a second copy on every scenario is a
+  // fact that drifts.
+  //
+  // LITERALS AND NOT A SHARED CONSTANT, for the reason TC_B_22 gives eight
+  // lines further down about its own two: an identifier renders as `·`, which
+  // for a top-level field means the whole declaration is OMITTED from
+  // ASSERT-INVENTORY.txt rather than marked, and the fixture could then be
+  // re-pointed at another connector or another tag with no committed artifact
+  // moving. The tag's shape is part of the setup and `tck/states-201.ts`'s
+  // `AUTHORIZED` carries the argument for why it is not `CERT-TAG-1`.
+  states: [{ state: "EnergyTransferStarted", connectorId: 1, idToken: "CE712001" }],
+  async drive({ cpId, csms201 }) {
     await sleep(2000);
     await csms201.execute(cpId, { action: "Reset", type: "OnIdle" });
-    return { started };
   },
-  assert({ frames, rec, driveState }) {
+  assert({ frames, rec, fixtures }) {
     // FIRST, so a reader of results/ meets the cause before the consequence --
     // and SKIPPED rather than FAIL when it did not hold. `OnIdle` against an
     // idle station is answered `Accepted`, which is correct of the station and
     // correct of a CSMS that dispatched faithfully: red would be this harness
     // filing a non-conformance against a CSMS that did nothing wrong, which is
     // the one mistake a conformance tool may not make. Orange says the suite
-    // did not ask, which is what actually happened.
-    const description = "a transaction was running when the reset was asked for";
-    if (driveState.started) {
-      rec.pass(description);
-    } else {
-      rec.skip(
-        description,
-        `${UNEXERCISED_PREFIX} no TransactionEvent reached the wire within 10s, so the station was idle and OnIdle has nothing to wait for`,
-      );
-    }
+    // did not ask, which is what actually happened. The rule now lives in
+    // `assertStateEstablished` rather than in this scenario, which is what it
+    // means for the mechanism to have taken the setup over.
+    assertStateEstablished(
+      rec,
+      fixtures,
+      "EnergyTransferStarted",
+      "a transaction was running when the reset was asked for",
+    );
     assertReceived(rec, frames, "Reset", "Reset.req received");
     assertCallPayload(
       rec,
@@ -809,7 +781,7 @@ const TC_B_21: ScenarioSpec<TransactionPrecondition> = {
       { type: "OnIdle" },
       "Reset.req asks for type=OnIdle",
     );
-    if (driveState.started) {
+    if (fixtures.established("EnergyTransferStarted")) {
       assertResponseStatus(
         rec,
         frames,
