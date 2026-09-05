@@ -157,6 +157,12 @@ jobs:
       - name: The 2.0.1 device-model fixture keeps its shape
         run: bun tests/citrineos-device-model-fixture.ts
 
+      # In-process for the one input it is about: a 1.5 GB CSMS log from the run
+      # where the server collapsed. No offline run can make it and no live run
+      # can be asked for it, since reproducing it means breaking the server.
+      - name: The CSMS log reader knows nothing-matched from nothing-there
+        run: bun tests/citrineos-redelivery-loops.ts
+
       # In-process because its subject is a PLAN, not a run. The row that
       # matters -- re-entering EnergyTransferStarted after the EVDisconnected
       # chain, where deduplicating by a visited set silently drops an Authorize
@@ -405,7 +411,7 @@ jobs:
       # nobody reads, in an artifact downloaded in bulk when mining the archive.
       # Into results/ so the existing upload carries it; a second
       # upload-artifact step would be a second retention policy to keep in step.
-      - name: Capture the CSMS log when any scenario went red
+      - name: Capture the CSMS log, and read it for redelivery loops
         if: always()
         run: |
           # mkdir -p: a sweep that died before writing its first scenario log
@@ -423,13 +429,43 @@ jobs:
           # way the `grep -q` it replaces did -- would abort the step.
           status=0
           bun tools/summary-red-rows.ts results/summary.md || status=$?
-          if [ "$status" -eq 1 ] && [ "${{ job.status }}" = success ]; then
-            echo "no red row and the job is green -- nothing worth capturing"
-            exit 0
-          fi
+          # CAPTURED UNCONDITIONALLY SINCE #119, where it used to be skipped on a
+          # green job. The question the reader below answers is one the summary
+          # cannot carry: the sweep that collapsed with eleven redelivery loops
+          # still exited 0, because every scenario it killed was reclassified by
+          # --retry-failed-isolated or was a declared expected failure. A run
+          # with one loop looks identical in the table to a run with none, and
+          # one is how the run with eleven started. The log is DELETED below
+          # when nothing wanted it, so the artifact cost is unchanged for the
+          # runs that used to skip this.
           docker compose -f drivers/${{ matrix.driver }}/compose.yaml logs \
             --no-color --timestamps > results/csms-${{ matrix.driver }}.log
           wc -l results/csms-${{ matrix.driver }}.log
+          # 0 loops found, 1 none, 2 the log could not be read -- the reader
+          # mirrors summary-red-rows.ts's codes, and `|| loops=$?` reads them the
+          # same way. Driver-conditional because the reader parses ONE CSMS's log
+          # format; AGENTS.md's boundary is why that is a named driver file
+          # rather than a generic one in tools/.
+          loops=1
+          if [ "${{ matrix.driver }}" = citrineos ]; then
+            loops=0
+            bun drivers/citrineos/redelivery-loops.ts \
+              results/csms-citrineos.log || loops=$?
+          fi
+          # A loop is a finding about the CSMS and not about this build, so it
+          # never fails the job -- it would fail every job, since the smallest
+          # sweep measured still starts one. Status 2 is different: it is THIS
+          # repository's reader having stopped matching, which is silent and
+          # makes every future number a lie. Same rule as below -- worth a red of
+          # its own only when the job is otherwise green, because a red job
+          # already has someone reading it.
+          if [ "$loops" -eq 2 ] && [ "${{ job.status }}" = success ]; then
+            exit 1
+          fi
+          if [ "$status" -eq 1 ] && [ "$loops" -eq 1 ]; then
+            echo "no red row and no redelivery loop -- dropping the CSMS log"
+            rm -f results/csms-${{ matrix.driver }}.log
+          fi
           # Status 2 is a summary the repository could not read, which captures
           # above (a log nobody needed costs a file; a log nobody took costs the
           # investigation) and is worth a red of its OWN only when the job is

@@ -24,7 +24,7 @@ error.
 ## The gate
 
 `bun run verify` is every check CI runs before it starts a container —
-typecheck, committed declarations, three driver scope checks, thirteen in-process
+typecheck, committed declarations, three driver scope checks, fourteen in-process
 guards and fifteen shell guards — with one exit code, and every step runs even
 after one fails, where CI enumerates them and stops at the first.
 
@@ -58,6 +58,7 @@ bun tests/trace-frames.ts
 bun tests/steve-ui-session-race.ts
 bun tests/citrineos-transport-classification.ts
 bun tests/citrineos-device-model-fixture.ts
+bun tests/citrineos-redelivery-loops.ts
 bun tests/state-plan-201.ts
 bash tests/cert201-declares-its-version.sh
 bash tests/cert201-scope-rows.sh       # both read tck/specs/ASSERT-INVENTORY.txt,
@@ -130,7 +131,7 @@ There is no unit-test framework and no `*.test.ts`. `tests/` holds offline
 guards, each with a header stating the property it protects. `bun run test`
 chains them — note `bun test` is Bun's own runner and finds nothing here.
 
-Shell is the default, and the thirteen TypeScript ones are TypeScript because
+Shell is the default, and the fourteen TypeScript ones are TypeScript because
 what they assert is unreachable through the CLI. `driver-env-scope.ts`: a
 driver's declarations follow the env they are *resolved* with, where the CLI
 can only ever pass `process.env`. `capability-parity.ts`: the same reason and
@@ -198,6 +199,19 @@ with the same empty `StatusNotificationResponse`. There is no wire assertion
 that could tell them apart, and the live measurement that can is four lines in
 a CSMS log rather than a verdict. So the seam again: the provisioner takes its
 `fetch`, and the guard answers from a store.
+`citrineos-redelivery-loops.ts`: the seam again, and the input is what makes it
+one. When a CSMS-initiated request is dispatched to a station that is no longer
+there, the pinned deployment re-enqueues and re-logs it forever; the loops
+accumulate, and eleven of them stopped the server answering mid-sweep while the
+run still exited 0. The log that shows it is 1.5 GB, produced once, by a run in
+which the server collapsed -- an input no offline run can make and no live run
+can be asked for, since reproducing it means breaking the CSMS. So the reader
+takes lines and the guard hands it fixtures. Its claims are ordinary except one:
+the envelope pattern is bound to that deployment's log format, key order
+included, so the way it fails is by matching NOTHING and reporting a healthy
+sweep. Two of its five rows exist to tell "nothing matched" from "nothing was
+there", which is the same failure `tools/summary-red-rows.ts`'s header names one
+artifact over.
 `state-plan-201.ts`: the last one, and the only one whose subject never touches
 a CSMS at all. What a scenario DECLARES — the OCPP 2.0.1 `Reusable State`s its
 case takes as a precondition — is not what the runner RUNS: `tck/states-201.ts`

@@ -96,6 +96,10 @@ run "a request that never reached the CSMS says so" bun tests/citrineos-transpor
 # SEQUENCE of writes, and a CSMS answers a right fixture and a wrong one with
 # the same empty StatusNotificationResponse.
 run "the 2.0.1 device-model fixture keeps its shape" bun tests/citrineos-device-model-fixture.ts
+# In-process for the one input it is about: a 1.5 GB CSMS log from the run where
+# the server collapsed, which no offline run can make and no live run can be
+# asked for -- reproducing it means breaking the server.
+run "the CSMS log reader knows nothing-matched from nothing-there" bun tests/citrineos-redelivery-loops.ts
 # And in-process because its subject is a PLAN. Reaching the row that matters
 # -- a five-state chain re-entered from its far end -- needs eleven states this
 # build has no reach for, so no sweep could ever run it; and the rule it holds
