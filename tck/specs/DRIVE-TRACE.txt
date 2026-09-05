@@ -205,6 +205,31 @@ GROUP core-201
     OP 201:TriggerMessage [firmwarestatusnotification]
     SIM send {"command":"heartbeat"}
     -> driveState keys=[]
+  SPEC cert201-tcg03-evse-inoperative
+    STATE Unavailable [1] segment=0
+    OP 201:ChangeAvailability [1, inoperative]
+    SIM wait-for-line Sent: \[2,"[^"]*","StatusNotification",(?=[^\]]*"connectorStatus":"Unavailable") 15000
+    -> driveState keys=[]
+  SPEC cert201-tcg04-evse-operative
+    STATE Unavailable [1] segment=0
+    OP 201:ChangeAvailability [1, inoperative]
+    SIM wait-for-line Sent: \[2,"[^"]*","StatusNotification",(?=[^\]]*"connectorStatus":"Unavailable") 15000
+    OP 201:ChangeAvailability [1, operative]
+    -> driveState keys=[]
+  SPEC cert201-tcg05-station-inoperative
+    OP 201:ChangeAvailability [inoperative]
+    -> driveState keys=[]
+  SPEC cert201-tcg06-station-operative
+    OP 201:ChangeAvailability [inoperative]
+    OP 201:ChangeAvailability [operative]
+    -> driveState keys=[]
+  SPEC cert201-tcg07-connector-inoperative
+    OP 201:ChangeAvailability [1, 1, inoperative]
+    -> driveState keys=[]
+  SPEC cert201-tcg08-connector-operative
+    OP 201:ChangeAvailability [1, 1, inoperative]
+    OP 201:ChangeAvailability [1, 1, operative]
+    -> driveState keys=[]
   SPEC cert201-tcj01-clock-aligned-meter-values
     SIM send {"command":"send_meter_value","params":{"connector":1}}
     SIM send {"command":"send_meter_value","params":{"connector":1}}

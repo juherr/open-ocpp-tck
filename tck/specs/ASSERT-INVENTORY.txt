@@ -201,6 +201,33 @@ FILE core-201.ts
       ·.fail(·, ·)
       RETURN
     ·.pass(·)
+  HELPER assertChangeAvailabilityScope
+    IF
+      ·.fail(·, ·)
+      RETURN
+    IF
+      OR
+        OR
+      ·.fail(·, ·)
+      RETURN
+    IF
+      AND
+        OR
+          OR
+      ·.fail(·, ·)
+      RETURN
+    NULLISH
+    TERNARY
+      NULLISH
+    TERNARY
+      NULLISH
+    IF
+    IF
+    IF
+    IF
+      ·.pass(·)
+      RETURN
+    ·.fail(·, ·)
   SPEC cert201-tcb06-get-variables connector=1 bootWaitSecs=4 holdSecs=12 ocppVersion="OCPP-2.0.1" runsSimTemplate=false
     assertReceived(·, ·, "GetVariables", "GetVariables.req received")
     assertVariableRequested(·, ·, "GetVariables", "getVariableData", ·, ·, ·)
@@ -276,6 +303,49 @@ FILE core-201.ts
     assertSent(·, ·, "MeterValues", "MeterValues.req sent")
     assertMeterValueSampled(·, ·, "MeterValues", "MeterValues.req is the OCPP 2.0.1 request (an evseId and a sampled reading)")
     assertAllAnswered(·, ·, "MeterValues", ·, {minimum:3})
+  SPEC cert201-tcg03-evse-inoperative connector=1 bootWaitSecs=4 holdSecs=10 ocppVersion="OCPP-2.0.1" runsSimTemplate=false states=[{state:"Unavailable",evseId:1}]
+    assertStateEstablished(·, ·, "Unavailable", "the EVSE was taken out of service")
+    assertReceived(·, ·, "ChangeAvailability", "ChangeAvailability.req received")
+    assertChangeAvailabilityScope(·, ·, 0, "Inoperative", 1, null, "ChangeAvailability.req takes EVSE 1 out of service and names no connector")
+    assertResponseStatus(·, ·, "ChangeAvailability", "Accepted", "ChangeAvailability accepted", {direction:"received"})
+    assertLineAfter(·, ·, /Received: \[2,.*"ChangeAvailability"/, /Sent: \[2,.*"StatusNotification",(?=[^\]]*"connectorStatus":"Unavailable")/, "the station reported the EVSE unavailable after the request")
+    assertAllAnswered(·, ·, "StatusNotification")
+  SPEC cert201-tcg04-evse-operative connector=1 bootWaitSecs=4 holdSecs=12 ocppVersion="OCPP-2.0.1" runsSimTemplate=false states=[{state:"Unavailable",evseId:1}]
+    assertStateEstablished(·, ·, "Unavailable", "the EVSE was out of service before it was returned to service")
+    assertReceived(·, ·, "ChangeAvailability", "ChangeAvailability.req received")
+    IF
+      assertChangeAvailabilityScope(·, ·, 0, "Inoperative", 1, null, "the precondition request took EVSE 1 out of service")
+      assertChangeAvailabilityScope(·, ·, 1, "Operative", 1, null, "ChangeAvailability.req returns EVSE 1 to service and names no connector")
+      assertResponseStatus(·, ·, "ChangeAvailability", "Accepted", "ChangeAvailability accepted", {direction:"received",occurrence:1})
+      ·.skip("ChangeAvailability.req returns EVSE 1 to service and names no connector", ·)
+    assertLineAfter(·, ·, /Received: \[2,.*"ChangeAvailability"/, /Sent: \[2,.*"StatusNotification",(?=[^\]]*"connectorStatus":"Available")/, "the station reported the EVSE available after the request")
+    assertAllAnswered(·, ·, "StatusNotification")
+  SPEC cert201-tcg05-station-inoperative connector=1 bootWaitSecs=4 holdSecs=12 ocppVersion="OCPP-2.0.1" runsSimTemplate=false
+    assertReceived(·, ·, "ChangeAvailability", "ChangeAvailability.req received")
+    assertChangeAvailabilityScope(·, ·, 0, "Inoperative", null, null, "ChangeAvailability.req omits evse, so it addresses the whole charging station")
+    assertResponseStatus(·, ·, "ChangeAvailability", "Accepted", "ChangeAvailability accepted", {direction:"received"})
+    assertLineAfter(·, ·, /Received: \[2,.*"ChangeAvailability"/, /Sent: \[2,.*"StatusNotification",(?=[^\]]*"connectorStatus":"Unavailable")/, "the station reported a connector unavailable after the request")
+    assertAllAnswered(·, ·, "StatusNotification")
+  SPEC cert201-tcg06-station-operative connector=1 bootWaitSecs=4 holdSecs=12 ocppVersion="OCPP-2.0.1" runsSimTemplate=false
+    assertReceived(·, ·, "ChangeAvailability", "ChangeAvailability.req received")
+    assertChangeAvailabilityScope(·, ·, 0, "Inoperative", null, null, "the precondition request took the whole charging station out of service")
+    assertChangeAvailabilityScope(·, ·, 1, "Operative", null, null, "ChangeAvailability.req omits evse, so it returns the whole charging station to service")
+    assertResponseStatus(·, ·, "ChangeAvailability", "Accepted", "ChangeAvailability accepted", {direction:"received",occurrence:1})
+    assertLineAfter(·, ·, /Received: \[2,.*"ChangeAvailability"/, /Sent: \[2,.*"StatusNotification",(?=[^\]]*"connectorStatus":"Available")/, "the station reported a connector available after the request")
+    assertAllAnswered(·, ·, "StatusNotification")
+  SPEC cert201-tcg07-connector-inoperative connector=1 bootWaitSecs=4 holdSecs=12 ocppVersion="OCPP-2.0.1" runsSimTemplate=false
+    assertReceived(·, ·, "ChangeAvailability", "ChangeAvailability.req received")
+    assertChangeAvailabilityScope(·, ·, 0, "Inoperative", 1, 1, "ChangeAvailability.req names EVSE 1 AND connector 1, so it addresses one connector")
+    assertResponseStatus(·, ·, "ChangeAvailability", "Accepted", "ChangeAvailability accepted", {direction:"received"})
+    assertLineAfter(·, ·, /Received: \[2,.*"ChangeAvailability"/, /Sent: \[2,.*"StatusNotification",(?=[^\]]*"connectorStatus":"Unavailable")/, "the station reported the connector unavailable after the request")
+    assertAllAnswered(·, ·, "StatusNotification")
+  SPEC cert201-tcg08-connector-operative connector=1 bootWaitSecs=4 holdSecs=12 ocppVersion="OCPP-2.0.1" runsSimTemplate=false
+    assertReceived(·, ·, "ChangeAvailability", "ChangeAvailability.req received")
+    assertChangeAvailabilityScope(·, ·, 0, "Inoperative", 1, 1, "the precondition request took connector 1 of EVSE 1 out of service")
+    assertChangeAvailabilityScope(·, ·, 1, "Operative", 1, 1, "ChangeAvailability.req names EVSE 1 AND connector 1, so it returns one connector to service")
+    assertResponseStatus(·, ·, "ChangeAvailability", "Accepted", "ChangeAvailability accepted", {direction:"received",occurrence:1})
+    assertLineAfter(·, ·, /Received: \[2,.*"ChangeAvailability"/, /Sent: \[2,.*"StatusNotification",(?=[^\]]*"connectorStatus":"Available")/, "the station reported the connector available after the request")
+    assertAllAnswered(·, ·, "StatusNotification")
 
 FILE core.ts
   HELPER assertGetConfigurationUnfiltered
