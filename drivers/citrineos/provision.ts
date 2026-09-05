@@ -57,6 +57,7 @@ import {
   componentInstance,
   fixtureEvseId,
   parseComponentInstance,
+  profileEvseIds,
   statusTargets,
   type StatusTarget,
 } from "./device-model";
@@ -819,6 +820,16 @@ export class CitrineProvisioner {
       );
       await this.ensureComponentVariable(componentId, variableId, now);
     }
+    // A SECOND ROW PER EVSE, WITH NO CONNECTOR, and it hangs off nothing: no
+    // component points at it and no status ever resolves through it. It is
+    // what the SmartCharging endpoints look an EVSE up by -- see
+    // {@link profileEvseIds} for the measurement -- and a charging-profile
+    // request for an EVSE that has no such row is refused inside the CSMS with
+    // nothing on the websocket, which is the failure mode this whole file
+    // exists for wearing a different message.
+    for (const evseId of profileEvseIds(connectors)) {
+      await this.ensureProfileEvseType(evseId, now);
+    }
   }
 
   /**
@@ -884,6 +895,37 @@ export class CitrineProvisioner {
          }) { databaseId }
        }`,
       { id: target.evseId, connector: target.connectorId, tenant: this.tenant },
+    );
+    return found.EvseTypes[0]?.databaseId;
+  }
+
+  /**
+   * The EVSE type a charging-profile lookup joins through: the same `id`, and
+   * `connectorId` IS NULL.
+   *
+   * A SECOND DOCUMENT RATHER THAN A PARAMETER ON THE ONE ABOVE, and the reason
+   * is Hasura's rather than this file's. `{ connectorId: { _eq: null } }` is
+   * not "connectorId is null" there -- a null comparison value makes the clause
+   * vacuous, so the query would answer with whichever EVSE type numbered `id`
+   * came first and the seeder would then never write the row it needs. Spelling
+   * `_is_null` needs its own document; passing a comparison expression as a
+   * variable would need a Hasura-generated input type this driver otherwise
+   * never names. Two questions, two documents -- which is what the rule above
+   * asks for, since a paired row and a connector-less one are not the same
+   * question.
+   */
+  private async findProfileEvseType(
+    evseId: number,
+  ): Promise<number | undefined> {
+    const found = await this.gql.query<{
+      EvseTypes: { databaseId: number }[];
+    }>(
+      `query ProfileEvseTypeFixture($id: Int!, $tenant: Int!) {
+         EvseTypes(where: {
+           id: { _eq: $id }, connectorId: { _is_null: true }, tenantId: { _eq: $tenant }
+         }) { databaseId }
+       }`,
+      { id: evseId, tenant: this.tenant },
     );
     return found.EvseTypes[0]?.databaseId;
   }
@@ -956,6 +998,36 @@ export class CitrineProvisioner {
             object: {
               id: target.evseId,
               connectorId: target.connectorId,
+              tenantId: this.tenant,
+              createdAt: now,
+              updatedAt: now,
+            },
+          },
+        );
+        return created.insert_EvseTypes_one.databaseId;
+      },
+    );
+  }
+
+  /** The connector-less half, seeded exactly like the paired one and repaired
+   *  by nothing: no component points at it, so there is no join to drift. */
+  private async ensureProfileEvseType(
+    evseId: number,
+    now: string,
+  ): Promise<number> {
+    return this.readOrSeed(
+      () => this.findProfileEvseType(evseId),
+      async () => {
+        const created = await this.gql.query<{
+          insert_EvseTypes_one: { databaseId: number };
+        }>(
+          `mutation SeedProfileEvseType($object: EvseTypes_insert_input!) {
+             insert_EvseTypes_one(object: $object) { databaseId }
+           }`,
+          {
+            object: {
+              id: evseId,
+              connectorId: null,
               tenantId: this.tenant,
               createdAt: now,
               updatedAt: now,
@@ -1125,6 +1197,21 @@ export class CitrineProvisioner {
       ) {
         problems.push(
           `${where}: the ${COMPONENT_NAME} component carries no ${VARIABLE_NAME} variable`,
+        );
+      }
+    }
+
+    // Reported separately from the loop above and NOT merged into it, because
+    // a missing row here breaks a different thing: the status path is fine
+    // without it and every charging-profile request for that EVSE is refused
+    // inside the CSMS with an empty frame log. A reader who sees one message
+    // should know which half is gone.
+    for (const evseId of profileEvseIds(connectors)) {
+      if ((await this.findProfileEvseType(evseId)) === undefined) {
+        problems.push(
+          `evseId ${evseId}: no EvseTypes row with a null connector, so a ` +
+            "charging-profile request addressed to it is refused before it " +
+            "reaches the wire",
         );
       }
     }
@@ -1440,10 +1527,27 @@ export class CitrineProvisioner {
                EvseTypes(where: { _or: $pairs, tenantId: { _eq: $tenant } }) { databaseId }
              }`,
             {
-              pairs: targets.map((target) => ({
-                id: { _eq: target.evseId },
-                connectorId: { _eq: target.connectorId },
-              })),
+              pairs: targets.flatMap((target) =>
+                target.evseId === 0
+                  ? [{ id: { _eq: 0 }, connectorId: { _eq: 0 } }]
+                  : [
+                      {
+                        id: { _eq: target.evseId },
+                        connectorId: { _eq: target.connectorId },
+                      },
+                      // The connector-less row `profileEvseIds` seeds, derived
+                      // from the same components rather than from a count for
+                      // the reason the block above gives. Only for a target
+                      // numbered above 0: the `(0, null)` row is the CSMS's
+                      // own, written the first time it files the station-scope
+                      // status, and taking it would cross the fixture/residue
+                      // line this query exists to hold.
+                      {
+                        id: { _eq: target.evseId },
+                        connectorId: { _is_null: true },
+                      },
+                    ],
+              ),
               tenant: this.tenant,
             },
           );

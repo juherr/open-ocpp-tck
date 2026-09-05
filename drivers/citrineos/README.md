@@ -481,7 +481,8 @@ two scopes, because the schema does:
 - **tenant-scoped**, written by `driver provision` and checked by
   `driver verify` — an `EvseTypes` row per `(evseId, connectorId)` the station
   reports, a `Connector` component per pair carrying an `AvailabilityState`
-  variable;
+  variable, and a *second* `EvseTypes` row per addressable EVSE with a **null**
+  `connectorId`;
 - **station-scoped**, written by `prepareStation` — the `Evses` and
   `Connectors` rows, which hang off a charging station row that does not exist
   until a station connects, and a charge point id is something only the
@@ -490,6 +491,17 @@ two scopes, because the schema does:
 The pairs are not a list written here: they come from the simulator's own
 projection, a station-scope `(0, 0)` plus `(N, 1)` per connector. That first
 one is the one that looks skippable and is not — half the warnings are its.
+
+The connector-less rows are a *different* lookup rather than a duplicate of
+those. The status handler resolves an EVSE type by the pair; the SmartCharging
+endpoints resolve one with `findEvseByIdAndConnectorId(tenantId, evseId, null)`,
+and a Sequelize `where` of `connectorId: null` is `IS NULL`, not a wildcard — so
+the row a status needs does not answer a charging profile, and a
+`SetChargingProfile` or `GetCompositeSchedule` addressed to that EVSE is refused
+inside the CSMS with nothing on the websocket. EVSE `0` is deliberately not
+seeded: both endpoints skip the lookup for the grid connection point, and the
+CSMS writes that row itself the first time it files the station-scope status —
+seeding it would put a fixture where residue lives.
 
 `cert201-tcb01-cold-boot` asserts the repair rather than trusting it: for every
 status the station reported, it reads the CSMS back through the contract's

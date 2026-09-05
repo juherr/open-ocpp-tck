@@ -5,7 +5,7 @@
  * prepare hook write so a 2.0.1 StatusNotification reaches the CSMS's device
  * model, and the rows they refuse to remove.
  *
- * PROPERTY, in 9 parts:
+ * PROPERTY, in 10 parts:
  *  1. THE STATION-SCOPE TARGET IS PROVISIONED. A station reports `(evseId 0,
  *     connectorId 0)` for itself as well as one pair per connector, and a
  *     fixture covering only the connectors leaves half the failure exactly
@@ -62,6 +62,21 @@
  *     `statusTargets` -- so what this holds is that the count is a parameter in
  *     fact and not just in the signature, which is the half a reader cannot
  *     check by looking.
+ * 10. EVERY ADDRESSABLE EVSE ALSO GETS A ROW WITH NO CONNECTOR, and EVSE 0
+ *     does not. The status handler resolves an EVSE type by the
+ *     `(id, connectorId)` pair; the SmartCharging endpoints resolve one by
+ *     `connectorId IS NULL`, so the row part 1 writes does not answer them and
+ *     a charging-profile request for that EVSE is refused inside the CSMS with
+ *     nothing on the websocket -- issue #86's shape with an empty frame log
+ *     instead of four warnings. Asserted in both directions, because the
+ *     negative is the delicate half: EVSE 0's connector-less row is the CSMS's
+ *     OWN, written the first time it files the station-scope status, so
+ *     seeding it here would put a fixture where residue lives and teardown
+ *     could not tell them apart afterwards. The lookup itself is spelled
+ *     `_is_null` rather than `_eq: null`, and that is not cosmetic: Hasura
+ *     drops a clause whose comparison value is null, so the wrong spelling
+ *     reads back the PAIRED row, finds it, and never seeds the one that was
+ *     missing.
  *
  * WHAT IT DOES NOT ASSERT is that these rows make CitrineOS behave -- that the
  * four warnings stop. No offline guard can: it is a property of a CSMS reading
@@ -88,6 +103,7 @@ import {
   FIXTURE_EVSE_PREFIX,
   VARIABLE_NAME,
   componentInstance,
+  profileEvseIds,
   statusTargets,
 } from "../drivers/citrineos/device-model";
 import { CitrineProvisioner } from "../drivers/citrineos/provision";
@@ -249,6 +265,33 @@ class FakeCitrine {
         return { insert_EvseTypes_one: { databaseId: row.databaseId } };
       }
 
+      // Part 10, and this arm READS THE DOCUMENT where every other one reads
+      // only the variables. It has to: what is under test is the spelling of
+      // one clause, and Hasura's rule about it is the thing a store answering
+      // by intent would paper over -- `{ _eq: null }` there is not "is null",
+      // it is NO CLAUSE, so the query answers with the paired row and the
+      // seeder concludes the connector-less one already exists. `null` and
+      // `undefined` are still told apart below, because the store holds what
+      // the seeder WROTE and a row with no `connectorId` key at all is not the
+      // row an `IS NULL` lookup answers.
+      case "ProfileEvseTypeFixture": {
+        const isNull = /connectorId:\s*\{\s*_is_null:\s*true\s*\}/.test(
+          document,
+        );
+        return {
+          EvseTypes: this.evseTypes.filter(
+            (row) =>
+              row.id === vars.id && (isNull ? row.connectorId === null : true),
+          ),
+        };
+      }
+      case "SeedProfileEvseType": {
+        const object = vars.object as Row;
+        const row = { ...object, databaseId: this.id() };
+        this.evseTypes.push(row);
+        return { insert_EvseTypes_one: { databaseId: row.databaseId } };
+      }
+
       case "VariableFixture":
         return {
           Variables: this.variables.filter((row) => row.name === vars.name),
@@ -368,14 +411,20 @@ class FakeCitrine {
       case "FixtureEvseTypes": {
         const pairs = vars.pairs as {
           id: { _eq: number };
-          connectorId: { _eq: number };
+          connectorId: { _eq?: number; _is_null?: boolean };
         }[];
         return {
           EvseTypes: this.evseTypes.filter((row) =>
             pairs.some(
               (pair) =>
                 pair.id._eq === row.id &&
-                pair.connectorId._eq === row.connectorId,
+                // `_is_null` rather than `_eq: null`, because that is what the
+                // driver has to send: Hasura reads a null comparison value as
+                // no clause at all, so the two spellings select different rows
+                // and only one of them is the fixture's.
+                (pair.connectorId._is_null === true
+                  ? row.connectorId === null
+                  : pair.connectorId._eq === row.connectorId),
             ),
           ),
         };
@@ -900,6 +949,68 @@ const TARGETS = statusTargets(CONNECTORS);
     "part 9: and verify checks the topology it is asked about",
     deviceModelProblems(await provisioner.verify(TWO)).length === 0,
     JSON.stringify(deviceModelProblems(await provisioner.verify(TWO))),
+  );
+}
+
+// ---------------------------------------------------------------------------
+// Part 10: the connector-less EVSE rows a charging profile is addressed to
+// ---------------------------------------------------------------------------
+
+{
+  const csms = new FakeCitrine();
+  const provisioner = provisionerOn(csms);
+  await provisioner.provisionDeviceModel();
+
+  const addressable = profileEvseIds(CONNECTORS);
+  check(
+    "part 10: every addressable EVSE has a row with a null connector",
+    addressable.length > 0 &&
+      addressable.every((evseId) =>
+        csms.evseTypes.some(
+          (row) => row.id === evseId && row.connectorId === null,
+        ),
+      ),
+    "the SmartCharging endpoints resolve an EVSE with `connectorId IS NULL`, " +
+      "so the paired row part 1 writes does not answer them and every " +
+      "charging-profile request for that EVSE is refused inside the CSMS " +
+      `with nothing on the websocket. Addressable ${JSON.stringify(addressable)}, ` +
+      `written ${JSON.stringify(csms.evseTypes)}`,
+  );
+  check(
+    "part 10: EVSE 0 gets none",
+    !csms.evseTypes.some((row) => row.id === 0 && row.connectorId === null),
+    "the grid connection point is the one address both endpoints skip the " +
+      "lookup for, and the CSMS writes that row itself the first time it " +
+      "files the station-scope status. Seeding it puts a fixture where " +
+      "residue lives, and teardown could not tell them apart afterwards. " +
+      `Written: ${JSON.stringify(csms.evseTypes)}`,
+  );
+  check(
+    "part 10: verify names a missing one",
+    deviceModelProblems(await provisionerOn(new FakeCitrine()).verify()).some(
+      (problem) => problem.includes("null connector"),
+    ),
+    "verify said nothing about the row a charging-profile request needs, so " +
+      "the pre-flight passes and the scenario fails with an empty frame log.",
+  );
+  check(
+    "part 10: and is silent once provisioned",
+    deviceModelProblems(await provisioner.verify()).length === 0,
+    JSON.stringify(deviceModelProblems(await provisioner.verify())),
+  );
+
+  // Teardown, and it is the direction the `_is_null` spelling decides: a
+  // teardown that matched `connectorId: { _eq: null }` selects nothing on
+  // Hasura and leaves the row forever.
+  await provisioner.ensureStationTopology(CP_ID, CONNECTORS);
+  await provisioner.teardown();
+  check(
+    "part 10: teardown removes them",
+    !csms.evseTypes.some(
+      (row) => addressable.includes(row.id as number) && row.connectorId === null,
+    ),
+    "the connector-less rows survived teardown, so a second provision finds " +
+      `them and the fixture is never actually removed: ${JSON.stringify(csms.evseTypes)}`,
   );
 }
 
