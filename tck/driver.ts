@@ -338,12 +338,22 @@ export const CSMS_OPERATION_16_ACTIONS = everyOneOf<CsmsOperation16Action>()([
 // AND WHY FOUR IS NOT THE FINAL ANSWER. That page's rule now selects 147 cases
 // rather than seven, and tck/specs/OCA-201-OPERATIONS.txt measures what they
 // ask for: TWENTY kinds of operation, over 90 cases that drive one and 57 that
-// drive none. So this union grows, sixteen more times. What does NOT change is
+// drive none. So this union grows, fifteen more times. What does NOT change is
 // how: the count comes from the cases selected, and a case that only observes
 // charge-point-initiated traffic still needs no arm here. Adding the rest of
 // the 2.0.1 messages because they exist is the mistake "three, not eighteen"
 // was written against, and it reads the same whichever direction the number
 // moves in.
+//
+// THE FIFTH ARM IS THE FIRST OF THOSE FIFTEEN, and it arrived the way the rule
+// above says one should: by a measurement rather than by a shopping list.
+// tck/specs/OCA-201-OPERATIONS.txt puts ChangeAvailability first among the
+// tranches -- nine of the selected cases need it and no other operation -- and
+// reading those nine in Part 6 found SIX writable against the pinned image.
+// The other three ask for a station-side event that image hard-codes (issue
+// #114), so they stay declined with that reason in their slice rows rather
+// than with this arm's absence. One operation, six cases; the tranche is what
+// makes that trade legible before the code is written.
 // ---------------------------------------------------------------------------
 
 /** OCPP 2.0.1 `ResetEnumType`. Not OCPP 1.6's Hard/Soft -- see the note on
@@ -377,11 +387,19 @@ export type MessageTrigger201 =
   | "TransactionEvent";
 
 // NOT BUILT, here because here is where they get added -- every OPTIONAL
-// member of the four requests below EXCEPT the one the first slice reached:
+// member of the five requests below EXCEPT the ones a slice reached:
 // `ComponentType`'s `instance` and `evse`, `VariableType`'s `instance`,
 // `GetVariableDataType`'s and `SetVariableDataType`'s `attributeType`,
-// `TriggerMessageRequest`'s `evse`, and the `EVSEType` and `AttributeEnumType`
-// those need.
+// `TriggerMessageRequest`'s `evse`, and the `AttributeEnumType` the second of
+// those needs.
+//
+// `EVSEType` LEFT THIS LIST the way `ResetRequest`'s `evseId` did, and the
+// entry is rewritten rather than deleted so the rule stays visible: it is here
+// under {@link Evse201} because `ChangeAvailabilityRequest` cannot address an
+// EVSE or a connector without it, and three of the six cases that arm was
+// written for are exactly the addressing modes it spells. `TriggerMessage`'s
+// `evse` is still absent, and now for a reason with nothing to do with the
+// type existing: no case in the writable slice scopes a trigger to an EVSE.
 //
 // The section header above applies "as few as the first slice needs" to the
 // operation count. This is the same rule one level down, applied to every
@@ -404,6 +422,29 @@ export type MessageTrigger201 =
 //
 // What none of them can arrive with is a guess. Being half-right ships a
 // published `.d.ts` that nobody can subtract from.
+
+/**
+ * OCPP 2.0.1 `EVSEType` -- how a request addresses part of a station.
+ *
+ * NESTED, AND THAT IS THE WHOLE POINT rather than a transcription of the
+ * schema. 2.0.1 has no flat `evseId` member on this request: `id` names the
+ * EVSE, and `connectorId` INSIDE the same object narrows it to one connector.
+ * So the three addressing modes a request can be in are told apart by which of
+ * these two are present -- whole station (no `evse` at all), one EVSE (`evse`
+ * with `id` alone), one connector (`evse` with both) -- and a driver flattening
+ * them into a single number makes the first and third indistinguishable on the
+ * wire. Two of the six ChangeAvailability cases differ from two others in
+ * NOTHING ELSE, so the flat spelling would have made them duplicates that both
+ * pass.
+ *
+ * `ResetRequest`'s own `evseId` is a different member and stays flat, because
+ * that is what its schema carries: 2.0.1 does not address a connector for a
+ * reset.
+ */
+export interface Evse201 {
+  id: number;
+  connectorId?: number;
+}
 
 /** OCPP 2.0.1 `ComponentType` -- half of a device-model address. */
 export interface Component201 {
@@ -468,7 +509,28 @@ export type CsmsOperation201 =
   // conclusion as the note above, reached for a second time on a second arm --
   // which is the evidence OCA-201-SELECTION.md says a shared abstraction layer
   // would need, not a reason to build one on two data points.
-  | { action: "TriggerMessage"; requestedMessage: MessageTrigger201 };
+  | { action: "TriggerMessage"; requestedMessage: MessageTrigger201 }
+  // Homonyms a third time, and the closest pair yet -- close enough that the
+  // shared arm is worth refusing in writing. OCPP 1.6's ChangeAvailability
+  // carries `connectorId` plus a `type` of Inoperative | Operative; 2.0.1's
+  // carries `operationalStatus` over the same two values plus an OPTIONAL
+  // `evse`. Same verb, same two states, and the member that decides what the
+  // request is about has a different name, a different type and a different
+  // meaning when absent: 1.6's connectorId 0 IS the station, 2.0.1 says the
+  // station by omitting `evse` entirely. A shared arm would have to pick one
+  // spelling, and either choice puts a value on one protocol's wire that
+  // protocol cannot express.
+  | {
+      action: "ChangeAvailability";
+      operationalStatus: "Inoperative" | "Operative";
+      /** WHICH PART OF THE STATION, and its absence is a value rather than a
+       *  default. Absent addresses the whole charging station; present with
+       *  `connectorId` absent addresses that EVSE; present with `connectorId`
+       *  addresses that connector. See {@link Evse201} for why this is not a
+       *  flat `evseId`. A driver must omit the member rather than send `null`
+       *  or an empty object. */
+      evse?: Evse201;
+    };
 
 export type CsmsOperation201Action = CsmsOperation201["action"];
 
@@ -480,6 +542,7 @@ export const CSMS_OPERATION_201_ACTIONS = everyOneOf<CsmsOperation201Action>()([
   "GetVariables",
   "SetVariables",
   "TriggerMessage",
+  "ChangeAvailability",
 ]);
 
 /**
@@ -543,6 +606,16 @@ export const SAMPLE_OPERATION_201: {
     ],
   },
   TriggerMessage: { action: "TriggerMessage", requestedMessage: "Heartbeat" },
+  // `evse` OMITTED, by the rule stated above: every value here is the cheapest
+  // thing its arm admits, and `operationalStatus` is this request's only
+  // required member. The omission also happens to be the sample a mapper is
+  // most likely to get wrong -- a driver that sends `evse: {}` or `evse: null`
+  // for an absent one has changed what the request means -- but that is not
+  // what this table measures, and a scenario is where it is measured.
+  ChangeAvailability: {
+    action: "ChangeAvailability",
+    operationalStatus: "Inoperative",
+  },
 };
 
 // ---------------------------------------------------------------------------

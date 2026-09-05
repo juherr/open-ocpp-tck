@@ -32,7 +32,7 @@
  *  3. EVERY ACTION A DRIVER DECLARES MAPS TO A REQUEST. Each declared action's
  *     `SAMPLE_OPERATION_201` entry goes through the driver's own mapper, which
  *     must not answer `UnsupportedOperationError`. This is the direction that
- *     was uncheckable: the union grows sixteen more times (see the header
+ *     was uncheckable: the union grows fifteen more times (see the header
  *     above `CsmsOperation201`), and `assertNever` forces a `case` per arm but
  *     says nothing about whether the endpoint that case names exists.
  *  4. THAT CHECK IS NOT VACUOUS. The same mapper, on the line whose unrouted

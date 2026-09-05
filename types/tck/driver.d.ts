@@ -197,6 +197,28 @@ export type ResetType201 = "Immediate" | "OnIdle";
  * same terms.
  */
 export type MessageTrigger201 = "BootNotification" | "FirmwareStatusNotification" | "Heartbeat" | "LogStatusNotification" | "MeterValues" | "PublishFirmwareStatusNotification" | "SignChargingStationCertificate" | "SignCombinedCertificate" | "SignV2GCertificate" | "StatusNotification" | "TransactionEvent";
+/**
+ * OCPP 2.0.1 `EVSEType` -- how a request addresses part of a station.
+ *
+ * NESTED, AND THAT IS THE WHOLE POINT rather than a transcription of the
+ * schema. 2.0.1 has no flat `evseId` member on this request: `id` names the
+ * EVSE, and `connectorId` INSIDE the same object narrows it to one connector.
+ * So the three addressing modes a request can be in are told apart by which of
+ * these two are present -- whole station (no `evse` at all), one EVSE (`evse`
+ * with `id` alone), one connector (`evse` with both) -- and a driver flattening
+ * them into a single number makes the first and third indistinguishable on the
+ * wire. Two of the six ChangeAvailability cases differ from two others in
+ * NOTHING ELSE, so the flat spelling would have made them duplicates that both
+ * pass.
+ *
+ * `ResetRequest`'s own `evseId` is a different member and stays flat, because
+ * that is what its schema carries: 2.0.1 does not address a connector for a
+ * reset.
+ */
+export interface Evse201 {
+    id: number;
+    connectorId?: number;
+}
 /** OCPP 2.0.1 `ComponentType` -- half of a device-model address. */
 export interface Component201 {
     name: string;
@@ -235,12 +257,22 @@ export type CsmsOperation201 = {
 } | {
     action: "TriggerMessage";
     requestedMessage: MessageTrigger201;
+} | {
+    action: "ChangeAvailability";
+    operationalStatus: "Inoperative" | "Operative";
+    /** WHICH PART OF THE STATION, and its absence is a value rather than a
+     *  default. Absent addresses the whole charging station; present with
+     *  `connectorId` absent addresses that EVSE; present with `connectorId`
+     *  addresses that connector. See {@link Evse201} for why this is not a
+     *  flat `evseId`. A driver must omit the member rather than send `null`
+     *  or an empty object. */
+    evse?: Evse201;
 };
 export type CsmsOperation201Action = CsmsOperation201["action"];
 /** Every 2.0.1 action name. Same job as {@link CSMS_OPERATION_16_ACTIONS},
  *  and a SECOND list rather than an extension of it -- see the note on
  *  {@link CsmsOperation201}'s `Reset` arm for why the two must not merge. */
-export declare const CSMS_OPERATION_201_ACTIONS: readonly ["Reset", "GetVariables", "SetVariables", "TriggerMessage"];
+export declare const CSMS_OPERATION_201_ACTIONS: readonly ["Reset", "GetVariables", "SetVariables", "TriggerMessage", "ChangeAvailability"];
 /**
  * One well-formed operation per action, and its job is to make the union above
  * expensive to grow in exactly one place.

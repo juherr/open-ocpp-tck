@@ -324,7 +324,7 @@ its header is now a false claim about what the build checks.
   `CSMS_OPERATION_201_ACTIONS`, so an arm added to the contract grows both
   sides in the same commit and the check is a tautology — CitrineOS declared
   `new Set(CSMS_OPERATION_201_ACTIONS)`, the whole constant, and would have
-  claimed every one of the sixteen arms still to come at the moment each was
+  claimed every one of the fifteen arms still to come at the moment each was
   added. What no offline guard can add is that the route a `case` names
   EXISTS: a plausible module/action pair compiles, is declared, and 404s, which
   `api-client.ts` classifies as a non-dispatch rather than a capability gap.

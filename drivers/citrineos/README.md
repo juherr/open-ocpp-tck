@@ -353,10 +353,18 @@ the same client — `/ocpp/2.0.1/…` instead of `/ocpp/1.6/…`. The routing is
 | `GetVariables` | `monitoring/getVariables` |
 | `SetVariables` | `monitoring/setVariables` |
 | `TriggerMessage` | `configuration/triggerMessage` |
+| `ChangeAvailability` | `configuration/changeAvailability` |
 
 The module is CitrineOS's rather than the specification's, read off the
 `@AsMessageEndpoint` decorators in the pinned image; `toCitrineRequest201`'s
 doc comment is where that is argued.
+
+`changeAvailability` validates against `ChangeAvailabilityRequestSchema`, whose
+2.0.1 spelling is `operationalStatus` (required) plus an optional `evse` object
+of `{ id, connectorId? }` — **no flat `evseId`**. The driver passes that object
+through rather than unpacking it, because which of its two members are present
+is the whole difference between addressing the station, an EVSE and a
+connector.
 
 Declared for the **v2 line only**. Nobody has pointed a 2.0.1 station at
 v1.9.1 here, and a driver declaring a surface on the strength of a version

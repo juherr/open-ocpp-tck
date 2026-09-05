@@ -157,13 +157,14 @@ export async function toCitrineRequest(
  * arm lands in.
  *
  * The module for each action is CitrineOS's, not the OCPP specification's:
- * `Reset` and `TriggerMessage` are Configuration's and the two device-model
- * actions are Monitoring's, read off the `@AsMessageEndpoint` decorators in
+ * `Reset`, `TriggerMessage` and `ChangeAvailability` are Configuration's and
+ * the two device-model actions are Monitoring's, read off the
+ * `@AsMessageEndpoint` decorators in
  * `packages/core/src/modules/{Configuration,Monitoring}/src/module/2/MessageApi.ts`.
  * There is no rule to derive it from, the same way there is none for 1.6 --
- * and that both actions with a 1.6 namesake happen to share their namesake's
- * module is a fact about this arrangement, not one to route by: the two
- * device-model actions have no namesake to agree with.
+ * and that all three actions with a 1.6 namesake happen to share their
+ * namesake's module is a fact about this arrangement, not one to route by: the
+ * two device-model actions have no namesake to agree with.
  */
 export function toCitrineRequest201(
   op: CsmsOperation201,
@@ -223,6 +224,27 @@ function route201(op: CsmsOperation201, variant: CitrineVariant): CitrineRoute {
         module: "configuration",
         action: "triggerMessage",
         body: { requestedMessage: op.requestedMessage },
+      };
+
+    // Configuration's, like both of its namesakes. `evse` is passed THROUGH
+    // rather than unpacked: the body is the OCPP payload, CitrineOS validates
+    // it against `ChangeAvailabilityRequestSchema` and forwards it, and the
+    // three addressing modes the scenarios measure are exactly which members
+    // of that object are present. Unpacking it into `evseId` / `connectorId`
+    // here -- the shape 1.6's arm two functions down has -- would collapse
+    // "the whole station" and "this EVSE" into one request.
+    //
+    // body() drops only `undefined`, so an absent `evse` is OMITTED rather
+    // than sent as null, which is the difference between addressing the
+    // station and sending a member the schema does not allow to be null. The
+    // `connectorId` inside it needs no such treatment: it is already absent
+    // from the object the contract built, and JSON.stringify drops an
+    // undefined property.
+    case "ChangeAvailability":
+      return {
+        module: "configuration",
+        action: "changeAvailability",
+        body: body({ operationalStatus: op.operationalStatus, evse: op.evse }),
       };
 
     default:
