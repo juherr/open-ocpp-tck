@@ -12,7 +12,8 @@ It reports the answer rather than flattering it.
 1 `FAIL` out of the 47 OCPP 1.6 scenarios.** The 7 OCPP 2.0.1 ones came later
 and in three measurements: four `PASS` on 2026-08-19, `TC_B_21` on 2026-08-20
 once its fixture existed, and `TC_B_06` / `TC_B_09` on 2026-08-21. **All 7
-`PASS`** — see [OCPP 2.0.1](#ocpp-201) below.
+`PASS`**; four more were registered afterwards and have not been swept — see
+[OCPP 2.0.1](#ocpp-201) below.
 
 That run needed no isolated retry at all, which had never happened before —
 but read it as one run rather than as a property. The parallel pass is
@@ -73,14 +74,14 @@ bun bin/ocpp-tck.ts driver provision      # idTags + the 2.0.1 device model
 bun bin/ocpp-tck.ts driver verify         # read-only: are they there?
 bun bin/ocpp-tck.ts driver selftest       # seconds: every record query, once
 
-bun run e2e                               # the whole suite: 54 scenarios
+bun run e2e                               # the whole suite: 58 scenarios
 
 docker compose -f drivers/citrineos/compose.yaml down -v
 ```
 
 `bun run e2e` and not `run-all`, for the retry pass: `--retry-failed-isolated`
 re-runs a parallel lane's failures sequentially, which is the mode the runner
-calls reliable. Both cover the same 54 scenarios — the `authorize` group used
+calls reliable. Both cover the same 58 scenarios — the `authorize` group used
 to sit outside `all`, so a bare `run-all` reported 44/47 as "no failures" and
 skipped exactly the three scenarios that prove `driver provision` seeded
 anything. `bun run e2e:smoke` is the short loop while iterating.
@@ -418,6 +419,18 @@ pinned simulator resolves the pair through a component/variable map of its own
 — and CitrineOS reads its own here only for `bytesPerMessage` and
 `itemsPerMessage`, which fall back when it is empty. Both drive green against a
 station whose device model was never provisioned.
+
+**Four more cases are registered and NOT YET MEASURED**, which is why their
+rows are `CONDITIONAL` rather than `DRIVABLE` and why the sentence above says
+"seven" rather than "eleven". `cert201-tcc02-authorize-invalid`,
+`cert201-tce10-start-authorized`, `cert201-tcf27-trigger-not-implemented` and
+`cert201-tcj01-clock-aligned-meter-values` were written against a reading of
+Part 6 and the pinned simulator's own sources; nothing has run them against a
+CSMS. Three of them ask this driver for nothing at all — the station side is
+driven from the simulator's CLI — and the fourth reuses the `TriggerMessage`
+route `TC_F_20` already exercises, so what the first sweep answers is about
+CitrineOS rather than about this driver's routing. Each scope row states the
+question it has to answer.
 
 The device-model gap itself was real and unrelated to those two, and it is now
 closed. A 2.0.1 `StatusNotification` used to reach nothing: CitrineOS answered
