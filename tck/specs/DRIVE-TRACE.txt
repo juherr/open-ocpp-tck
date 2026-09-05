@@ -187,6 +187,23 @@ GROUP core-201
   SPEC cert201-tcb22-reset-rejected
     OP 201:Reset [9, immediate]
     -> driveState keys=[]
+  SPEC cert201-tcc02-authorize-invalid
+    SIM send {"command":"authorize","params":{"tagId":"CE71FFFF"}}
+    -> driveState keys=[]
+  SPEC cert201-tce10-start-authorized
+    SIM send {"command":"start_transaction","params":{"connector":1,"tagId":"CE712001"}}
+    SIM wait-for-line Sent: \[2,.*"TransactionEvent" 15000
+    SIM send {"command":"stop_transaction","params":{"connector":1}}
+    -> driveState keys=[started]
   SPEC cert201-tcf20-heartbeat
     OP 201:TriggerMessage [heartbeat]
+    -> driveState keys=[]
+  SPEC cert201-tcf27-trigger-not-implemented
+    OP 201:TriggerMessage [firmwarestatusnotification]
+    SIM send {"command":"heartbeat"}
+    -> driveState keys=[]
+  SPEC cert201-tcj01-clock-aligned-meter-values
+    SIM send {"command":"send_meter_value","params":{"connector":1}}
+    SIM send {"command":"send_meter_value","params":{"connector":1}}
+    SIM send {"command":"send_meter_value","params":{"connector":1}}
     -> driveState keys=[]
