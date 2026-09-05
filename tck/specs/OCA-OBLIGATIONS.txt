@@ -98,4 +98,10 @@ cert201-tcc02-authorize-invalid           Authorize                      assertA
 cert201-tce10-start-authorized            Authorize                      assertAllAnswered      TC_E_10
 cert201-tce10-start-authorized            TransactionEvent               assertAllAnswered      TC_E_10
 cert201-tcf20-heartbeat                   Heartbeat                      assertAllAnswered      TC_F_20
+cert201-tcg03-evse-inoperative            StatusNotification             assertAllAnswered      TC_G_03
+cert201-tcg04-evse-operative              StatusNotification             assertAllAnswered      TC_G_04
+cert201-tcg05-station-inoperative         StatusNotification             assertAllAnswered      TC_G_05
+cert201-tcg06-station-operative           StatusNotification             assertAllAnswered      TC_G_06
+cert201-tcg07-connector-inoperative       StatusNotification             assertAllAnswered      TC_G_07
+cert201-tcg08-connector-operative         StatusNotification             assertAllAnswered      TC_G_08
 cert201-tcj01-clock-aligned-meter-values  MeterValues                    assertAllAnswered      TC_J_01

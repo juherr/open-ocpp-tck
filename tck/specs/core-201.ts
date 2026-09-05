@@ -56,12 +56,16 @@
  * duplicated rather than build a mechanism from five scenarios' evidence; the
  * evidence arrived when the selection rule turned out to pick 147 cases, at
  * which point a handful of copies becomes a class of copies that drift while
- * each one still reads reasonably. TC_B_21 is the one scenario here that
- * declares a state today, and its `states:` field is what the mechanism reads.
+ * each one still reads reasonably. Three scenarios declare a state today --
+ * TC_B_21, TC_G_03 and TC_G_04 -- and their `states:` field is what the
+ * mechanism reads. TC_G_03 is the one whose state IS the case: Part 6 gives it
+ * no tool validation of its own, so it has no drive() at all and the fixture's
+ * traffic is what its assertions read.
  *
  * WHAT STILL DUPLICATES, deliberately: `ocppVersion` plus
- * `runsSimTemplate: false` on every scenario, and the three Reset scenarios'
- * shared drive-then-check shape with one member changed. Those are not
+ * `runsSimTemplate: false` on every scenario, the three Reset scenarios'
+ * shared drive-then-check shape with one member changed, and the six
+ * ChangeAvailability ones' with two. Those are not
  * fixtures. Factoring either into a shared constant renders it `·` in
  * `ASSERT-INVENTORY.txt` and stops it being pinned, which is the trade TC_B_22
  * spells out for its two literals and which applies to every declaration in
@@ -630,6 +634,94 @@ function assertMeterValueSampled(
     return;
   }
   rec.pass(description);
+}
+
+/**
+ * The CSMS put a `ChangeAvailability` on the wire in one of the three scopes
+ * 2.0.1 gives it, and asked for the availability the scenario asked for.
+ *
+ * THREE SCOPES, TOLD APART BY ABSENCE. The request carries `operationalStatus`
+ * and an optional `evse` object; `evse` absent means the whole charging
+ * station, `evse` with `id` alone means that EVSE, and `evse` with
+ * `connectorId` as well means that connector. Nothing else distinguishes them
+ * -- so a check that read `operationalStatus` alone would pass identically on
+ * all three, and two pairs of the six scenarios below would be measuring one
+ * request each while claiming two cases.
+ *
+ * HERE AND NOT IN assert.ts, for `assertVariableRequested`'s reason:
+ * `assertCallPayload` compares members with `Object.is`, so every value it can
+ * check is a scalar, and `evse` is an object whose SHAPE is the subject.
+ * Widening that helper to walk nested structures would hand every OCPP 1.6
+ * scenario a matcher none of them asked for, and "a ChangeAvailability request
+ * addresses a scope by which members of `evse` are present" is message
+ * knowledge, which assert.ts is built not to hold.
+ *
+ * NULL MEANS "MUST BE ABSENT" rather than "do not care", which is the half
+ * that makes the helper worth having. `evseId: null` fails a request that
+ * carries an `evse`, and `connectorId: null` fails one that narrowed to a
+ * connector the scenario did not ask about. A "do not care" spelling was
+ * considered and rejected: every call below knows exactly which scope it wants,
+ * and the one thing a CSMS can do wrong here is send a different one.
+ *
+ * `occurrence` because two of the six scenarios put a second request on the
+ * wire before the one under test -- a fixture in one case, an inline setup in
+ * the other -- and matching ANY request would let the setup satisfy the check
+ * the case is about.
+ */
+function assertChangeAvailabilityScope(
+  rec: AssertRecorder,
+  frames: readonly Frame[],
+  occurrence: number,
+  operationalStatus: string,
+  /** The `evse.id` the request must carry, or null for one that must omit
+   *  `evse` altogether and so address the whole charging station. */
+  evseId: number | null,
+  /** The `evse.connectorId` it must carry, or null for one that must omit it. */
+  connectorId: number | null,
+  description: string,
+): void {
+  const calls = findAllCalls(frames, "received", "ChangeAvailability");
+  const call = calls[occurrence];
+  if (!call) {
+    rec.fail(
+      description,
+      `no Received CALL number ${occurrence} for action=ChangeAvailability (found ${calls.length})`,
+    );
+    return;
+  }
+  const payload = call.payload as Record<string, unknown> | null;
+  if (typeof payload !== "object" || payload === null || Array.isArray(payload)) {
+    rec.fail(description, `payload is ${JSON.stringify(call.payload)}`);
+    return;
+  }
+  const evse = payload.evse;
+  // Present-but-not-an-object is refused by name rather than falling into the
+  // reads below, where `("" as never).id` is undefined and would render as the
+  // absent scope -- i.e. a malformed request reported as a correct one.
+  if (evse !== undefined && (typeof evse !== "object" || evse === null || Array.isArray(evse))) {
+    rec.fail(description, `evse is ${JSON.stringify(evse)}, which is not an EVSEType object`);
+    return;
+  }
+  const members = (evse ?? {}) as Record<string, unknown>;
+  const sentEvseId = evse === undefined ? null : (members.id ?? null);
+  const sentConnectorId = evse === undefined ? null : (members.connectorId ?? null);
+  const wrong: string[] = [];
+  if (payload.operationalStatus !== operationalStatus) {
+    wrong.push(`operationalStatus=${JSON.stringify(payload.operationalStatus)}`);
+  }
+  if (sentEvseId !== evseId) wrong.push(`evse.id=${JSON.stringify(sentEvseId)}`);
+  if (sentConnectorId !== connectorId) {
+    wrong.push(`evse.connectorId=${JSON.stringify(sentConnectorId)}`);
+  }
+  if (wrong.length === 0) {
+    rec.pass(description);
+    return;
+  }
+  rec.fail(
+    description,
+    `expected operationalStatus=${operationalStatus}, evse.id=${JSON.stringify(evseId)}, ` +
+      `evse.connectorId=${JSON.stringify(connectorId)}; got ${wrong.join(", ")}`,
+  );
 }
 
 /**
@@ -1517,10 +1609,477 @@ const TC_J_01: ScenarioSpec = {
   },
 };
 
+// ---------------------------------------------------------------------------
+// ChangeAvailability -- six cases, three addressing scopes, two availabilities.
+//
+// WHAT SEPARATES THEM IS THE CSMS'S REQUEST AND ALMOST NOTHING ELSE, which is
+// why `assertChangeAvailabilityScope` above exists and why every scenario here
+// calls it. Three of the six ask for `Inoperative` and three for `Operative`;
+// within each three, one addresses the whole charging station, one an EVSE and
+// one a connector. On the wire that is `operationalStatus` plus which members
+// of the optional `evse` object are present -- and the CSMS is the system under
+// test, so a CSMS that reshaped the scope on the way out is precisely the
+// finding these six are for.
+//
+// THREE THINGS THE PINNED SIMULATOR DOES THAT ARE NOT BLOCKERS, measured in its
+// own sources and written here so no reader re-derives them from a red run:
+//
+//   1. IT IGNORES `evse.connectorId`. Its 2.0.1 handler reads `req.evse?.id`
+//      and nothing else, and its topology is flat -- domain connector N is
+//      wire address `(evseId N, connectorId 1)`. So the connector-scoped cases
+//      cannot be told from the EVSE-scoped ones by what the STATION does. They
+//      are told apart by what the CSMS SENDS, which is the right subject
+//      anyway: the case is about the request, and the station's reaction to a
+//      member it does not read says nothing about either.
+//   2. STATION-WIDE SCOPE EMITS AN EXTRA STATUS REPORT, addressed
+//      `(evseId 0, connectorId 0)`, before it loops the connectors. It is
+//      schema-valid and semantically odd, and nothing below asserts on it in
+//      either direction -- neither that it arrives nor that it does not.
+//      `assertAllAnswered` counts it like any other, which is correct: a CSMS
+//      owes an answer to every request the station sends it.
+//   3. IT REPORTS UNCONDITIONALLY. A connector told to become Operative when
+//      it already is still sends a status report, so the two cases that ask
+//      for `Operative` would pass with no precondition at all. That is why
+//      each of them establishes one first -- and why the precondition is a
+//      real part of the scenario rather than decoration.
+// ---------------------------------------------------------------------------
+
+const TC_G_03: ScenarioSpec = {
+  templateId: "cert201-tcg03-evse-inoperative",
+  description:
+    "TC_G_03 Change Availability EVSE: the CSMS makes one EVSE inoperative and answers the status the station then reports.",
+  ocppVersion: "OCPP-2.0.1",
+  runsSimTemplate: false,
+  connector: 1,
+  bootWaitSecs: 4,
+  // 10, the shortest hold in this file, and the reason is that this scenario
+  // has no drive(): the fixture has already sent the request AND waited for
+  // the station's status report to reach the wire by the time this window
+  // opens. What is left outstanding is one CALLRESULT -- the CSMS's answer to
+  // that report. That is TC_B_22's and TC_C_02's shape, a single round trip
+  // with nothing after it, and 10 is what both run at. The five scenarios
+  // below hold longer because each of them still has a whole chain to pay for
+  // when their drive() returns.
+  holdSecs: 10,
+  // THE FIXTURE IS THE CASE, which is the one thing about this scenario worth
+  // reading twice. Part 6 gives this case no tool validation of its own: its
+  // whole scenario is the execution of the `Unavailable` Reusable State, and
+  // ChangeAvailability is named only inside that state. So there is nothing
+  // for a drive() to do that the fixture does not already do, and writing one
+  // would put a SECOND request on the wire and make the assertions below
+  // ambiguous about which one they are describing. What is measured is the
+  // request the fixture caused and the answers the CSMS gave it -- read off
+  // the same frames every other scenario reads, because the runner captures
+  // the container's whole stdout from `connect` onwards.
+  //
+  // LITERALS AND NOT A SHARED CONSTANT, for TC_B_21's reason: an identifier
+  // renders as `·` in ASSERT-INVENTORY.txt, which for a top-level field means
+  // the whole declaration is omitted rather than marked, and the fixture could
+  // be re-pointed at another EVSE with no committed artifact moving.
+  states: [{ state: "Unavailable", evseId: 1 }],
+  assert({ frames, lines, rec, fixtures }) {
+    // FIRST, so a reader of results/ meets the cause before the consequence,
+    // and SKIPPED rather than FAIL when it did not hold -- TC_B_21's rule,
+    // which now lives in `assertStateEstablished`.
+    assertStateEstablished(
+      rec,
+      fixtures,
+      "Unavailable",
+      "the EVSE was taken out of service",
+    );
+    assertReceived(rec, frames, "ChangeAvailability", "ChangeAvailability.req received");
+    // THE MEASUREMENT. `evse.id` present and `evse.connectorId` absent is what
+    // makes this the EVSE-scoped case rather than the station-wide one two
+    // scenarios down, and a CSMS that dropped `evse` would have sent that
+    // other request instead.
+    assertChangeAvailabilityScope(
+      rec,
+      frames,
+      0,
+      "Inoperative",
+      1,
+      null,
+      "ChangeAvailability.req takes EVSE 1 out of service and names no connector",
+    );
+    assertResponseStatus(
+      rec,
+      frames,
+      "ChangeAvailability",
+      "Accepted",
+      "ChangeAvailability accepted",
+      { direction: "received" },
+    );
+    // The station's own report, pinned to this request rather than to its own
+    // existence: assertLineAfter anchors on the LAST ChangeAvailability on the
+    // wire, so a status the station happened to send at boot cannot satisfy
+    // it. TC_F_20's note carries the argument against a first-match order
+    // check.
+    assertLineAfter(
+      rec,
+      lines,
+      /Received: \[2,.*"ChangeAvailability"/,
+      /Sent: \[2,.*"StatusNotification",(?=[^\]]*"connectorStatus":"Unavailable")/,
+      "the station reported the EVSE unavailable after the request",
+    );
+    assertAllAnswered(rec, frames, "StatusNotification");
+  },
+};
+
+const TC_G_04: ScenarioSpec = {
+  templateId: "cert201-tcg04-evse-operative",
+  description:
+    "TC_G_04 Change Availability EVSE: the CSMS returns an out-of-service EVSE to service and answers the status the station then reports.",
+  ocppVersion: "OCPP-2.0.1",
+  runsSimTemplate: false,
+  connector: 1,
+  bootWaitSecs: 4,
+  // 12, the modal hold among this file's CSMS-driven scenarios, and the chain
+  // is why: drive() returns once the CSMS has accepted the operation, and what
+  // is still outstanding is the station's answer to the request, the status
+  // report it then sends, and the CSMS's answer to that. Two round trips,
+  // which is TC_F_20's shape at the same value. TC_B_20's note records what a
+  // window tuned in isolation costs under three-lane CI contention.
+  holdSecs: 12,
+  // THE PRECONDITION IS A NAMED STATE, and it is the state this case declares
+  // rather than one chosen for convenience: returning an EVSE to service is
+  // only distinguishable from leaving it alone when it was out of service to
+  // begin with. The fixture sends the inoperative request; drive() sends the
+  // operative one. See TC_G_03 for why the literals are literals.
+  states: [{ state: "Unavailable", evseId: 1 }],
+  async drive({ cpId, csms201 }) {
+    await csms201.execute(cpId, {
+      action: "ChangeAvailability",
+      operationalStatus: "Operative",
+      evse: { id: 1 },
+    });
+  },
+  assert({ frames, lines, rec, fixtures }) {
+    assertStateEstablished(
+      rec,
+      fixtures,
+      "Unavailable",
+      "the EVSE was out of service before it was returned to service",
+    );
+    assertReceived(rec, frames, "ChangeAvailability", "ChangeAvailability.req received");
+    // OCCURRENCE 1 IS THE CASE, AND OCCURRENCE 0 IS WHAT KEEPS THE INDEX
+    // MEANING THAT. Two requests reach the wire here -- the fixture's, then
+    // this case's -- so the checks below are guarded on the fixture having
+    // run: without that guard, a fixture whose dispatch failed would leave one
+    // request on the wire at index 0 and every check here would file a
+    // non-conformance against a CSMS that answered exactly what it was asked.
+    // TC_B_20's note is the same argument about a different index.
+    if (fixtures.established("Unavailable")) {
+      assertChangeAvailabilityScope(
+        rec,
+        frames,
+        0,
+        "Inoperative",
+        1,
+        null,
+        "the precondition request took EVSE 1 out of service",
+      );
+      assertChangeAvailabilityScope(
+        rec,
+        frames,
+        1,
+        "Operative",
+        1,
+        null,
+        "ChangeAvailability.req returns EVSE 1 to service and names no connector",
+      );
+      assertResponseStatus(
+        rec,
+        frames,
+        "ChangeAvailability",
+        "Accepted",
+        "ChangeAvailability accepted",
+        { direction: "received", occurrence: 1 },
+      );
+    } else {
+      rec.skip(
+        "ChangeAvailability.req returns EVSE 1 to service and names no connector",
+        `${UNEXERCISED_PREFIX} the EVSE was never taken out of service, so the request this case is about is not the one on the wire`,
+      );
+    }
+    assertLineAfter(
+      rec,
+      lines,
+      /Received: \[2,.*"ChangeAvailability"/,
+      /Sent: \[2,.*"StatusNotification",(?=[^\]]*"connectorStatus":"Available")/,
+      "the station reported the EVSE available after the request",
+    );
+    assertAllAnswered(rec, frames, "StatusNotification");
+  },
+};
+
+const TC_G_05: ScenarioSpec = {
+  templateId: "cert201-tcg05-station-inoperative",
+  description:
+    "TC_G_05 Change Availability station: the CSMS takes the whole charging station out of service and answers the statuses it then reports.",
+  ocppVersion: "OCPP-2.0.1",
+  runsSimTemplate: false,
+  connector: 1,
+  bootWaitSecs: 4,
+  // 12, for TC_G_04's chain and one addition: a station-wide request makes the
+  // station report every connector plus its own address, so the window covers
+  // several answers rather than one. They are answered in parallel by any CSMS
+  // that answers at all, so the chain is no longer -- and `assertAllAnswered`
+  // already forgives a CALL the log ended on.
+  holdSecs: 12,
+  // NO PRECONDITION AND NONE NEEDED: a station that has just booted is in
+  // service, so taking it out of service is a real transition from where the
+  // runner leaves it. The two cases below that ask for `Operative` are the
+  // ones that have to arrange something first.
+  async drive({ cpId, csms201 }) {
+    // `evse` OMITTED, WHICH IS THE CASE. 2.0.1 addresses the whole charging
+    // station by leaving the member out -- not by sending id 0, which names
+    // the station's own EVSE-shaped component and is a different request. The
+    // contract's arm has no member to omit incorrectly; what this measures is
+    // whether the CSMS puts one there on the way out.
+    await csms201.execute(cpId, {
+      action: "ChangeAvailability",
+      operationalStatus: "Inoperative",
+    });
+  },
+  assert({ frames, lines, rec }) {
+    assertReceived(rec, frames, "ChangeAvailability", "ChangeAvailability.req received");
+    assertChangeAvailabilityScope(
+      rec,
+      frames,
+      0,
+      "Inoperative",
+      null,
+      null,
+      "ChangeAvailability.req omits evse, so it addresses the whole charging station",
+    );
+    assertResponseStatus(
+      rec,
+      frames,
+      "ChangeAvailability",
+      "Accepted",
+      "ChangeAvailability accepted",
+      { direction: "received" },
+    );
+    assertLineAfter(
+      rec,
+      lines,
+      /Received: \[2,.*"ChangeAvailability"/,
+      /Sent: \[2,.*"StatusNotification",(?=[^\]]*"connectorStatus":"Unavailable")/,
+      "the station reported a connector unavailable after the request",
+    );
+    // EVERY REPORT, WHATEVER THE STATION SENT, and deliberately no `minimum`.
+    // A station-wide request makes the pinned image report its own address as
+    // well as each connector's; that extra frame is this image's behaviour
+    // rather than the case's requirement, so pinning a count here would assert
+    // a simulator quirk as an obligation. What the case obliges is that the
+    // CSMS answers what it receives, which is what this counts.
+    assertAllAnswered(rec, frames, "StatusNotification");
+  },
+};
+
+const TC_G_06: ScenarioSpec = {
+  templateId: "cert201-tcg06-station-operative",
+  description:
+    "TC_G_06 Change Availability station: the CSMS returns an out-of-service charging station to service and answers the statuses it then reports.",
+  ocppVersion: "OCPP-2.0.1",
+  runsSimTemplate: false,
+  connector: 1,
+  bootWaitSecs: 4,
+  // 12, TC_G_05's chain. The setup exchange is paid for inside drive() before
+  // this window opens, so what it covers is the same single chain the four
+  // scenarios above cover.
+  holdSecs: 12,
+  // SETUP INLINE RATHER THAN AS A REUSABLE STATE, and that is a refusal rather
+  // than an omission. This case's precondition is prose in Part 6, not a named
+  // state; the state next door, `Unavailable`, is parameterised by an EVSE,
+  // which is the reference's own shape. Widening that invocation to carry a
+  // station-wide scope so this scenario could declare it would make
+  // tck/states-201.ts's declaration say something about the reference that the
+  // reference does not -- and the whole value of that file is that its
+  // parameters are facts. Two lines here cost less than one wrong fact there.
+  async drive({ cpId, csms201 }) {
+    await csms201.execute(cpId, {
+      action: "ChangeAvailability",
+      operationalStatus: "Inoperative",
+    });
+    // Long enough for the setup's reports and their answers to land before the
+    // request under test is sent, so the two exchanges are two exchanges
+    // rather than one queue -- TC_E_10's reason for its own sleep.
+    await sleep(2000);
+    await csms201.execute(cpId, {
+      action: "ChangeAvailability",
+      operationalStatus: "Operative",
+    });
+  },
+  assert({ frames, lines, rec }) {
+    assertReceived(rec, frames, "ChangeAvailability", "ChangeAvailability.req received");
+    // OCCURRENCE 0 IS THE SETUP AND 1 IS THE CASE, and no fixture guard is
+    // needed for the pair to mean that: both requests are drive()'s own, and a
+    // dispatch that failed would have thrown out of drive() rather than
+    // leaving this assert reading a shifted index. That is the difference
+    // between an inline setup and a fixture, and it is why TC_G_04 needs the
+    // guard this scenario does not.
+    assertChangeAvailabilityScope(
+      rec,
+      frames,
+      0,
+      "Inoperative",
+      null,
+      null,
+      "the precondition request took the whole charging station out of service",
+    );
+    assertChangeAvailabilityScope(
+      rec,
+      frames,
+      1,
+      "Operative",
+      null,
+      null,
+      "ChangeAvailability.req omits evse, so it returns the whole charging station to service",
+    );
+    assertResponseStatus(
+      rec,
+      frames,
+      "ChangeAvailability",
+      "Accepted",
+      "ChangeAvailability accepted",
+      { direction: "received", occurrence: 1 },
+    );
+    assertLineAfter(
+      rec,
+      lines,
+      /Received: \[2,.*"ChangeAvailability"/,
+      /Sent: \[2,.*"StatusNotification",(?=[^\]]*"connectorStatus":"Available")/,
+      "the station reported a connector available after the request",
+    );
+    assertAllAnswered(rec, frames, "StatusNotification");
+  },
+};
+
+const TC_G_07: ScenarioSpec = {
+  templateId: "cert201-tcg07-connector-inoperative",
+  description:
+    "TC_G_07 Change Availability connector: the CSMS makes one connector of an EVSE inoperative and answers the status the station then reports.",
+  ocppVersion: "OCPP-2.0.1",
+  runsSimTemplate: false,
+  connector: 1,
+  bootWaitSecs: 4,
+  // 12, TC_G_04's chain exactly: one request, the station's answer, one status
+  // report, the CSMS's answer to it.
+  holdSecs: 12,
+  async drive({ cpId, csms201 }) {
+    // BOTH MEMBERS, AND THAT IS THE WHOLE DIFFERENCE FROM TC_G_03. `evse.id`
+    // names the EVSE and `evse.connectorId` narrows it to one connector; drop
+    // the second and this is the EVSE-scoped request four scenarios up. The
+    // pinned station will not act differently on it -- its handler never reads
+    // `connectorId` -- so what this scenario measures is that the member
+    // survives the CSMS, which is what the case asks of the system under test.
+    await csms201.execute(cpId, {
+      action: "ChangeAvailability",
+      operationalStatus: "Inoperative",
+      evse: { id: 1, connectorId: 1 },
+    });
+  },
+  assert({ frames, lines, rec }) {
+    assertReceived(rec, frames, "ChangeAvailability", "ChangeAvailability.req received");
+    assertChangeAvailabilityScope(
+      rec,
+      frames,
+      0,
+      "Inoperative",
+      1,
+      1,
+      "ChangeAvailability.req names EVSE 1 AND connector 1, so it addresses one connector",
+    );
+    assertResponseStatus(
+      rec,
+      frames,
+      "ChangeAvailability",
+      "Accepted",
+      "ChangeAvailability accepted",
+      { direction: "received" },
+    );
+    assertLineAfter(
+      rec,
+      lines,
+      /Received: \[2,.*"ChangeAvailability"/,
+      /Sent: \[2,.*"StatusNotification",(?=[^\]]*"connectorStatus":"Unavailable")/,
+      "the station reported the connector unavailable after the request",
+    );
+    assertAllAnswered(rec, frames, "StatusNotification");
+  },
+};
+
+const TC_G_08: ScenarioSpec = {
+  templateId: "cert201-tcg08-connector-operative",
+  description:
+    "TC_G_08 Change Availability connector: the CSMS returns an out-of-service connector to service and answers the status the station then reports.",
+  ocppVersion: "OCPP-2.0.1",
+  runsSimTemplate: false,
+  connector: 1,
+  bootWaitSecs: 4,
+  // 12, TC_G_06's shape: the setup exchange is paid for inside drive(), and
+  // this window covers the chain the request under test starts.
+  holdSecs: 12,
+  // SETUP INLINE, for TC_G_06's reason one scope further in: the `Unavailable`
+  // state takes an EVSE, and narrowing it to a connector would be a parameter
+  // the reference does not give it.
+  async drive({ cpId, csms201 }) {
+    await csms201.execute(cpId, {
+      action: "ChangeAvailability",
+      operationalStatus: "Inoperative",
+      evse: { id: 1, connectorId: 1 },
+    });
+    await sleep(2000);
+    await csms201.execute(cpId, {
+      action: "ChangeAvailability",
+      operationalStatus: "Operative",
+      evse: { id: 1, connectorId: 1 },
+    });
+  },
+  assert({ frames, lines, rec }) {
+    assertReceived(rec, frames, "ChangeAvailability", "ChangeAvailability.req received");
+    assertChangeAvailabilityScope(
+      rec,
+      frames,
+      0,
+      "Inoperative",
+      1,
+      1,
+      "the precondition request took connector 1 of EVSE 1 out of service",
+    );
+    assertChangeAvailabilityScope(
+      rec,
+      frames,
+      1,
+      "Operative",
+      1,
+      1,
+      "ChangeAvailability.req names EVSE 1 AND connector 1, so it returns one connector to service",
+    );
+    assertResponseStatus(
+      rec,
+      frames,
+      "ChangeAvailability",
+      "Accepted",
+      "ChangeAvailability accepted",
+      { direction: "received", occurrence: 1 },
+    );
+    assertLineAfter(
+      rec,
+      lines,
+      /Received: \[2,.*"ChangeAvailability"/,
+      /Sent: \[2,.*"StatusNotification",(?=[^\]]*"connectorStatus":"Available")/,
+      "the station reported the connector available after the request",
+    );
+    assertAllAnswered(rec, frames, "StatusNotification");
+  },
+};
+
 /**
- * The scenarios, in case order -- the eleven of `OCA-201-SLICE.txt`'s 147 that
- * are implemented. The other 136 are declined there rather than here, with
- * the reason in the row: one place per fact, and the guard reads that one.
+ * The scenarios, in case order -- the seventeen of `OCA-201-SLICE.txt`'s 147
+ * that are implemented. The other 130 are declined there rather than here,
+ * with the reason in the row: one place per fact, and the guard reads that one.
  */
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
 export const CORE_201_SPECS: ScenarioSpec<any>[] = [
@@ -1534,5 +2093,11 @@ export const CORE_201_SPECS: ScenarioSpec<any>[] = [
   TC_E_10,
   TC_F_20,
   TC_F_27,
+  TC_G_03,
+  TC_G_04,
+  TC_G_05,
+  TC_G_06,
+  TC_G_07,
+  TC_G_08,
   TC_J_01,
 ];
