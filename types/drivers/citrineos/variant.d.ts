@@ -85,19 +85,29 @@ export declare const NO_OCPP_201_ON_V1: string;
  * {@link V1_LOCAL_LIST_SCENARIOS} is: one list, and the table cannot drift from
  * {@link speaksOcpp201}.
  *
- * ONE DIRECTION OF THAT IS UNGUARDED, and it is worth knowing which.
- * `scopeCoverage` catches a row that is missing and a row that is stale; it
- * cannot catch a row that is present and NOT demoted. So a sixth `cert201-`
- * scenario added without a line here still gets its v2 row -- the coverage
- * check forces that -- and `v1Scope()` inherits it unchanged, leaving the v1
- * table claiming exactly what the comment above that function calls wrong.
+ * ONE DIRECTION OF THAT IS OUTSIDE `scopeCoverage`, and it is worth knowing
+ * which and where it is checked instead. `scopeCoverage` catches a row that is
+ * missing and a row that is stale; it cannot catch a row that is present and
+ * NOT demoted, because a demotion is not a row. So a `cert201-` scenario added
+ * without a line here still gets its v2 row -- the coverage check forces that
+ * -- and `v1Scope()` would inherit it unchanged, leaving the v1 table claiming
+ * exactly what the comment above that function calls wrong. That direction is
+ * `tests/cert201-scope-rows.sh`'s: it holds this list and the registered
+ * `cert201-` scenarios to each other, both ways round.
+ *
+ * THAT IS NOT HYPOTHETICAL: it happened. `cert201-tcb06-get-variables` and
+ * `cert201-tcb09-set-variables` were registered while this list still named
+ * five ids, and for that whole time `check:driver:citrineos-v1` reported them
+ * DRIVABLE -- green, on a line whose `capabilities.operations201` is absent.
+ * The list is exhaustive over the registry by hand; keep it that way when a
+ * scenario is added.
  *
  * Unlike {@link V1_LOCAL_LIST_SCENARIOS}, this list cannot be derived from
  * anything the driver can see: a scenario's declared protocol lives on its
  * `ScenarioSpec` and never reaches a driver. Whatever changes that is what
  * deletes this list.
  */
-export declare const CERT_201_SCENARIOS: readonly ["cert201-tcb01-cold-boot", "cert201-tcb20-reset-accepted", "cert201-tcb21-reset-scheduled", "cert201-tcb22-reset-rejected", "cert201-tcf20-heartbeat"];
+export declare const CERT_201_SCENARIOS: readonly ["cert201-tcb01-cold-boot", "cert201-tcb06-get-variables", "cert201-tcb09-set-variables", "cert201-tcb20-reset-accepted", "cert201-tcb21-reset-scheduled", "cert201-tcb22-reset-rejected", "cert201-tcf20-heartbeat"];
 /** Scenarios the local-auth-list gap costs on v1. Named here rather than in
  *  scope.ts so the two cannot drift from {@link unroutedActions}. */
 export declare const V1_LOCAL_LIST_SCENARIOS: readonly ["cert16-tc042-1-get-local-list-version-not-supported", "cert16-tc042-2-get-local-list-version-empty", "cert16-tc043-1-send-local-list-not-supported", "cert16-tc043-3-send-local-list-failed", "cert16-tc043-4-send-local-list-full", "cert16-tc043-5-send-local-list-differential"];

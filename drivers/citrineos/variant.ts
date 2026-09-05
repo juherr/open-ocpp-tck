@@ -155,12 +155,15 @@ export const NO_OCPP_201_ON_V1 =
  * {@link V1_LOCAL_LIST_SCENARIOS} is: one list, and the table cannot drift from
  * {@link speaksOcpp201}.
  *
- * ONE DIRECTION OF THAT IS UNGUARDED, and it is worth knowing which.
- * `scopeCoverage` catches a row that is missing and a row that is stale; it
- * cannot catch a row that is present and NOT demoted. So a `cert201-`
- * scenario added without a line here still gets its v2 row -- the coverage
- * check forces that -- and `v1Scope()` inherits it unchanged, leaving the v1
- * table claiming exactly what the comment above that function calls wrong.
+ * ONE DIRECTION OF THAT IS OUTSIDE `scopeCoverage`, and it is worth knowing
+ * which and where it is checked instead. `scopeCoverage` catches a row that is
+ * missing and a row that is stale; it cannot catch a row that is present and
+ * NOT demoted, because a demotion is not a row. So a `cert201-` scenario added
+ * without a line here still gets its v2 row -- the coverage check forces that
+ * -- and `v1Scope()` would inherit it unchanged, leaving the v1 table claiming
+ * exactly what the comment above that function calls wrong. That direction is
+ * `tests/cert201-scope-rows.sh`'s: it holds this list and the registered
+ * `cert201-` scenarios to each other, both ways round.
  *
  * THAT IS NOT HYPOTHETICAL: it happened. `cert201-tcb06-get-variables` and
  * `cert201-tcb09-set-variables` were registered while this list still named

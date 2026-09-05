@@ -201,6 +201,15 @@ jobs:
       - name: Every OCA obligation has a check
         run: bash tests/oca-obligations.sh
 
+      # Before the slice, and off the same artifact. The slice is keyed on the
+      # declared version; the driver lists downstream are keyed on the
+      # `cert201-` prefix. Nothing tied the two together, so a scenario
+      # carrying only one of them was invisible to whichever guard read the
+      # other -- and an undeclared one runs on OCPP 1.6 and goes six checks of
+      # seven green.
+      - name: A 2.0.1 scenario is spelled both ways
+        run: bash tests/cert201-declares-its-version.sh
+
       # Same artifact, same reason for the ordering: the OCPP 2.0.1 scenarios
       # are the ones a written selection rule governs, and a rule and the
       # scenarios it governs are two files that can disagree.
@@ -213,6 +222,14 @@ jobs:
       # cannot contradict.
       - name: The OCPP 2.0.1 operations are the measured ones
         run: bash tests/oca-201-operations.sh
+
+      # Last of the 2.0.1 group and the only one about a DRIVER. `scopeCoverage`
+      # reports a row that is missing and a row that is stale; a demotion is not
+      # a row, so a hand-kept demotion list that forgets a scenario leaves the
+      # v1 table claiming a protocol that line does not speak, with
+      # check:driver:citrineos-v1 green.
+      - name: The v1 demotions cover every 2.0.1 scenario
+        run: bash tests/cert201-scope-rows.sh
 
       - name: Shell guards lint clean
         run: shellcheck tests/*.sh tools/*.sh

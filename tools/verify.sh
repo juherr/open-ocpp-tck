@@ -115,6 +115,11 @@ run "scenario invariants" bash tests/spec-invariants.sh
 # After spec-invariants: this reads the artifact that one regenerates, so a
 # stale inventory should be reported as stale, not as a coverage hole.
 run "every OCA obligation has a check" bash tests/oca-obligations.sh
+# BEFORE the slice, because the slice is keyed on the declared version and the
+# driver lists downstream are keyed on the `cert201-` prefix. This is what makes
+# those two keys one set; a scenario that carries only one of them is invisible
+# to whichever guard reads the other.
+run "a 2.0.1 scenario is spelled both ways" bash tests/cert201-declares-its-version.sh
 # And beside it, for the same reason and off the same artifact: the OCPP 2.0.1
 # scenarios are the ones a written selection rule governs, and the rule and the
 # scenarios are two files that can disagree.
@@ -124,6 +129,10 @@ run "the OCPP 2.0.1 slice is the selected one" bash tests/oca-201-slice.sh
 # needs an operation CsmsOperation201 has not, is a claim the two files alone
 # cannot contradict.
 run "the OCPP 2.0.1 operations are the measured ones" bash tests/oca-201-operations.sh
+# Last of the 2.0.1 group, and the only one about a DRIVER: the scope-coverage
+# check a driver runs reports a missing row and a stale row, never a row that is
+# present and not demoted, so a hand-kept demotion list is checked by nothing.
+run "the v1 demotions cover every 2.0.1 scenario" bash tests/cert201-scope-rows.sh
 
 # Not fatal when absent: shellcheck is a linter, and refusing to verify a
 # TypeScript repository because a shell linter is missing would push people to

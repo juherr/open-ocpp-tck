@@ -25,7 +25,7 @@ error.
 
 `bun run verify` is every check CI runs before it starts a container —
 typecheck, committed declarations, three driver scope checks, ten in-process
-guards and thirteen shell guards — with one exit code, and every step runs even
+guards and fifteen shell guards — with one exit code, and every step runs even
 after one fails, where CI enumerates them and stops at the first.
 
 There is a third copy of that list — `bun run test`, the guards without the
@@ -37,7 +37,9 @@ sequence, and every link of `bun run test` to being one of its steps.
 
 It is usually the wrong command *during* iteration: `tests/spec-invariants.sh`
 pulls a pinned bun image, and it can only break if something under `tck/specs/`
-changed. The fast loop:
+changed. The fast loop — the typecheck, the driver scope checks, the
+in-process guards, and the two shell guards that read a scenario registry
+rather than a document:
 
 ```sh
 bun run typecheck
@@ -54,6 +56,10 @@ bun tests/trace-frames.ts
 bun tests/steve-ui-session-race.ts
 bun tests/citrineos-transport-classification.ts
 bun tests/citrineos-device-model-fixture.ts
+bash tests/cert201-declares-its-version.sh
+bash tests/cert201-scope-rows.sh       # both read tck/specs/ASSERT-INVENTORY.txt,
+                                       # so a NEW scenario reaches them only once
+                                       # spec-invariants.sh has regenerated it
 ```
 
 then `bun run verify` once before committing.
@@ -85,6 +91,17 @@ still `upstream-verbatim`; editing one of those is where the re-pin applies,
 and doing it *before* `bun run verify` saves a full gate run: the script
 bootstraps the patch and the digest in one step, in the only order that cannot
 record a digest for bytes that no longer exist.
+
+The manifest's other half is the **container image pins**, and they follow a
+different rule: hand-maintained, in one of `VENDOR.md`'s two-column pin tables
+and in the file that table's `declared in` row names — `tck/sim.ts` for the
+simulator, a driver's `compose.yaml` for a CSMS stack. Move a digest and you
+move both, in the same commit. `tests/vendor-integrity.sh`'s A14 compares every
+image, digest and resolved tag in both directions, and it is driven off
+`declared in` rather than off a list, so a new pin block is covered the moment
+it is written. Until it existed the pins were compared to nothing: the
+inventory parser selects rows by width, which excludes every two-column table
+in the file.
 
 ## Generated artifacts, committed on purpose
 
@@ -196,7 +213,7 @@ weaker than its comment, and only the mutation nobody had to run said so.
 Stopping at the obvious ones is not rigour, it is luck: the guard ships, and
 its header is now a false claim about what the build checks.
 
-## Nine boundaries the guards enforce
+## Ten boundaries the guards enforce
 
 - **The gate is one list.** `tools/verify.sh` and the workflow's `check` job
   must run the same commands in the same order, minus the CI-only setup the
@@ -243,7 +260,14 @@ its header is now a false claim about what the build checks.
   green. The file holds all 147 the rule selects, so that is now a regression
   rather than the state it sat in for a year; where it is owned is the
   selection page rather than here.
-  (`tests/oca-201-slice.sh`)
+  And the two names such a scenario has are one fact, which is the half of
+  this boundary that had nothing watching it: the slice guard keys on the
+  declared `ocppVersion`, every driver list and every other reader keys on the
+  `cert201-` prefix, and nothing tied the two together. A scenario carrying
+  only one of them is checked by half of what it looks checked by — and one
+  carrying only the prefix runs on the environment's protocol, 1.6 by default,
+  and goes six checks of seven green.
+  (`tests/oca-201-slice.sh`, `tests/cert201-declares-its-version.sh`)
 - **A selected case's operation cost is measured, and a row may not claim a
   case the contract cannot express.** `tck/specs/OCA-201-OPERATIONS.txt` names
   the CSMS-initiated operation each of those 147 cases obliges the CSMS to send
@@ -258,6 +282,18 @@ its header is now a false claim about what the build checks.
   and `TC_F_20` sat implemented for a milestone on a case whose only validation
   is a `TriggerMessage` no driver could be asked to send.
   (`tests/oca-201-operations.sh`)
+- **A demotion a driver keeps by hand covers every scenario it is about.**
+  `scopeCoverage` — what `check-driver` runs — reports a scope row that is
+  MISSING and one that is STALE. A demotion is neither: it is a rewrite a
+  derived table applies to the ids a driver lists, so a scenario the list
+  forgets is inherited unchanged from the table it derives from, and the
+  derived table goes on claiming a capability that release line does not have
+  with the build green. The list is the only place the fact is written, because
+  a scenario's declared protocol never reaches a driver. Not hypothetical, and
+  not even unknown: `drivers/citrineos/variant.ts`'s `CERT_201_SCENARIOS` held
+  five of the seven registered `cert201-` scenarios and the comment above it
+  described that exact hole in prose, for a milestone, with `check-driver`
+  green on both lines. (`tests/cert201-scope-rows.sh`)
 - **A scenario's assertions and its CSMS call sequence may not change.**
   Changing what a scenario measures is legitimate and moves the two committed
   artifacts above — say why in the pull request. (`tests/spec-invariants.sh`)
