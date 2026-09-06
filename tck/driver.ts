@@ -697,6 +697,27 @@ export interface ClearChargingProfileCriteria201 {
   stackLevel?: number;
 }
 
+/**
+ * OCPP 2.0.1 `GetCertificateIdUseEnumType` -- which installed certificates a
+ * `GetInstalledCertificateIds` is asking the station to list.
+ *
+ * FIVE VALUES AND NOT FOUR, which is the whole reason this is its own type
+ * rather than a reuse of the enumeration `InstallCertificate` ranges over. A
+ * certificate can be INSTALLED only as one of the four roots; it can be ASKED
+ * ABOUT as one of those four or as `V2GCertificateChain`, which is not a root
+ * at all but the chain a station holds under one. The wire gives the two
+ * requests different enumerations for that reason, and a shared type would let
+ * a scenario ask to install a chain -- a request the schema rejects.
+ *
+ * Complete rather than minimal, by {@link MessageTrigger201}'s rule.
+ */
+export type GetCertificateIdUse201 =
+  | "V2GRootCertificate"
+  | "MORootCertificate"
+  | "CSMSRootCertificate"
+  | "V2GCertificateChain"
+  | "ManufacturerRootCertificate";
+
 export type CsmsOperation201 =
   // TRIED AND REJECTED, here because here is where it gets re-proposed:
   // folding the two `Reset` arms -- this one and CsmsOperation16's -- into one
@@ -830,6 +851,24 @@ export type CsmsOperation201 =
       chargingProfileId?: number;
       /** Absent means the request clears by identifier alone. */
       chargingProfileCriteria?: ClearChargingProfileCriteria201;
+    }
+  // THE FIRST ARM WHOSE ONLY MEMBER IS OPTIONAL, and its absence is the whole
+  // of one case. 2.0.1 reads an omitted `certificateType` as "every type", so
+  // an absent one must be OMITTED rather than sent as an empty array -- the
+  // schema's `minItems` is 1, and `[]` is a request no station will accept.
+  //
+  // A TUPLE RATHER THAN AN ARRAY, for {@link ChargingSchedule201}'s reason:
+  // 1..N on the wire, so an empty array is not a value this member can take and
+  // a driver forwarding it verbatim is forwarding something already known to be
+  // well-sized. The bound the enumeration puts on the other end -- at most five,
+  // since a repeated type asks the same question twice -- is stated rather than
+  // typed.
+  | {
+      action: "GetInstalledCertificateIds";
+      /** Which kinds of certificate to list. Absent = every kind. Omit, never
+       *  send an empty array: the schema's `minItems` is 1, so `[]` asks for
+       *  nothing while looking like it asks for everything. */
+      certificateType?: [GetCertificateIdUse201, ...GetCertificateIdUse201[]];
     };
 
 export type CsmsOperation201Action = CsmsOperation201["action"];
@@ -847,6 +886,7 @@ export const CSMS_OPERATION_201_ACTIONS = everyOneOf<CsmsOperation201Action>()([
   "GetCompositeSchedule",
   "GetChargingProfiles",
   "ClearChargingProfile",
+  "GetInstalledCertificateIds",
 ]);
 
 /**
@@ -969,6 +1009,12 @@ export const SAMPLE_OPERATION_201: {
     action: "ClearChargingProfile",
     chargingProfileId: 1,
   },
+  // NO MEMBERS AT ALL, which is both the cheapest thing this arm admits and a
+  // real request: an omitted `certificateType` asks about every installed
+  // certificate. It is also the sample that pushes this arm's one plausible
+  // mapper mistake through -- sending `certificateType: []` for an absent one,
+  // which the schema refuses.
+  GetInstalledCertificateIds: { action: "GetInstalledCertificateIds" },
 };
 
 // ---------------------------------------------------------------------------

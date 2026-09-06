@@ -65,7 +65,7 @@
  * shape, not this one widened.
  */
 import { type AssertRecorder } from "./assert";
-import { type CsmsOperations201, type CsmsRecords } from "./driver";
+import { type CsmsOperations201, type CsmsRecords, type GetCertificateIdUse201 } from "./driver";
 import type { SimProcess } from "./sim";
 /**
  * Every state, once, as the list -- and the type is DERIVED from it, which is
@@ -97,10 +97,16 @@ export interface Condition {
 /** A station that has booted and done nothing else. */
 export declare const INITIAL_CONDITION: Condition;
 /**
- * Certificate uses Part 6 parameterises the two certificate states by. Spelled
- * out rather than imported from a generated OCPP model because nothing in this
- * tree has one, and because these four are what the two states below can be
- * asked for -- not the whole enumeration.
+ * Certificate uses Part 6 parameterises `CertificateInstalled` by, and the
+ * enumeration `InstallCertificate` ranges over on the wire. Spelled out rather
+ * than imported from a generated OCPP model because nothing in this tree has
+ * one.
+ *
+ * ONE STATE AND NOT TWO, which it was until `GetInstalledCertificates` got a
+ * reach. That state is parameterised by the enumeration the LISTING request
+ * ranges over -- five values, the extra one being `V2GCertificateChain` -- and
+ * takes {@link GetCertificateIdUse201} for it. A shared type would let a
+ * scenario ask to install a chain, which is a request the schema rejects.
  */
 export type CertificateUse201 = "V2GRootCertificate" | "MORootCertificate" | "CSMSRootCertificate" | "ManufacturerRootCertificate";
 /**
@@ -149,7 +155,7 @@ export type StateInvocation = {
     transactionDurationSecs: number;
 } | {
     state: "GetInstalledCertificates";
-    certificateType: CertificateUse201;
+    certificateType: GetCertificateIdUse201;
 } | {
     state: "ISO15118SmartCharging";
     evseId: number;

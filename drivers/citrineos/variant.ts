@@ -271,6 +271,12 @@ export const CERT_201_SCENARIOS = [
   "cert201-tck44-composite-schedule-station",
   "cert201-tck60-set-tx-profile",
   "cert201-tck70-stack-profiles",
+  "cert201-tcm13-installed-ids-manufacturer-root",
+  "cert201-tcm14-installed-ids-v2g-root",
+  "cert201-tcm15-installed-ids-v2g-chain",
+  "cert201-tcm16-installed-ids-mo-root",
+  "cert201-tcm18-installed-ids-all-types",
+  "cert201-tcm19-installed-ids-not-found",
 ] as const;
 
 /** Scenarios the local-auth-list gap costs on v1. Named here rather than in

@@ -25,7 +25,7 @@
 import { type CsmsOperation16, type CsmsOperation201, type TransactionRef } from "../../tck/driver";
 import { type CitrineVariant } from "./variant";
 /** The endpointPrefix values CitrineOS's shipped `docker` config declares. */
-export type CitrineModule = "configuration" | "evdriver" | "monitoring" | "reporting" | "smartcharging";
+export type CitrineModule = "certificates" | "configuration" | "evdriver" | "monitoring" | "reporting" | "smartcharging";
 /** The version segment of a message-API path, spelled as CitrineOS spells it.
  *  Not `SimOcppVersion`: that type is the simulator CLI's spelling
  *  (`OCPP-2.0.1`) of a different thing -- which protocol a charge point
@@ -81,9 +81,10 @@ export declare function toCitrineRequest(op: CsmsOperation16, refs: CitrineRefs,
  *
  * The module for each action is CitrineOS's, not the OCPP specification's:
  * `Reset`, `TriggerMessage` and `ChangeAvailability` are Configuration's, the
- * two device-model actions are Monitoring's, and the four charging-profile
- * actions are SmartCharging's, read off the `@AsMessageEndpoint` decorators in
- * `packages/core/src/modules/{Configuration,Monitoring,SmartCharging}/src/module/2/MessageApi.ts`.
+ * two device-model actions are Monitoring's, the four charging-profile
+ * actions are SmartCharging's and `GetInstalledCertificateIds` is
+ * Certificates', read off the `@AsMessageEndpoint` decorators in
+ * `packages/core/src/modules/{Certificates,Configuration,Monitoring,SmartCharging}/src/module/2/MessageApi.ts`.
  * There is no rule to derive it from, the same way there is none for 1.6 --
  * and that all five actions with a 1.6 namesake happen to share their
  * namesake's module is a fact about this arrangement, not one to route by: the

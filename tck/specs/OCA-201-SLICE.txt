@@ -55,7 +55,7 @@
 #                                                one, where the scenario says it>
 #
 # A REASON IS WRITTEN PER GROUP, NOT PER CASE, and the repetition below is that
-# rather than a placeholder. Twenty-five reasons cover the 114 declined rows,
+# rather than a placeholder. Twenty-four reasons cover the 105 declined rows,
 # because that is the granularity the decision was actually taken at: a block's
 # cases are blocked by one missing thing -- an operation the
 # `CsmsOperation201` union does not have, a station-side message the pinned
@@ -245,19 +245,19 @@ TC_L_09    not-implemented    UpdateFirmware is not one of CsmsOperation201's me
 TC_L_10    not-implemented    UpdateFirmware is not one of CsmsOperation201's members, and the station then has to fetch and install an image, which needs a file server this suite does not stand up.
 TC_L_11    not-implemented    UpdateFirmware is not one of CsmsOperation201's members, and the station then has to fetch and install an image, which needs a file server this suite does not stand up.
 TC_L_13    not-implemented    UpdateFirmware is not one of CsmsOperation201's members, and the station then has to fetch and install an image, which needs a file server this suite does not stand up.
-TC_M_01    not-implemented    installing, listing and deleting certificates are CSMS-initiated and none is among CsmsOperation201's members; each also needs certificate material this suite does not generate.
-TC_M_02    not-implemented    installing, listing and deleting certificates are CSMS-initiated and none is among CsmsOperation201's members; each also needs certificate material this suite does not generate.
+TC_M_01    not-implemented    installing and deleting certificates are CSMS-initiated and neither is among CsmsOperation201's members; each also needs certificate material this suite does not generate.
+TC_M_02    not-implemented    installing and deleting certificates are CSMS-initiated and neither is among CsmsOperation201's members; each also needs certificate material this suite does not generate.
 TC_M_03    not-implemented    ISO 15118 Support. The same certificate operations as this block's Core rows, with V2G and MO material on top.
 TC_M_04    not-implemented    ISO 15118 Support. The same certificate operations as this block's Core rows, with V2G and MO material on top.
-TC_M_05    not-implemented    installing, listing and deleting certificates are CSMS-initiated and none is among CsmsOperation201's members; each also needs certificate material this suite does not generate.
-TC_M_13    not-implemented    installing, listing and deleting certificates are CSMS-initiated and none is among CsmsOperation201's members; each also needs certificate material this suite does not generate.
-TC_M_14    not-implemented    ISO 15118 Support. The same certificate operations as this block's Core rows, with V2G and MO material on top.
-TC_M_15    not-implemented    ISO 15118 Support. The same certificate operations as this block's Core rows, with V2G and MO material on top.
-TC_M_16    not-implemented    ISO 15118 Support. The same certificate operations as this block's Core rows, with V2G and MO material on top.
-TC_M_18    not-implemented    installing, listing and deleting certificates are CSMS-initiated and none is among CsmsOperation201's members; each also needs certificate material this suite does not generate.
-TC_M_19    not-implemented    installing, listing and deleting certificates are CSMS-initiated and none is among CsmsOperation201's members; each also needs certificate material this suite does not generate.
-TC_M_20    not-implemented    installing, listing and deleting certificates are CSMS-initiated and none is among CsmsOperation201's members; each also needs certificate material this suite does not generate.
-TC_M_21    not-implemented    installing, listing and deleting certificates are CSMS-initiated and none is among CsmsOperation201's members; each also needs certificate material this suite does not generate.
+TC_M_05    not-implemented    installing and deleting certificates are CSMS-initiated and neither is among CsmsOperation201's members; each also needs certificate material this suite does not generate.
+TC_M_13    cert201-tcm13-installed-ids-manufacturer-root
+TC_M_14    cert201-tcm14-installed-ids-v2g-root
+TC_M_15    cert201-tcm15-installed-ids-v2g-chain
+TC_M_16    cert201-tcm16-installed-ids-mo-root
+TC_M_18    cert201-tcm18-installed-ids-all-types
+TC_M_19    cert201-tcm19-installed-ids-not-found
+TC_M_20    not-implemented    DeleteCertificate is CSMS-initiated and is not among CsmsOperation201's members, and the hash data it must echo comes from a GetInstalledCertificateIds answer the pinned simulator never gives -- its canned answer is NotFound, so there is nothing to echo.
+TC_M_21    not-implemented    DeleteCertificate is CSMS-initiated and is not among CsmsOperation201's members, and the hash data it must echo comes from a GetInstalledCertificateIds answer the pinned simulator never gives -- its canned answer is NotFound, so there is nothing to echo.
 TC_M_24    not-implemented    ISO 15118 Support, and station-initiated: the station asks about a certificate's status or forwards the EV's install and update, so no CSMS operation is missing at all. What is missing is a cert201- template to send either, and the V2G and MO material behind it.
 TC_M_26    not-implemented    ISO 15118 Support, and station-initiated: the station asks about a certificate's status or forwards the EV's install and update, so no CSMS operation is missing at all. What is missing is a cert201- template to send either, and the V2G and MO material behind it.
 TC_M_28    not-implemented    ISO 15118 Support, and station-initiated: the station asks about a certificate's status or forwards the EV's install and update, so no CSMS operation is missing at all. What is missing is a cert201- template to send either, and the V2G and MO material behind it.

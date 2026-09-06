@@ -646,6 +646,61 @@ const V2_SCOPE = {
       "other scenario installs, since a sweep shares one station and an " +
       "installed 9308 would turn the expected Unknown into an Accepted.",
   ),
+  // --- OCPP 2.0.1 GetInstalledCertificateIds, NOT YET MEASURED ------------
+  // CONDITIONAL for the block above's reason -- these six have not been driven
+  // against the pinned image -- and what is open here is a different thing from
+  // what was open there. This CSMS's certificates module forwards the body
+  // after schema validation and touches no database row before dispatch, which
+  // is not true of the other two actions that module serves, so there is no
+  // pre-dispatch gate to be refused by. What is untested is the ROUTE: a
+  // module prefix and an endpoint read off a decorator compile, are declared,
+  // and 404 -- which api-client.ts classifies as a non-dispatch rather than as
+  // a capability gap, so the first run of these rows is what says the path
+  // exists.
+  //
+  // NONE OF THE SIX READS THE STATION'S ANSWER except the last. The pinned
+  // simulator answers NotFound from a canned handler that reads no request
+  // member, which is the scripted answer for TC_M_19 and the wrong one for the
+  // other five -- so those five measure the request the CSMS sent and stop
+  // there. That is the case's own boundary rather than a concession: the
+  // station's answer in a CSMS campaign is the test tool's script.
+  "cert201-tcm13-installed-ids-manufacturer-root": c(
+    "Does the type the case names reach the wire, alone? These four rows " +
+      "differ from each other in one enum value and in nothing else, so a " +
+      "CSMS that dropped the member -- asking about every type instead of " +
+      "one -- would satisfy any check that only looked for the action.",
+  ),
+  "cert201-tcm14-installed-ids-v2g-root": c(
+    "The same question for V2GRootCertificate. Its own risk is that this " +
+      "deployment has an ISO 15118 code path of its own around V2G material, " +
+      "and a CSMS that routed the request through it could answer before the " +
+      "wire.",
+  ),
+  "cert201-tcm15-installed-ids-v2g-chain": c(
+    "The same question for the one value that is not a root. A CSMS whose " +
+      "own model of certificate types is the INSTALL enumeration -- four " +
+      "values, no chain -- cannot express this request at all, and the way " +
+      "that fails is a refusal before dispatch rather than a wrong frame.",
+  ),
+  "cert201-tcm16-installed-ids-mo-root": c(
+    "The same question for MORootCertificate, and the fourth control for the " +
+      "three above: four requests that differ in one member are what makes " +
+      "any of them evidence that the member is carried rather than defaulted.",
+  ),
+  "cert201-tcm18-installed-ids-all-types": c(
+    "Does an ABSENT member stay absent? 2.0.1 reads an omitted " +
+      "certificateType as every type, and the schema refuses the empty array " +
+      "a CSMS that normalised it would send -- so the failure mode is a " +
+      "CALLERROR, not a wrong answer. This is the only row in the block whose " +
+      "measurement is a member NOT being there.",
+  ),
+  "cert201-tcm19-installed-ids-not-found": c(
+    "Does the CSMS carry a negative answer back unchanged? The pinned " +
+      "station answers NotFound whatever it is asked, which is this case's " +
+      "scripted answer and nobody else's -- so this is the one row in the " +
+      "block that reads the ack, and the only one that would notice a CSMS " +
+      "reporting an empty list as a success.",
+  ),
 } satisfies ScopeTable;
 
 /**

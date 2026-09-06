@@ -43,6 +43,7 @@ import {
 
 /** The endpointPrefix values CitrineOS's shipped `docker` config declares. */
 export type CitrineModule =
+  | "certificates"
   | "configuration"
   | "evdriver"
   | "monitoring"
@@ -208,9 +209,10 @@ export async function toCitrineRequest(
  *
  * The module for each action is CitrineOS's, not the OCPP specification's:
  * `Reset`, `TriggerMessage` and `ChangeAvailability` are Configuration's, the
- * two device-model actions are Monitoring's, and the four charging-profile
- * actions are SmartCharging's, read off the `@AsMessageEndpoint` decorators in
- * `packages/core/src/modules/{Configuration,Monitoring,SmartCharging}/src/module/2/MessageApi.ts`.
+ * two device-model actions are Monitoring's, the four charging-profile
+ * actions are SmartCharging's and `GetInstalledCertificateIds` is
+ * Certificates', read off the `@AsMessageEndpoint` decorators in
+ * `packages/core/src/modules/{Certificates,Configuration,Monitoring,SmartCharging}/src/module/2/MessageApi.ts`.
  * There is no rule to derive it from, the same way there is none for 1.6 --
  * and that all five actions with a 1.6 namesake happen to share their
  * namesake's module is a fact about this arrangement, not one to route by: the
@@ -389,6 +391,31 @@ function route201(op: CsmsOperation201, variant: CitrineVariant): CitrineRoute {
           chargingProfileId: op.chargingProfileId,
           chargingProfileCriteria: op.chargingProfileCriteria,
         }),
+      };
+
+    // CERTIFICATES', THE SIXTH MODULE, and the first 2.0.1 action here whose
+    // prefix no 1.6 namesake could have suggested: OCPP 1.6 puts certificate
+    // management in a Security Whitepaper extension this deployment does not
+    // route at all. The prefix was read off the shipped
+    // `apps/ocpp-server/src/config/envs/docker.ts` -- `endpointPrefix:
+    // '/certificates'` -- and the endpoint off the `@AsMessageEndpoint`
+    // decorator in
+    // `packages/core/src/modules/Certificates/src/module/2/MessageApi.ts`,
+    // which forwards the body after validating it against
+    // `GetInstalledCertificateIdsRequestSchema` and does nothing else. So this
+    // arm's body IS the OCPP payload, and unlike its two neighbours in that
+    // module it touches no database row before dispatch.
+    //
+    // THROUGH body(), and that is the whole of the work. An absent
+    // `certificateType` must be OMITTED -- 2.0.1 reads its absence as "every
+    // type", and the schema's `minItems` refuses the empty array a mapper that
+    // defaulted it would send -- and body() drops only `undefined`, so the two
+    // stay different requests. TC_M_18 is the case that is the omission.
+    case "GetInstalledCertificateIds":
+      return {
+        module: "certificates",
+        action: "getInstalledCertificateIds",
+        body: body({ certificateType: op.certificateType }),
       };
 
     default:

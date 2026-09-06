@@ -381,7 +381,7 @@ its header is now a false claim about what the build checks.
   artifacts above — say why in the pull request. (`tests/spec-invariants.sh`)
 - **A declared OCPP 2.0.1 `Reusable State` is one this build can establish, and
   its parameters reach the committed artifact.** `tck/states-201.ts` holds the
-  fourteen Part 6 defines for the CSMS role; two have a reach and twelve are
+  fourteen Part 6 defines for the CSMS role; four have a reach and ten are
   declared `planned` with a reason, which is what lets `OCA-201-SLICE.txt` cite
   a missing fixture by name instead of restating a blocker. Naming a planned
   one fails here rather than at run time, because a scenario that would go

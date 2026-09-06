@@ -12,6 +12,39 @@ Released as `0.3.0`. The documented install ref already points at that tag, so
 
 ### Added
 
+- Six OCPP 2.0.1 certification cases — `TC_M_13`, `TC_M_14`, `TC_M_15`,
+  `TC_M_16`, `TC_M_18` and `TC_M_19`, the whole of the block that asks a station
+  which certificates it holds. `CsmsOperation201` gains a
+  `GetInstalledCertificateIds` arm and CitrineOS gains a sixth message-API
+  module, `certificates`, whose route is the first here with no OCPP 1.6
+  namesake to have suggested it.
+
+  **The slice's reason for five of the six was wrong about the material, not
+  about the verb.** It said each case "needs certificate material this suite
+  does not generate"; a `GetInstalledCertificateIdsRequest` carries no
+  certificate at all, only a *type* — and for `TC_M_18` not even that. The rows
+  are rewritten, and `TC_M_20`/`TC_M_21` now say what actually blocks them:
+  `DeleteCertificate`, plus hash data to echo that a station answering
+  `NotFound` never gives.
+
+  **`certificateType` is a list, and its absence is a case.** 2.0.1 reads an
+  omitted member as "every type" and the schema refuses the empty array a CSMS
+  that normalised it would send, so `TC_M_18` measures a member *not* being
+  there and the driver's mapper omits rather than defaults it. The type ranges
+  over five values where `InstallCertificate`'s ranges over four:
+  `V2GCertificateChain` can be asked about and cannot be installed, which is
+  `TC_M_15` ([#127])
+- A reach for the `GetInstalledCertificates` Reusable State, the second fixture
+  in `tck/states-201.ts` whose reach is a CSMS operation rather than a station
+  command — and the first whose declared post condition this deployment does not
+  in fact establish. Part 6 has the station answer `Accepted` with hash data; the
+  pinned simulator answers `NotFound` from a canned handler that reads no request
+  member and holds no truststore. The state establishes nothing in the model, no
+  other state depends on it and the four cases that name it *are* it, so the gap
+  has no reader — but it is written into the fixture and into each scenario,
+  because a reader who found an ack assertion on those four would take it for the
+  case's own expectation. `TC_M_19` is the one case whose scripted answer *is*
+  `NotFound`, and the only one that reads the ack ([#127])
 - `--shard k/n` on `run-all`, and an e2e matrix that uses it. The job's wall is
   45 minutes; measured at 83 registered scenarios, a healthy CitrineOS job is
   **26m33s** and the same job on a run where the CSMS degraded took **45m34s**
@@ -629,4 +662,5 @@ releases from 141 commits would mean writing detail nobody measured.
 [#105]: https://github.com/juherr/open-ocpp-tck/issues/105
 [#114]: https://github.com/juherr/open-ocpp-tck/issues/114
 [#119]: https://github.com/juherr/open-ocpp-tck/issues/119
+[#127]: https://github.com/juherr/open-ocpp-tck/issues/127
 [citrineos/citrineos#223]: https://github.com/citrineos/citrineos/issues/223

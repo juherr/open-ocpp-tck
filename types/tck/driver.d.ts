@@ -373,6 +373,21 @@ export interface ClearChargingProfileCriteria201 {
     chargingProfilePurpose?: ChargingProfilePurpose201;
     stackLevel?: number;
 }
+/**
+ * OCPP 2.0.1 `GetCertificateIdUseEnumType` -- which installed certificates a
+ * `GetInstalledCertificateIds` is asking the station to list.
+ *
+ * FIVE VALUES AND NOT FOUR, which is the whole reason this is its own type
+ * rather than a reuse of the enumeration `InstallCertificate` ranges over. A
+ * certificate can be INSTALLED only as one of the four roots; it can be ASKED
+ * ABOUT as one of those four or as `V2GCertificateChain`, which is not a root
+ * at all but the chain a station holds under one. The wire gives the two
+ * requests different enumerations for that reason, and a shared type would let
+ * a scenario ask to install a chain -- a request the schema rejects.
+ *
+ * Complete rather than minimal, by {@link MessageTrigger201}'s rule.
+ */
+export type GetCertificateIdUse201 = "V2GRootCertificate" | "MORootCertificate" | "CSMSRootCertificate" | "V2GCertificateChain" | "ManufacturerRootCertificate";
 export type CsmsOperation201 = {
     action: "Reset";
     type: ResetType201;
@@ -442,12 +457,18 @@ export type CsmsOperation201 = {
     chargingProfileId?: number;
     /** Absent means the request clears by identifier alone. */
     chargingProfileCriteria?: ClearChargingProfileCriteria201;
+} | {
+    action: "GetInstalledCertificateIds";
+    /** Which kinds of certificate to list. Absent = every kind. Omit, never
+     *  send an empty array: the schema's `minItems` is 1, so `[]` asks for
+     *  nothing while looking like it asks for everything. */
+    certificateType?: [GetCertificateIdUse201, ...GetCertificateIdUse201[]];
 };
 export type CsmsOperation201Action = CsmsOperation201["action"];
 /** Every 2.0.1 action name. Same job as {@link CSMS_OPERATION_16_ACTIONS},
  *  and a SECOND list rather than an extension of it -- see the note on
  *  {@link CsmsOperation201}'s `Reset` arm for why the two must not merge. */
-export declare const CSMS_OPERATION_201_ACTIONS: readonly ["Reset", "GetVariables", "SetVariables", "TriggerMessage", "ChangeAvailability", "SetChargingProfile", "GetCompositeSchedule", "GetChargingProfiles", "ClearChargingProfile"];
+export declare const CSMS_OPERATION_201_ACTIONS: readonly ["Reset", "GetVariables", "SetVariables", "TriggerMessage", "ChangeAvailability", "SetChargingProfile", "GetCompositeSchedule", "GetChargingProfiles", "ClearChargingProfile", "GetInstalledCertificateIds"];
 /**
  * One well-formed operation per action, and its job is to make the union above
  * expensive to grow in exactly one place.

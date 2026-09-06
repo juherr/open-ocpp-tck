@@ -4537,8 +4537,307 @@ const TC_K_08: ScenarioSpec = {
 };
 
 /**
- * The scenarios, in case order -- the thirty-six of `OCA-201-SLICE.txt`'s 147
- * that are implemented. The other 111 are declined there rather than here,
+ * The CSMS asked the station to list the certificates it holds, and asked
+ * about `expected`.
+ *
+ * A LIST AND NOT A SCALAR, which is why `assertCallPayload` cannot do this one:
+ * `certificateType` is an ARRAY on the wire and that helper compares with
+ * `Object.is`, so it would report every request as wrong. The comparison is
+ * order-insensitive because the member is a set of types rather than a
+ * sequence, and every case here names one type or none.
+ *
+ * `null` MEANS OMITTED, and telling that from "present and empty" is the whole
+ * of TC_M_18. 2.0.1 reads an absent member as "every type"; `[]` is a request
+ * the schema refuses, and a CSMS that sent one has asked for nothing while
+ * looking like it asked for everything.
+ */
+function assertCertificateTypesRequested(
+  rec: AssertRecorder,
+  frames: readonly Frame[],
+  occurrence: number,
+  expected: readonly string[] | null,
+  description: string,
+): void {
+  const found = receivedCallPayload(frames, occurrence, "GetInstalledCertificateIds");
+  if ("error" in found) {
+    rec.fail(description, found.error);
+    return;
+  }
+  const sent = found.payload.certificateType;
+  if (expected === null) {
+    if (sent === undefined) rec.pass(description);
+    else rec.fail(description, `certificateType=${JSON.stringify(sent)}, which is not omitted`);
+    return;
+  }
+  if (!Array.isArray(sent)) {
+    rec.fail(description, `certificateType=${JSON.stringify(sent)}, which is not an array`);
+    return;
+  }
+  const got = [...(sent as unknown[])].map((t) => String(t)).sort();
+  const want = [...expected].sort();
+  if (got.join(",") === want.join(",")) rec.pass(description);
+  else rec.fail(description, `certificateType=${JSON.stringify(sent)}`);
+}
+
+/**
+ * WHAT THE FOUR FIXTURE-DRIVEN M CASES SHARE, said once here rather than four
+ * times below.
+ *
+ * THE FIXTURE IS THE CASE, TC_G_03's shape: Part 6 gives TC_M_13, TC_M_14,
+ * TC_M_15 and TC_M_16 no tool validation of their own -- each one's whole
+ * scenario is the execution of the `GetInstalledCertificates` Reusable State
+ * for one `certificateType`, and `GetInstalledCertificateIds` is named only
+ * inside that state. So there is nothing for a `drive()` to do that the fixture
+ * has not already done, and writing one would put a SECOND request on the wire
+ * and leave the assertions ambiguous about which of the two they describe.
+ *
+ * NO ASSERTION READS THE ACK, and that is a deliberate hole rather than an
+ * oversight. The reference has the station answer `Accepted` carrying the hash
+ * data of every certificate of the type asked for; the pinned simulator answers
+ * `NotFound` from a canned handler that reads no request member and holds no
+ * truststore. That answer is the OCTT's script rather than anything the system
+ * under test decides, so for a CSMS campaign it was never the measurement --
+ * but a reader who found `assertResponseStatus(..., "NotFound")` here would
+ * take it for the case's own expectation, which it is not. TC_M_19 is the one
+ * case in this block whose scripted answer IS `NotFound`, and it is the only
+ * one that asserts on it.
+ */
+const TC_M_13: ScenarioSpec = {
+  templateId: "cert201-tcm13-installed-ids-manufacturer-root",
+  description:
+    "TC_M_13 Retrieve certificates: the CSMS asks the station which ManufacturerRootCertificates it holds.",
+  ocppVersion: "OCPP-2.0.1",
+  runsSimTemplate: false,
+  connector: 1,
+  bootWaitSecs: 4,
+  // 10, TC_G_03's hold and for TC_G_03's reason: the fixture has already sent
+  // the request and waited for it to reach the station by the time this window
+  // opens, so what is outstanding is one CALLRESULT.
+  holdSecs: 10,
+  // LITERALS AND NOT A SHARED CONSTANT, for TC_G_03's reason: an identifier
+  // renders as `·` in ASSERT-INVENTORY.txt, and for a top-level field the whole
+  // declaration is then OMITTED rather than marked -- so the fixture could be
+  // re-pointed at another certificate type with no committed artifact moving.
+  // Which type it names is the whole of what separates these four cases.
+  states: [{ state: "GetInstalledCertificates", certificateType: "ManufacturerRootCertificate" }],
+  assert({ frames, rec, fixtures }) {
+    assertStateEstablished(
+      rec,
+      fixtures,
+      "GetInstalledCertificates",
+      "the station was asked for the certificates it holds",
+    );
+    assertReceived(
+      rec,
+      frames,
+      "GetInstalledCertificateIds",
+      "GetInstalledCertificateIds.req received",
+    );
+    assertCertificateTypesRequested(
+      rec,
+      frames,
+      0,
+      ["ManufacturerRootCertificate"],
+      "GetInstalledCertificateIds.req asks about ManufacturerRootCertificate and nothing else",
+    );
+  },
+};
+
+const TC_M_14: ScenarioSpec = {
+  templateId: "cert201-tcm14-installed-ids-v2g-root",
+  description:
+    "TC_M_14 Retrieve certificates: the CSMS asks the station which V2GRootCertificates it holds.",
+  ocppVersion: "OCPP-2.0.1",
+  runsSimTemplate: false,
+  connector: 1,
+  bootWaitSecs: 4,
+  holdSecs: 10,
+  states: [{ state: "GetInstalledCertificates", certificateType: "V2GRootCertificate" }],
+  assert({ frames, rec, fixtures }) {
+    assertStateEstablished(
+      rec,
+      fixtures,
+      "GetInstalledCertificates",
+      "the station was asked for the certificates it holds",
+    );
+    assertReceived(
+      rec,
+      frames,
+      "GetInstalledCertificateIds",
+      "GetInstalledCertificateIds.req received",
+    );
+    assertCertificateTypesRequested(
+      rec,
+      frames,
+      0,
+      ["V2GRootCertificate"],
+      "GetInstalledCertificateIds.req asks about V2GRootCertificate and nothing else",
+    );
+  },
+};
+
+const TC_M_15: ScenarioSpec = {
+  templateId: "cert201-tcm15-installed-ids-v2g-chain",
+  description:
+    "TC_M_15 Retrieve certificates: the CSMS asks the station which V2GCertificateChains it holds.",
+  ocppVersion: "OCPP-2.0.1",
+  runsSimTemplate: false,
+  connector: 1,
+  bootWaitSecs: 4,
+  holdSecs: 10,
+  // THE ONE VALUE THAT IS NOT A ROOT, and the reason `GetCertificateIdUse201`
+  // is a separate type from the enumeration `InstallCertificate` ranges over: a
+  // chain can be asked about and cannot be installed. A contract that shared one
+  // enumeration between the two requests would make this case indistinguishable
+  // from a request the schema rejects.
+  states: [{ state: "GetInstalledCertificates", certificateType: "V2GCertificateChain" }],
+  assert({ frames, rec, fixtures }) {
+    assertStateEstablished(
+      rec,
+      fixtures,
+      "GetInstalledCertificates",
+      "the station was asked for the certificates it holds",
+    );
+    assertReceived(
+      rec,
+      frames,
+      "GetInstalledCertificateIds",
+      "GetInstalledCertificateIds.req received",
+    );
+    assertCertificateTypesRequested(
+      rec,
+      frames,
+      0,
+      ["V2GCertificateChain"],
+      "GetInstalledCertificateIds.req asks about V2GCertificateChain and nothing else",
+    );
+  },
+};
+
+const TC_M_16: ScenarioSpec = {
+  templateId: "cert201-tcm16-installed-ids-mo-root",
+  description:
+    "TC_M_16 Retrieve certificates: the CSMS asks the station which MORootCertificates it holds.",
+  ocppVersion: "OCPP-2.0.1",
+  runsSimTemplate: false,
+  connector: 1,
+  bootWaitSecs: 4,
+  holdSecs: 10,
+  states: [{ state: "GetInstalledCertificates", certificateType: "MORootCertificate" }],
+  assert({ frames, rec, fixtures }) {
+    assertStateEstablished(
+      rec,
+      fixtures,
+      "GetInstalledCertificates",
+      "the station was asked for the certificates it holds",
+    );
+    assertReceived(
+      rec,
+      frames,
+      "GetInstalledCertificateIds",
+      "GetInstalledCertificateIds.req received",
+    );
+    assertCertificateTypesRequested(
+      rec,
+      frames,
+      0,
+      ["MORootCertificate"],
+      "GetInstalledCertificateIds.req asks about MORootCertificate and nothing else",
+    );
+  },
+};
+
+const TC_M_18: ScenarioSpec = {
+  templateId: "cert201-tcm18-installed-ids-all-types",
+  description:
+    "TC_M_18 Retrieve certificates: the CSMS asks the station for every certificate it holds, by omitting the type.",
+  ocppVersion: "OCPP-2.0.1",
+  runsSimTemplate: false,
+  connector: 1,
+  bootWaitSecs: 4,
+  holdSecs: 10,
+  // NO FIXTURE, unlike the four above, and that is the reference's own shape
+  // rather than a convenience: this case does not execute the
+  // `GetInstalledCertificates` state -- that state is parameterised BY a
+  // certificate type and this case's whole subject is having none. Its request
+  // is written here, where the omission is visible.
+  async drive({ cpId, csms201 }) {
+    await csms201.execute(cpId, { action: "GetInstalledCertificateIds" });
+  },
+  assert({ frames, rec }) {
+    assertReceived(
+      rec,
+      frames,
+      "GetInstalledCertificateIds",
+      "GetInstalledCertificateIds.req received",
+    );
+    // THE MEASUREMENT, and it is an ABSENCE. A CSMS that sent
+    // `certificateType: []` would have asked about nothing while looking like
+    // it asked about everything -- and the schema's `minItems` refuses it, so
+    // the failure would be a CALLERROR rather than a wrong answer.
+    assertCertificateTypesRequested(
+      rec,
+      frames,
+      0,
+      null,
+      "GetInstalledCertificateIds.req omits certificateType, which asks about every type",
+    );
+  },
+};
+
+const TC_M_19: ScenarioSpec = {
+  templateId: "cert201-tcm19-installed-ids-not-found",
+  description:
+    "TC_M_19 Retrieve certificates: the station holds no certificate of the type asked for, and answers NotFound.",
+  ocppVersion: "OCPP-2.0.1",
+  runsSimTemplate: false,
+  connector: 1,
+  bootWaitSecs: 4,
+  holdSecs: 10,
+  // THE SAME REQUEST AS TC_M_13's, AND A DIFFERENT CASE. What separates them is
+  // the answer the reference scripts -- `Accepted` with hash data there,
+  // `NotFound` here -- so TC_M_13 measures the request alone and this one goes
+  // on to measure what the CSMS was given. Written inline rather than through
+  // the fixture for that reason: the state's post condition is that a list was
+  // retrieved, and this case is the one where none is.
+  //
+  // THE PINNED STATION MAKES THIS THE EASY DIRECTION. Its canned answer is
+  // `NotFound` whatever it is asked, which is the scripted answer HERE and the
+  // wrong one for TC_M_13 -- see the note above TC_M_13.
+  async drive({ cpId, csms201 }) {
+    await csms201.execute(cpId, {
+      action: "GetInstalledCertificateIds",
+      certificateType: ["ManufacturerRootCertificate"],
+    });
+  },
+  assert({ frames, rec }) {
+    assertReceived(
+      rec,
+      frames,
+      "GetInstalledCertificateIds",
+      "GetInstalledCertificateIds.req received",
+    );
+    assertCertificateTypesRequested(
+      rec,
+      frames,
+      0,
+      ["ManufacturerRootCertificate"],
+      "GetInstalledCertificateIds.req asks about ManufacturerRootCertificate",
+    );
+    assertResponseStatus(
+      rec,
+      frames,
+      "GetInstalledCertificateIds",
+      "NotFound",
+      "the station holds no certificate of the type asked for",
+      { direction: "received" },
+    );
+  },
+};
+
+/**
+ * The scenarios, in case order -- the forty-two of `OCA-201-SLICE.txt`'s 147
+ * that are implemented. The other 105 are declined there rather than here,
  * with the reason in the row: one place per fact, and the guard reads that one.
  */
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
@@ -4579,4 +4878,10 @@ export const CORE_201_SPECS: ScenarioSpec<any>[] = [
   TC_K_44,
   TC_K_60,
   TC_K_70,
+  TC_M_13,
+  TC_M_14,
+  TC_M_15,
+  TC_M_16,
+  TC_M_18,
+  TC_M_19,
 ];

@@ -68,7 +68,12 @@
  */
 
 import { UNEXERCISED_PREFIX, type AssertRecorder } from "./assert";
-import { UnsupportedOperationError, type CsmsOperations201, type CsmsRecords } from "./driver";
+import {
+  UnsupportedOperationError,
+  type CsmsOperations201,
+  type CsmsRecords,
+  type GetCertificateIdUse201,
+} from "./driver";
 import type { SimProcess } from "./sim";
 
 /**
@@ -120,10 +125,16 @@ export interface Condition {
 export const INITIAL_CONDITION: Condition = { state: null, evConnected: false };
 
 /**
- * Certificate uses Part 6 parameterises the two certificate states by. Spelled
- * out rather than imported from a generated OCPP model because nothing in this
- * tree has one, and because these four are what the two states below can be
- * asked for -- not the whole enumeration.
+ * Certificate uses Part 6 parameterises `CertificateInstalled` by, and the
+ * enumeration `InstallCertificate` ranges over on the wire. Spelled out rather
+ * than imported from a generated OCPP model because nothing in this tree has
+ * one.
+ *
+ * ONE STATE AND NOT TWO, which it was until `GetInstalledCertificates` got a
+ * reach. That state is parameterised by the enumeration the LISTING request
+ * ranges over -- five values, the extra one being `V2GCertificateChain` -- and
+ * takes {@link GetCertificateIdUse201} for it. A shared type would let a
+ * scenario ask to install a chain, which is a request the schema rejects.
  */
 export type CertificateUse201 =
   | "V2GRootCertificate"
@@ -159,7 +170,12 @@ export type StateInvocation =
   | { state: "EVConnectedPreSession"; evseId: number; connectorId: number }
   | { state: "EVDisconnected" }
   | { state: "EnergyTransferSuspended"; transactionDurationSecs: number }
-  | { state: "GetInstalledCertificates"; certificateType: CertificateUse201 }
+  // THE ONE INVOCATION THAT DOES NOT TAKE {@link CertificateUse201}, and the
+  // difference is the wire's. A certificate is installed as one of four roots
+  // and asked about as one of those four or as a `V2GCertificateChain`, which
+  // is what TC_M_15 asks for -- so this state ranges over the request's own
+  // enumeration and `CertificateInstalled` above ranges over the other.
+  | { state: "GetInstalledCertificates"; certificateType: GetCertificateIdUse201 }
   | { state: "ISO15118SmartCharging"; evseId: number }
   | { state: "RenewChargingStationCertificate" }
   | { state: "Reserved"; evseId: number; idToken: string }
@@ -422,6 +438,61 @@ const reachUnavailable: NonNullable<ReachSegment<"Unavailable">["run"]> = async 
   await ctx.sim.waitForLine(SENT_STATUS_UNAVAILABLE, REACH_TIMEOUT_MS);
 };
 
+/**
+ * The request this state IS, arriving at the station.
+ *
+ * A `Received` LINE AND NOT THE STATION'S ANSWER, which is the opposite of
+ * `SENT_STATUS_UNAVAILABLE`'s choice one state up and right for the opposite
+ * reason. That state's post condition is a thing the station goes on to REPORT,
+ * so waiting on the report is waiting on the condition; this state's post
+ * condition is that a list was retrieved, and the only frame carrying it is a
+ * CALLRESULT -- which in OCPP-J names no action, so there is nothing to match
+ * it by that is not a uniqueId this function does not have. What the wait is
+ * for is therefore narrower and honest: the request reached the station before
+ * the scenario's window opened. The answer to it is what the scenarios then
+ * measure, off the same frames.
+ */
+const RECEIVED_GET_INSTALLED_CERTIFICATE_IDS =
+  /Received: \[2,"[^"]*","GetInstalledCertificateIds"/;
+
+/**
+ * The second fixture whose reach is a CSMS operation, and the first whose
+ * declared post condition this deployment does NOT in fact establish.
+ *
+ * WHAT THE REFERENCE SCRIPTS AND WHAT THE PINNED STATION GIVES ARE DIFFERENT
+ * ANSWERS, and the gap is written here rather than in the four scenarios that
+ * would otherwise each restate it. Part 6 has the station answer `Accepted`
+ * with the hash data of every certificate of the type asked for; the pinned
+ * simulator answers `NotFound` from a canned handler that reads no request
+ * member and holds no truststore. So nothing is retrieved, and this fixture's
+ * post condition -- "a list was retrieved" -- is not established in the sense
+ * the reference means.
+ *
+ * IT IS STILL THE RIGHT FIXTURE, because of what the state establishes in the
+ * MODEL: nothing. `establishes` returns the condition untouched, no other state
+ * depends on this one, and no scenario in the selected slice takes it as a
+ * precondition -- the four that name it ARE it. So the falsehood has no reader:
+ * there is no later step that would run on the strength of a list this station
+ * never sent. What the fixture does establish is the only half a CSMS campaign
+ * can measure at all, since the response is the OCTT's own script rather than
+ * anything the system under test decides: that the CSMS sent the request, and
+ * sent it with the member the case names.
+ *
+ * A REACH THAT ASSERTED THE ANSWER WOULD BE THE WRONG SHAPE TWICE. It would put
+ * a verdict in a fixture, which this file's header refuses, and it would make
+ * every one of those four cases orange against a station whose answer the case
+ * does not measure.
+ */
+const reachGetInstalledCertificates: NonNullable<
+  ReachSegment<"GetInstalledCertificates">["run"]
+> = async (ctx, invocation) => {
+  await ctx.csms201.execute(ctx.cpId, {
+    action: "GetInstalledCertificateIds",
+    certificateType: [invocation.certificateType],
+  });
+  await ctx.sim.waitForLine(RECEIVED_GET_INSTALLED_CERTIFICATE_IDS, REACH_TIMEOUT_MS);
+};
+
 const AUTHORIZED: StateDefinition<"Authorized"> = {
   establishes: (condition) => ({ state: "Authorized", evConnected: condition.evConnected }),
   reach: [
@@ -586,8 +657,14 @@ const STATE_DEFINITIONS: StateDefinitions = {
   },
 
   GetInstalledCertificates: {
+    // NO `State` VALUE, for `CertificateInstalled`'s reason: the post condition
+    // is about a list having been retrieved, not about a transition. One
+    // consequence is worth naming, because it is what makes the four cases that
+    // name this state four cases rather than one: the condition never records
+    // it, so `planStates` never treats it as already held and every scenario
+    // declaring it sends its own request.
     establishes: (condition) => condition,
-    reach: [{ run: null, planned: CSMS_INITIATED }],
+    reach: [{ run: reachGetInstalledCertificates }],
   },
 
   ISO15118SmartCharging: {

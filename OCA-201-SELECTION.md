@@ -172,8 +172,8 @@ The other half of that gap was whether a list this long may be committed at
 all, given that the references are CC BY-ND, and it is
 [answered](#what-may-be-committed-here-and-what-may-not): it may.
 
-Thirty-six of the 147 are implemented and 111 decline with a reason. Those
-reasons are written per group rather than per case — 23 of them across the 111 —
+Forty-two of the 147 are implemented and 105 decline with a reason. Those
+reasons are written per group rather than per case — 24 of them across the 105 —
 and the file's header says why that is the granularity the decision was taken
 at rather than a placeholder. What a guard still cannot say is whether these
 are the *right* 147, and that is [unchanged](#the-guard).
@@ -212,6 +212,35 @@ is sized by cases *blocked on the verb*, and a row blocked on two things is
 bought by neither. `TC_K_05`, which needs `ClearChargingProfile` beside this one,
 is the same shape seen a step earlier.
 
+**Six more arrived with `GetInstalledCertificateIds`, and it is the first
+tranche whose cases were read before its reason was believed.** Eight rows name
+the verb and six of them need nothing else, which is what the table said; what
+the table could not say is that the slice's reason for those six was wrong in a
+second way. It read "installing, listing and deleting certificates are
+CSMS-initiated and none is among `CsmsOperation201`'s members; each also needs
+certificate material this suite does not generate" — and the second clause is
+false about every one of the six. A `GetInstalledCertificateIdsRequest` carries
+no certificate; it carries a *type*, and for `TC_M_18` not even that. So three
+of the six had been declined for a blocker they never had, and two more
+(`TC_M_14`, `TC_M_16`) sat under an ISO 15118 reason that named material for the
+same reason. The correction is the shape this page has recorded twice already —
+a reason written per group generalises past the rows it was drawn for — arriving
+this time on the *material* rather than on the verb.
+
+**What the tranche does not buy is the answer.** Part 6 has the station return
+the hash data of the certificates it holds; the pinned simulator answers
+`NotFound` from a canned handler that reads no request member and holds no
+truststore. For a CSMS campaign that is the test tool's script rather than
+anything the system under test decides, so five of the six measure the request
+and stop — the sixth, `TC_M_19`, is the case whose scripted answer *is*
+`NotFound`, and it is the only one that reads the ack. That asymmetry is written
+into `tck/states-201.ts`'s fixture and into each scenario, because a reader who
+found `assertResponseStatus(…, "NotFound")` on the other five would take it for
+the case's own expectation. `TC_M_20` and `TC_M_21` are the rows this tranche
+leaves behind for the same fact and not the same reason: they need
+`DeleteCertificate` *and* hash data to echo back, and a station that answers
+`NotFound` gives them nothing to echo.
+
 **Four of the first eleven arrived by falsifying a reason rather than by adding
 an operation**, which is worth naming because it is the cheapest way this number
 moves. `TC_C_02`, `TC_E_10`, `TC_F_27` and `TC_J_01` need no member
@@ -248,7 +277,7 @@ trigger and `CsmsOperation201` carries the verb.
 
 ## How wide a vocabulary the 147 ask for
 
-**Twenty kinds of operation**, against the eight the contract carries. Ninety of the 147 drive at
+**Twenty kinds of operation**, against the ten the contract carries. Ninety of the 147 drive at
 least one CSMS-initiated request and **57 drive none at all** — a case that only
 observes charge-point-initiated traffic needs no verb, which is why "add the
 rest of the 2.0.1 messages" was the wrong shape for this and why the answer is
@@ -266,26 +295,27 @@ the extractor's header says why.
 
 **Tranches, sized by cases completed rather than by cases mentioning a verb.**
 Six cases need more than one operation, so the two counts differ: adding
-`GetInstalledCertificateIds` is named by eight rows and finishes six of them,
-because `TC_M_20` and `TC_M_21` want `DeleteCertificate` and
-`InstallCertificate` as well. Greedy from the nine the union has, which leaves
-**46** of the 147 short of a verb. `bun tools/extract-201-operations.ts
---tranches` is what prints this table — no PDF, just the row file and the
-contract — and `tests/oca-201-operations.sh` holds the two together:
+`InstallCertificate` is named by seven rows and finishes five of them, because
+`TC_M_20` and `TC_M_21` want `DeleteCertificate` as well. Greedy from the ten
+the union has, which leaves **40** of the 147 short of a verb — six fewer than
+before `GetInstalledCertificateIds` was added, and the row that used to head
+this table's certificate block is gone from it for that reason. `bun
+tools/extract-201-operations.ts --tranches` is what prints this table — no PDF,
+just the row file and the contract — and `tests/oca-201-operations.sh` holds the
+two together:
 
 | # | operation | cases it completes | still blocked after |
 |---|---|---|---|
-| 1 | `UpdateFirmware` | 10 | 36 |
-| 2 | `CustomerInformation` | 6 | 30 |
-| 3 | `GetInstalledCertificateIds` | 6 | 24 |
-| 4 | `InstallCertificate` | 5 | 19 |
-| 5 | `RequestStartTransaction` | 5 | 14 |
-| 6 | `GetLog` | 4 | 10 |
-| 7 | `CertificateSigned` | 3 | 7 |
-| 8 | `ClearCache` | 2 | 5 |
-| 9 | `DeleteCertificate` | 2 | 3 |
-| 10 | `SetNetworkProfile` | 2 | 1 |
-| 11 | `RequestStopTransaction` | 1 | 0 |
+| 1 | `UpdateFirmware` | 10 | 30 |
+| 2 | `CustomerInformation` | 6 | 24 |
+| 3 | `InstallCertificate` | 5 | 19 |
+| 4 | `RequestStartTransaction` | 5 | 14 |
+| 5 | `GetLog` | 4 | 10 |
+| 6 | `CertificateSigned` | 3 | 7 |
+| 7 | `ClearCache` | 2 | 5 |
+| 8 | `DeleteCertificate` | 2 | 3 |
+| 9 | `SetNetworkProfile` | 2 | 1 |
+| 10 | `RequestStopTransaction` | 1 | 0 |
 
 The right-hand column is the number a tranche is worth arguing about, and it is
 not the number of scenarios that become writable: a verb removes *one* blocker,

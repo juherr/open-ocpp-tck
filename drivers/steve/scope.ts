@@ -374,4 +374,28 @@ export const STEVE_SCOPE: ScopeTable = {
     status: "NOT_APPLICABLE",
     reason: NO_OCPP_201,
   },
+  "cert201-tcm13-installed-ids-manufacturer-root": {
+    status: "NOT_APPLICABLE",
+    reason: NO_OCPP_201,
+  },
+  "cert201-tcm14-installed-ids-v2g-root": {
+    status: "NOT_APPLICABLE",
+    reason: NO_OCPP_201,
+  },
+  "cert201-tcm15-installed-ids-v2g-chain": {
+    status: "NOT_APPLICABLE",
+    reason: NO_OCPP_201,
+  },
+  "cert201-tcm16-installed-ids-mo-root": {
+    status: "NOT_APPLICABLE",
+    reason: NO_OCPP_201,
+  },
+  "cert201-tcm18-installed-ids-all-types": {
+    status: "NOT_APPLICABLE",
+    reason: NO_OCPP_201,
+  },
+  "cert201-tcm19-installed-ids-not-found": {
+    status: "NOT_APPLICABLE",
+    reason: NO_OCPP_201,
+  },
 };
