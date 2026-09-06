@@ -12,6 +12,42 @@ Released as `0.3.0`. The documented install ref already points at that tag, so
 
 ### Added
 
+- `--shard k/n` on `run-all`, and an e2e matrix that uses it. The job's wall is
+  45 minutes; measured at 83 registered scenarios, a healthy CitrineOS job is
+  **26m33s** and the same job on a run where the CSMS degraded took **45m34s**
+  and was killed at the wall with its sweep still red. The margin was under four
+  minutes, with 147 OCPP 2.0.1 cases still to come on top of 47 OCPP 1.6 ones —
+  so the failure being prevented is not "slow", it is a job that stops finishing
+  on the runs that had the most to say. Two shards put a healthy job near 14
+  minutes and a degraded one near 24. Each shard also boots its **own** CSMS, so
+  it halves the scenarios one server handles — the only lever this repository
+  has on [citrineos/citrineos#223], where redelivery loops accumulate with the
+  number of requests a single server sees.
+
+  **A shard is not a way of naming a subset.** `--group` names one and is a
+  taxonomy question ([#34]); a shard partitions whatever selection is already in
+  effect, so it composes with the taxonomy instead of competing with it and the
+  next milestone does not inherit two ways to say the same thing. Round-robin
+  rather than contiguous blocks, because scenario cost correlates with position
+  — the firmware scenarios are slow and adjacent — and because spreading a
+  block across stacks makes cross-scenario contamination less likely, not more.
+
+  **A partial run says so**: the runner prints what it left out and stamps it
+  into `results/summary.md` above the table, in both counts. A full sweep gains
+  no such line, so every archived summary still reads as complete. And a shard
+  that selects nothing is refused rather than run — an empty sweep exits 0 with
+  a table of no rows, which reads as a pass ([#89])
+- `tests/shard-selection.ts` and `tests/shard-matrix.sh`, both about the same
+  silence. Sharding fails by **dropping** scenarios, which is not a red row but
+  a green job that measured less than its table claims. The first holds
+  `selectShard` to being a partition — set equality against the input at every
+  shard count from one to more shards than there are items, because an
+  off-by-one in the modulus distributes evenly, reads correctly, and runs 82 of
+  83. The second holds the workflow's matrix list to its `SHARD_TOTAL`: `[1, 2]`
+  against a total of 3 runs two thirds of the suite in two green jobs, and the
+  missing third is an absence rather than a failure. It also holds the artifact
+  name to carrying the shard, since two shards of one driver upload to the same
+  run ([#89])
 - A reader for the one CSMS failure the verdict table cannot carry:
   `drivers/citrineos/redelivery-loops.ts` counts messages the pinned CSMS
   redelivers without bound. When a CSMS-initiated request is dispatched to a
@@ -572,6 +608,7 @@ releases from 141 commits would mean writing detail nobody measured.
 [0.2.0-notes]: https://github.com/juherr/open-ocpp-tck/releases/tag/v0.2.0
 [0.1.0-notes]: https://github.com/juherr/open-ocpp-tck/releases/tag/v0.1.0
 [#25]: https://github.com/juherr/open-ocpp-tck/issues/25
+[#34]: https://github.com/juherr/open-ocpp-tck/issues/34
 [#55]: https://github.com/juherr/open-ocpp-tck/pull/55
 [#56]: https://github.com/juherr/open-ocpp-tck/issues/56
 [#64]: https://github.com/juherr/open-ocpp-tck/pull/64
@@ -588,6 +625,8 @@ releases from 141 commits would mean writing detail nobody measured.
 [#85]: https://github.com/juherr/open-ocpp-tck/issues/85
 [#86]: https://github.com/juherr/open-ocpp-tck/issues/86
 [#87]: https://github.com/juherr/open-ocpp-tck/issues/87
+[#89]: https://github.com/juherr/open-ocpp-tck/issues/89
 [#105]: https://github.com/juherr/open-ocpp-tck/issues/105
 [#114]: https://github.com/juherr/open-ocpp-tck/issues/114
 [#119]: https://github.com/juherr/open-ocpp-tck/issues/119
+[citrineos/citrineos#223]: https://github.com/citrineos/citrineos/issues/223
