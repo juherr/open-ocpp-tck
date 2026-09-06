@@ -185,6 +185,31 @@ export interface StateContext {
  *  the definitions rather than tabulated, so "planned" cannot disagree with
  *  what the code does. `OCA-201-SLICE.txt` cites this distinction by name. */
 export declare function isPlanned(state: ReusableState201): boolean;
+/**
+ * Why this state's reach establishes LESS than the reference's post condition,
+ * or undefined when the two agree -- derived from the definitions for
+ * {@link isPlanned}'s reason.
+ *
+ * Read by the runner, which says it on stderr beside the fixture it ran, and by
+ * `tests/state-plan-201.ts`, which holds the argument that makes it safe.
+ */
+export declare function divergesFromReference(state: ReusableState201): string | undefined;
+/**
+ * Which state a dependency edge invokes, or undefined for a root.
+ *
+ * Exported for the guard alone, and it takes an invocation because
+ * `requires.invoke` is a function of one: the edge is declared as a
+ * transformation of the caller's parameters, so there is no edge target to read
+ * without one. Live, `planOne` is the only caller of `requires` and it has the
+ * invocation in hand.
+ */
+export declare function edgeTargetOf(invocation: StateInvocation): ReusableState201 | undefined;
+/**
+ * What this state's `establishes` does to a condition, exposed for the guard so
+ * "the post condition has no reader" can be checked rather than asserted in a
+ * comment. Returns the condition the definition folds to.
+ */
+export declare function establishesFrom(invocation: StateInvocation, from: Condition): Condition;
 export interface PlannedStep {
     state: ReusableState201;
     invocation: StateInvocation;
@@ -268,13 +293,34 @@ export declare class FixtureLog {
  * scenario's own `assertStateEstablished` degrades to SKIPPED -- PARTIAL, which
  * already means "at least one check could not be evaluated".
  *
- * AN UNSUPPORTED OPERATION IS NOT CAUGHT HERE. A CSMS-initiated state whose
- * driver cannot dispatch throws `UnsupportedOperationError`, and the runner's
- * existing catch around drive() is what turns that into NOT APPLICABLE -- the
- * scope table missed the scenario, which means the same thing whether the
- * operation was asked for by a fixture or by the scenario. Rethrown explicitly
- * rather than left to fall through, so a later `catch` added here cannot
- * swallow it by accident.
+ * TWO CLASSES ARE NOT CAUGHT HERE, and the pair of them is the whole of what
+ * separates "the precondition did not hold" from "nobody was asked".
+ *
+ * `UnsupportedOperationError` -- a CSMS-initiated state whose driver cannot
+ * dispatch. The runner's existing catch around drive() turns it into NOT
+ * APPLICABLE: the scope table missed the scenario, which means the same thing
+ * whether the operation was asked for by a fixture or by the scenario.
+ *
+ * `CsmsNotDispatchedError` -- the request never became an OCPP CALL, so the
+ * station was never asked and the condition's absence says nothing about it.
+ * This is `tck/op-warn.ts`'s rule, read from the fixture side, and it was
+ * missing here until three reaches became CSMS operations rather than station
+ * commands. Swallowed, it produced the shape issue #77 cost a preserved wire
+ * trace to diagnose: a driver that cannot reach the CSMS at all -- a wrong
+ * base URL, a credential the operator did not set, a refused form post --
+ * turns every scenario declaring one of those states into a SKIPPED
+ * precondition, i.e. into PARTIAL rows that read as a known gap in OUR
+ * scenarios (`UNEXERCISED_PREFIX` says exactly that) when the cause is the
+ * harness. ERROR is the verdict the uncertainty deserves, and it is the one
+ * the same failure inside drive() already gets.
+ *
+ * EVERYTHING ELSE IS AN UNESTABLISHED PRECONDITION, which is the default and
+ * is deliberate. A wait that times out, a station command the CLI would not
+ * take, an operation the CSMS answered and refused: in all three the station
+ * is not in the declared condition, and that is precisely what a SKIPPED
+ * precondition reports. Both rethrows are explicit rather than left to fall
+ * through, so a later `catch` added here cannot swallow either by accident,
+ * and `tests/state-plan-201.ts` holds the three-way split as a table.
  *
  * NO TEARDOWN, and this is where it gets asked for. A fixture that opens a
  * transaction leaves one open, exactly as the inline setup it replaces did, and

@@ -25,8 +25,13 @@ written rule, [`OCA-201-SELECTION.md`](OCA-201-SELECTION.md) — role CSMS,
 status mandatory, on every certification profile, which is 147 cases — and the
 resulting list is [`tck/specs/OCA-201-SLICE.txt`](tck/specs/OCA-201-SLICE.txt),
 where all 147 are written down: 49 implemented, 98 declined against 21 reasons.
-A `cert201-` scenario needs a driver that speaks the protocol; one that does not
-says so per scenario in its scope table, and nothing else about it changes.
+*Implemented* means the CSMS-side obligation is measured, not that the pinned
+station reproduces the reference's own script: several cases sit against a
+canned station answer that differs from the one the case declares, and each
+says so where it is written — in the scenario, in its Reusable State, and in
+the tranche that brought it. A `cert201-` scenario needs a driver that speaks
+the protocol; one that does not says so per scenario in its scope table, and
+nothing else about it changes.
 
 [sim]: https://github.com/shiv3/ocpp-cp-simulator
 [octt]: https://openchargealliance.org/certificationocpp/certification-ocpp-1-6/

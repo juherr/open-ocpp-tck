@@ -117,6 +117,12 @@ run "a Reusable State plan follows the condition" bun tests/state-plan-201.ts
 # nothing checks the date, so a regeneration at openssl's default of 30 days
 # would pass every other check and every run for a month.
 run "the committed certificate is one a CSMS can store" bun tests/certificate-material.ts
+# In-process for tests/get-configuration-filter.ts's reason: every payload it
+# hands the helpers is one no CSMS in this repository sends, so the branches
+# where a wrong request reads as the right one are unreachable from any sweep.
+# What it holds is the GREEN direction -- an absent member read as `null`, PEM
+# armour read as a certificate, a member position read as structure.
+run "a 2.0.1 request assertion refuses the shape it is not about" bun tests/request-shape-201.ts
 run "core is CSMS-neutral" bash tests/generic-core.sh
 # The one reading in this repository that lives in the workflow rather than in
 # a file the gate can run -- so it is a file now, and this is what runs it.

@@ -24,7 +24,7 @@ error.
 ## The gate
 
 `bun run verify` is every check CI runs before it starts a container —
-typecheck, committed declarations, three driver scope checks, sixteen in-process
+typecheck, committed declarations, three driver scope checks, seventeen in-process
 guards and sixteen shell guards — with one exit code, and every step runs even
 after one fails, where CI enumerates them and stops at the first.
 
@@ -62,6 +62,7 @@ bun tests/citrineos-redelivery-loops.ts
 bun tests/shard-selection.ts
 bun tests/state-plan-201.ts
 bun tests/certificate-material.ts
+bun tests/request-shape-201.ts
 bash tests/cert201-declares-its-version.sh
 bash tests/cert201-scope-rows.sh       # both read tck/specs/ASSERT-INVENTORY.txt,
                                        # so a NEW scenario reaches them only once
@@ -133,7 +134,7 @@ There is no unit-test framework and no `*.test.ts`. `tests/` holds offline
 guards, each with a header stating the property it protects. `bun run test`
 chains them — note `bun test` is Bun's own runner and finds nothing here.
 
-Shell is the default, and the sixteen TypeScript ones are TypeScript because
+Shell is the default, and the seventeen TypeScript ones are TypeScript because
 what they assert is unreachable through the CLI. `driver-env-scope.ts`: a
 driver's declarations follow the env they are *resolved* with, where the CLI
 can only ever pass `process.env`. `capability-parity.ts`: the same reason and
@@ -238,8 +239,7 @@ rather than for today -- nothing checks the date, so a certificate regenerated
 at openssl's default of thirty days would pass every other row here and pass
 every run for a month. The guard's own assumption is stated in its header: the
 parser available here is not the parser that matters there.
-`state-plan-201.ts`: the last one, and the only one whose subject never touches
-a CSMS at all. What a scenario DECLARES — the OCPP 2.0.1 `Reusable State`s its
+`state-plan-201.ts`: the one whose subject mostly never touches a CSMS at all. What a scenario DECLARES — the OCPP 2.0.1 `Reusable State`s its
 case takes as a precondition — is not what the runner RUNS: `tck/states-201.ts`
 folds the states' own post conditions into a condition, executes a dependency
 edge only where that condition says the system is not already there, and picks
@@ -254,7 +254,39 @@ with the rest anyway: a `states:` written as anything but a literal renders `·`
 and is then OMITTED from `ASSERT-INVENTORY.txt`, so the guard RUNS the
 extractor rather than reading the committed file — a guard comparing two
 committed files goes green on a declaration factored out after the artifact was
-generated.
+generated. Its last two claims are the ones that DO touch a CSMS, and they are
+here because reaching them means handing `establishStates` a driver that fails a
+chosen way — which is the seam this file's other entries are built on. The
+sixth is the classification: everything a reach throws becomes an unestablished
+precondition, i.e. SKIPPED and then PARTIAL, EXCEPT the two classes that mean
+nobody was asked — `UnsupportedOperationError` and `CsmsNotDispatchedError`. The
+second of those was being swallowed, and the way that is wrong is silent: a
+driver pointed at a base URL that answers nothing turns every scenario declaring
+one of those states into a row whose `UNEXERCISED_PREFIX` claims the gap is in
+OUR scenarios. The seventh checks an ARGUMENT rather than a rule. Two Reusable
+States are `established: true` after a reach that does not reach the reference's
+post condition — the pinned station refuses both requests from a canned handler
+— and `tck/states-201.ts` declares that on the definition and argues it is safe
+because nothing depends on those post conditions. That is a claim about the rest
+of the table, so the guard walks it: no dependency edge invokes one, and their
+`establishes` is the identity from every condition, not only from the initial
+one.
+
+`request-shape-201.ts`: the last one, and the only one whose subject is what a
+scenario ACCEPTS rather than what it refuses. Every check in `tck/specs/core-201.ts`
+decides a verdict by reading a payload, and there are three ways that read is
+wrong while the row stays GREEN — which is the only direction worth a guard,
+because a check that reddens wrongly gets looked at. An ABSENT member read as a
+value: 2.0.1 tells scope apart by omission, `evse` absent is the whole station
+and `evseId` absent is every EVSE, and `payload.x ?? null` cannot tell that from
+`"x": null` — three payloads Part 3 forbids outright were reported as the
+requests the cases asked for. A VALUE read as a kind: `InstallCertificate`
+carries "A PEM encoded X.509 certificate", and armour around arbitrary bytes was
+read as one. MEMBER ORDER read as structure: TC_K_05 scraped a profile
+identifier with `"chargingProfile":[{"id":`, which is a fact about the pinned
+image's serialiser and nothing else. Half its rows go the other way, and they
+are what stops the fixes overshooting — a CSMS may re-wrap a PEM it was handed,
+so the certificate check may not become byte equality against the fixture.
 
 Two guards build a fixture instead of reading the tree, and they are the two
 that test the scripts under `tools/` which *write*.
@@ -405,7 +437,16 @@ its header is now a false claim about what the build checks.
   `states:` declaration is DATA on the spec object, and a non-literal renders
   `·` and is then omitted from `ASSERT-INVENTORY.txt` rather than marked — so a
   fixture re-pointed at another connector or another tag moves no committed
-  artifact and no diff says so. (`tests/state-plan-201.ts`)
+  artifact and no diff says so. And two of the five promise LESS than the
+  reference: the pinned station refuses both certificate requests from a canned
+  handler, so `established` there means the state was exercised. That is
+  declared on the definition rather than only argued in prose, because what
+  makes it safe is a claim about the rest of the table — no dependency edge
+  invokes one, and their post condition is the identity — and a claim about
+  elsewhere is one a guard should hold. The same guard pins which failures are
+  NOT an unestablished precondition: an operation the driver cannot express, and
+  one that never became an OCPP CALL, both leave the fixture rather than being
+  reported as a gap in our own scenarios. (`tests/state-plan-201.ts`)
 - **The documented install command installs the contract the documents
   describe.** Every tracked `*.md` citing a `github:<owner>/<repo>#<ref>`
   install command names this repository and the same ref, and then that ref is

@@ -12,6 +12,14 @@ Released as `0.3.0`. The documented install ref already points at that tag, so
 
 ### Added
 
+- `tests/request-shape-201.ts`, the seventeenth in-process guard: what an OCPP
+  2.0.1 request assertion *accepts*. Three ways a payload that is not the case's
+  can be read as though it were and leave the row GREEN — an absent member read
+  as a value, PEM armour read as a certificate, a member position read as
+  structure — plus the rows that stop the fixes overshooting, since a CSMS may
+  re-wrap a certificate it was handed and a scope check must still refuse the
+  neighbouring scope. Every payload in it is one no CSMS in this repository
+  sends, which is why it is a guard and not a sweep
 - Seven more OCPP 2.0.1 certification cases, which closes #127's block:
   `TC_M_01`..`TC_M_05` (`InstallCertificate`) and `TC_B_42`/`TC_B_44`
   (`SetNetworkProfile`). The slice reaches **49 of 147**, and three operations
@@ -418,6 +426,17 @@ Released as `0.3.0`. The documented install ref already points at that tag, so
 
 ### Changed
 
+- **A Reusable State that promises less than the reference declares says so on
+  its definition.** `CertificateInstalled` and `GetInstalledCertificates` are
+  `established: true` after a reach the pinned station refuses from a canned
+  handler — no certificate is stored and no list is retrieved — so `established`
+  there means the state was *exercised*. That was argued in prose at three call
+  sites and is now a `divergence` field, because what makes it safe is a claim
+  about the rest of the table: no dependency edge invokes either state, and both
+  post conditions are the identity. `tests/state-plan-201.ts` walks both halves
+  and pins which states carry it; the runner names it on stderr beside the
+  fixture it ran, where the log otherwise read the same as a state that did
+  reach its post condition. No verdict moves
 - `tck/specs/DRIVE-TRACE.txt` renders a PEM block as `<pem:N>` rather than
   verbatim. The certificate `InstallCertificate` carries is 1,115 characters of
   base64 that no case measures the bytes of — they say "a certificate", and the
@@ -563,6 +582,47 @@ Released as `0.3.0`. The documented install ref already points at that tag, so
 
 ### Fixed
 
+- **A Reusable State fixture could turn a broken harness into a known gap in
+  our own scenarios.** `establishStates` caught everything a reach threw except
+  `UnsupportedOperationError` and recorded the state as unestablished, which a
+  scenario reports as SKIPPED and the sweep as PARTIAL. That is the right answer
+  for a station that did not reach the condition, and the wrong one for
+  `CsmsNotDispatchedError` — the class that says the request never became an
+  OCPP CALL, so the station was never asked. It became reachable when three
+  reaches became CSMS operations rather than simulator commands
+  (`ChangeAvailability`, `GetInstalledCertificateIds`, `InstallCertificate`),
+  and the way it is wrong is silent: a driver pointed at a URL that answers
+  nothing turns every scenario declaring one of those states into a row whose
+  `UNEXERCISED_PREFIX` claims the gap is in *our* scenarios, when the cause is
+  the harness. Both classes now leave the fixture; everything else stays an
+  unestablished precondition, and `tests/state-plan-201.ts` holds the three-way
+  split as a table
+- **Three OCPP 2.0.1 scope checks could not tell an omitted member from a
+  `null` one.** 2.0.1 tells scope apart by absence — `ChangeAvailability` with
+  no `evse` addresses the whole charging station, `GetChargingProfiles` with no
+  `evseId` asks about every EVSE — and both helpers read the member as
+  `payload.x ?? null`, which reports `{"evse":{}}`, `{"evse":{"id":null}}` and
+  `{"evseId":null}` as the request the case asked for. Part 3 forbids all three:
+  `EVSEType` requires `id`, and every member here is typed `integer`. So what
+  was reported as the correct request was one no station may accept. Presence is
+  now read with `hasOwnProperty` and the value only afterwards
+- **`InstallCertificate` accepted PEM armour around anything.** Part 3 types the
+  member as "A PEM encoded X.509 certificate"; the check read the `-----BEGIN`
+  and `-----END` lines and nothing between them, so a truncated certificate, a
+  base64 body that is not a DER `Certificate`, and empty armour all passed as
+  "carries a certificate". It parses now, with the `X509Certificate` the
+  material's own guard already uses. Byte equality against the fixture is still
+  deliberately *not* the test — a CSMS may re-wrap what it was handed, and the
+  guard has the re-wrapped fixture as a passing row
+- **`TC_K_05` read a profile identifier by JSON member position.** It scraped
+  the station's report with `"chargingProfile":[{"id":`, which required `id` to
+  be the first member of the first profile — a property of the pinned image's
+  serialiser and of nothing else, since member order carries no meaning and Part
+  3 constrains none. A station that spelled the same profile the other way round
+  would have had the case clear its sentinel while the identifier it was reading
+  sat right there. The wait stays a text match, which is the right shape for a
+  temporal barrier; the read goes through `parseLogLine`, the same parser every
+  assertion in the file already uses
 - `drivers/citrineos` declared `new Set(CSMS_OPERATION_201_ACTIONS)` — the
   whole constant — as its OCPP 2.0.1 vocabulary, so every arm added to
   `CsmsOperation201` became an operation this driver claimed to support at the

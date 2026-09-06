@@ -74,6 +74,8 @@
  * this file.
  */
 
+import { X509Certificate } from "node:crypto";
+
 import {
   assertAllAnswered,
   assertCallCount,
@@ -94,6 +96,7 @@ import {
   findAllCalls,
   findCall,
   findResponseFor,
+  parseLogLine,
   type CallFrame,
   type Frame,
 } from "../ocpp";
@@ -647,6 +650,47 @@ function assertMeterValueSampled(
 }
 
 /**
+ * Whether an object carries `key` AT ALL, as opposed to carrying it as `null`
+ * or reading as `undefined` because nothing is there.
+ *
+ * ONE LINE, AND IT IS HERE BECAUSE `x ?? null` IS THE BUG IT REPLACES. Two
+ * checks below distinguish an omitted member from a present one, and every
+ * member they turn on is typed `integer` in OCPP 2.0.1 Part 3 -- so a wire
+ * `null` is a request no station may accept, and a reader that coalesces it
+ * into the absent case reports an invalid request as the correct one. `in`
+ * would answer the same question for these payloads and is not used: it walks
+ * the prototype chain, and what is being asked about is a value parsed out of
+ * JSON.
+ */
+function has(object: Record<string, unknown>, key: string): boolean {
+  return Object.prototype.hasOwnProperty.call(object, key);
+}
+
+/**
+ * One scope member measured against what the case asks for: `null` for a member
+ * that must be OMITTED, a number for one that must be present and equal.
+ *
+ * Returns the renderings of what is wrong, so a caller can prefix them with the
+ * object they came from and report every disagreement at once rather than the
+ * first. Empty means the member is what the case wanted.
+ *
+ * `Object.is` and not `===` for `wrongMembers`'s reason: one comparison rule
+ * per file is what stops a reader having to check which.
+ */
+function wrongScopeMember(
+  members: Record<string, unknown>,
+  key: string,
+  expected: number | null,
+): string[] {
+  const present = has(members, key);
+  if (expected === null) {
+    return present ? [`${key}=${JSON.stringify(members[key])}, where this case expects none`] : [];
+  }
+  if (!present) return [`${key} is absent, where this case expects ${expected}`];
+  return Object.is(members[key], expected) ? [] : [`${key}=${JSON.stringify(members[key])}`];
+}
+
+/**
  * The CSMS put a `ChangeAvailability` on the wire in one of the three scopes
  * 2.0.1 gives it, and asked for the availability the scenario asked for.
  *
@@ -673,12 +717,25 @@ function assertMeterValueSampled(
  * considered and rejected: every call below knows exactly which scope it wants,
  * and the one thing a CSMS can do wrong here is send a different one.
  *
+ * ABSENT IS READ AS ABSENT AND NOT AS `null`, which is the sharp edge and is
+ * where this helper was wrong. Reading the members as `members.id ?? null`
+ * collapses three different requests onto the one the scenario asked for:
+ * `{"evse":{}}`, `{"evse":{"id":null}}` and `{"evse":{"id":1,
+ * "connectorId":null}}` each rendered as the scope the case wanted and passed.
+ * All three are refused by OCPP 2.0.1 Part 3's `ChangeAvailabilityRequest`
+ * schema -- `EVSEType` requires `id`, both members are typed `integer`, and
+ * the type carries `additionalProperties: false` -- so what the helper reported
+ * as the correct request was one no station may accept. Presence is therefore
+ * read with `hasOwnProperty` and the value only afterwards, which is also what
+ * makes the paragraph above true rather than nearly true: `evseId: null` now
+ * fails `{"evse":{}}`, which is a request that carries an `evse`.
+ *
  * `occurrence` because two of the six scenarios put a second request on the
  * wire before the one under test -- a fixture in one case, an inline setup in
  * the other -- and matching ANY request would let the setup satisfy the check
  * the case is about.
  */
-function assertChangeAvailabilityScope(
+export function assertChangeAvailabilityScope(
   rec: AssertRecorder,
   frames: readonly Frame[],
   occurrence: number,
@@ -708,20 +765,33 @@ function assertChangeAvailabilityScope(
   // Present-but-not-an-object is refused by name rather than falling into the
   // reads below, where `("" as never).id` is undefined and would render as the
   // absent scope -- i.e. a malformed request reported as a correct one.
-  if (evse !== undefined && (typeof evse !== "object" || evse === null || Array.isArray(evse))) {
+  if (has(payload, "evse") && (typeof evse !== "object" || evse === null || Array.isArray(evse))) {
     rec.fail(description, `evse is ${JSON.stringify(evse)}, which is not an EVSEType object`);
     return;
   }
-  const members = (evse ?? {}) as Record<string, unknown>;
-  const sentEvseId = evse === undefined ? null : (members.id ?? null);
-  const sentConnectorId = evse === undefined ? null : (members.connectorId ?? null);
   const wrong: string[] = [];
   if (payload.operationalStatus !== operationalStatus) {
     wrong.push(`operationalStatus=${JSON.stringify(payload.operationalStatus)}`);
   }
-  if (sentEvseId !== evseId) wrong.push(`evse.id=${JSON.stringify(sentEvseId)}`);
-  if (sentConnectorId !== connectorId) {
-    wrong.push(`evse.connectorId=${JSON.stringify(sentConnectorId)}`);
+  if (evseId === null) {
+    // The station-wide request. `evse` must not be there at all -- an empty
+    // object is not the same request, and a scenario that wanted the connector
+    // scope of a station-wide request never existed, so the pair is refused
+    // rather than half-checked.
+    if (has(payload, "evse")) {
+      wrong.push(`evse=${JSON.stringify(evse)}, where this case expects none`);
+    }
+    if (connectorId !== null) {
+      wrong.push(
+        `this check asks for connector ${connectorId} of no EVSE, which is not a scope a ChangeAvailability can address`,
+      );
+    }
+  } else {
+    const members = (evse ?? {}) as Record<string, unknown>;
+    wrong.push(...wrongScopeMember(members, "id", evseId).map((m) => `evse.${m}`));
+    wrong.push(
+      ...wrongScopeMember(members, "connectorId", connectorId).map((m) => `evse.${m}`),
+    );
   }
   if (wrong.length === 0) {
     rec.pass(description);
@@ -1122,16 +1192,22 @@ function chargingProfilesQuery(
  * neighbour.
  *
  * `evseId` NULL MEANS "MUST BE ABSENT", by `assertChangeAvailabilityScope`'s
- * rule and for a sharper reason here: absent means every EVSE and 0 means the
- * charging station itself, so a CSMS that resolved an omitted member to 0 has
- * sent TC_K_29's request where TC_K_32 asked for every EVSE's.
+ * rule and for a sharper reason here: Part 3 spells the three readings out in
+ * the member's own description -- 0 is the charging station itself, a positive
+ * value is that EVSE, and OMITTED means every installed profile is reported --
+ * so a CSMS that resolved an omitted member to 0 has sent TC_K_29's request
+ * where TC_K_32 asked for every EVSE's. Presence is read with `hasOwnProperty`
+ * and the value only afterwards, for the reason that rule's own header gives:
+ * `payload.evseId ?? null` passed a wire `"evseId": null` as the omitted case,
+ * and `null` is not an `integer`, so what was reported as TC_K_32's request was
+ * one the schema refuses.
  *
  * ARRAYS COMPARED AS JSON, order included. The wire order is what the scenario
  * sent, `chargingLimitSource` is where two cases differ by contents rather than
  * by shape, and a set comparison would make `["CSO"]` and the four-value list
  * interchangeable.
  */
-function assertChargingProfilesRequested(
+export function assertChargingProfilesRequested(
   rec: AssertRecorder,
   frames: readonly Frame[],
   requestId: number,
@@ -1146,11 +1222,7 @@ function assertChargingProfilesRequested(
     rec.fail(description, found.error);
     return;
   }
-  const sentEvseId = found.payload.evseId ?? null;
-  const wrong: string[] = [];
-  if (!Object.is(sentEvseId, evseId)) {
-    wrong.push(`evseId=${JSON.stringify(found.payload.evseId)}`);
-  }
+  const wrong: string[] = [...wrongScopeMember(found.payload, "evseId", evseId)];
   const sent = found.payload.chargingProfile;
   if (typeof sent !== "object" || sent === null || Array.isArray(sent)) {
     rec.fail(
@@ -2818,6 +2890,30 @@ const PROFILE_BACKDATE_MS = 60_000;
  *  failure reads as a value rather than as an absence -- see the comment at the
  *  use for why this is a sentinel rather than a throw. */
 const PROFILE_ID_UNREPORTED = -1;
+
+/**
+ * The identifier of the first profile in a `ReportChargingProfiles` payload, or
+ * {@link PROFILE_ID_UNREPORTED} when the payload does not carry one.
+ *
+ * TOTAL, AND THAT IS THE POINT. Its one caller is inside a `drive()` that
+ * tools/extract-drive-trace.ts walks against a stub simulator, so it is handed
+ * the placeholder that walk answers every wait with -- see the comment there
+ * for why a throw would silently shorten the committed artifact. Every shape
+ * that is not "an array of objects whose first element has a numeric `id`"
+ * therefore returns the sentinel rather than raising, and the assertion that
+ * reads the same report off the frames is what turns it into a red row.
+ */
+export function profileIdOf(payload: unknown): number {
+  if (typeof payload !== "object" || payload === null || Array.isArray(payload)) {
+    return PROFILE_ID_UNREPORTED;
+  }
+  const profiles = (payload as { chargingProfile?: unknown }).chargingProfile;
+  if (!Array.isArray(profiles) || profiles.length === 0) return PROFILE_ID_UNREPORTED;
+  const first = profiles[0];
+  if (typeof first !== "object" || first === null) return PROFILE_ID_UNREPORTED;
+  const id = (first as { id?: unknown }).id;
+  return typeof id === "number" ? id : PROFILE_ID_UNREPORTED;
+}
 
 /** What TC_K_01 sent, so the assertion can ask whether it survived. */
 interface ProfileWindow {
@@ -4514,11 +4610,21 @@ const TC_K_05: ScenarioSpec = {
     // fails naming both values. A bad parse is a red scenario either way; this
     // way the artifact still says what the scenario does.
     //
-    // The pattern is the pinned station's payload exactly: `chargingProfile` is
-    // the last member of the report and `id` the first of a profile inside it.
-    const reportedId = Number(
-      /"chargingProfile":\[\{"id":(\d+)/.exec(line)?.[1] ?? PROFILE_ID_UNREPORTED,
-    );
+    // PARSED AS A FRAME, NOT SCRAPED WITH A REGEX. The wait above is a temporal
+    // primitive and matching text is the right shape for it -- the lookahead
+    // pins no member order, by tck/main.ts's boot-gate rule. Reading the id is
+    // a different question, and the regex that used to answer it,
+    // `"chargingProfile":[{"id":`, required `id` to be the FIRST member of the
+    // first profile object. That is a property of the pinned image's
+    // serialiser and of nothing else: JSON member order carries no meaning,
+    // ChargingProfileType merely REQUIRES `id` (Part 3), and a station that
+    // emitted the same profile with `stackLevel` first would have this case
+    // clear the sentinel while the report it was reading sat right there.
+    // parseLogLine is the reader every assertion in this file already goes
+    // through, so the drive() half now reads the frame the same way.
+    const reported = parseLogLine(line);
+    const reportedId =
+      reported?.kind === "call" ? profileIdOf(reported.payload) : PROFILE_ID_UNREPORTED;
     // BY IDENTIFIER AND NOTHING ELSE. The pinned CSMS refuses a request that
     // carries a criterion beside an identifier before it reaches the wire, and
     // the case has no criterion to add anyway: the report named one profile.
@@ -4711,11 +4817,30 @@ const TC_K_08: ScenarioSpec = {
  *
  * THE CERTIFICATE IS CHECKED FOR BEING ONE, not for being ours. Part 6 asks for
  * "a certificate" and nothing more, and a CSMS is entitled to re-encode, re-wrap
- * or re-order what it was handed -- what would be a finding is a member that is
- * empty, absent, or not a certificate at all. So the armour lines are the test
- * and the bytes between them are not.
+ * or re-order what it was handed -- so byte equality against
+ * {@link TEST_ROOT_CERTIFICATE_PEM} is deliberately NOT the test, and a CSMS
+ * that carried an equivalent certificate through in a different spelling
+ * passes. What would be a finding is a member that is empty, absent, or not a
+ * certificate.
+ *
+ * "NOT A CERTIFICATE" IS DECIDED BY A PARSER AND NOT BY THE ARMOUR LINES, which
+ * is where this check was weaker than the sentence above it. Armour around
+ * arbitrary bytes -- a truncated PEM, a base64 body that is not a DER
+ * `Certificate`, the empty string between two `-----` lines -- satisfied
+ * "carries PEM armour" and was reported as a certificate. Part 3 types the
+ * member as "A PEM encoded X.509 certificate" of at most 5500 characters, so
+ * the parse is the protocol's own claim about the member rather than an
+ * invention of this file's, and `node:crypto`'s `X509Certificate` is the parser
+ * `tests/certificate-material.ts` already holds the suite's own material to.
+ *
+ * THE ARMOUR CHECK IS KEPT IN FRONT OF IT for the reason a two-stage check
+ * usually earns its keep: the two failures have different causes and the wrong
+ * message sends a reader to the wrong place. No armour at all is a CSMS that
+ * put something else in the member -- a fingerprint, an identifier, a
+ * base64-of-DER with the lines stripped; armour that will not parse is a CSMS
+ * that mangled a certificate it was handed.
  */
-function assertCertificateInstallRequested(
+export function assertCertificateInstallRequested(
   rec: AssertRecorder,
   frames: readonly Frame[],
   occurrence: number,
@@ -4741,6 +4866,16 @@ function assertCertificateInstallRequested(
     wrong.push(
       `certificate is ${certificate.length} character(s) and carries no PEM armour, so it is not a certificate`,
     );
+  } else {
+    try {
+      new X509Certificate(certificate);
+    } catch (err) {
+      wrong.push(
+        `certificate is ${certificate.length} character(s) of PEM armour that does not parse as an X.509 certificate: ${
+          err instanceof Error ? err.message : String(err)
+        }`,
+      );
+    }
   }
   if (wrong.length === 0) rec.pass(description);
   else rec.fail(description, wrong.join(", "));

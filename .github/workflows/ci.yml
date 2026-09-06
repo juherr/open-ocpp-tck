@@ -187,6 +187,12 @@ jobs:
       - name: The committed certificate is one a CSMS can store
         run: bun tests/certificate-material.ts
 
+      # In-process for the reason tests/get-configuration-filter.ts gives: the
+      # payloads it hands the helpers are ones no CSMS here sends, so a sweep
+      # cannot reach the branches where a wrong request reads as the right one.
+      - name: A 2.0.1 request assertion refuses the shape it is not about
+        run: bun tests/request-shape-201.ts
+
       - name: Core names no CSMS
         run: bash tests/generic-core.sh
 
