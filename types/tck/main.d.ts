@@ -6,7 +6,7 @@
  *
  * Usage: ocpp-tck run <template-id> [--cp CP1] [--timeout N] [--connector N]
  *        ocpp-tck run --group core|authlist-reservation|remotetrigger-smartcharging|firmware|authorize|core-201|all [--parallel]
- *        ocpp-tck run-all [--group <name>] [--parallel]
+ *        ocpp-tck run-all [--group <name>] [--parallel] [--shard k/n]
  *
  * Brings its own simulator container up (sim.ts), drives it over the JSON
  * Lines stdin protocol, captures its full stdout, parses OCPP-J frames

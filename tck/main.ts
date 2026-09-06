@@ -6,7 +6,7 @@
  *
  * Usage: ocpp-tck run <template-id> [--cp CP1] [--timeout N] [--connector N]
  *        ocpp-tck run --group core|authlist-reservation|remotetrigger-smartcharging|firmware|authorize|core-201|all [--parallel]
- *        ocpp-tck run-all [--group <name>] [--parallel]
+ *        ocpp-tck run-all [--group <name>] [--parallel] [--shard k/n]
  *
  * Brings its own simulator container up (sim.ts), drives it over the JSON
  * Lines stdin protocol, captures its full stdout, parses OCPP-J frames
@@ -85,6 +85,12 @@ import {
   unsupportedReservations,
 } from "./capabilities";
 import { parseLog } from "./ocpp";
+import {
+  describeShard,
+  parseShard,
+  selectShard,
+  type Shard,
+} from "./shard";
 import { readTrace } from "./trace";
 import {
   DEFAULT_SIM_IMAGE,
@@ -1432,6 +1438,7 @@ async function writeSummary(
   groupName: string,
   outcomes: ScenarioOutcome[],
   parts: StandingPartition,
+  shardNote: string | null,
 ): Promise<string> {
   const anyRetried = outcomes.some((o) => o.isolatedRetry !== undefined);
 
@@ -1531,6 +1538,11 @@ async function writeSummary(
     [
       `# OCPP verification results — group: ${groupName}`,
       "",
+      // ON ITS OWN LINE AND NOT IN THE TITLE. `tools/flake-report.ts` reads the
+      // group as everything after "group: ", so a suffix there would make every
+      // sharded run its own group in the corpus and split each scenario's flake
+      // history across as many buckets as there are shards.
+      ...(shardNote ? [`**${shardNote}**`, ""] : []),
       `Run at ${timestampUtc()}. ${hostLoad()}`,
       "",
       header,
@@ -1551,11 +1563,26 @@ async function runGroupSweep(
   groupName: string,
   parallel: boolean,
   retryFailedIsolated: boolean,
+  shard?: Shard,
 ): Promise<number> {
-  const specs = GROUPS[groupName];
-  if (!specs) {
+  const selected = GROUPS[groupName];
+  if (!selected) {
     process.stderr.write(
       `Unknown group: ${groupName} (known: ${Object.keys(GROUPS).join(", ")})\n`,
+    );
+    return 1;
+  }
+
+  const specs = selectShard(selected, shard);
+  const shardNote = describeShard(shard, specs.length, selected.length);
+  // REFUSED RATHER THAN RUN EMPTY. More shards than scenarios is a workflow
+  // whose matrix grew and whose suite did not, and an empty sweep exits 0 with
+  // a table of no rows -- which reads as a pass.
+  if (specs.length === 0) {
+    process.stderr.write(
+      `[runner] ${shardNote ?? "the selection"} is empty: group '${groupName}' ` +
+        `has ${selected.length} scenario(s). Nothing to run, and an empty sweep ` +
+        `is not a passing one.\n`,
     );
     return 1;
   }
@@ -1573,6 +1600,7 @@ async function runGroupSweep(
     );
   }
 
+  if (shardNote) process.stderr.write(`[runner] ${shardNote}\n`);
   process.stderr.write(
     `[runner] group '${groupName}': ${specs.length} scenario(s), stations=[${stations.join(", ")}], lanes=${effectiveParallel ? lanes : 1}\n`,
   );
@@ -1628,7 +1656,7 @@ async function runGroupSweep(
   }
 
   const parts = partitionByStanding(outcomes);
-  const summaryPath = await writeSummary(groupName, outcomes, parts);
+  const summaryPath = await writeSummary(groupName, outcomes, parts, shardNote);
   process.stderr.write(`[runner] results table: ${summaryPath}\n`);
 
   const { unexpectedFails, expectedFails, unexpectedPasses, declaredButErrored, flakes } =
@@ -1714,6 +1742,10 @@ interface CliArgs {
   timeoutSecs?: number;
   /** `--results-dir`; beats OCPP_TCK_RESULTS_DIR, which beats ./results. */
   resultsDir?: string;
+  /** `--shard k/n`; absent means the whole selection. Not a way of NAMING a
+   *  subset -- `tck/shard.ts`'s header is why that distinction is the one this
+   *  option is careful about. */
+  shard?: Shard;
 }
 
 function requireValue(argv: string[], index: number, flag: string): string {
@@ -1751,7 +1783,7 @@ async function printUsage(): Promise<void> {
       "       ocpp-tck run --group " +
       `${Object.keys(GROUPS).join("|")} [--parallel] [--retry-failed-isolated]\n` +
       "       ocpp-tck run-all [--group <name>] [--parallel] " +
-      "[--retry-failed-isolated] [--results-dir DIR]\n" +
+      "[--retry-failed-isolated] [--results-dir DIR] [--shard k/n]\n" +
       "       ocpp-tck list-scenarios [--group <name>] [--json]\n" +
       "       ocpp-tck check-driver [--driver SPEC] [--json]\n" +
       "       ocpp-tck print-sim-image\n" +
@@ -1811,6 +1843,7 @@ function parseArgs(argv: string[]): CliArgs {
   let connector: number | undefined;
   let timeoutSecs: number | undefined;
   let resultsDirArg: string | undefined;
+  let shard: Shard | undefined;
 
   if (argv[0] === "run-all") {
     group = "all";
@@ -1828,6 +1861,15 @@ function parseArgs(argv: string[]): CliArgs {
         case "--results-dir":
           resultsDirArg = requireValue(argv, ++i, "--results-dir");
           break;
+        case "--shard": {
+          const parsed = parseShard(requireValue(argv, ++i, "--shard"));
+          if (typeof parsed === "string") {
+            process.stderr.write(`${parsed}\n`);
+            process.exit(1);
+          }
+          shard = parsed;
+          break;
+        }
         default:
           process.stderr.write(`Unknown argument: ${argv[i]}\n`);
           process.exit(1);
@@ -1840,6 +1882,7 @@ function parseArgs(argv: string[]): CliArgs {
       retryFailedIsolated,
       cpId,
       resultsDir: resultsDirArg,
+      shard,
     };
   }
 
@@ -2439,6 +2482,7 @@ export async function cli(argv: string[]): Promise<number> {
       args.group ?? "all",
       args.parallel,
       args.retryFailedIsolated,
+      args.shard,
     );
   }
 
