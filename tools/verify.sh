@@ -100,6 +100,10 @@ run "the 2.0.1 device-model fixture keeps its shape" bun tests/citrineos-device-
 # the server collapsed, which no offline run can make and no live run can be
 # asked for -- reproducing it means breaking the server.
 run "the CSMS log reader knows nothing-matched from nothing-there" bun tests/citrineos-redelivery-loops.ts
+# In-process because what it protects is an ABSENCE: sharding fails by dropping
+# scenarios, and reaching that from the CLI would mean one container per
+# scenario per shard count to observe something not happening.
+run "the shards of a sweep partition it" bun tests/shard-selection.ts
 # And in-process because its subject is a PLAN. Reaching the row that matters
 # -- a five-state chain re-entered from its far end -- needs eleven states this
 # build has no reach for, so no sweep could ever run it; and the rule it holds
@@ -114,6 +118,7 @@ run "a red row is red whatever its namespace" bash tests/summary-red-rows.sh
 run "harness layering holds" bash tests/harness-layer.sh
 # This file, the workflow and `bun run test` are three copies of the list
 # above. They used to be kept in step by hand, and were not.
+run "every shard of the suite runs somewhere" bash tests/shard-matrix.sh
 run "gate parity holds" bash tests/gate-parity.sh
 # And the other thing AGENTS.md asserts about this file: the numbers it writes
 # out in prose. Three of them were wrong at once.

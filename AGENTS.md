@@ -24,8 +24,8 @@ error.
 ## The gate
 
 `bun run verify` is every check CI runs before it starts a container —
-typecheck, committed declarations, three driver scope checks, fourteen in-process
-guards and fifteen shell guards — with one exit code, and every step runs even
+typecheck, committed declarations, three driver scope checks, fifteen in-process
+guards and sixteen shell guards — with one exit code, and every step runs even
 after one fails, where CI enumerates them and stops at the first.
 
 There is a third copy of that list — `bun run test`, the guards without the
@@ -59,6 +59,7 @@ bun tests/steve-ui-session-race.ts
 bun tests/citrineos-transport-classification.ts
 bun tests/citrineos-device-model-fixture.ts
 bun tests/citrineos-redelivery-loops.ts
+bun tests/shard-selection.ts
 bun tests/state-plan-201.ts
 bash tests/cert201-declares-its-version.sh
 bash tests/cert201-scope-rows.sh       # both read tck/specs/ASSERT-INVENTORY.txt,
@@ -131,7 +132,7 @@ There is no unit-test framework and no `*.test.ts`. `tests/` holds offline
 guards, each with a header stating the property it protects. `bun run test`
 chains them — note `bun test` is Bun's own runner and finds nothing here.
 
-Shell is the default, and the fourteen TypeScript ones are TypeScript because
+Shell is the default, and the fifteen TypeScript ones are TypeScript because
 what they assert is unreachable through the CLI. `driver-env-scope.ts`: a
 driver's declarations follow the env they are *resolved* with, where the CLI
 can only ever pass `process.env`. `capability-parity.ts`: the same reason and
@@ -212,6 +213,16 @@ included, so the way it fails is by matching NOTHING and reporting a healthy
 sweep. Two of its five rows exist to tell "nothing matched" from "nothing was
 there", which is the same failure `tools/summary-red-rows.ts`'s header names one
 artifact over.
+`shard-selection.ts`: the one whose subject is an ABSENCE. Sharding fails by
+DROPPING scenarios, and a dropped scenario is not a red row -- it is a green job
+that measured less than its table claims. Reaching that from the CLI would mean
+one container per scenario per shard count, on a shared daemon, to observe
+something not happening; `selectShard` is pure for that reason. Its load-bearing
+row is the UNION, not the count: an off-by-one in the modulus distributes evenly,
+reads correctly, and runs 82 of 83 scenarios, so the check is set equality
+against the input at every shard count from one to more shards than there are
+items. The balance row is the weaker one and says so -- it is not needed for
+correctness, only for the wall-clock argument the mechanism exists to make.
 `state-plan-201.ts`: the last one, and the only one whose subject never touches
 a CSMS at all. What a scenario DECLARES — the OCPP 2.0.1 `Reusable State`s its
 case takes as a precondition — is not what the runner RUNS: `tck/states-201.ts`

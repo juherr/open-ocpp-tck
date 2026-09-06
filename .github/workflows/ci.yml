@@ -163,6 +163,13 @@ jobs:
       - name: The CSMS log reader knows nothing-matched from nothing-there
         run: bun tests/citrineos-redelivery-loops.ts
 
+      # In-process because what it protects is an ABSENCE: sharding fails by
+      # dropping scenarios, and reaching that from the CLI would mean one
+      # container per scenario per shard count to observe something not
+      # happening.
+      - name: The shards of a sweep partition it
+        run: bun tests/shard-selection.ts
+
       # In-process because its subject is a PLAN, not a run. The row that
       # matters -- re-entering EnergyTransferStarted after the EVDisconnected
       # chain, where deduplicating by a visited set silently drops an Authorize
@@ -189,6 +196,9 @@ jobs:
       # list. Kept in step by hand, they drifted three times -- always the same
       # way, a guard added to the other two and linted here without ever being
       # run.
+      - name: Every shard of the suite runs somewhere
+        run: bash tests/shard-matrix.sh
+
       - name: Gate parity holds
         run: bash tests/gate-parity.sh
 
@@ -302,6 +312,22 @@ jobs:
       fail-fast: false
       matrix:
         driver: [steve, citrineos]
+        # SHARDS, AND THE ONE PLACE THE COUNT IS WRITTEN TWICE. This list and
+        # the SHARD_TOTAL below have to agree, and a disagreement is the silent
+        # kind: `--shard 1/3` and `--shard 2/3` with a two-entry matrix runs two
+        # thirds of the suite, twice green, saying nothing. tests/shard-matrix.sh
+        # holds them together.
+        #
+        # WHY TWO AND NOT MORE. Measured at 83 registered scenarios: a healthy
+        # CitrineOS job is 26m33s against a 45-minute wall, and the same job on
+        # a run where the CSMS degraded took 45m34s and was killed at the wall.
+        # Two shards put a healthy job near 14 minutes and a degraded one near
+        # 24, which is a margin rather than a coin flip. Each shard also boots
+        # its OWN CSMS, so it halves the scenarios one server sees -- the lever
+        # on citrineos/citrineos#223, where the loops accumulate with the number
+        # of requests one server handles. Growing this list is a two-line edit,
+        # and the guard makes it a three-line one.
+        shard: [1, 2]
     # ~10 min of sweep plus image pull, a cold CSMS boot and -- for SteVe --
     # the one-off provisioning restart. Generous, but far below the 6h default:
     # a wedged simulator container should fail the build, not occupy a runner
@@ -310,6 +336,7 @@ jobs:
     env:
       CSMS_DRIVER: ./drivers/${{ matrix.driver }}/index.ts
       OCPP_CP_IDS: CERTCP1,CERTCP2,CERTCP3
+      SHARD_TOTAL: 2
       # localhost, not the compose service name: the runner reaches the CSMS
       # through the published port, while the simulator containers reach it by
       # service name from inside the network. That asymmetry is why each driver
@@ -387,8 +414,12 @@ jobs:
       # anything. "authorize" is folded into "all" now (see the GROUPS registry
       # in tck/main.ts), so one invocation is the whole suite and the trap is
       # gone rather than documented.
+      # `--shard` PARTITIONS, it does not select: the group is still `all`, and
+      # the two jobs between them run every registered scenario. The runner
+      # prints what it left out and stamps it into results/summary.md, because a
+      # bounded sweep that reads like a complete one is worse than a slow one.
       - name: Conformance sweep
-        run: bun run e2e
+        run: bun run e2e -- --shard ${{ matrix.shard }}/$SHARD_TOTAL
 
       # The CSMS's OWN log, which no run of this project has ever captured.
       # `results/` is the charge-point side of the wire, so a CSMS answering
@@ -481,7 +512,12 @@ jobs:
         if: always()
         uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
         with:
-          name: ocpp-tck-${{ matrix.driver }}-results-${{ github.run_id }}
+          # The shard is in the name because it has to be: two shards of one
+          # driver upload to the same run, and without it the second would
+          # collide with the first, leaving the archive holding half of each
+          # with nothing saying so. tools/flake-report.ts reads the directory
+          # name as the run label, so this keeps them apart there too.
+          name: ocpp-tck-${{ matrix.driver }}-shard${{ matrix.shard }}-results-${{ github.run_id }}
           path: results/
           if-no-files-found: warn
 
