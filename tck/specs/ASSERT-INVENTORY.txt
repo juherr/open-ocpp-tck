@@ -216,14 +216,11 @@ FILE core-201.ts
           OR
       ·.fail(·, ·)
       RETURN
-    NULLISH
-    TERNARY
+    IF
+    IF
+      IF
+      IF
       NULLISH
-    TERNARY
-      NULLISH
-    IF
-    IF
-    IF
     IF
       ·.pass(·)
       RETURN
@@ -298,8 +295,6 @@ FILE core-201.ts
     IF
       ·.fail(·, ·)
       RETURN
-    NULLISH
-    IF
     IF
       OR
         OR
@@ -384,6 +379,9 @@ FILE core-201.ts
     IF
       IF
         OR
+        TRY
+          CATCH
+            TERNARY
     IF
       ·.pass(·)
       ·.fail(·, ·)
