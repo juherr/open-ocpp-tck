@@ -165,6 +165,241 @@ FILE core-201.ts
       ·.fail(·, ·)
       RETURN
     ·.pass(·)
+  HELPER assertIdTokenInfoStatus
+    IF
+      ·.fail(·, ·)
+      RETURN
+    IF
+      ·.fail(·, ·)
+      RETURN
+    IF
+      ·.fail(·, ·)
+      RETURN
+    IF
+      OR
+      ·.fail(·, ·)
+      RETURN
+    ·.pass(·)
+  HELPER assertIdTokenSent
+    IF
+      ·.fail(·, ·)
+      RETURN
+    IF
+      ·.fail(·, ·)
+      RETURN
+    ·.pass(·)
+  HELPER assertMeterValueSampled
+    IF
+      ·.fail(·, ·)
+      RETURN
+    IF
+      ·.fail(·, ·)
+      RETURN
+    TERNARY
+    IF
+      OR
+      ·.fail(·, ·)
+      RETURN
+    ·.pass(·)
+  HELPER assertChangeAvailabilityScope
+    IF
+      ·.fail(·, ·)
+      RETURN
+    IF
+      OR
+        OR
+      ·.fail(·, ·)
+      RETURN
+    IF
+      AND
+        OR
+          OR
+      ·.fail(·, ·)
+      RETURN
+    IF
+    IF
+      IF
+      IF
+      NULLISH
+    IF
+      ·.pass(·)
+      RETURN
+    ·.fail(·, ·)
+  HELPER assertChargingProfileSent
+    IF
+      ·.fail(·, ·)
+      RETURN
+    IF
+      OR
+        OR
+      ·.fail(·, ·)
+      RETURN
+    IF
+    IF
+      ·.pass(·)
+      RETURN
+    ·.fail(·, ·)
+  HELPER assertChargingScheduleSent
+    IF
+      ·.fail(·, ·)
+      RETURN
+    IF
+      OR
+      ·.fail(·, ·)
+      RETURN
+    IF
+      OR
+      ·.fail(·, ·)
+      RETURN
+    IF
+      OR
+      ·.fail(·, ·)
+      RETURN
+    IF
+      OR
+      ·.fail(·, ·)
+      RETURN
+    IF
+      ·.pass(·)
+      RETURN
+    ·.fail(·, ·)
+  HELPER assertChargingProfileWindowSent
+    IF
+      ·.fail(·, ·)
+      RETURN
+    TERNARY
+    IF
+    IF
+    IF
+    IF
+      ·.pass(·)
+      RETURN
+    ·.fail(·, ·)
+  HELPER assertChargingProfileTransactionSent
+    IF
+      ·.fail(·, ·)
+      RETURN
+    IF
+      ·.fail(·, ·)
+      RETURN
+    ·.pass(·)
+  HELPER assertCompositeScheduleRequested
+    IF
+      ·.fail(·, ·)
+      RETURN
+    IF
+      ·.pass(·)
+      RETURN
+    ·.fail(·, ·)
+  HELPER assertChargingProfilesRequested
+    IF
+      ·.fail(·, ·)
+      RETURN
+    IF
+      OR
+        OR
+      ·.fail(·, ·)
+      RETURN
+    FOROF
+      IF
+    FOROF
+      IF
+    IF
+      ·.pass(·)
+      RETURN
+    ·.fail(·, ·)
+  HELPER assertChargingProfilesAnswered
+    IF
+      ·.fail(·, ·)
+      RETURN
+    IF
+      ·.fail(·, ·)
+      RETURN
+    IF
+      ·.fail(·, ·)
+      RETURN
+    IF
+      ·.pass(·)
+      RETURN
+    ·.fail(·, ·)
+  HELPER assertNetworkProfileRequested
+    IF
+      ·.fail(·, ·)
+      RETURN
+    IF
+    IF
+      OR
+        OR
+      FOROF
+        IF
+    IF
+      ·.pass(·)
+      ·.fail(·, ·)
+  HELPER assertClearProfileRequested
+    IF
+      ·.fail(·, ·)
+      RETURN
+    IF
+    IF
+      IF
+      IF
+        OR
+          OR
+        FOROF
+          IF
+        FOROF
+          IF
+    IF
+      ·.pass(·)
+      RETURN
+    ·.fail(·, ·)
+  HELPER assertClearedTheReportedProfile
+    AND
+      AND
+        AND
+    IF
+      ·.fail(·, ·)
+      RETURN
+    IF
+      OR
+      ·.fail(·, ·)
+      RETURN
+    IF
+      ·.fail(·, ·)
+      RETURN
+    IF
+      ·.pass(·)
+      RETURN
+    ·.fail(·, ·)
+  HELPER assertCertificateInstallRequested
+    IF
+      ·.fail(·, ·)
+      RETURN
+    IF
+    IF
+      IF
+        OR
+        TRY
+          CATCH
+            TERNARY
+    IF
+      ·.pass(·)
+      ·.fail(·, ·)
+  HELPER assertCertificateTypesRequested
+    IF
+      ·.fail(·, ·)
+      RETURN
+    IF
+      IF
+        ·.pass(·)
+        ·.fail(·, ·)
+      RETURN
+    IF
+      ·.fail(·, ·)
+      RETURN
+    IF
+      ·.pass(·)
+      ·.fail(·, ·)
   SPEC cert201-tcb06-get-variables connector=1 bootWaitSecs=4 holdSecs=12 ocppVersion="OCPP-2.0.1" runsSimTemplate=false
     assertReceived(·, ·, "GetVariables", "GetVariables.req received")
     assertVariableRequested(·, ·, "GetVariables", "getVariableData", ·, ·, ·)
@@ -186,10 +421,8 @@ FILE core-201.ts
     assertResponseStatus(·, ·, "Reset", "Accepted", "Reset accepted", {direction:"received"})
     assertResponseStatus(·, ·, "BootNotification", "Accepted", "the cold boot is accepted, so the next boot is the reset's", {direction:"sent",occurrence:0})
     assertAllAnswered(·, ·, "BootNotification", ·, {minimum:2})
-  SPEC cert201-tcb21-reset-scheduled connector=1 bootWaitSecs=4 holdSecs=12 ocppVersion="OCPP-2.0.1" runsSimTemplate=false
-    IF
-      ·.pass(·)
-      ·.skip(·, ·)
+  SPEC cert201-tcb21-reset-scheduled connector=1 bootWaitSecs=4 holdSecs=12 ocppVersion="OCPP-2.0.1" runsSimTemplate=false states=[{state:"EnergyTransferStarted",connectorId:1,idToken:"CE712001"}]
+    assertStateEstablished(·, ·, "EnergyTransferStarted", "a transaction was running when the reset was asked for")
     assertReceived(·, ·, "Reset", "Reset.req received")
     assertCallPayload(·, ·, "received", "Reset", {type:"OnIdle"}, "Reset.req asks for type=OnIdle")
     IF
@@ -208,6 +441,242 @@ FILE core-201.ts
     assertSent(·, ·, "Heartbeat", "Heartbeat.req sent")
     assertAllAnswered(·, ·, "Heartbeat")
     assertResponseTimestamp(·, ·, "Heartbeat", "currentTime", "Heartbeat.conf carries a currentTime the charge point can parse")
+  SPEC cert201-tcb42-set-network-profile connector=1 bootWaitSecs=4 holdSecs=10 ocppVersion="OCPP-2.0.1" runsSimTemplate=false
+    assertReceived(·, ·, "SetNetworkProfile", "SetNetworkProfile.req received")
+    assertNetworkProfileRequested(·, ·, 0, 1, {ocppVersion:"OCPP20",ocppTransport:"JSON",ocppCsmsUrl:"ws://csms.invalid:9000/ocpp",messageTimeout:30,securityProfile:1,ocppInterface:"Wired0"}, "SetNetworkProfile.req names slot 1 and carries all six members of the connection profile")
+  SPEC cert201-tcb44-set-network-profile-refused connector=1 bootWaitSecs=4 holdSecs=10 ocppVersion="OCPP-2.0.1" runsSimTemplate=false
+    assertReceived(·, ·, "SetNetworkProfile", "SetNetworkProfile.req received")
+    assertResponseStatus(·, ·, "SetNetworkProfile", "Rejected", "the station refused the connection profile (Rejected, where the case scripts Failed)", {direction:"received"})
+  SPEC cert201-tcc02-authorize-invalid connector=1 bootWaitSecs=4 holdSecs=10 ocppVersion="OCPP-2.0.1" runsSimTemplate=false
+    assertSent(·, ·, "Authorize", "Authorize.req sent")
+    assertIdTokenSent(·, ·, "Authorize", "CE71FFFF", "Authorize.req presents the unknown idToken this scenario asked about")
+    assertAllAnswered(·, ·, "Authorize")
+    assertIdTokenInfoStatus(·, ·, "Authorize", ["Invalid","Unknown"], "the CSMS reports the idToken as not valid")
+  SPEC cert201-tce10-start-authorized connector=1 bootWaitSecs=4 holdSecs=12 ocppVersion="OCPP-2.0.1" runsSimTemplate=false
+    IF
+      ·.pass(·)
+      ·.skip(·, ·)
+    assertSent(·, ·, "Authorize", "Authorize.req sent")
+    assertIdTokenSent(·, ·, "Authorize", "CE712001", "Authorize.req presents the provisioned idToken")
+    assertAllAnswered(·, ·, "Authorize")
+    assertIdTokenInfoStatus(·, ·, "Authorize", ["Accepted"], "the CSMS accepted the idToken")
+    IF
+      assertSent(·, ·, "TransactionEvent", "TransactionEvent.req sent")
+      assertCallPayload(·, ·, "sent", "TransactionEvent", {eventType:"Started",triggerReason:"Authorized"}, "the Started TransactionEvent says the transaction started on an authorization")
+      assertIdTokenSent(·, ·, "TransactionEvent", "CE712001", "the Started TransactionEvent carries the idToken that was authorized")
+      assertIdTokenInfoStatus(·, ·, "TransactionEvent", ["Accepted"], "the CSMS accepted the transaction the idToken started")
+      ·.skip("the CSMS accepted the transaction the idToken started", ·)
+    assertAllAnswered(·, ·, "TransactionEvent")
+  SPEC cert201-tcf27-trigger-not-implemented connector=1 bootWaitSecs=4 holdSecs=12 ocppVersion="OCPP-2.0.1" runsSimTemplate=false
+    assertReceived(·, ·, "TriggerMessage", "TriggerMessage.req received")
+    assertCallPayload(·, ·, "received", "TriggerMessage", {requestedMessage:"FirmwareStatusNotification"}, "TriggerMessage.req asks for the message the station does not implement")
+    assertResponseStatus(·, ·, "TriggerMessage", "NotImplemented", "TriggerMessage refused as not implemented", {direction:"received"})
+    assertNotSent(·, ·, "FirmwareStatusNotification", "sent", "no FirmwareStatusNotification followed the refusal")
+    assertLineAfter(·, ·, /Received: \[2,.*"TriggerMessage"/, /Sent: \[2,.*"Heartbeat"/, "the station still reaches the CSMS after the refusal")
+    assertResponseTimestamp(·, ·, "Heartbeat", "currentTime", "the CSMS answered the station's next request with a current time")
+  SPEC cert201-tcj01-clock-aligned-meter-values connector=1 bootWaitSecs=4 holdSecs=10 ocppVersion="OCPP-2.0.1" runsSimTemplate=false
+    IF
+      ·.pass(·)
+      ·.skip(·, ·)
+    assertSent(·, ·, "MeterValues", "MeterValues.req sent")
+    assertMeterValueSampled(·, ·, "MeterValues", "MeterValues.req is the OCPP 2.0.1 request (an evseId and a sampled reading)")
+    assertAllAnswered(·, ·, "MeterValues", ·, {minimum:3})
+  SPEC cert201-tcg03-evse-inoperative connector=1 bootWaitSecs=4 holdSecs=10 ocppVersion="OCPP-2.0.1" runsSimTemplate=false states=[{state:"Unavailable",evseId:1}]
+    assertStateEstablished(·, ·, "Unavailable", "the EVSE was taken out of service")
+    assertReceived(·, ·, "ChangeAvailability", "ChangeAvailability.req received")
+    assertChangeAvailabilityScope(·, ·, 0, "Inoperative", 1, null, "ChangeAvailability.req takes EVSE 1 out of service and names no connector")
+    assertResponseStatus(·, ·, "ChangeAvailability", "Accepted", "ChangeAvailability accepted", {direction:"received"})
+    assertLineAfter(·, ·, /Received: \[2,.*"ChangeAvailability"/, /Sent: \[2,.*"StatusNotification",(?=[^\]]*"connectorStatus":"Unavailable")/, "the station reported the EVSE unavailable after the request")
+    assertAllAnswered(·, ·, "StatusNotification")
+  SPEC cert201-tcg04-evse-operative connector=1 bootWaitSecs=4 holdSecs=12 ocppVersion="OCPP-2.0.1" runsSimTemplate=false states=[{state:"Unavailable",evseId:1}]
+    assertStateEstablished(·, ·, "Unavailable", "the EVSE was out of service before it was returned to service")
+    assertReceived(·, ·, "ChangeAvailability", "ChangeAvailability.req received")
+    IF
+      assertChangeAvailabilityScope(·, ·, 0, "Inoperative", 1, null, "the precondition request took EVSE 1 out of service")
+      assertChangeAvailabilityScope(·, ·, 1, "Operative", 1, null, "ChangeAvailability.req returns EVSE 1 to service and names no connector")
+      assertResponseStatus(·, ·, "ChangeAvailability", "Accepted", "ChangeAvailability accepted", {direction:"received",occurrence:1})
+      ·.skip("ChangeAvailability.req returns EVSE 1 to service and names no connector", ·)
+    assertLineAfter(·, ·, /Received: \[2,.*"ChangeAvailability"/, /Sent: \[2,.*"StatusNotification",(?=[^\]]*"connectorStatus":"Available")/, "the station reported the EVSE available after the request")
+    assertAllAnswered(·, ·, "StatusNotification")
+  SPEC cert201-tcg05-station-inoperative connector=1 bootWaitSecs=4 holdSecs=12 ocppVersion="OCPP-2.0.1" runsSimTemplate=false
+    assertReceived(·, ·, "ChangeAvailability", "ChangeAvailability.req received")
+    assertChangeAvailabilityScope(·, ·, 0, "Inoperative", null, null, "ChangeAvailability.req omits evse, so it addresses the whole charging station")
+    assertResponseStatus(·, ·, "ChangeAvailability", "Accepted", "ChangeAvailability accepted", {direction:"received"})
+    assertLineAfter(·, ·, /Received: \[2,.*"ChangeAvailability"/, /Sent: \[2,.*"StatusNotification",(?=[^\]]*"connectorStatus":"Unavailable")/, "the station reported a connector unavailable after the request")
+    assertAllAnswered(·, ·, "StatusNotification")
+  SPEC cert201-tcg06-station-operative connector=1 bootWaitSecs=4 holdSecs=12 ocppVersion="OCPP-2.0.1" runsSimTemplate=false
+    assertReceived(·, ·, "ChangeAvailability", "ChangeAvailability.req received")
+    assertChangeAvailabilityScope(·, ·, 0, "Inoperative", null, null, "the precondition request took the whole charging station out of service")
+    assertChangeAvailabilityScope(·, ·, 1, "Operative", null, null, "ChangeAvailability.req omits evse, so it returns the whole charging station to service")
+    assertResponseStatus(·, ·, "ChangeAvailability", "Accepted", "ChangeAvailability accepted", {direction:"received",occurrence:1})
+    assertLineAfter(·, ·, /Received: \[2,.*"ChangeAvailability"/, /Sent: \[2,.*"StatusNotification",(?=[^\]]*"connectorStatus":"Available")/, "the station reported a connector available after the request")
+    assertAllAnswered(·, ·, "StatusNotification")
+  SPEC cert201-tcg07-connector-inoperative connector=1 bootWaitSecs=4 holdSecs=12 ocppVersion="OCPP-2.0.1" runsSimTemplate=false
+    assertReceived(·, ·, "ChangeAvailability", "ChangeAvailability.req received")
+    assertChangeAvailabilityScope(·, ·, 0, "Inoperative", 1, 1, "ChangeAvailability.req names EVSE 1 AND connector 1, so it addresses one connector")
+    assertResponseStatus(·, ·, "ChangeAvailability", "Accepted", "ChangeAvailability accepted", {direction:"received"})
+    assertLineAfter(·, ·, /Received: \[2,.*"ChangeAvailability"/, /Sent: \[2,.*"StatusNotification",(?=[^\]]*"connectorStatus":"Unavailable")/, "the station reported the connector unavailable after the request")
+    assertAllAnswered(·, ·, "StatusNotification")
+  SPEC cert201-tcg08-connector-operative connector=1 bootWaitSecs=4 holdSecs=12 ocppVersion="OCPP-2.0.1" runsSimTemplate=false
+    assertReceived(·, ·, "ChangeAvailability", "ChangeAvailability.req received")
+    assertChangeAvailabilityScope(·, ·, 0, "Inoperative", 1, 1, "the precondition request took connector 1 of EVSE 1 out of service")
+    assertChangeAvailabilityScope(·, ·, 1, "Operative", 1, 1, "ChangeAvailability.req names EVSE 1 AND connector 1, so it returns one connector to service")
+    assertResponseStatus(·, ·, "ChangeAvailability", "Accepted", "ChangeAvailability accepted", {direction:"received",occurrence:1})
+    assertLineAfter(·, ·, /Received: \[2,.*"ChangeAvailability"/, /Sent: \[2,.*"StatusNotification",(?=[^\]]*"connectorStatus":"Available")/, "the station reported the connector available after the request")
+    assertAllAnswered(·, ·, "StatusNotification")
+  SPEC cert201-tck01-set-tx-default-profile connector=1 bootWaitSecs=4 holdSecs=15 ocppVersion="OCPP-2.0.1" runsSimTemplate=false
+    assertReceived(·, ·, "SetChargingProfile", "SetChargingProfile.req received")
+    assertChargingProfileSent(·, ·, 0, 1, {id:9101,stackLevel:1,chargingProfilePurpose:"TxDefaultProfile",chargingProfileKind:"Absolute"}, "SetChargingProfile.req installs an absolute TxDefaultProfile at EVSE 1")
+    assertChargingScheduleSent(·, ·, 0, {id:9101,duration:3600,chargingRateUnit:"W"}, {startPeriod:0,limit:11000}, "the schedule reaches the station with the scenario's unit, duration and limit")
+    assertChargingProfileWindowSent(·, ·, 0, ·, ·, ·, "the validity window reaches the station as the scenario computed it")
+    assertResponseStatus(·, ·, "SetChargingProfile", "Accepted", "SetChargingProfile accepted", {direction:"received"})
+  SPEC cert201-tck03-set-station-max-profile connector=1 bootWaitSecs=4 holdSecs=15 ocppVersion="OCPP-2.0.1" runsSimTemplate=false
+    assertReceived(·, ·, "SetChargingProfile", "SetChargingProfile.req received")
+    assertChargingProfileSent(·, ·, 0, 0, {id:9103,stackLevel:3,chargingProfilePurpose:"ChargingStationMaxProfile",chargingProfileKind:"Absolute"}, "SetChargingProfile.req caps the charging station itself, at evseId 0")
+    assertChargingScheduleSent(·, ·, 0, {id:9103,chargingRateUnit:"W"}, {startPeriod:0,limit:22000}, "the station-wide cap reaches the station with the scenario's limit")
+    assertResponseStatus(·, ·, "SetChargingProfile", "Accepted", "SetChargingProfile accepted", {direction:"received"})
+  SPEC cert201-tck04-replace-profile connector=1 bootWaitSecs=4 holdSecs=15 ocppVersion="OCPP-2.0.1" runsSimTemplate=false
+    assertReceived(·, ·, "SetChargingProfile", "SetChargingProfile.req received")
+    assertChargingProfileSent(·, ·, 0, 1, {id:9104,stackLevel:4,chargingProfilePurpose:"TxDefaultProfile",chargingProfileKind:"Absolute"}, "the first request installs profile 9104 at stack level 4")
+    assertChargingScheduleSent(·, ·, 0, {id:9104,chargingRateUnit:"W"}, {startPeriod:0,limit:7400}, "the first request carries the limit it was given")
+    assertChargingProfileSent(·, ·, 1, 1, {id:9104,stackLevel:4,chargingProfilePurpose:"TxDefaultProfile",chargingProfileKind:"Absolute"}, "the second request reuses profile 9104 at the same stack level")
+    assertChargingScheduleSent(·, ·, 1, {id:9104,chargingRateUnit:"W"}, {startPeriod:0,limit:3700}, "the second request replaces the limit rather than repeating the first")
+    assertCallCount(·, ·, "received", "SetChargingProfile", 2, "the CSMS sent two requests and not a third carrying the superseded profile")
+    assertResponseStatus(·, ·, "SetChargingProfile", "Accepted", "the replacing profile is accepted", {direction:"received",occurrence:1})
+  SPEC cert201-tck10-set-default-profile-all-evses connector=1 bootWaitSecs=4 holdSecs=15 ocppVersion="OCPP-2.0.1" runsSimTemplate=false
+    assertReceived(·, ·, "SetChargingProfile", "SetChargingProfile.req received")
+    assertChargingProfileSent(·, ·, 0, 0, {id:9110,stackLevel:10,chargingProfilePurpose:"TxDefaultProfile",chargingProfileKind:"Absolute"}, "SetChargingProfile.req sends a TxDefaultProfile to evseId 0, so it applies to every EVSE")
+    assertChargingScheduleSent(·, ·, 0, {id:9110,chargingRateUnit:"W"}, {startPeriod:0,limit:6000}, "the station-wide default carries the scenario's limit")
+    assertResponseStatus(·, ·, "SetChargingProfile", "Accepted", "SetChargingProfile accepted", {direction:"received"})
+  SPEC cert201-tck19-set-recurring-profile connector=1 bootWaitSecs=4 holdSecs=15 ocppVersion="OCPP-2.0.1" runsSimTemplate=false
+    assertReceived(·, ·, "SetChargingProfile", "SetChargingProfile.req received")
+    assertChargingProfileSent(·, ·, 0, 1, {id:9119,stackLevel:19,chargingProfilePurpose:"TxDefaultProfile",chargingProfileKind:"Recurring",recurrencyKind:"Daily"}, "SetChargingProfile.req carries both Recurring and the recurrency kind that says how often")
+    assertChargingScheduleSent(·, ·, 0, {id:9119,duration:86400,chargingRateUnit:"W"}, {startPeriod:0,limit:8000}, "the schedule spans the recurrence period the kind announces")
+    assertResponseStatus(·, ·, "SetChargingProfile", "Accepted", "SetChargingProfile accepted", {direction:"received"})
+  SPEC cert201-tck60-set-tx-profile connector=1 bootWaitSecs=4 holdSecs=15 ocppVersion="OCPP-2.0.1" runsSimTemplate=false states=[{state:"EnergyTransferStarted",connectorId:1,idToken:"CE712001"}]
+    assertStateEstablished(·, ·, "EnergyTransferStarted", "a transaction was running when the profile was installed")
+    IF
+      ·.skip("SetChargingProfile.req received", ·)
+      ·.skip(·, ·)
+      RETURN
+    assertReceived(·, ·, "SetChargingProfile", "SetChargingProfile.req received")
+    assertChargingProfileSent(·, ·, 0, 1, {id:9160,stackLevel:60,chargingProfilePurpose:"TxProfile",chargingProfileKind:"Absolute"}, "SetChargingProfile.req installs a TxProfile at the EVSE the transaction is on")
+    assertChargingProfileTransactionSent(·, ·, 0, ·, ·)
+    assertChargingScheduleSent(·, ·, 0, {id:9160,chargingRateUnit:"W"}, {startPeriod:0,limit:5000}, "the transaction-scoped schedule carries the scenario's limit")
+    assertResponseStatus(·, ·, "SetChargingProfile", "Accepted", "SetChargingProfile accepted", {direction:"received"})
+    assertAllAnswered(·, ·, "TransactionEvent")
+  SPEC cert201-tck70-stack-profiles connector=1 bootWaitSecs=4 holdSecs=15 ocppVersion="OCPP-2.0.1" runsSimTemplate=false
+    assertReceived(·, ·, "SetChargingProfile", "SetChargingProfile.req received")
+    assertChargingProfileSent(·, ·, 0, 1, {id:9170,stackLevel:70,chargingProfilePurpose:"TxDefaultProfile",chargingProfileKind:"Absolute"}, "the first request installs profile 9170 at stack level 70")
+    assertChargingProfileSent(·, ·, 1, 1, {id:9171,stackLevel:71,chargingProfilePurpose:"TxDefaultProfile",chargingProfileKind:"Absolute"}, "the second request installs a different profile at a higher stack level")
+    assertChargingScheduleSent(·, ·, 1, {id:9171,chargingRateUnit:"W"}, {startPeriod:0,limit:4000}, "the stacked profile carries its own limit")
+    assertCallCount(·, ·, "received", "SetChargingProfile", 2, "the CSMS sent one request per profile and no more")
+    assertResponseStatus(·, ·, "SetChargingProfile", "Accepted", "the stacked profile is accepted", {direction:"received",occurrence:1})
+  SPEC cert201-tck43-composite-schedule-evse connector=1 bootWaitSecs=4 holdSecs=10 ocppVersion="OCPP-2.0.1" runsSimTemplate=false
+    assertReceived(·, ·, "GetCompositeSchedule", "GetCompositeSchedule.req received")
+    assertCompositeScheduleRequested(·, ·, 0, {evseId:1,duration:3600,chargingRateUnit:"W"}, "GetCompositeSchedule.req asks EVSE 1 for an hour of schedule in watts")
+    assertCallCount(·, ·, "received", "GetCompositeSchedule", 1, "the CSMS asked once, rather than once per EVSE")
+    assertResponseStatus(·, ·, "GetCompositeSchedule", "Accepted", "GetCompositeSchedule accepted", {direction:"received"})
+  SPEC cert201-tck44-composite-schedule-station connector=1 bootWaitSecs=4 holdSecs=10 ocppVersion="OCPP-2.0.1" runsSimTemplate=false
+    assertReceived(·, ·, "GetCompositeSchedule", "GetCompositeSchedule.req received")
+    assertCompositeScheduleRequested(·, ·, 0, {evseId:0,duration:3600,chargingRateUnit:"W"}, "GetCompositeSchedule.req asks the grid connection point, at evseId 0, for an hour of schedule in watts")
+    assertCallCount(·, ·, "received", "GetCompositeSchedule", 1, "the CSMS asked once, rather than once per EVSE")
+    assertResponseStatus(·, ·, "GetCompositeSchedule", "Accepted", "GetCompositeSchedule accepted", {direction:"received"})
+  SPEC cert201-tck29-profiles-in-transaction connector=1 bootWaitSecs=4 holdSecs=15 ocppVersion="OCPP-2.0.1" runsSimTemplate=false states=[{state:"EnergyTransferStarted",connectorId:1,idToken:"CE712001"}]
+    assertStateEstablished(·, ·, "EnergyTransferStarted", "a transaction was running when the profiles were asked for")
+    assertResponseStatus(·, ·, "SetChargingProfile", "Accepted", "the station holds the profile this case asks it to report", {direction:"received"})
+    assertChargingProfilesRequested(·, ·, 7229, 0, {chargingLimitSource:["CSO","EMS","SO","Other"]}, "GetChargingProfiles.req asks the charging station itself, at evseId 0, across every limit source")
+    assertChargingProfilesAnswered(·, ·, 7229, "Accepted", "the station accepted the query rather than answering NoProfiles")
+    assertAllAnswered(·, ·, "ReportChargingProfiles")
+  SPEC cert201-tck30-profiles-evse connector=1 bootWaitSecs=4 holdSecs=15 ocppVersion="OCPP-2.0.1" runsSimTemplate=false
+    assertResponseStatus(·, ·, "SetChargingProfile", "Accepted", "the station holds the profile this case asks it to report", {direction:"received"})
+    assertChargingProfilesRequested(·, ·, 7230, 1, {chargingLimitSource:["CSO","EMS","SO","Other"]}, "GetChargingProfiles.req asks EVSE 1 across every limit source")
+    assertChargingProfilesAnswered(·, ·, 7230, "Accepted", "the station accepted the query rather than answering NoProfiles")
+    assertAllAnswered(·, ·, "ReportChargingProfiles")
+  SPEC cert201-tck32-profiles-by-id connector=1 bootWaitSecs=4 holdSecs=15 ocppVersion="OCPP-2.0.1" runsSimTemplate=false
+    assertResponseStatus(·, ·, "SetChargingProfile", "Accepted", "the station holds the profile this case asks it to report", {direction:"received"})
+    assertChargingProfilesRequested(·, ·, 7232, null, {chargingProfileId:[9232]}, "GetChargingProfiles.req names profile 9232 and omits evseId, so it asks every EVSE about that one profile")
+    assertChargingProfilesAnswered(·, ·, 7232, "Accepted", "the station accepted the query rather than answering NoProfiles")
+    assertAllAnswered(·, ·, "ReportChargingProfiles")
+  SPEC cert201-tck33-profiles-by-stack-level connector=1 bootWaitSecs=4 holdSecs=15 ocppVersion="OCPP-2.0.1" runsSimTemplate=false
+    assertResponseStatus(·, ·, "SetChargingProfile", "Accepted", "the station holds the profile this case asks it to report", {direction:"received"})
+    assertChargingProfilesRequested(·, ·, 7233, 1, {stackLevel:33}, "GetChargingProfiles.req narrows EVSE 1 to stack level 33 and to nothing else")
+    assertChargingProfilesAnswered(·, ·, 7233, "Accepted", "the station accepted the query rather than answering NoProfiles")
+    assertAllAnswered(·, ·, "ReportChargingProfiles")
+  SPEC cert201-tck34-profiles-by-limit-source connector=1 bootWaitSecs=4 holdSecs=15 ocppVersion="OCPP-2.0.1" runsSimTemplate=false
+    assertResponseStatus(·, ·, "SetChargingProfile", "Accepted", "the station holds the profile this case asks it to report", {direction:"received"})
+    assertChargingProfilesRequested(·, ·, 7234, 1, {chargingLimitSource:["CSO"]}, "GetChargingProfiles.req narrows EVSE 1 to the CSO limit source and to nothing else")
+    assertChargingProfilesAnswered(·, ·, 7234, "Accepted", "the station accepted the query rather than answering NoProfiles")
+    assertAllAnswered(·, ·, "ReportChargingProfiles")
+  SPEC cert201-tck35-profiles-by-purpose connector=1 bootWaitSecs=4 holdSecs=15 ocppVersion="OCPP-2.0.1" runsSimTemplate=false
+    assertResponseStatus(·, ·, "SetChargingProfile", "Accepted", "the station holds the profile this case asks it to report", {direction:"received"})
+    assertChargingProfilesRequested(·, ·, 7235, 1, {chargingProfilePurpose:"TxDefaultProfile"}, "GetChargingProfiles.req narrows EVSE 1 to the TxDefaultProfile purpose and to nothing else")
+    assertChargingProfilesAnswered(·, ·, 7235, "Accepted", "the station accepted the query rather than answering NoProfiles")
+    assertAllAnswered(·, ·, "ReportChargingProfiles")
+  SPEC cert201-tck36-profiles-by-purpose-stack connector=1 bootWaitSecs=4 holdSecs=15 ocppVersion="OCPP-2.0.1" runsSimTemplate=false
+    assertResponseStatus(·, ·, "SetChargingProfile", "Accepted", "the station holds the profile this case asks it to report", {direction:"received"})
+    assertChargingProfilesRequested(·, ·, 7236, 1, {chargingProfilePurpose:"TxDefaultProfile",stackLevel:36}, "GetChargingProfiles.req narrows EVSE 1 to the TxDefaultProfile purpose AND stack level 36")
+    assertChargingProfilesAnswered(·, ·, 7236, "Accepted", "the station accepted the query rather than answering NoProfiles")
+    assertAllAnswered(·, ·, "ReportChargingProfiles")
+  SPEC cert201-tck05-clear-reported-profile connector=1 bootWaitSecs=4 holdSecs=20 ocppVersion="OCPP-2.0.1" runsSimTemplate=false
+    assertResponseStatus(·, ·, "SetChargingProfile", "Accepted", "the station holds the profile this case goes on to clear", {direction:"received"})
+    assertChargingProfilesRequested(·, ·, 7305, 1, {stackLevel:5}, "GetChargingProfiles.req asks EVSE 1 for the profiles at stack level 5")
+    assertChargingProfilesAnswered(·, ·, 7305, "Accepted", "the station accepted the query rather than answering NoProfiles")
+    assertClearedTheReportedProfile(·, ·, 7305, "ClearChargingProfile.req names the profile the station's own report announced")
+    assertClearProfileRequested(·, ·, 0, {chargingProfileId:9305}, "ClearChargingProfile.req clears by identifier alone, with no criteria beside it")
+    assertResponseStatus(·, ·, "ClearChargingProfile", "Accepted", "the station cleared the profile it had just reported", {direction:"received"})
+    assertAllAnswered(·, ·, "ReportChargingProfiles")
+  SPEC cert201-tck06-clear-profile-by-criteria connector=1 bootWaitSecs=4 holdSecs=12 ocppVersion="OCPP-2.0.1" runsSimTemplate=false
+    assertResponseStatus(·, ·, "SetChargingProfile", "Accepted", "the station holds the profile this case goes on to clear", {direction:"received"})
+    assertClearProfileRequested(·, ·, 0, {chargingProfileCriteria:{evseId:1,chargingProfilePurpose:"TxDefaultProfile",stackLevel:6}}, "ClearChargingProfile.req clears EVSE 1's TxDefaultProfile at stack level 6, by criteria and not by identifier")
+    assertResponseStatus(·, ·, "ClearChargingProfile", "Accepted", "the station cleared a profile the criteria matched", {direction:"received"})
+  SPEC cert201-tck08-clear-unknown-profile connector=1 bootWaitSecs=4 holdSecs=10 ocppVersion="OCPP-2.0.1" runsSimTemplate=false
+    assertClearProfileRequested(·, ·, 0, {chargingProfileId:9308}, "ClearChargingProfile.req names profile 9308 and carries no criteria")
+    assertNotSent(·, ·, "SetChargingProfile", "received", "no profile was installed before the request, so the identifier matches nothing the station holds")
+    assertResponseStatus(·, ·, "ClearChargingProfile", "Unknown", "the station declined an identifier it holds no profile under", {direction:"received"})
+  SPEC cert201-tcm01-install-csms-root connector=1 bootWaitSecs=4 holdSecs=10 ocppVersion="OCPP-2.0.1" runsSimTemplate=false states=[{state:"CertificateInstalled",certificateType:"CSMSRootCertificate"}]
+    assertStateEstablished(·, ·, "CertificateInstalled", "the station was asked to install a certificate")
+    assertReceived(·, ·, "InstallCertificate", "InstallCertificate.req received")
+    assertCertificateInstallRequested(·, ·, 0, "CSMSRootCertificate", "InstallCertificate.req installs a CSMSRootCertificate and carries a certificate")
+  SPEC cert201-tcm02-install-manufacturer-root connector=1 bootWaitSecs=4 holdSecs=10 ocppVersion="OCPP-2.0.1" runsSimTemplate=false states=[{state:"CertificateInstalled",certificateType:"ManufacturerRootCertificate"}]
+    assertStateEstablished(·, ·, "CertificateInstalled", "the station was asked to install a certificate")
+    assertReceived(·, ·, "InstallCertificate", "InstallCertificate.req received")
+    assertCertificateInstallRequested(·, ·, 0, "ManufacturerRootCertificate", "InstallCertificate.req installs a ManufacturerRootCertificate and carries a certificate")
+  SPEC cert201-tcm03-install-v2g-root connector=1 bootWaitSecs=4 holdSecs=10 ocppVersion="OCPP-2.0.1" runsSimTemplate=false states=[{state:"CertificateInstalled",certificateType:"V2GRootCertificate"}]
+    assertStateEstablished(·, ·, "CertificateInstalled", "the station was asked to install a certificate")
+    assertReceived(·, ·, "InstallCertificate", "InstallCertificate.req received")
+    assertCertificateInstallRequested(·, ·, 0, "V2GRootCertificate", "InstallCertificate.req installs a V2GRootCertificate and carries a certificate")
+  SPEC cert201-tcm04-install-mo-root connector=1 bootWaitSecs=4 holdSecs=10 ocppVersion="OCPP-2.0.1" runsSimTemplate=false states=[{state:"CertificateInstalled",certificateType:"MORootCertificate"}]
+    assertStateEstablished(·, ·, "CertificateInstalled", "the station was asked to install a certificate")
+    assertReceived(·, ·, "InstallCertificate", "InstallCertificate.req received")
+    assertCertificateInstallRequested(·, ·, 0, "MORootCertificate", "InstallCertificate.req installs an MORootCertificate and carries a certificate")
+  SPEC cert201-tcm05-install-refused connector=1 bootWaitSecs=4 holdSecs=10 ocppVersion="OCPP-2.0.1" runsSimTemplate=false
+    assertReceived(·, ·, "InstallCertificate", "InstallCertificate.req received")
+    assertCertificateInstallRequested(·, ·, 0, "CSMSRootCertificate", "InstallCertificate.req installs a CSMSRootCertificate and carries a certificate")
+    assertResponseStatus(·, ·, "InstallCertificate", "Rejected", "the station refused the certificate (Rejected, where the case scripts Failed)", {direction:"received"})
+  SPEC cert201-tcm13-installed-ids-manufacturer-root connector=1 bootWaitSecs=4 holdSecs=10 ocppVersion="OCPP-2.0.1" runsSimTemplate=false states=[{state:"GetInstalledCertificates",certificateType:"ManufacturerRootCertificate"}]
+    assertStateEstablished(·, ·, "GetInstalledCertificates", "the station was asked for the certificates it holds")
+    assertReceived(·, ·, "GetInstalledCertificateIds", "GetInstalledCertificateIds.req received")
+    assertCertificateTypesRequested(·, ·, 0, ["ManufacturerRootCertificate"], "GetInstalledCertificateIds.req asks about ManufacturerRootCertificate and nothing else")
+  SPEC cert201-tcm14-installed-ids-v2g-root connector=1 bootWaitSecs=4 holdSecs=10 ocppVersion="OCPP-2.0.1" runsSimTemplate=false states=[{state:"GetInstalledCertificates",certificateType:"V2GRootCertificate"}]
+    assertStateEstablished(·, ·, "GetInstalledCertificates", "the station was asked for the certificates it holds")
+    assertReceived(·, ·, "GetInstalledCertificateIds", "GetInstalledCertificateIds.req received")
+    assertCertificateTypesRequested(·, ·, 0, ["V2GRootCertificate"], "GetInstalledCertificateIds.req asks about V2GRootCertificate and nothing else")
+  SPEC cert201-tcm15-installed-ids-v2g-chain connector=1 bootWaitSecs=4 holdSecs=10 ocppVersion="OCPP-2.0.1" runsSimTemplate=false states=[{state:"GetInstalledCertificates",certificateType:"V2GCertificateChain"}]
+    assertStateEstablished(·, ·, "GetInstalledCertificates", "the station was asked for the certificates it holds")
+    assertReceived(·, ·, "GetInstalledCertificateIds", "GetInstalledCertificateIds.req received")
+    assertCertificateTypesRequested(·, ·, 0, ["V2GCertificateChain"], "GetInstalledCertificateIds.req asks about V2GCertificateChain and nothing else")
+  SPEC cert201-tcm16-installed-ids-mo-root connector=1 bootWaitSecs=4 holdSecs=10 ocppVersion="OCPP-2.0.1" runsSimTemplate=false states=[{state:"GetInstalledCertificates",certificateType:"MORootCertificate"}]
+    assertStateEstablished(·, ·, "GetInstalledCertificates", "the station was asked for the certificates it holds")
+    assertReceived(·, ·, "GetInstalledCertificateIds", "GetInstalledCertificateIds.req received")
+    assertCertificateTypesRequested(·, ·, 0, ["MORootCertificate"], "GetInstalledCertificateIds.req asks about MORootCertificate and nothing else")
+  SPEC cert201-tcm18-installed-ids-all-types connector=1 bootWaitSecs=4 holdSecs=10 ocppVersion="OCPP-2.0.1" runsSimTemplate=false
+    assertReceived(·, ·, "GetInstalledCertificateIds", "GetInstalledCertificateIds.req received")
+    assertCertificateTypesRequested(·, ·, 0, null, "GetInstalledCertificateIds.req omits certificateType, which asks about every type")
+  SPEC cert201-tcm19-installed-ids-not-found connector=1 bootWaitSecs=4 holdSecs=10 ocppVersion="OCPP-2.0.1" runsSimTemplate=false
+    assertReceived(·, ·, "GetInstalledCertificateIds", "GetInstalledCertificateIds.req received")
+    assertCertificateTypesRequested(·, ·, 0, ["ManufacturerRootCertificate"], "GetInstalledCertificateIds.req asks about ManufacturerRootCertificate")
+    assertResponseStatus(·, ·, "GetInstalledCertificateIds", "NotFound", "the station holds no certificate of the type asked for", {direction:"received"})
 
 FILE core.ts
   HELPER assertGetConfigurationUnfiltered

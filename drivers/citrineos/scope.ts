@@ -41,6 +41,7 @@ const OBSERVED =
   "expresses the operation and Postgres answers the observation.";
 
 const d = (reason: string) => ({ status: "DRIVABLE" as const, reason });
+const c = (reason: string) => ({ status: "CONDITIONAL" as const, reason });
 const na = (reason: string) => ({ status: "NOT_APPLICABLE" as const, reason });
 
 /** What the first sweep answered for every driven 2.0.1 row, worded once. */
@@ -153,8 +154,8 @@ const V2_SCOPE = {
 
   // --- LocalAuthListManagement --------------------------------------------
   // Drivable only from the v2 line: the 1.6 GetLocalListVersion and
-  // SendLocalList endpoints do not exist at v1.9.1. compose.yaml pins
-  // v2.0.0-beta1 for exactly these six rows; README.md documents what pinning
+  // SendLocalList endpoints do not exist at v1.9.1. compose.yaml pins a v2
+  // prerelease for exactly these six rows; README.md documents what pinning
   // v1.9.1 instead would cost.
   "cert16-tc042-1-get-local-list-version-not-supported": d(OBSERVED),
   "cert16-tc042-2-get-local-list-version-empty": d(OBSERVED),
@@ -201,19 +202,26 @@ const V2_SCOPE = {
       "thinnest timing margin of all: retrieveDate was +90s against a 110s " +
       "hold, leaving ~20s. The spec now asks for +15s. " +
       "THE 1006 THIS ROW USED TO CALL UNEXPLAINED HAS AN ANSWER, AND IT IS " +
-      "NOT THE CHARGE POINT: the CitrineOS process dies on an unhandled " +
+      "NOT THE CHARGE POINT: the CitrineOS process died on an unhandled " +
       "promise rejection -- SequelizeForeignKeyConstraintError on " +
       "OCPPMessages_requestMessageId_fkey, thrown from " +
       "WebhookDispatcher.dispatchMessageReceived while persisting a message -- " +
-      "and compose's `restart: unless-stopped` brings it straight back. From " +
+      "and compose's `restart: unless-stopped` brought it straight back. From " +
       "the charge point's side that is exactly a 1006 followed by a reconnect " +
       "and a reboot. Observed 21 restarts over one 26h session and 2 more " +
-      "inside a single sequential sweep. What is still NOT established is the " +
-      "old suspicion that the CALLERROR causes it: the violated key is " +
-      "requestMessageId, which fits 'the unhandled request was never " +
-      "persisted, a later response references it', but that chain has not " +
-      "been proven. The right next step is a CitrineOS issue for the " +
-      "unhandled rejection, which is a crash whatever triggers it.",
+      "inside a single sequential sweep. THE CHAIN IS NOW ESTABLISHED, and " +
+      "not by us: citrineos-core#830 states the mechanism and fixes it. The " +
+      "correlation trigger ran entirely BEFORE INSERT, and its CALL branch " +
+      "back-fills an already-stored response with `requestMessageId = NEW.id` " +
+      "on a row Postgres has not inserted yet -- so every CALL persisted " +
+      "after its own response violated that key. The old suspicion had the " +
+      "right shape and the wrong direction: it is not that the request was " +
+      "never persisted, it is that it was persisted second. The pinned image " +
+      "is v2.0.0-beta3, which carries the fix, so this 1006 is history on the " +
+      "digest this driver runs against -- and the crash it rode is not: a " +
+      "failed audit insert still escapes, because citrineos-core#846 sits on " +
+      "`next` only. Tracking that port to `main` is what is owed here, not a " +
+      "new issue.",
   ),
   "cert16-tc044-3-firmware-install-failed": d(
     `${FIRMWARE_STATUS_NOT_HANDLED} The cleanest demonstration of what issue ` +
@@ -309,6 +317,446 @@ const V2_SCOPE = {
       "intact: the 2.0.1 ResetRequest schema constrains it no further, and " +
       "nothing validates it against the station's own EVSEs before dispatch.",
   ),
+
+  // --- OCPP 2.0.1, NOT YET MEASURED ---------------------------------------
+  // CONDITIONAL for the reason the seven rows above were CONDITIONAL until
+  // 2026-08-19: they are expressible -- three of the four ask this driver for
+  // nothing at all, and the fourth asks for a TriggerMessage it already
+  // dispatches for TC_F_20 -- but whether the CSMS emits the message each case
+  // needs is unknown until a live run. DRIVABLE here would assert a
+  // measurement nobody has taken, which is the one thing tck/scope.ts's rules
+  // say a row may not do. Each reason below states the question the first
+  // sweep must answer; the sweep on the pull request that adds them is what
+  // answers it.
+  //
+  // NO FEATURE IDENTIFIER on any of them, and that is the rule rather than an
+  // omission: an identifier names the feature a CONDITIONAL case hangs on, and
+  // all four are mandatory cases with no conditional feature behind them. What
+  // is unknown is this deployment's behaviour, which is prose.
+  "cert201-tcc02-authorize-invalid": c(
+    "Does the 2.0.1 Authorize handler answer an idToken it has no row for " +
+      "with idTokenInfo.status Invalid or Unknown? Nothing to express -- the " +
+      "station presents the token -- and the answer is not obvious from the " +
+      "1.6 side: that handler reaches its status mapper only through the " +
+      "Accepted branch and defaults everything else to Invalid, while the " +
+      "2.0.1 handler matches the (idToken, type) PAIR, so a token absent from " +
+      "Authorizations and a token stored under another type look the same to " +
+      "it. Either value satisfies the case; a CALLERROR does not, and that is " +
+      "the outcome to watch for, because it is what an idToken failing the " +
+      "ISO14443 format check produces.",
+  ),
+  "cert201-tce10-start-authorized": c(
+    "Does the CSMS answer a Started TransactionEvent carrying an idToken it " +
+      "just accepted on an Authorize with the same Accepted verdict? Nothing " +
+      "to express again, and this is the only 2.0.1 transaction traffic in " +
+      "this suite besides cert201-tcb21's -- which established that the " +
+      "provisioned ISO14443 tag reaches an Accepted Authorize, and stopped " +
+      "there. What is untested is the second verdict: a CSMS that accepts a " +
+      "token and then declines the transaction started on it fails this case " +
+      "and no row above would notice.",
+  ),
+  "cert201-tcf27-trigger-not-implemented": c(
+    "Two questions, and the second is the case's. Does requestedMessage " +
+      "FirmwareStatusNotification reach the wire unchanged -- TC_F_20 " +
+      "established that Heartbeat does, and a value this CSMS cannot act on " +
+      "itself is a different path through the same endpoint. And does the " +
+      "CSMS go on serving the station after a TriggerMessageResponse of " +
+      "NotImplemented, which the scenario measures as an ordinary Heartbeat " +
+      "answered afterwards.",
+  ),
+  "cert201-tcj01-clock-aligned-meter-values": c(
+    "Does the CSMS answer a bare MeterValuesRequest from a station with no " +
+      "transaction running? Nothing to express, and the reason it is a real " +
+      "question is issue #86's shape: the 2.0.1 handlers here have answered a " +
+      "request, logged a warning and stored nothing before. This scenario " +
+      "does not read the CSMS back -- unlike cert201-tcb01, there is no " +
+      "device-model row a meter reading lands in that this driver can look up " +
+      "-- so what it reports is the wire obligation alone, three times over.",
+  ),
+
+  // --- OCPP 2.0.1 ChangeAvailability, NOT YET MEASURED --------------------
+  // CONDITIONAL for the block above's reason, and these six are the first
+  // 2.0.1 rows where what is unknown is THIS DRIVER'S OWN ROUTE as well as the
+  // CSMS's behaviour. `configuration/changeAvailability` was read off an
+  // @AsMessageEndpoint decorator on the v2 line, which is what variant.ts
+  // requires before an action may be declared routed -- and a decorator that
+  // exists says the endpoint is bound, not that a request through it reaches
+  // the wire intact. DRIVABLE would assert a measurement nobody has taken.
+  //
+  // ONE QUESTION IS SHARED BY ALL SIX and is the reason this block is worth
+  // reading as a block: does `evse` survive the CSMS as an OBJECT? Every
+  // other 2.0.1 operation this driver dispatches carries scalars, and the
+  // three addressing scopes these cases are about are spelled by which members
+  // of a nested object are present. A CSMS that flattened it, defaulted it, or
+  // dropped it turns the station-wide request into the EVSE-scoped one and
+  // back; TC_B_22 established that a scalar `evseId` reaches the wire
+  // untouched, and that says nothing about a nested one.
+  //
+  // NO FEATURE IDENTIFIER, by the rule the block above states: six mandatory
+  // cases with no conditional feature behind them.
+  "cert201-tcg03-evse-inoperative": c(
+    "Does an evse object carrying only `id` reach the wire with only `id`? " +
+      "This row is also the first whose request is sent by a FIXTURE rather " +
+      "than by the scenario -- tck/states-201.ts's `Unavailable` -- so it " +
+      "additionally answers whether a CSMS-initiated Reusable State works " +
+      "against this deployment at all. And whether the station's resulting " +
+      "StatusNotification is answered, which issue #86's shape makes a real " +
+      "question for 2.0.1 handlers here.",
+  ),
+  "cert201-tcg04-evse-operative": c(
+    "The row above's question with the other operationalStatus, and one " +
+      "more: two ChangeAvailability requests reach this station in one " +
+      "scenario, so it is also where a CSMS that coalesced or reordered them " +
+      "would show. Nothing in this suite has put two of one 2.0.1 operation " +
+      "to this CSMS before.",
+  ),
+  "cert201-tcg05-station-inoperative": c(
+    "Does an OMITTED evse stay omitted? This is the row where a CSMS that " +
+      "helpfully fills in a default -- evse id 0, or an empty object -- turns " +
+      "a station-wide request into something else, and the schema would not " +
+      "stop it: `evse` is optional and `additionalProperties` is true. The " +
+      "station answers a different question depending on which arrives.",
+  ),
+  "cert201-tcg06-station-operative": c(
+    "The row above's question with the other operationalStatus, sent twice " +
+      "in one scenario for TC_G_04's reason. Nothing here is expressible only " +
+      "if the omission holds, which is why this row and that one are opened " +
+      "on the same fact from two directions.",
+  ),
+  "cert201-tcg07-connector-inoperative": c(
+    "Does `evse.connectorId` reach the wire at all? It is the only member " +
+      "distinguishing this case from TC_G_03 -- the pinned station ignores it, " +
+      "so the answer is visible ONLY in the request the CSMS sent, and a CSMS " +
+      "that dropped it would make these two scenarios one measurement " +
+      "reported twice. That is what this row is open on and what the first " +
+      "sweep settles.",
+  ),
+  "cert201-tcg08-connector-operative": c(
+    "The row above's question with the other operationalStatus, sent twice " +
+      "in one scenario. Same measurement, same member, and its answer is " +
+      "what says whether the connector-scoped pair are two cases here or one.",
+  ),
+
+  // --- OCPP 2.0.1 Smart Charging, NOT YET MEASURED ------------------------
+  // CONDITIONAL for the block above's reason, and these nine are the first
+  // 2.0.1 rows where the CSMS is not a pass-through at all: the SmartCharging
+  // endpoints VALIDATE BEFORE THEY DISPATCH. A dozen of Part 2's K01 rules are
+  // checked in the CSMS, and a request that fails one is answered HTTP 200
+  // with `success: false` and puts NOTHING on the websocket -- so the failure
+  // mode these rows are open on is not a reshaped request, it is no request at
+  // all with an empty frame log to read it from. Every rule was read in the
+  // pinned image's sources and every scenario is written against it; whether
+  // that reading is complete is what the first sweep answers.
+  //
+  // TWO QUESTIONS ARE SHARED BY ALL NINE. Does a request survive that
+  // validation -- which is a question about our profiles rather than about the
+  // CSMS, and the one a red run here is likeliest to be about. And does a
+  // profile survive the CSMS as a STRUCTURE: `ChangeAvailability` established
+  // that a nested `evse` object of two scalars reaches the wire, and a
+  // charging profile is an object carrying an array of objects carrying an
+  // array of objects, which is a different claim.
+  //
+  // NO FEATURE IDENTIFIER on any of them, by the rule the blocks above state:
+  // mandatory cases with no conditional feature behind them. Smart Charging is
+  // a certification profile rather than a feature this scope table can hang a
+  // row on.
+  "cert201-tck01-set-tx-default-profile": c(
+    "Does a whole ChargingProfileType reach the wire unaltered -- purpose, " +
+      "kind, stack level, identifier, the schedule's unit and duration, the " +
+      "period's limit, and the validity window? This row is the widest single " +
+      "payload this driver has ever put to this CSMS, and the window is the " +
+      "half with a known way to go wrong: the endpoint compares validFrom and " +
+      "validTo against its OWN clock before dispatch, so a container whose " +
+      "time has drifted from the runner's refuses a request this scenario " +
+      "back-dated by a minute precisely to survive that.",
+  ),
+  "cert201-tck03-set-station-max-profile": c(
+    "Does the pair (ChargingStationMaxProfile, evseId 0) survive together? " +
+      "The endpoint refuses that purpose at any other EVSE and the station " +
+      "rejects it on arrival, so the two ends agree -- which means a CSMS " +
+      "that moved the scope produces a Rejected rather than a reshaped " +
+      "request, and this row is where that is told from a dispatch failure.",
+  ),
+  "cert201-tck04-replace-profile": c(
+    "Does a second profile under one identifier reach the wire at all? This " +
+      "is the most delicate row of the nine and the reason is a CSMS rule " +
+      "rather than a wire one: a profile whose station, stack level, purpose " +
+      "and EVSE an ACTIVE one already holds is refused unless its validTo is " +
+      "strictly later. The scenario's two windows ascend by a minute, which " +
+      "also makes a re-run against a database that still holds the first " +
+      "run's profile pass -- and whether an accepted SetChargingProfile " +
+      "leaves the first profile active by the time the second is sent is a " +
+      "race this deployment runs through a GetChargingProfiles of its own.",
+  ),
+  "cert201-tck10-set-default-profile-all-evses": c(
+    "The row above's structure with the scope the case is about: does " +
+      "evseId 0 stay 0 for a TxDefaultProfile? For this request 0 means every " +
+      "EVSE rather than the station's own cap, so a CSMS that helpfully " +
+      "resolved it to a real EVSE has sent TC_K_01's request, and nothing but " +
+      "that one member tells the two apart.",
+  ),
+  "cert201-tck19-set-recurring-profile": c(
+    "Do recurrencyKind and the schedule's duration both survive? The pinned " +
+      "station REJECTS a Recurring profile carrying no recurrencyKind, so a " +
+      "CSMS that dropped the member turns this row red at the station rather " +
+      "than at an assertion -- which is a distinction this row is open on, " +
+      "because a Rejected status and a missing member are two different " +
+      "findings and only one of them is the CSMS's.",
+  ),
+  "cert201-tck43-composite-schedule-evse": c(
+    "Does a GetCompositeSchedule for a named EVSE reach the wire? It is the " +
+      "one endpoint here that reads the DEVICE MODEL before dispatching -- it " +
+      "resolves the EVSE with a null connectorId, which is the row " +
+      "provision.ts started writing for exactly this -- so a red run is as " +
+      "likely to be about the fixture as about the CSMS, and telling those " +
+      "apart is what the first sweep buys. The rate unit is asked for as " +
+      "watts because a deployment declaring a RateUnit member list refuses " +
+      "anything outside it, silently.",
+  ),
+  "cert201-tck44-composite-schedule-station": c(
+    "The row above's question at evseId 0, where the CSMS skips the EVSE " +
+      "lookup entirely -- so the pair is also how a fixture problem is told " +
+      "from a routing one: this row green beside that one red is the device " +
+      "model, both red is the endpoint.",
+  ),
+  "cert201-tck60-set-tx-profile": c(
+    "Does a TxProfile naming a running transaction reach the wire, and does " +
+      "the identifier survive as the STRING the station minted? Three things " +
+      "have to hold at once and none of them has been measured: the CSMS " +
+      "finds the transaction by that string, it finds an EVSE row with a null " +
+      "connectorId, and no active profile already holds this stack level " +
+      "against that transaction. It is also the only 2.0.1 transaction " +
+      "traffic in this suite besides cert201-tcb21's and cert201-tce10's.",
+  ),
+  "cert201-tck70-stack-profiles": c(
+    "Do two profiles at two stack levels both reach the wire? Nothing here " +
+      "is expressible only if they do -- the two requests are independent -- " +
+      "so what this row is open on is the negative: a CSMS that coalesced " +
+      "them, or refused the second because it read two profiles at one EVSE " +
+      "as a conflict, is the finding, and TC_K_04 is the row that says the " +
+      "same CSMS accepts a replacement.",
+  ),
+  // --- OCPP 2.0.1 GetChargingProfiles, NOT YET MEASURED -------------------
+  // CONDITIONAL for the block above's reason, and these seven carry ONE
+  // question none of the nine above had: every one of them installs a profile
+  // and then asks for it back, so a red row here is either the setup, the
+  // query or the station -- three causes where the block above has two. The
+  // per-row text below is what each one is open on beyond that.
+  //
+  // AND ONE FACT THAT IS THIS DEPLOYMENT'S ALONE. An accepted
+  // SetChargingProfile makes this CSMS send a GetChargingProfiles OF ITS OWN,
+  // so every scenario here puts two requests of the action under test on the
+  // wire and only one is the case. The scenarios select theirs by requestId
+  // rather than by position, and a run where the CSMS's generated identifier
+  // collides with a scenario's is a FAIL naming the count -- deliberately, so
+  // that a collision cannot quietly move which request was measured.
+  "cert201-tck29-profiles-in-transaction": c(
+    "Does a query scoped to the charging station itself survive with its " +
+      "evseId 0 intact, while a transaction is running? Two things could go " +
+      "wrong invisibly: a CSMS that dropped the member has asked about every " +
+      "EVSE instead, which is a different case, and a CSMS that resolved 0 to " +
+      "a real EVSE has asked TC_K_30's question. The transaction is the " +
+      "case's precondition rather than the query's subject, so the fixture " +
+      "failing costs the premise and not the request -- the row above " +
+      "cert201-tcb21 states that rule.",
+  ),
+  "cert201-tck30-profiles-evse": c(
+    "Does a criterion that narrows NOTHING reach the wire as the four-value " +
+      "list the scenario sent? This CSMS refuses an empty criterion before " +
+      "dispatch -- at least one of purpose, stack level or limit source must " +
+      "be present -- so the whole enumeration is how a request says 'all of " +
+      "them' here, and whether that list survives re-ordered, truncated or " +
+      "collapsed to CSO is what this row is open on. Collapsed to CSO is " +
+      "TC_K_34's request.",
+  ),
+  "cert201-tck32-profiles-by-id": c(
+    "Does an OMITTED evseId stay omitted? This is the only scenario in the " +
+      "suite that asks about every EVSE, and the only way to say so is by " +
+      "absence -- 0 means the charging station itself. It is also the one " +
+      "criterion this CSMS requires to travel alone: an identifier beside a " +
+      "purpose, a stack level or a limit source is refused before dispatch, " +
+      "so a CSMS that helpfully added one has produced an empty frame log " +
+      "rather than a reshaped request.",
+  ),
+  "cert201-tck33-profiles-by-stack-level": c(
+    "Does a stackLevel-only criterion reach the wire with exactly that one " +
+      "member? The three narrowing rows -- this, TC_K_35 and TC_K_36 -- " +
+      "differ in nothing else on the wire, so a CSMS that added a member " +
+      "of its own has sent one of the others' requests. Note the CSMS's own " +
+      "gate is truthiness-based, so a stack level of 0 would be refused " +
+      "before dispatch; the scenario uses its own non-zero level.",
+  ),
+  "cert201-tck34-profiles-by-limit-source": c(
+    "Does a one-value chargingLimitSource survive, and is CSO the value both " +
+      "ends agree on? The CSMS stamps CSO on every profile it installs and " +
+      "the station short-circuits to NoProfiles for any list without it, so " +
+      "the value is not the case's choice -- what this row measures is that " +
+      "the list arrives with one element rather than four (TC_K_30's " +
+      "request) and with an evseId rather than none (the CSMS's own " +
+      "unprompted query, which carries this same one-value list).",
+  ),
+  "cert201-tck35-profiles-by-purpose": c(
+    "TC_K_33's question on the other axis: does a purpose-only criterion " +
+      "reach the wire with exactly that one member? The station maps the " +
+      "purpose through a table that does not know " +
+      "ChargingStationExternalConstraints, so a CSMS that substituted a " +
+      "purpose is answered NoProfiles rather than with a reshaped report -- " +
+      "which is why the status is asserted beside the request.",
+  ),
+  "cert201-tck36-profiles-by-purpose-stack": c(
+    "Do TWO criterion members travel together? This is the row the pair " +
+      "above is a control for: both members present is this case, either one " +
+      "alone is one of theirs, and nothing else on the wire tells the three " +
+      "apart. A CSMS that dropped a member it did not understand is the " +
+      "finding, and it is invisible to any check that only looks for the " +
+      "members it was told to expect.",
+  ),
+  // --- OCPP 2.0.1 ClearChargingProfile, NOT YET MEASURED -----------------
+  // CONDITIONAL for the block above's reason. What is new in these three is
+  // that two of the three CAUSES are gone: nothing here is queried back, so a
+  // red row is the request or the station and not a report that never came.
+  // What replaces it is narrower and worse to debug -- this CSMS's K10.FR.02
+  // check refuses a request carrying both members and one carrying neither
+  // BEFORE dispatch, with an HTTP 200 and no frame, so a reshaped request
+  // shows up as an empty trace rather than as a wrong one.
+  "cert201-tck05-clear-reported-profile": c(
+    "Does the identifier the CSMS clears come from the station's report? " +
+      "Every other row here compares a request against a literal; this one " +
+      "compares it against another frame, because a CSMS that ignored the " +
+      "report and cleared what it had installed would satisfy every " +
+      "literal-based check while measuring nothing. It is also the only row " +
+      "in the block whose request the CSMS could not have built before the " +
+      "run started.",
+  ),
+  "cert201-tck06-clear-profile-by-criteria": c(
+    "Do three criterion members travel together, and does an evseId of 1 " +
+      "reach the wire beside them? This CSMS gates the criteria on " +
+      "truthiness, so an evseId of 0 -- the charging station itself -- would " +
+      "be refused before dispatch and there is no case here that needs it. " +
+      "What the row is open on is whether the purpose survives: the station " +
+      "maps it through a table, and a purpose it cannot map is answered " +
+      "Unknown, which is TC_K_08's answer to TC_K_06's request.",
+  ),
+  "cert201-tck08-clear-unknown-profile": c(
+    "Does the station DECLINE, and does the CSMS carry a negative answer " +
+      "back unchanged? This is the only case in the Smart Charging block " +
+      "that expects anything other than Accepted, so it is the only one that " +
+      "would notice a CSMS answering Accepted to everything. Its risk is its " +
+      "own precondition rather than the CSMS: the identifier must be one no " +
+      "other scenario installs, since a sweep shares one station and an " +
+      "installed 9308 would turn the expected Unknown into an Accepted.",
+  ),
+  // --- OCPP 2.0.1 GetInstalledCertificateIds, NOT YET MEASURED ------------
+  // CONDITIONAL for the block above's reason -- these six have not been driven
+  // against the pinned image -- and what is open here is a different thing from
+  // what was open there. This CSMS's certificates module forwards the body
+  // after schema validation and touches no database row before dispatch, which
+  // is not true of the other two actions that module serves, so there is no
+  // pre-dispatch gate to be refused by. What is untested is the ROUTE: a
+  // module prefix and an endpoint read off a decorator compile, are declared,
+  // and 404 -- which api-client.ts classifies as a non-dispatch rather than as
+  // a capability gap, so the first run of these rows is what says the path
+  // exists.
+  //
+  // NONE OF THE SIX READS THE STATION'S ANSWER except the last. The pinned
+  // simulator answers NotFound from a canned handler that reads no request
+  // member, which is the scripted answer for TC_M_19 and the wrong one for the
+  // other five -- so those five measure the request the CSMS sent and stop
+  // there. That is the case's own boundary rather than a concession: the
+  // station's answer in a CSMS campaign is the test tool's script.
+  "cert201-tcm13-installed-ids-manufacturer-root": c(
+    "Does the type the case names reach the wire, alone? These four rows " +
+      "differ from each other in one enum value and in nothing else, so a " +
+      "CSMS that dropped the member -- asking about every type instead of " +
+      "one -- would satisfy any check that only looked for the action.",
+  ),
+  "cert201-tcm14-installed-ids-v2g-root": c(
+    "The same question for V2GRootCertificate. Its own risk is that this " +
+      "deployment has an ISO 15118 code path of its own around V2G material, " +
+      "and a CSMS that routed the request through it could answer before the " +
+      "wire.",
+  ),
+  "cert201-tcm15-installed-ids-v2g-chain": c(
+    "The same question for the one value that is not a root. A CSMS whose " +
+      "own model of certificate types is the INSTALL enumeration -- four " +
+      "values, no chain -- cannot express this request at all, and the way " +
+      "that fails is a refusal before dispatch rather than a wrong frame.",
+  ),
+  "cert201-tcm16-installed-ids-mo-root": c(
+    "The same question for MORootCertificate, and the fourth control for the " +
+      "three above: four requests that differ in one member are what makes " +
+      "any of them evidence that the member is carried rather than defaulted.",
+  ),
+  "cert201-tcm18-installed-ids-all-types": c(
+    "Does an ABSENT member stay absent? 2.0.1 reads an omitted " +
+      "certificateType as every type, and the schema refuses the empty array " +
+      "a CSMS that normalised it would send -- so the failure mode is a " +
+      "CALLERROR, not a wrong answer. This is the only row in the block whose " +
+      "measurement is a member NOT being there.",
+  ),
+  "cert201-tcm19-installed-ids-not-found": c(
+    "Does the CSMS carry a negative answer back unchanged? The pinned " +
+      "station answers NotFound whatever it is asked, which is this case's " +
+      "scripted answer and nobody else's -- so this is the one row in the " +
+      "block that reads the ack, and the only one that would notice a CSMS " +
+      "reporting an empty list as a success.",
+  ),
+  // --- OCPP 2.0.1 SetNetworkProfile, NOT YET MEASURED ---------------------
+  // Configuration's module rather than Certificates', and the endpoint has one
+  // conditional pre-dispatch write: it persists a row whenever ANY query
+  // parameter beyond identifier and tenantId is present. This driver sends
+  // neither, so the pair below reach the wire without one -- which is exactly
+  // the kind of fact a first run confirms rather than a table asserting it.
+  "cert201-tcb42-set-network-profile": c(
+    "Do SEVEN members survive, six of them nested? Every other 2.0.1 row here "
+      + "turns on which members are PRESENT; this case's validation names all "
+      + "six of the connection profile's required members, so a CSMS that "
+      + "rebuilt the object and dropped one has failed the case rather than "
+      + "sent a different request. It is the widest single-request assertion "
+      + "in the 2.0.1 set.",
+  ),
+  "cert201-tcb44-set-network-profile-refused": c(
+    "Does the CSMS carry a refusal back unchanged? Same request as the row "
+      + "above and the opposite half measured. The station's canned answer is "
+      + "Rejected where the case scripts Failed, so what this row can show is "
+      + "that a declined profile is not reported as installed -- the "
+      + "distinction between the two negatives is beyond this station.",
+  ),
+  // --- OCPP 2.0.1 InstallCertificate, NOT YET MEASURED --------------------
+  // The one block here whose endpoint does real work BEFORE it dispatches: it
+  // parses the PEM and writes a certificate row and an attempt row. Two
+  // consequences for these five rows and for nothing else in the suite. A
+  // malformed certificate is refused with an HTTP error and no frame, which
+  // api-client.ts classifies as a non-dispatch -- so a defect in
+  // tck/certificate-material.ts arrives as an ERROR naming the CSMS, which is
+  // why that file has a guard. And the rows the endpoint writes survive the
+  // run: nothing here removes them, and a second sweep against the same
+  // database re-uses them rather than writing again.
+  "cert201-tcm01-install-csms-root": c(
+    "Does the type the case names reach the wire beside a certificate? These "
+      + "four rows differ in one enum value, and the CSMS is the first thing "
+      + "in the path that PARSES what it is given -- so an unexpected red here "
+      + "is as likely to be about the material as about the request.",
+  ),
+  "cert201-tcm02-install-manufacturer-root": c(
+    "The same question for ManufacturerRootCertificate.",
+  ),
+  "cert201-tcm03-install-v2g-root": c(
+    "The same question for V2GRootCertificate, and its own risk is this "
+      + "deployment's ISO 15118 handling: a CSMS that routed V2G material "
+      + "through a path of its own could answer before the wire.",
+  ),
+  "cert201-tcm04-install-mo-root": c(
+    "The same question for MORootCertificate, and the fourth control for the "
+      + "three above: four requests differing in one member are what make any "
+      + "of them evidence that the member is carried rather than defaulted.",
+  ),
+  "cert201-tcm05-install-refused": c(
+    "Does the CSMS carry a refusal back unchanged? The station answers "
+      + "Rejected whatever it is sent, which is a refusal where the case "
+      + "scripts Failed -- so this row shows that a declined installation is "
+      + "not reported as done, and cannot show which refusal it was.",
+  ),
 } satisfies ScopeTable;
 
 /**
@@ -363,12 +811,13 @@ const CERT_201: readonly (keyof typeof V2_SCOPE)[] = CERT_201_SCENARIOS;
  * The v1.9.1 line has a defect that most of the suite depends on, so a blanket
  * "driven green" would be wrong twice over. See V1_KNOWN.
  *
- * A third edit since: the five OCPP 2.0.1 rows are demoted whatever they say
- * on v2. They are the one group the inherit-then-edit shape gets wrong in BOTH
+ * A third edit since: every OCPP 2.0.1 row is demoted whatever it says on v2.
+ * They are the one group the inherit-then-edit shape gets wrong in BOTH
  * directions -- a DRIVABLE one would come through as "expressible on v1.9.1
  * and driven identically", which is the opposite of true, and a CONDITIONAL
  * one would come through untouched, asking a question of a line this driver
- * declares no 2.0.1 surface for at all.
+ * declares no 2.0.1 surface for at all. Which rows those are is
+ * CERT_201_SCENARIOS' to say, and the count belongs in neither file.
  */
 function v1Scope(): ScopeTable {
   const table: Record<string, ScopeEntry> = {};

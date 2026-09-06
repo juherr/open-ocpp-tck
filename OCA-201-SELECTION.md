@@ -172,11 +172,117 @@ The other half of that gap was whether a list this long may be committed at
 all, given that the references are CC BY-ND, and it is
 [answered](#what-may-be-committed-here-and-what-may-not): it may.
 
-Seven of the 147 are implemented and 140 decline with a reason. Those reasons
-are written per group rather than per case — 23 of them across the 140 — and the
-file's header says why that is the granularity the decision was taken at rather
-than a placeholder. What a guard still cannot say is whether these are the
-*right* 147, and that is [unchanged](#the-guard).
+Forty-nine of the 147 are implemented and 98 decline with a reason. Those
+reasons are written per group rather than per case — 21 of them across the 98 —
+and the file's header says why that is the granularity the decision was taken
+at rather than a placeholder. What a guard still cannot say is whether these
+are the *right* 147, and that is [unchanged](#the-guard).
+
+**Six of the first seventeen arrived with the first operation tranche**, which
+is the other way this number moves and the expensive one. `ChangeAvailability`
+headed the table below; nine cases name it and no other operation, and reading
+those nine in *Part 6* found six writable against the pinned simulator. The
+other three are declined on a Reusable State this build cannot reach rather
+than on the verb, and their rows say which state and why.
+
+**Nine more arrived with the second, and it is the same move at the size the
+table says to make it at.** `SetChargingProfile` headed the table with thirteen
+cases and `GetCompositeSchedule` added two that need nothing else; the two were
+bought together because both are Smart Charging, both address an EVSE the same
+way and both live behind one CSMS module, so a driver wiring one had already
+paid for the other. Reading the fifteen in *Part 6* found nine writable. Of the
+six that are not, four need a charging-profile verb this pair does not contain
+and their rows now name it; two are the pinned simulator's — `TC_K_15` wants an
+RPC-level answer its dispatcher never raises, `TC_K_31` a continued report its
+payload literal cannot mark. Those two are the first rows here declined on the
+station rather than on the vocabulary *after* the vocabulary arrived, which is
+the shape a tranche leaves behind and the reason a tranche's cases are read
+before its verb is written.
+
+**Seven more arrived with the third, and it is the first tranche bought
+alone.** `GetChargingProfiles` headed the table once the Smart Charging pair was
+spent — eight cases need it — and no second verb shares its module the way
+`GetCompositeSchedule` shared `SetChargingProfile`'s, so there was nothing whose
+wiring was already paid for. Reading the eight in *Part 6* found seven writable.
+The eighth is `TC_K_31`, and it is the first row here a tranche arrives for and
+does **not** move: it was already declined on the pinned simulator's report
+payload rather than on the verb, so its verb landing changed nothing about it.
+That is worth naming as a shape rather than as a fact about one row — a tranche
+is sized by cases *blocked on the verb*, and a row blocked on two things is
+bought by neither. `TC_K_05`, which needs `ClearChargingProfile` beside this one,
+is the same shape seen a step earlier.
+
+**Six more arrived with `GetInstalledCertificateIds`, and it is the first
+tranche whose cases were read before its reason was believed.** Eight rows name
+the verb and six of them need nothing else, which is what the table said; what
+the table could not say is that the slice's reason for those six was wrong in a
+second way. It read "installing, listing and deleting certificates are
+CSMS-initiated and none is among `CsmsOperation201`'s members; each also needs
+certificate material this suite does not generate" — and the second clause is
+false about every one of the six. A `GetInstalledCertificateIdsRequest` carries
+no certificate; it carries a *type*, and for `TC_M_18` not even that. So three
+of the six had been declined for a blocker they never had, and two more
+(`TC_M_14`, `TC_M_16`) sat under an ISO 15118 reason that named material for the
+same reason. The correction is the shape this page has recorded twice already —
+a reason written per group generalises past the rows it was drawn for — arriving
+this time on the *material* rather than on the verb.
+
+**What the tranche does not buy is the answer.** Part 6 has the station return
+the hash data of the certificates it holds; the pinned simulator answers
+`NotFound` from a canned handler that reads no request member and holds no
+truststore. For a CSMS campaign that is the test tool's script rather than
+anything the system under test decides, so five of the six measure the request
+and stop — the sixth, `TC_M_19`, is the case whose scripted answer *is*
+`NotFound`, and it is the only one that reads the ack. That asymmetry is written
+into `tck/states-201.ts`'s fixture and into each scenario, because a reader who
+found `assertResponseStatus(…, "NotFound")` on the other five would take it for
+the case's own expectation. `TC_M_20` and `TC_M_21` are the rows this tranche
+leaves behind for the same fact and not the same reason: they need
+`DeleteCertificate` *and* hash data to echo back, and a station that answers
+`NotFound` gives them nothing to echo.
+
+**Seven more arrived with `InstallCertificate` and `SetNetworkProfile`, bought
+together for `GetCompositeSchedule`'s reason and not for a shared module.**
+Neither verb heads the table alone — five cases and two — and they landed in one
+tranche because the block they finish is one block: the same reading of *Part 6*
+covered all seven, and the two that are not certificate operations sit in the
+same profile. Five of the seven were declined on certificate material this suite
+does not generate. It does now: one self-signed root, committed once, in
+[`tck/certificate-material.ts`](tck/certificate-material.ts). Its header says why
+committing beat generating — building an X.509 certificate means emitting ASN.1,
+which `node:crypto` cannot do, so generating it would mean a certificate library
+in this package's dependencies to produce a value that never varies.
+
+**What that material has to satisfy is a CSMS's parser, not OCPP's schema.** The
+protocol says `certificate` is a string of at most 5500 characters and says
+nothing else; the pinned deployment reads the PEM before it dispatches anything
+and stores fields out of it — a serial into an integer column, a country and a
+signature algorithm into columns whose model types enumerate one value each. A
+certificate that parses fine and carries a hex serial would be stored as `NaN`.
+So the material has a guard of its own,
+[`tests/certificate-material.ts`](tests/certificate-material.ts), whose four
+claims are that deployment's requirements rather than the protocol's — including
+the one that is about the future rather than about today, since nothing checks
+the expiry and a regeneration at openssl's default of thirty days would pass
+every other check and every run for a month.
+
+**The ISO 15118 rows in this block were declined on the profile and blocked by
+nothing.** `TC_M_03` and `TC_M_04` install a V2G root and an MO root, and what
+makes a root either of those is the `certificateType` member of the request —
+not anything inside the certificate, which neither side of the exchange looks
+at. That is the third time this page has recorded a group reason generalising
+past the rows it was drawn for, and the second time in the same block.
+
+**Four of the first eleven arrived by falsifying a reason rather than by adding
+an operation**, which is worth naming because it is the cheapest way this number
+moves. `TC_C_02`, `TC_E_10`, `TC_F_27` and `TC_J_01` need no member
+`CsmsOperation201` does not already have; three of them ask a driver for
+nothing at all. What had declined them was a group reason asserting that the
+station side could not be driven without a simulator scenario template, and the
+simulator's JSON-Lines CLI drives it without one. The tranche table below is
+about the 57 rows a verb would unblock; this is the other direction, and
+`tck/specs/OCA-201-SLICE.txt`'s header records what the rewritten reasons say
+instead.
 
 **What the first slice bounded, kept because it is the worked example of
 writing the number down before the work.** Its seven cases were boot, reading
@@ -203,7 +309,7 @@ trigger and `CsmsOperation201` carries the verb.
 
 ## How wide a vocabulary the 147 ask for
 
-**Twenty kinds of operation**, against the four above. Ninety of the 147 drive at
+**Twenty kinds of operation**, against the twelve the contract carries. Ninety of the 147 drive at
 least one CSMS-initiated request and **57 drive none at all** — a case that only
 observes charge-point-initiated traffic needs no verb, which is why "add the
 rest of the 2.0.1 messages" was the wrong shape for this and why the answer is
@@ -220,39 +326,33 @@ note here because it is a two-level read that looks like a one-level one, and
 the extractor's header says why.
 
 **Tranches, sized by cases completed rather than by cases mentioning a verb.**
-Six cases need more than one operation, so the two counts differ: adding
-`GetInstalledCertificateIds` is named by eight rows and finishes six of them,
-because `TC_M_20` and `TC_M_21` want `DeleteCertificate` and
-`InstallCertificate` as well. Greedy from the four the union has, which leaves
-**81** of the 147 short of a verb. `bun tools/extract-201-operations.ts
+Two cases still need more than one operation, so the two counts differ: adding
+`DeleteCertificate` is named by two rows and finishes both, and it is last but
+one because those two rows need nothing else once it lands. Greedy from the
+twelve the union has, which leaves **33** of the 147 short of a verb — thirteen
+fewer than before the certificate tranches, and three operations have left this
+table entirely by being written. `bun tools/extract-201-operations.ts
 --tranches` is what prints this table — no PDF, just the row file and the
 contract — and `tests/oca-201-operations.sh` holds the two together:
 
 | # | operation | cases it completes | still blocked after |
 |---|---|---|---|
-| 1 | `SetChargingProfile` | 13 | 68 |
-| 2 | `UpdateFirmware` | 10 | 58 |
-| 3 | `ChangeAvailability` | 9 | 49 |
-| 4 | `GetChargingProfiles` | 8 | 41 |
-| 5 | `CustomerInformation` | 6 | 35 |
-| 6 | `GetInstalledCertificateIds` | 6 | 29 |
-| 7 | `InstallCertificate` | 5 | 24 |
-| 8 | `RequestStartTransaction` | 5 | 19 |
-| 9 | `GetLog` | 4 | 15 |
-| 10 | `CertificateSigned` | 3 | 12 |
-| 11 | `ClearChargingProfile` | 3 | 9 |
-| 12 | `ClearCache` | 2 | 7 |
-| 13 | `DeleteCertificate` | 2 | 5 |
-| 14 | `GetCompositeSchedule` | 2 | 3 |
-| 15 | `SetNetworkProfile` | 2 | 1 |
-| 16 | `RequestStopTransaction` | 1 | 0 |
+| 1 | `UpdateFirmware` | 10 | 23 |
+| 2 | `CustomerInformation` | 6 | 17 |
+| 3 | `RequestStartTransaction` | 5 | 12 |
+| 4 | `GetLog` | 4 | 8 |
+| 5 | `CertificateSigned` | 3 | 5 |
+| 6 | `ClearCache` | 2 | 3 |
+| 7 | `DeleteCertificate` | 2 | 1 |
+| 8 | `RequestStopTransaction` | 1 | 0 |
 
 The right-hand column is the number a tranche is worth arguing about, and it is
 not the number of scenarios that become writable: a verb removes *one* blocker,
 and 57 of the 147 never had that blocker while every one of them has another.
 `tck/specs/OCA-201-SLICE.txt`'s reason column is where the rest are named, and
 #71 — nothing checks that a declared capability is implemented — is what a
-vocabulary growing sixteen more times makes urgent.
+vocabulary growing twelve more times makes urgent; it is now checked, by
+`tests/capability-parity.ts`.
 
 A scenario issue may implement fewer than the list holds and say why — which
 the first one did, leaving `TC_B_06` and `TC_B_09` to the device-model
@@ -578,6 +678,11 @@ leaves it leaves by a decision someone can find.
 
 A `Reusable State` fixture mechanism used to be on this list, named as a gap
 rather than built, on the grounds that inlining a state per scenario was cheaper
-than a mechanism. At seven scenarios it was. Part 6 defines 13 of them for the
+than a mechanism. At seven scenarios it was. Part 6 defines 14 of them for the
 CSMS role, and at 147 cases the copies drift and each one reads reasonably, so
-it is now in scope and has an issue.
+it is now in scope and has an issue. THIRTEEN WAS THIS PAGE'S FIRST COUNT and
+it was not a miscount: thirteen of the fourteen carry the label `Reusable
+State` and the fourteenth is labelled `Memory State`, while the case that
+invokes it calls it a reusable state in its own text. So thirteen counts
+labels and fourteen counts fixtures a case can name, which is the number a
+mechanism has to serve. `tck/specs/core-201.ts` carried the correction first.

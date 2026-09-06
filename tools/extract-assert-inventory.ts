@@ -292,7 +292,16 @@ for (const file of readdirSync(SPECS_DIR).filter((f) => f.endsWith(".ts")).sort(
       // silently becomes a measurement of the other protocol, which passes six
       // checks out of seven (issue #57 §C). That is the definition of a change
       // this artifact exists to make visible.
-      const declared = ["ocppVersion", "runsSimTemplate"]
+      // `states` joins them for the same reason and with one extra edge: the
+      // fixtures a scenario declares are SETUP, so nothing in the assert body
+      // below mentions them, and a re-pointed fixture -- another EVSE, another
+      // tag -- would change what the scenario measures with every assertion
+      // line identical. Rendering the invocations here is what makes that a
+      // diff. Note the silent half, which tests/state-plan-201.ts is for: a
+      // declaration written as an identifier, a spread or a shorthand renders
+      // `·` and is then OMITTED rather than marked, so the artifact goes quiet
+      // instead of going loud.
+      const declared = ["ocppVersion", "runsSimTemplate", "states"]
         .map((k) => {
           const value = literalProp(spec, k);
           return value === null ? "" : ` ${k}=${value}`;

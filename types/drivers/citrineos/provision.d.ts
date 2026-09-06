@@ -287,12 +287,31 @@ export declare class CitrineProvisioner {
      *  PAIR, because `(tenantId, id, connectorId)` is the unique index and an
      *  EVSE type with the right id and a different connector is a different row. */
     private findEvseType;
+    /**
+     * The EVSE type a charging-profile lookup joins through: the same `id`, and
+     * `connectorId` IS NULL.
+     *
+     * A SECOND DOCUMENT RATHER THAN A PARAMETER ON THE ONE ABOVE, and the reason
+     * is Hasura's rather than this file's. `{ connectorId: { _eq: null } }` is
+     * not "connectorId is null" there -- a null comparison value makes the clause
+     * vacuous, so the query would answer with whichever EVSE type numbered `id`
+     * came first and the seeder would then never write the row it needs. Spelling
+     * `_is_null` needs its own document; passing a comparison expression as a
+     * variable would need a Hasura-generated input type this driver otherwise
+     * never names. Two questions, two documents -- which is what the rule above
+     * asks for, since a paired row and a connector-less one are not the same
+     * question.
+     */
+    private findProfileEvseType;
     private findVariable;
     private findComponent;
     /** The join row's own key, which is the pair -- so the id it answers with is
      *  the component's, and its absence is the only thing either caller needs. */
     private findComponentVariable;
     private ensureEvseType;
+    /** The connector-less half, seeded exactly like the paired one and repaired
+     *  by nothing: no component points at it, so there is no join to drift. */
+    private ensureProfileEvseType;
     /** One row for every target, and it is shared: the handler filters variables
      *  by name alone, and the unique index on `(tenantId, name)` where the
      *  instance is null means there can only be one anyway. */

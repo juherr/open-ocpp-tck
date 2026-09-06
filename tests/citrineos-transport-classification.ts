@@ -117,7 +117,10 @@ const REFS = {
   },
 };
 const REQ_16 = await toCitrineRequest({ action: "Reset", type: "Soft" }, REFS, CFG.variant);
-const REQ_201 = toCitrineRequest201({ action: "Reset", type: "OnIdle" });
+const REQ_201 = toCitrineRequest201(
+  { action: "Reset", type: "OnIdle" },
+  CFG.variant,
+);
 
 // ---------------------------------------------------------------------------
 // The answers a CitrineOS deployment can give

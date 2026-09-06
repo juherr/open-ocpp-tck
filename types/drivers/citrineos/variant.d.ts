@@ -32,7 +32,7 @@
  * therefore always true and always useless. The presence of
  * `ocppConnectionName` is the discriminator, and that is what verify() checks.
  */
-import type { CsmsEnv, CsmsOperation16Action } from "../../tck/driver";
+import { type CsmsEnv, type CsmsOperation16Action, type CsmsOperation201Action } from "../../tck/driver";
 export type CitrineVariant = "v1" | "v2";
 /** v2 by default: it is what `drivers/citrineos/compose.yaml` pins, and the
  *  only line with a complete OCPP 1.6 surface. */
@@ -79,25 +79,38 @@ export declare function speaksOcpp201(variant: CitrineVariant): boolean;
  *  identifier, by tck/scope.ts's rule: nothing here is conditional on a
  *  feature, the whole protocol is undeclared for this line. */
 export declare const NO_OCPP_201_ON_V1: string;
+/** The 2.0.1 actions this variant does not route, mapped to why. The 2.0.1
+ *  half of {@link unroutedActions}. */
+export declare function unroutedActions201(variant: CitrineVariant): ReadonlyMap<CsmsOperation201Action, string>;
 /**
  * Scenarios the OCPP 2.0.1 declaration covers, and which v1 therefore demotes.
  * Named here rather than in scope.ts for the same reason
  * {@link V1_LOCAL_LIST_SCENARIOS} is: one list, and the table cannot drift from
  * {@link speaksOcpp201}.
  *
- * ONE DIRECTION OF THAT IS UNGUARDED, and it is worth knowing which.
- * `scopeCoverage` catches a row that is missing and a row that is stale; it
- * cannot catch a row that is present and NOT demoted. So a sixth `cert201-`
- * scenario added without a line here still gets its v2 row -- the coverage
- * check forces that -- and `v1Scope()` inherits it unchanged, leaving the v1
- * table claiming exactly what the comment above that function calls wrong.
+ * ONE DIRECTION OF THAT IS OUTSIDE `scopeCoverage`, and it is worth knowing
+ * which and where it is checked instead. `scopeCoverage` catches a row that is
+ * missing and a row that is stale; it cannot catch a row that is present and
+ * NOT demoted, because a demotion is not a row. So a `cert201-` scenario added
+ * without a line here still gets its v2 row -- the coverage check forces that
+ * -- and `v1Scope()` would inherit it unchanged, leaving the v1 table claiming
+ * exactly what the comment above that function calls wrong. That direction is
+ * `tests/cert201-scope-rows.sh`'s: it holds this list and the registered
+ * `cert201-` scenarios to each other, both ways round.
+ *
+ * THAT IS NOT HYPOTHETICAL: it happened. `cert201-tcb06-get-variables` and
+ * `cert201-tcb09-set-variables` were registered while this list still named
+ * five ids, and for that whole time `check:driver:citrineos-v1` reported them
+ * DRIVABLE -- green, on a line whose `capabilities.operations201` is absent.
+ * The list is exhaustive over the registry by hand; keep it that way when a
+ * scenario is added.
  *
  * Unlike {@link V1_LOCAL_LIST_SCENARIOS}, this list cannot be derived from
  * anything the driver can see: a scenario's declared protocol lives on its
  * `ScenarioSpec` and never reaches a driver. Whatever changes that is what
  * deletes this list.
  */
-export declare const CERT_201_SCENARIOS: readonly ["cert201-tcb01-cold-boot", "cert201-tcb20-reset-accepted", "cert201-tcb21-reset-scheduled", "cert201-tcb22-reset-rejected", "cert201-tcf20-heartbeat"];
+export declare const CERT_201_SCENARIOS: readonly ["cert201-tcb01-cold-boot", "cert201-tcb06-get-variables", "cert201-tcb09-set-variables", "cert201-tcb20-reset-accepted", "cert201-tcb21-reset-scheduled", "cert201-tcb22-reset-rejected", "cert201-tcb42-set-network-profile", "cert201-tcb44-set-network-profile-refused", "cert201-tcc02-authorize-invalid", "cert201-tce10-start-authorized", "cert201-tcf20-heartbeat", "cert201-tcf27-trigger-not-implemented", "cert201-tcg03-evse-inoperative", "cert201-tcg04-evse-operative", "cert201-tcg05-station-inoperative", "cert201-tcg06-station-operative", "cert201-tcg07-connector-inoperative", "cert201-tcg08-connector-operative", "cert201-tcj01-clock-aligned-meter-values", "cert201-tck01-set-tx-default-profile", "cert201-tck03-set-station-max-profile", "cert201-tck04-replace-profile", "cert201-tck05-clear-reported-profile", "cert201-tck06-clear-profile-by-criteria", "cert201-tck08-clear-unknown-profile", "cert201-tck10-set-default-profile-all-evses", "cert201-tck19-set-recurring-profile", "cert201-tck29-profiles-in-transaction", "cert201-tck30-profiles-evse", "cert201-tck32-profiles-by-id", "cert201-tck33-profiles-by-stack-level", "cert201-tck34-profiles-by-limit-source", "cert201-tck35-profiles-by-purpose", "cert201-tck36-profiles-by-purpose-stack", "cert201-tck43-composite-schedule-evse", "cert201-tck44-composite-schedule-station", "cert201-tck60-set-tx-profile", "cert201-tck70-stack-profiles", "cert201-tcm01-install-csms-root", "cert201-tcm02-install-manufacturer-root", "cert201-tcm03-install-v2g-root", "cert201-tcm04-install-mo-root", "cert201-tcm05-install-refused", "cert201-tcm13-installed-ids-manufacturer-root", "cert201-tcm14-installed-ids-v2g-root", "cert201-tcm15-installed-ids-v2g-chain", "cert201-tcm16-installed-ids-mo-root", "cert201-tcm18-installed-ids-all-types", "cert201-tcm19-installed-ids-not-found"];
 /** Scenarios the local-auth-list gap costs on v1. Named here rather than in
  *  scope.ts so the two cannot drift from {@link unroutedActions}. */
 export declare const V1_LOCAL_LIST_SCENARIOS: readonly ["cert16-tc042-1-get-local-list-version-not-supported", "cert16-tc042-2-get-local-list-version-empty", "cert16-tc043-1-send-local-list-not-supported", "cert16-tc043-3-send-local-list-failed", "cert16-tc043-4-send-local-list-full", "cert16-tc043-5-send-local-list-differential"];

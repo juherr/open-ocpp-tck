@@ -35,8 +35,9 @@
  * Versions
  * --------
  * Both CitrineOS lines are supported, selected by CITRINE_VARIANT and
- * defaulting to v2 -- drivers/citrineos/compose.yaml pins v2.0.0-beta1 by
- * digest, and compose.v1.yaml overrides it with v1.9.1. v1 costs the six
+ * defaulting to v2 -- drivers/citrineos/compose.yaml pins the v2 prerelease by
+ * digest and is the one place naming which, and compose.v1.yaml overrides it
+ * with v1.9.1. v1 costs the six
  * local-auth-list scenarios, whose 1.6 endpoints exist only from the v2 line,
  * and renames the OCPP connection column. See variant.ts.
  *
@@ -78,14 +79,18 @@ import {
   resolveVariant,
   speaksOcpp201,
   unroutedActions,
+  unroutedActions201,
   type CitrineVariant,
 } from "./variant";
 
 /**
  * What the 1.6 message API does not route, for the declared variant --
- * confirmed against both running images: v2.0.0-beta1's /docs/json advertises
+ * confirmed against both running images: the v2 line's /docs/json advertises
  * 18 `/ocpp/1.6/` paths and v1.9.1's advertises 16, with `reserveNow` and
- * `cancelReservation` absent from both.
+ * `cancelReservation` absent from both. Measured on v2.0.0-beta1 and carried
+ * to the v2.0.0-beta3 pin on a file identity rather than a re-run: all four
+ * of the modules' own `src/module/1.6/MessageApi.ts` are byte-identical
+ * between the two tags.
  *
  * Declared by subtraction from the contract's own list rather than by
  * enumerating the supported ones, so that an operation added to the contract
@@ -103,19 +108,37 @@ import {
  */
 function capabilitiesFor(variant: CitrineVariant): CsmsCapabilities {
   const unrouted = unroutedActions(variant);
+  const unrouted201 = unroutedActions201(variant);
   return {
     operations16: new Set(
       CSMS_OPERATION_16_ACTIONS.filter((action) => !unrouted.has(action)),
     ),
-    // ALL OR NONE, and the line decides which. On v2 the 2.0.1 routes are the
-    // whole vocabulary, so there is nothing to subtract. On v1 the
-    // declaration is ABSENT rather than empty, which is the contract's way
-    // of saying "this driver, pointed here, does not speak OCPP 2.0.1" -- and
-    // that is the honest answer: the 2.0.1 surface has never been measured
-    // against the v1.9.1 image, and an empty set would claim it had been and
-    // found nothing.
+    // WHETHER at all is the line's to decide, WHICH is the route table's --
+    // and those are two questions, which is what this used to get wrong.
+    //
+    // On v1 the declaration is ABSENT rather than empty, which is the
+    // contract's way of saying "this driver, pointed here, does not speak OCPP
+    // 2.0.1" -- and that is the honest answer: the 2.0.1 surface has never
+    // been measured against the v1.9.1 image, and an empty set would claim it
+    // had been and found nothing.
+    //
+    // On v2 it is DECLARED BY SUBTRACTION, exactly like the 1.6 set above.
+    // `new Set(CSMS_OPERATION_201_ACTIONS)` -- the whole constant -- is what
+    // stood here, and it made every arm added to the contract a supported
+    // operation of this driver at the moment it was added, before any endpoint
+    // had been read off an `@AsMessageEndpoint` decorator. `check-driver`
+    // could not catch it and never will: it compares this declaration to the
+    // core's own list, and an added arm grows both sides in the same commit.
+    // Issue #71. The subtraction gives the next author somewhere to say "not
+    // routed yet" that is not a comment, and requests.ts reads the same table.
     ...(speaksOcpp201(variant)
-      ? { operations201: new Set(CSMS_OPERATION_201_ACTIONS) }
+      ? {
+          operations201: new Set(
+            CSMS_OPERATION_201_ACTIONS.filter(
+              (action) => !unrouted201.has(action),
+            ),
+          ),
+        }
       : {}),
     // No reservation capability at all, which is structural rather than a gap
     // in this driver: with nothing able to SEND a 1.6 ReserveNow, the
@@ -159,16 +182,25 @@ function createOperations(
  * so a second client would be a second copy of the timeout, the confirmation
  * parsing and the `success: false` rule for no gain.
  *
- * No `records` and no `variant`, which is the whole difference from the
- * function above: nothing in the 2.0.1 vocabulary carries an opaque ref to
- * resolve, and the v1 line reaches this through nothing at all -- `create`
- * omits the part, so the runner substitutes its throwing stub and the scenario
- * lands NOT APPLICABLE.
+ * No `records`, which is the difference from the function above: nothing in
+ * the 2.0.1 vocabulary carries an opaque ref to resolve, so there is no
+ * database round-trip to hand it.
+ *
+ * It does take the `variant`, which the 1.6 half also takes and this half once
+ * did not -- requests.ts's header says why that reversed. The short version:
+ * the declaration is now built by subtracting an unrouted table, and the
+ * refusal has to come from the same table or the two are free to disagree.
+ * On the v1 line this is reached through nothing at all -- `create` omits the
+ * part, so the runner substitutes its throwing stub and the scenario lands NOT
+ * APPLICABLE.
  */
-function createOperations201(api: CitrineMessageApi): CsmsOperations201 {
+function createOperations201(
+  variant: CitrineVariant,
+  api: CitrineMessageApi,
+): CsmsOperations201 {
   return {
     async execute(cpId: string, op: CsmsOperation201): Promise<string> {
-      return api.send(cpId, toCitrineRequest201(op));
+      return api.send(cpId, toCitrineRequest201(op, variant));
     },
   };
 }
@@ -197,7 +229,7 @@ export const csmsDriver: CsmsDriverModule = {
       // protocol its parts cannot drive would report the gap only at runtime,
       // after a container had started.
       ...(speaksOcpp201(cfg.variant)
-        ? { operations201: createOperations201(api) }
+        ? { operations201: createOperations201(cfg.variant, api) }
         : {}),
       records,
       // TWO WRITES, AND THE SECOND IS NOT RESIDUE-CLEARING. The first closes

@@ -1,5 +1,5 @@
 /**
- * Derived from shiv3/ocpp-cp-simulator scripts/steve-verify/runner/spec-types.ts @ 604054adb0d7d7129a26a5f1ad2d5fdc290d1ca1 (Apache-2.0). Modified: the drive/assert context carries the CSMS-neutral CsmsOperations16 / CsmsRecords contract instead of the upstream harness's CSMS-specific ops and transaction types.
+ * Derived from shiv3/ocpp-cp-simulator scripts/steve-verify/runner/spec-types.ts @ 604054adb0d7d7129a26a5f1ad2d5fdc290d1ca1 (Apache-2.0). Modified: the drive/assert context carries the CSMS-neutral CsmsOperations16 / CsmsRecords contract instead of the upstream harness's CSMS-specific ops and transaction types; ScenarioSpec.states declares the OCPP 2.0.1 Reusable States a case takes as its precondition and AssertContext.fixtures reports what they did.
  *
  * spec-types.ts -- the shape a scenario spec (port of specs/<id>.spec.sh)
  * takes in the TypeScript runner. Task 1 wires two specs directly in
@@ -9,6 +9,7 @@
 import type { AssertRecorder } from "./assert";
 import type { Frame } from "./ocpp";
 import type { SimOcppVersion, SimProcess } from "./sim";
+import type { FixtureLog, StateInvocation } from "./states-201";
 import type {
   CsmsOperations16,
   CsmsOperations201,
@@ -51,6 +52,13 @@ export interface AssertContext<D> {
   /** Whatever `drive()` returned (e.g. a baseline captured before
    *  triggering a CSMS op), threaded through for a later negative check. */
   driveState: D;
+  /** What {@link ScenarioSpec.states} did, per state -- including the ones the
+   *  dependency edges pulled in that the scenario never named. Always present,
+   *  empty for a scenario that declares none, so a spec never branches on
+   *  whether the mechanism ran. `assertStateEstablished` is how a scenario
+   *  reports it; reading it directly is for the case whose distinguishing
+   *  outcome is only reachable when the fixture held. */
+  fixtures: FixtureLog;
 }
 
 export interface ScenarioSpec<D = void> {
@@ -127,6 +135,30 @@ export interface ScenarioSpec<D = void> {
    * needs a template it is not named after, this becomes that.
    */
   runsSimTemplate?: boolean;
+  /**
+   * The OCPP 2.0.1 `Reusable State`s this scenario's case declares as its
+   * precondition, executed after the boot gate and BEFORE the sim template and
+   * `drive()`. See tck/states-201.ts for the model; the short version is that a
+   * state is parameterised, branches on the condition already in effect, and
+   * may pull in others through a dependency edge -- so what runs is a PLAN,
+   * derived from this list, not this list.
+   *
+   * DECLARE ONLY WHAT THE CASE DECLARES. `Authorized` is not written on a
+   * scenario whose case names `EnergyTransferStarted`: the edge is a fact about
+   * the reference and deriving it is the mechanism's job, where a second copy
+   * on every scenario is a fact that drifts.
+   *
+   * WRITE IT AS A LITERAL ARRAY OF LITERAL OBJECTS, AND NOTHING ELSE. A shared
+   * `const`, a spread or a shorthand property makes
+   * `tools/extract-assert-inventory.ts` render the value as `·`, at which point
+   * it is OMITTED from the SPEC line entirely -- the parameters stop being
+   * pinned and a fixture could be re-pointed at another EVSE or another tag
+   * with no committed artifact moving. That is the same trap TC_B_22's two
+   * literals were written for, arriving one layer up.
+   * `tests/state-plan-201.ts` holds both directions, because the failure is
+   * silent in the artifact.
+   */
+  states?: readonly StateInvocation[];
   /** Runs concurrently with the sim's scenario execution, for scenarios
    *  that need CSMS-side operator action (steve_op equivalent). Its
    *  return value is threaded into assert() as `driveState`. Omitted

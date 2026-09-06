@@ -24,6 +24,13 @@
 # ceded, those files are this repository's own rather than queued for an
 # upstream pull request.
 #
+# AND THE VENDORED ARTIFACTS THAT ARE NOT FILES (A14): the container images
+# this repository pins by digest — the simulator, and one block per bundled
+# CSMS stack — each recorded in a two-column table naming the file that
+# declares it. The inventory parser below excludes every one of those tables
+# structurally, so until A14 the pins that decide what a sweep actually runs
+# against were compared to nothing.
+#
 # v1 had a single digest column with a single meaning ("this is what upstream
 # shipped"), which is unfalsifiable for a file we modified: the pin recorded
 # OUR bytes under a label claiming they were UPSTREAM's. Splitting the column
@@ -418,9 +425,196 @@ else
   fi
 fi
 
+# A14 — every container image this repository pins, against the file that
+# declares it.
+#
+# WHY IT IS HERE AND NOT IN A GUARD OF ITS OWN. It is the same claim every
+# assertion above makes -- that what this repository ships is what the manifest
+# says it ships -- for the vendored artifacts that are not files in the tree.
+# A digest is the whole reproducibility claim of a conformance run: change one
+# and every sweep afterwards measures a different CSMS, or a different charge
+# point, and says nothing about the bytes the last one tested.
+#
+# WHY IT WAS MISSING FOR AS LONG AS IT WAS, and this is the part worth writing
+# down, because it is a CLASS and not an instance. The inventory parser above
+# filters `NF == 8`, and its comment says the strictness is deliberate: it
+# excludes the two-column image tables STRUCTURALLY rather than by hoping one
+# of their cells looks wrong. That is right for reading the inventory and it is
+# exactly what left every image pin in this file compared to nothing -- the
+# simulator's, and one block per bundled CSMS stack. A9 sees `tck/sim.ts` and
+# the compose files have rows; A4 sees the bytes of the ones it pins match
+# their digests; nothing ever opens the image string inside them. Moving a pin
+# in one place and not the other was invisible, and has been done by hand:
+# the CitrineOS stack moved from `v2.0.0-beta1` to `v2.0.0-beta3` with the
+# manifest updated by hand precisely because no check would have said so.
+#
+# SO IT IS DRIVEN OFF THE MANIFEST'S OWN `declared in` FIELD rather than off a
+# list of the three blocks that exist today. A fourth pin block -- a second
+# simulator, a third CSMS stack -- is covered the moment it is written, without
+# editing this file. What it compares, per block:
+#
+#   - the set of `image@digest` pairs is the same on both sides. Both
+#     directions: a pin recorded and not declared is a manifest describing a
+#     run nobody performs, and a pin declared and not recorded is a container
+#     this suite starts and the manifest does not name.
+#   - where the declaration also carries a TAG -- compose files do,
+#     `DEFAULT_SIM_IMAGE` does not -- it matches the block's `tag resolved`.
+#     A digest that agrees under a tag that does not is the shape of a copied
+#     row, and it is the half a reader reproduces the resolution from.
+#
+# WHAT IT CANNOT CHECK: that a digest names an image that exists, or that it is
+# what the tag resolves to today. That is a registry lookup, so it belongs with
+# `tools/vendor-diff.sh` and the rest of the network side; this file stays
+# deterministic and offline.
+work14="$(mktemp -d)" || {
+  echo "FAIL: could not create a temp dir for the image-pin comparison." >&2
+  exit 1
+}
+trap 'rm -rf "$work14"' EXIT
+
+# Every two-column `| field | value |` table, as `<block>\t<KIND>\t<value>`.
+# A block is one contiguous run of such rows: prose, a heading, a new `field`
+# header, or one of the six-column inventory rows all end it, which is what
+# stops two neighbouring pin tables from being read as one.
+awk -F'|' '
+  function trim(s) { gsub(/^[ \t]+|[ \t]+$/, "", s); return s }
+  function strip(s) { gsub(/`/, "", s); return trim(s) }
+  /^\|/ && NF == 4 {
+    field = strip($2)
+    if (field == "field") { inblock = 0; next }
+    if (field ~ /^-+$/) next
+    if (!inblock) { inblock = 1; block++ }
+    if (field == "image")             printf "%d\tIMAGE\t%s\n",  block, strip($3)
+    else if (field == "tag resolved") printf "%d\tTAG\t%s\n",    block, strip($3)
+    else if (field == "digest")       printf "%d\tDIGEST\t%s\n", block, strip($3)
+    else if (field == "declared in")
+      # The FIRST backticked token. The cell carries prose too, and for the
+      # simulator also the constant name and the override variable.
+      printf "%d\tFILE\t%s\n", block,
+        (match($3, /`[^`]+`/) ? substr($3, RSTART + 1, RLENGTH - 2) : "")
+    next
+  }
+  { inblock = 0 }
+' "$manifest" > "$work14/rows"
+
+# READING NOTHING IS NOT AGREEING ABOUT NOTHING. Both halves of this check are
+# patterns over a shape somebody may rename, and an empty set agrees with an
+# empty set -- the failure this repository has already had one level up, in
+# tests/gate-parity.sh. The count is taken from the raw text so that a
+# `declared in` row this parser fails to attribute to a block is reported
+# rather than skipped: a pin block silently dropped is the one outcome that
+# looks exactly like a repository with fewer pins.
+declared_in_rows="$(grep -c '^| declared in |' "$manifest" || true)"
+attributed_files="$(awk -F'\t' '$2 == "FILE" && $3 != ""' "$work14/rows" | wc -l | tr -d ' ')"
+if [ "$declared_in_rows" -eq 0 ]; then
+  echo "FAIL: $manifest declares no image pin at all ('| declared in |')." >&2
+  echo "  → either every pinned image was removed, or the two-column pin" >&2
+  echo "    tables changed shape. The inventory parser excludes them on" >&2
+  echo "    purpose, so nothing else in this file would notice." >&2
+  status=1
+elif [ "$attributed_files" != "$declared_in_rows" ]; then
+  echo "FAIL: $manifest has $declared_in_rows 'declared in' row(s) but this check attributed $attributed_files to a pin table." >&2
+  echo "  → a pin block changed shape under this parser and was skipped." >&2
+  echo "    A skipped block is a pin compared to nothing, which is the state" >&2
+  echo "    this assertion exists to end." >&2
+  status=1
+else
+  while IFS=$'\t' read -r block declaring; do
+    [ -n "$block" ] || continue
+    if [ ! -f "$declaring" ]; then
+      echo "FAIL: $manifest says a pin block is declared in $declaring, which does not exist." >&2
+      status=1
+      continue
+    fi
+
+    # The block's own rows, as `<image>@<digest>\t<tag resolved>`. An IMAGE row
+    # opens a triple and a DIGEST row closes it, so a block that pairs three
+    # images with two digests loses one silently -- counted below rather than
+    # trusted.
+    awk -F'\t' -v b="$block" '
+      $1 != b { next }
+      $2 == "IMAGE"  { img = $3; tag = ""; images++; next }
+      $2 == "TAG"    { tag = $3; next }
+      $2 == "DIGEST" { digests++; if (img != "") { printf "%s@%s\t%s\n", img, $3, tag; img = "" } }
+      END { printf "%d %d\n", images + 0, digests + 0 > "/dev/stderr" }
+    ' "$work14/rows" 2> "$work14/counts" | sort > "$work14/from-manifest"
+    read -r n_images n_digests < "$work14/counts"
+    if [ "$n_images" -ne "$n_digests" ] || [ "$n_images" -eq 0 ]; then
+      echo "FAIL: the pin block for $declaring pairs $n_images image row(s) with $n_digests digest row(s)." >&2
+      echo "  → one 'image' row, one 'tag resolved' row and one 'digest' row" >&2
+      echo "    per image, in that order. An unpaired row is a pin that reads" >&2
+      echo "    like a record and is compared to nothing." >&2
+      status=1
+      continue
+    fi
+
+    # And what the file actually declares. One regex for both shapes a
+    # declaration takes here -- a compose `image:` value and a digest-pinned
+    # constant -- because the property is about the string, not about the
+    # syntax around it.
+    #
+    # `|| true` IS LOAD-BEARING, not defensive noise: this file runs under
+    # `set -e` with `pipefail`, so a grep that matches nothing would abort the
+    # whole script with no message at all -- and "no digest-pinned image in the
+    # declaring file" is precisely the state the refusal below exists to
+    # report. Measured, not supposed: the first draft did exactly that, and the
+    # mutation that removed the digest from `tck/sim.ts` came back as a silent
+    # exit 1.
+    { grep -oE '[A-Za-z0-9][A-Za-z0-9._/-]*(:[A-Za-z0-9._-]+)?@sha256:[0-9a-f]{64}' \
+      "$declaring" 2>/dev/null || true; } |
+      awk -F'@' '{
+        name = $1; tag = ""
+        if (match(name, /:[^:\/]+$/)) { tag = substr(name, RSTART + 1); name = substr(name, 1, RSTART - 1) }
+        printf "%s@%s\t%s\n", name, $2, tag
+      }' | sort > "$work14/from-file"
+
+    if [ ! -s "$work14/from-file" ]; then
+      echo "FAIL: $declaring declares no digest-pinned image." >&2
+      echo "  → repository convention: never 'latest', never a bare tag. If" >&2
+      echo "    the declaration moved or changed shape, teach this check the" >&2
+      echo "    new one rather than leaving $manifest's block uncompared." >&2
+      status=1
+      continue
+    fi
+
+    cut -f1 "$work14/from-manifest" > "$work14/keys-manifest"
+    cut -f1 "$work14/from-file" > "$work14/keys-file"
+
+    if undeclared="$(comm -23 "$work14/keys-manifest" "$work14/keys-file")" && [ -n "$undeclared" ]; then
+      echo "FAIL: $manifest pins images $declaring does not declare:" >&2
+      awk '{ print "  " $0 }' <<< "$undeclared" >&2
+      echo "  → the manifest records a run nobody performs. Move the pin in" >&2
+      echo "    both places, or drop the row." >&2
+      status=1
+    fi
+    if unrecorded="$(comm -13 "$work14/keys-manifest" "$work14/keys-file")" && [ -n "$unrecorded" ]; then
+      echo "FAIL: $declaring declares images $manifest does not record:" >&2
+      awk '{ print "  " $0 }' <<< "$unrecorded" >&2
+      echo "  → this suite starts a container the manifest cannot name, so a" >&2
+      echo "    reader cannot reproduce what was measured." >&2
+      status=1
+    fi
+
+    # The tag, for the declarations that carry one. Joined on the pair the two
+    # sides already agree about, so a tag disagreement is reported once and as
+    # itself rather than as a second image mismatch.
+    if tag_drift="$(join -t$'\t' "$work14/from-manifest" "$work14/from-file" |
+      awk -F'\t' '$3 != "" && $2 != $3 { printf "  %s: %s recorded, %s declared\n", $1, $2, $3 }')" \
+      && [ -n "$tag_drift" ]; then
+      echo "FAIL: $declaring and $manifest agree on a digest under different tags:" >&2
+      printf '%s\n' "$tag_drift" >&2
+      echo "  → 'tag resolved' is how a reader re-resolves the digest. A tag" >&2
+      echo "    that no longer names these bytes makes the record unusable" >&2
+      echo "    while every digest still matches." >&2
+      status=1
+    fi
+  done < <(awk -F'\t' '$2 == "FILE" && $3 != "" { print $1 "\t" $3 }' "$work14/rows")
+fi
+
 if [ "$status" -eq 0 ]; then
   patched_count="$(printf '%s' "$patched_rows" | grep -cv '^$' || true)"
   forked_count="$(printf '%s' "$forked_rows" | grep -cv '^$' || true)"
-  echo "Vendored files match $manifest ($verbatim_count verbatim, $patched_count patched and reverse-verified, $forked_count forked with attribution headers)."
+  pinned_images="$(awk -F'\t' '$2 == "IMAGE"' "$work14/rows" | wc -l | tr -d ' ')"
+  echo "Vendored files match $manifest ($verbatim_count verbatim, $patched_count patched and reverse-verified, $forked_count forked with attribution headers), and $pinned_images container image(s) across $attributed_files declaring file(s) carry the same digest in both."
 fi
 exit "$status"

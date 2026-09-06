@@ -25,7 +25,7 @@
 import { type CsmsOperation16, type CsmsOperation201, type TransactionRef } from "../../tck/driver";
 import { type CitrineVariant } from "./variant";
 /** The endpointPrefix values CitrineOS's shipped `docker` config declares. */
-export type CitrineModule = "configuration" | "evdriver" | "monitoring" | "reporting" | "smartcharging";
+export type CitrineModule = "certificates" | "configuration" | "evdriver" | "monitoring" | "reporting" | "smartcharging";
 /** The version segment of a message-API path, spelled as CitrineOS spells it.
  *  Not `SimOcppVersion`: that type is the simulator CLI's spelling
  *  (`OCPP-2.0.1`) of a different thing -- which protocol a charge point
@@ -64,18 +64,31 @@ export declare function toCitrineRequest(op: CsmsOperation16, refs: CitrineRefs,
  * reason tck/driver.ts gives beside `CsmsOperation201`'s `Reset` arm, and
  * `Reset` being an action name in both is exactly what a shared switch would
  * lose. It needs no `refs`: nothing in the 2.0.1 slice carries an opaque ref,
- * so there is no database round-trip to hand it, and no `variant` either --
- * see `capabilitiesFor`, where the v1 line declares no 2.0.1 surface at all
- * rather than declaring one with holes in it.
+ * so there is no database round-trip to hand it.
+ *
+ * IT DOES TAKE A `variant`, and that is a reversal worth stating because the
+ * argument against it was written here and was right at the time: the v1 line
+ * declares no 2.0.1 surface at all rather than one with holes in it, so there
+ * was nothing for a variant to decide. What changed is the OTHER direction --
+ * `capabilitiesFor` declared the whole of `CSMS_OPERATION_201_ACTIONS` for v2,
+ * so an arm added to the contract was declared supported by this driver before
+ * any endpoint had been read off a decorator (issue #71). The fix is the one
+ * the 1.6 half already had: a table of what is unrouted, subtracted from the
+ * declaration and read again here, so a declared action and a POSTed request
+ * cannot disagree. A variant is what indexes that table, and v2's row being
+ * empty today is not a reason to have no parameter -- it is the row the next
+ * arm lands in.
  *
  * The module for each action is CitrineOS's, not the OCPP specification's:
- * `Reset` and `TriggerMessage` are Configuration's and the two device-model
- * actions are Monitoring's, read off the `@AsMessageEndpoint` decorators in
- * `packages/core/src/modules/{Configuration,Monitoring}/src/module/2/MessageApi.ts`.
+ * `Reset`, `TriggerMessage` and `ChangeAvailability` are Configuration's, the
+ * two device-model actions are Monitoring's, the four charging-profile
+ * actions are SmartCharging's and `GetInstalledCertificateIds` is
+ * Certificates', read off the `@AsMessageEndpoint` decorators in
+ * `packages/core/src/modules/{Certificates,Configuration,Monitoring,SmartCharging}/src/module/2/MessageApi.ts`.
  * There is no rule to derive it from, the same way there is none for 1.6 --
- * and that both actions with a 1.6 namesake happen to share their namesake's
- * module is a fact about this arrangement, not one to route by: the two
- * device-model actions have no namesake to agree with.
+ * and that all five actions with a 1.6 namesake happen to share their
+ * namesake's module is a fact about this arrangement, not one to route by: the
+ * two device-model actions have no namesake to agree with.
  */
-export declare function toCitrineRequest201(op: CsmsOperation201): CitrineRequest;
+export declare function toCitrineRequest201(op: CsmsOperation201, variant: CitrineVariant): CitrineRequest;
 export {};

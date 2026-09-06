@@ -132,11 +132,15 @@ the drivers are native here, and the name now says so.
 | `tck/scope.ts` | `local-native` | `—` | `—` | `—` | `—` |
 | `tck/expected.ts` | `local-native` | `—` | `—` | `—` | `—` |
 | `tck/standing.ts` | `local-native` | `—` | `—` | `—` | `—` |
+| `tck/shard.ts` | `local-native` | `—` | `—` | `—` | `—` |
+| `tck/certificate-material.ts` | `local-native` | `—` | `—` | `—` | `—` |
+| `tck/readiness.ts` | `local-native` | `—` | `—` | `—` | `—` |
 | `tck/op-warn.ts` | `local-native` | `—` | `—` | `—` | `—` |
 | `tck/time.ts` | `local-native` | `—` | `—` | `—` | `—` |
 | `tck/trace.ts` | `local-native` | `—` | `—` | `—` | `—` |
 | `tck/unverifiable.ts` | `local-native` | `—` | `—` | `—` | `—` |
 | `tck/wait.ts` | `local-native` | `—` | `—` | `—` | `—` |
+| `tck/states-201.ts` | `local-native` | `—` | `—` | `—` | `—` |
 | `bin/ocpp-tck.ts` | `local-native` | `—` | `—` | `—` | `—` |
 | `tck/specs/core-201.ts` | `local-native` | `—` | `—` | `—` | `—` |
 | `tck/specs/ASSERT-INVENTORY.txt` | `local-native` | `—` | `—` | `—` | `—` |
@@ -158,6 +162,7 @@ the drivers are native here, and the name now says so.
 | `drivers/citrineos/http.ts` | `local-native` | `—` | `—` | `—` | `—` |
 | `drivers/citrineos/requests.ts` | `local-native` | `—` | `—` | `—` | `—` |
 | `drivers/citrineos/profiles.ts` | `local-native` | `—` | `—` | `—` | `—` |
+| `drivers/citrineos/redelivery-loops.ts` | `local-native` | `—` | `—` | `—` | `—` |
 | `drivers/citrineos/records.ts` | `local-native` | `—` | `—` | `—` | `—` |
 | `drivers/citrineos/scope.ts` | `local-native` | `—` | `—` | `—` | `—` |
 | `drivers/citrineos/expected.ts` | `local-native` | `—` | `—` | `—` | `—` |
@@ -418,8 +423,8 @@ anywhere in this file is read as a vendored-file row.
 | field | value |
 |---|---|
 | image | `ghcr.io/citrineos/citrineos-server` |
-| tag resolved | `v2.0.0-beta1` |
-| digest | `sha256:58800f45acd82c976e2f55dd9aab85baee61507938bb2cb0d0f81fc70853c6ef` |
+| tag resolved | `v2.0.0-beta3` |
+| digest | `sha256:ddd8e98791b4f75523cf6a2aa3fd7cc35bd15bfb019d1461200e2c2e65462fd5` |
 | image | `postgis/postgis` |
 | tag resolved | `16-3.5` |
 | digest | `sha256:4e07b425403ba55c20b541884db2e80c686dd6476bf9265046ac9c163895605d` |
@@ -429,19 +434,33 @@ anywhere in this file is read as a vendored-file row.
 | image | `hasura/graphql-engine` |
 | tag resolved | `v2.40.3` |
 | digest | `sha256:679fb764590e848e59ab6b82b3e906cc46f87d776f869f49132ca728660df244` |
-| resolved on | 2026-08-11, from the registry manifest `Docker-Content-Digest` |
+| resolved on | CitrineOS 2026-09-05, the rest 2026-08-11, from the registry manifest `Docker-Content-Digest` |
 | declared in | `drivers/citrineos/compose.yaml` |
 
 A **prerelease**, which is the one thing here that needs defending. The OCPP
 1.6 `getLocalListVersion` and `sendLocalList` message endpoints exist only from
-the v2 line, and six scenarios need them; `v2.0.0-beta1` currently resolves to
-the same bytes as `:latest` and will not for long. Pinning by digest is what
-makes depending on a moving tag safe — the alternative is `v1.9.1`, whose cost
-is spelled out in `drivers/citrineos/README.md`.
+the v2 line, and six scenarios need them. Pinning by digest is what makes
+depending on a moving tag safe — the alternative is `v1.9.1`, whose cost is
+spelled out in `drivers/citrineos/README.md`.
+
+WHY beta3 RATHER THAN beta1, and it is why a pin moved rather than a tidy-up:
+citrineos-core#830 replaced a trigger that ran entirely `BEFORE INSERT`, whose
+CALL branch back-filled `requestMessageId = NEW.id` on a row that did not exist
+yet. Postgres checks the foreign key at the end of that UPDATE, so every CALL
+arriving after its own response killed the dispatcher — and this suite measured
+it: 53 events across 43 of 92 archived CitrineOS artifacts, every one at
+`ocpp_correlate_message()` line 44, SteVe zero. The migration that fixes it is
+absent at beta1 and byte-identical at beta2, beta3 and `main`. Issue #97 is
+what it cost: a swallowed response reported as an unanswered request, which is
+a conformance finding against a CSMS that answered.
 
 The statements the driver is built on, each read from citrineos-core at
-`v2.0.0-beta1` and cross-checked at `v1.9.1` and `main`. Re-check them before
-moving the pin — several are the difference between a driver and a fiction:
+`v2.0.0-beta3` and cross-checked at `v1.9.1` and `main`. Re-check them before
+moving the pin — several are the difference between a driver and a fiction.
+They were re-read when the pin moved, on evidence rather than on the version
+number: all four `modules/*/src/module/1.6/MessageApi.ts` blobs are
+byte-identical between beta1 and beta3, so the endpoint counts below carried
+over unchanged:
 
 - **No `@AsMessageEndpoint` binds `ReserveNow` or `CancelReservation` to
   `OCPPVersion.OCPP1_6`.** Confirmed against the running container, whose
@@ -501,9 +520,38 @@ Numbers are the **parallel pass**, before `--retry-failed-isolated`, because
 that is what the sweep prints; the retry column says which of those failures
 were lane artifacts.
 
+THE beta3 ROW IS ONE RUN, NOT TWO, and the rule above asks for two. It is
+recorded because the check it was taken for is unambiguous and because the
+run is a CI artifact anyone can re-download, not because one run settles
+reproducibility. The second run is still owed.
+
+What it was taken for: `grep -c 'OCPPMessages_requestMessageId_fkey'` over
+`csms-citrineos.log` returns **0**, against 53 across the archived beta1
+artifacts — and the log carries the corrective migration
+`20260806120000-fix-ocpp-message-correlation-trigger` and one `AFTER INSERT`,
+so the zero is the fix having run rather than the trigger having gone missing.
+The flake count moved with it: two lane flakes at beta1, **zero** here, which
+is what removing a crash class predicts and is the part a verdict count alone
+would not show.
+
+THE COLUMN HEADERS ARE OLDER THAN THE SUITE. `authorize`'s three scenarios are
+inside `run-all` now, so the beta3 row's sweep is 54 scenarios in one pass and
+the separate `--group authorize` sweep the rule names is redundant for it. The
+headers are left as they are until a row needs them to mean something else:
+renaming a column rewrites the two rows above it, which were measured under
+the arrangement the headers describe.
+
+AND THE SUITE IS NOW OLDER THAN THE ROWS. The registry holds 80 scenarios; the
+beta3 row's 54 is what was on the wire the day it was taken, and twenty-six
+`cert201-` rows registered since have never been swept against any CSMS —
+their scope rows are `CONDITIONAL` and say what each one has to answer. A row
+here records a measurement, so it is not restated to cover scenarios that run
+did not include; the next row taken is where the larger number appears.
+
 | CitrineOS | digest | validated | `all` (44), parallel pass | `authorize` (3) |
 |---|---|---|---|---|
-| `v2.0.0-beta1` — **current pin**, `CITRINE_VARIANT=v2` | `sha256:58800f45…` | 2026-08-11 | 34 PASS, 7 N/A, 3 FAIL — two lane flakes PASS on isolated retry, `tc044-2` confirmed | 2 PASS, 1 FAIL (`tc023-3`) |
+| `v2.0.0-beta3` — **current pin**, `CITRINE_VARIANT=v2` | `sha256:ddd8e987…` | 2026-09-05 | 38 PASS, 5 PARTIAL, 7 N/A, 4 EXPECTED FAIL — **0 flakes**, all four confirmed isolated; the 54-scenario sweep, `authorize` included | in the sweep: 2 PASS, 1 EXPECTED FAIL (`tc023-3`) |
+| `v2.0.0-beta1` — superseded pin, `CITRINE_VARIANT=v2` | `sha256:58800f45…` | 2026-08-11 | 34 PASS, 7 N/A, 3 FAIL — two lane flakes PASS on isolated retry, `tc044-2` confirmed | 2 PASS, 1 FAIL (`tc023-3`) |
 | `v1.9.1` — `CITRINE_VARIANT=v1` | `sha256:4f879151…` | 2026-08-11 | 16 PASS, 13 N/A, 15 FAIL — **all 15 confirmed on isolated retry, no flakes** | 2 PASS, 1 FAIL (`tc023-3`) |
 | `v2.0.0-beta1` — same pin, GraphQL transport | `sha256:58800f45…` | 2026-08-12 | 37 PASS, 7 N/A, **0 FAIL, and no flakes** — the parallel pass needed no isolated retry at all | 2 PASS, 1 FAIL (`tc023-3`) |
 

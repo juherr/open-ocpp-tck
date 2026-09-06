@@ -48,21 +48,28 @@ services:
   # conformance run. Same discipline as DEFAULT_SIM_IMAGE in tck/sim.ts and as
   # drivers/steve/compose.yaml.
   #
-  # v2.0.0-beta1 rather than the v1.9.1 stable, deliberately: the OCPP 1.6
+  # A v2 prerelease rather than the v1.9.1 stable, deliberately: the OCPP 1.6
   # GetLocalListVersion and SendLocalList message endpoints exist only from the
   # v2 line (packages/core/src/modules/EVDriver/src/module/1.6/MessageApi.ts),
   # and six scenarios need them. See drivers/citrineos/README.md for the v1.9.1
   # variant and what it costs.
+  #
+  # beta3 rather than beta1, and that is a bug fix we were measuring:
+  # citrineos-core#830 splits the message-correlation trigger that ran entirely
+  # BEFORE INSERT, whose CALL branch back-filled `requestMessageId = NEW.id` on
+  # a row Postgres had not inserted yet. The resulting
+  # OCPPMessages_requestMessageId_fkey violation escaped as an unhandled
+  # rejection and killed the dispatcher. See README.md's gap table.
   #
   # Re-pin with:
   #   T=$(curl -sS "https://ghcr.io/token?scope=repository:citrineos/citrineos-server:pull&service=ghcr.io" \
   #        | sed -n 's/.*"token":"\([^"]*\)".*/\1/p')
   #   curl -sSI -H "Authorization: Bearer $T" \
   #     -H "Accept: application/vnd.oci.image.index.v1+json" \
-  #     https://ghcr.io/v2/citrineos/citrineos-server/manifests/v2.0.0-beta1 \
+  #     https://ghcr.io/v2/citrineos/citrineos-server/manifests/v2.0.0-beta3 \
   #     | grep -i docker-content-digest
   citrine:
-    image: ghcr.io/citrineos/citrineos-server:v2.0.0-beta1@sha256:58800f45acd82c976e2f55dd9aab85baee61507938bb2cb0d0f81fc70853c6ef
+    image: ghcr.io/citrineos/citrineos-server:v2.0.0-beta3@sha256:ddd8e98791b4f75523cf6a2aa3fd7cc35bd15bfb019d1461200e2c2e65462fd5
     container_name: citrine${TCK_SUFFIX:-}
     restart: unless-stopped
     depends_on:

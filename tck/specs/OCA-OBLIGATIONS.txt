@@ -81,8 +81,36 @@ cert16-tc023-3-authorize-blocked          Authorize                      assertI
 # OCA-COVERAGE.md is the provenance for every row above. The guard reading this
 # file is namespace-agnostic on purpose -- whether a row is about 1.6 or 2.0.1
 # has no bearing on whether it has a check behind it.
+#
+# AND ONE SCENARIO IS DELIBERATELY ABSENT, said here because its absence looks
+# like an omission. cert201-tcf27-trigger-not-implemented drives a Heartbeat
+# and reads the answer, which is the shape of every row below -- but TC_F_27
+# obliges no HeartbeatResponse. Its scenario column is one exchange in the
+# other direction and its tool validations are `N/a`, so the Heartbeat is this
+# suite's evidence that the session outlived the refusal rather than something
+# the reference asks the CSMS for. A row here would claim otherwise, and this
+# table's whole value is that a row can be looked up.
 cert201-tcb01-cold-boot                   BootNotification               assertResponseStatus   TC_B_01
 cert201-tcb01-cold-boot                   StatusNotification             assertAllAnswered      TC_B_01
 cert201-tcb20-reset-accepted              BootNotification               assertAllAnswered      TC_B_20
 cert201-tcb21-reset-scheduled             TransactionEvent               assertAllAnswered      TC_B_21
+cert201-tcc02-authorize-invalid           Authorize                      assertAllAnswered      TC_C_02
+cert201-tce10-start-authorized            Authorize                      assertAllAnswered      TC_E_10
+cert201-tce10-start-authorized            TransactionEvent               assertAllAnswered      TC_E_10
 cert201-tcf20-heartbeat                   Heartbeat                      assertAllAnswered      TC_F_20
+cert201-tcg03-evse-inoperative            StatusNotification             assertAllAnswered      TC_G_03
+cert201-tcg04-evse-operative              StatusNotification             assertAllAnswered      TC_G_04
+cert201-tcg05-station-inoperative         StatusNotification             assertAllAnswered      TC_G_05
+cert201-tcg06-station-operative           StatusNotification             assertAllAnswered      TC_G_06
+cert201-tcg07-connector-inoperative       StatusNotification             assertAllAnswered      TC_G_07
+cert201-tcg08-connector-operative         StatusNotification             assertAllAnswered      TC_G_08
+cert201-tcj01-clock-aligned-meter-values  MeterValues                    assertAllAnswered      TC_J_01
+cert201-tck05-clear-reported-profile      ReportChargingProfiles         assertAllAnswered      TC_K_05
+cert201-tck29-profiles-in-transaction     ReportChargingProfiles         assertAllAnswered      TC_K_29
+cert201-tck30-profiles-evse               ReportChargingProfiles         assertAllAnswered      TC_K_30
+cert201-tck32-profiles-by-id              ReportChargingProfiles         assertAllAnswered      TC_K_32
+cert201-tck33-profiles-by-stack-level     ReportChargingProfiles         assertAllAnswered      TC_K_33
+cert201-tck34-profiles-by-limit-source    ReportChargingProfiles         assertAllAnswered      TC_K_34
+cert201-tck35-profiles-by-purpose         ReportChargingProfiles         assertAllAnswered      TC_K_35
+cert201-tck36-profiles-by-purpose-stack   ReportChargingProfiles         assertAllAnswered      TC_K_36
+cert201-tck60-set-tx-profile              TransactionEvent               assertAllAnswered      TC_K_60

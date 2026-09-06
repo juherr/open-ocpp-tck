@@ -84,6 +84,39 @@ export function statusTargets(connectors: number): StatusTarget[] {
 }
 
 /**
+ * The EVSE numbers a charging-profile operation can be addressed to, as rows
+ * carrying NO connector.
+ *
+ * A SECOND SHAPE OF EVSE ROW, and the pair above is not it. The status handler
+ * looks an EVSE type up by the `(id, connectorId)` PAIR, which is why
+ * {@link statusTargets} exists; the SmartCharging endpoints look one up by
+ * `findEvseByIdAndConnectorId(tenantId, evseId, null)`, and a Sequelize `where`
+ * of `connectorId: null` is `IS NULL` rather than a wildcard. So an EVSE type
+ * numbered 1 with connector 1 -- the row a status needs -- does not answer a
+ * charging-profile lookup for EVSE 1, and the two rows are both required.
+ * Measured in the pinned image: `SmartChargingOcpp2Api.getCompositeSchedule`
+ * makes that call for any `evseId` other than 0 (K08.FR.05) and
+ * `setChargingProfile` makes it for every `TxProfile` (K01.FR.09), each
+ * answering HTTP 200 `success: false` and putting NOTHING on the websocket when
+ * it comes back empty -- a failure whose whole symptom is an empty frame log.
+ *
+ * EVSE 0 IS DELIBERATELY NOT HERE. The grid connection point is the one address
+ * both endpoints skip the lookup for, and the CSMS writes an EVSE type numbered
+ * 0 with a null connector by itself the first time it files the station-scope
+ * status -- see `syncDeviceModel`. Seeding it here would add a row nothing
+ * reads and make teardown's fixture/residue line ambiguous for the one id where
+ * it is already delicate.
+ *
+ * THE COUNT IS AN ARGUMENT, for {@link statusTargets}'s reason: what this knows
+ * is that the addressable EVSEs are 1..N, not what N is.
+ */
+export function profileEvseIds(connectors: number): number[] {
+  const ids: number[] = [];
+  for (let n = 1; n <= connectors; n += 1) ids.push(n);
+  return ids;
+}
+
+/**
  * The component and variable a connector's availability is filed under.
  *
  * THE OCPP 2.0.1 STANDARDIZED DATA MODEL, not this CSMS's choice, which is why

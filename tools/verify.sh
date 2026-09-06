@@ -47,6 +47,12 @@ run "driver scope: citrineos" bun run check:driver:citrineos
 # driver claims unverified -- and the v1 table is the derived one.
 run "driver scope: citrineos (v1)" bun run check:driver:citrineos-v1
 run "driver scope follows the env" bun tests/driver-env-scope.ts
+# And beside it, because it is the other half of the same reading: that guard
+# holds a declaration to the env it was resolved with, this one holds it to the
+# parts create() returns for that env. check-driver cannot -- it never calls
+# create(), and its one rule about the 2.0.1 vocabulary compares the
+# declaration to the core's own list, which grows in the same commit.
+run "a declared capability is an implemented one" bun tests/capability-parity.ts
 # The exit-code rule, whole. Pure and offline because tck/standing.ts is a
 # module of its own -- reaching these rows through a sweep would take a
 # container per row, and engineering a CSMS that fails a chosen scenario a
@@ -62,6 +68,11 @@ run "an unfiltered GetConfiguration is a shape, not a spelling" bun tests/get-co
 # checking it from a shell would mean starting a container per row on the very
 # daemon it protects.
 run "the foreign-sweep refusal sees every namespace" bun tests/foreign-sweep-scope.ts
+# The other preflight rule, and in-process for a longer version of the same
+# reason: every row needs a CSMS engineered a chosen way -- one that accepts a
+# connection and never answers, one whose driver declines a core method, one
+# whose probe hangs for good. The seam is the probe and the clock.
+run "the readiness gate waits on one thing only" bun tests/csms-readiness-gate.ts
 # And in-process because buildDockerArgs is pure and its one caller spawns
 # docker in the next statement, so the argv a scenario would run is not
 # printable from a shell -- nor is a resolution from an environment that is not
@@ -85,6 +96,33 @@ run "a request that never reached the CSMS says so" bun tests/citrineos-transpor
 # SEQUENCE of writes, and a CSMS answers a right fixture and a wrong one with
 # the same empty StatusNotificationResponse.
 run "the 2.0.1 device-model fixture keeps its shape" bun tests/citrineos-device-model-fixture.ts
+# In-process for the one input it is about: a 1.5 GB CSMS log from the run where
+# the server collapsed, which no offline run can make and no live run can be
+# asked for -- reproducing it means breaking the server.
+run "the CSMS log reader knows nothing-matched from nothing-there" bun tests/citrineos-redelivery-loops.ts
+# In-process because what it protects is an ABSENCE: sharding fails by dropping
+# scenarios, and reaching that from the CLI would mean one container per
+# scenario per shard count to observe something not happening.
+run "the shards of a sweep partition it" bun tests/shard-selection.ts
+# And in-process because its subject is a PLAN. Reaching the row that matters
+# -- a five-state chain re-entered from its far end -- needs eleven states this
+# build has no reach for, so no sweep could ever run it; and the rule it holds
+# is one `&&` away from being a visited set, which is wrong only there.
+run "a Reusable State plan follows the condition" bun tests/state-plan-201.ts
+# In-process because its subject is a VALUE the CSMS parses before it
+# dispatches. A malformed PEM is refused with an HTTP error and no frame, so the
+# five InstallCertificate cases would report ERROR against the CSMS for a defect
+# in this repository -- a live run costs a container and points at the wrong
+# system when it arrives. The expiry row is the one that is about the future:
+# nothing checks the date, so a regeneration at openssl's default of 30 days
+# would pass every other check and every run for a month.
+run "the committed certificate is one a CSMS can store" bun tests/certificate-material.ts
+# In-process for tests/get-configuration-filter.ts's reason: every payload it
+# hands the helpers is one no CSMS in this repository sends, so the branches
+# where a wrong request reads as the right one are unreachable from any sweep.
+# What it holds is the GREEN direction -- an absent member read as `null`, PEM
+# armour read as a certificate, a member position read as structure.
+run "a 2.0.1 request assertion refuses the shape it is not about" bun tests/request-shape-201.ts
 run "core is CSMS-neutral" bash tests/generic-core.sh
 # The one reading in this repository that lives in the workflow rather than in
 # a file the gate can run -- so it is a file now, and this is what runs it.
@@ -94,6 +132,7 @@ run "a red row is red whatever its namespace" bash tests/summary-red-rows.sh
 run "harness layering holds" bash tests/harness-layer.sh
 # This file, the workflow and `bun run test` are three copies of the list
 # above. They used to be kept in step by hand, and were not.
+run "every shard of the suite runs somewhere" bash tests/shard-matrix.sh
 run "gate parity holds" bash tests/gate-parity.sh
 # And the other thing AGENTS.md asserts about this file: the numbers it writes
 # out in prose. Three of them were wrong at once.
@@ -115,6 +154,11 @@ run "scenario invariants" bash tests/spec-invariants.sh
 # After spec-invariants: this reads the artifact that one regenerates, so a
 # stale inventory should be reported as stale, not as a coverage hole.
 run "every OCA obligation has a check" bash tests/oca-obligations.sh
+# BEFORE the slice, because the slice is keyed on the declared version and the
+# driver lists downstream are keyed on the `cert201-` prefix. This is what makes
+# those two keys one set; a scenario that carries only one of them is invisible
+# to whichever guard reads the other.
+run "a 2.0.1 scenario is spelled both ways" bash tests/cert201-declares-its-version.sh
 # And beside it, for the same reason and off the same artifact: the OCPP 2.0.1
 # scenarios are the ones a written selection rule governs, and the rule and the
 # scenarios are two files that can disagree.
@@ -124,6 +168,10 @@ run "the OCPP 2.0.1 slice is the selected one" bash tests/oca-201-slice.sh
 # needs an operation CsmsOperation201 has not, is a claim the two files alone
 # cannot contradict.
 run "the OCPP 2.0.1 operations are the measured ones" bash tests/oca-201-operations.sh
+# Last of the 2.0.1 group, and the only one about a DRIVER: the scope-coverage
+# check a driver runs reports a missing row and a stale row, never a row that is
+# present and not demoted, so a hand-kept demotion list is checked by nothing.
+run "the v1 demotions cover every 2.0.1 scenario" bash tests/cert201-scope-rows.sh
 
 # Not fatal when absent: shellcheck is a linter, and refusing to verify a
 # TypeScript repository because a shell linter is missing would push people to

@@ -1,12 +1,12 @@
 #!/usr/bin/env bun
 /**
- * Derived from shiv3/ocpp-cp-simulator scripts/steve-verify/runner/main.ts @ 604054adb0d7d7129a26a5f1ad2d5fdc290d1ca1 (Apache-2.0). Modified: the STEVE_DRIVER=api|ui selection is replaced by a CSMS driver loaded through ./driver-registry; a per-driver scope table (./scope) is consulted BEFORE any container starts and yields the NOT APPLICABLE verdict; UnsupportedOperationError (./driver) thrown out of drive() degrades to NOT APPLICABLE with a stderr WARNING; the PARTIAL verdict and the `skipped` summary column were added; the exit code is non-zero only for FAIL/ERROR; parallel lanes derive from the resolved station list instead of the fixed CERTCP1..3 trio; the SteVe capability probe is dropped.
+ * Derived from shiv3/ocpp-cp-simulator scripts/steve-verify/runner/main.ts @ 604054adb0d7d7129a26a5f1ad2d5fdc290d1ca1 (Apache-2.0). Modified: the STEVE_DRIVER=api|ui selection is replaced by a CSMS driver loaded through ./driver-registry; a per-driver scope table (./scope) is consulted BEFORE any container starts and yields the NOT APPLICABLE verdict; UnsupportedOperationError (./driver) thrown out of drive() degrades to NOT APPLICABLE with a stderr WARNING; the PARTIAL verdict and the `skipped` summary column were added; the exit code is non-zero only for FAIL/ERROR; parallel lanes derive from the resolved station list instead of the fixed CERTCP1..3 trio; the SteVe capability probe is dropped; a scenario's declared OCPP 2.0.1 Reusable States (./states-201) are planned and established between the boot gate and the scenario template.
  *
  * main.ts -- TypeScript OCPP conformance runner CLI.
  *
  * Usage: ocpp-tck run <template-id> [--cp CP1] [--timeout N] [--connector N]
  *        ocpp-tck run --group core|authlist-reservation|remotetrigger-smartcharging|firmware|authorize|core-201|all [--parallel]
- *        ocpp-tck run-all [--group <name>] [--parallel]
+ *        ocpp-tck run-all [--group <name>] [--parallel] [--shard k/n]
  *
  * Brings its own simulator container up (sim.ts), drives it over the JSON
  * Lines stdin protocol, captures its full stdout, parses OCPP-J frames
@@ -85,6 +85,12 @@ import {
   unsupportedReservations,
 } from "./capabilities";
 import { parseLog } from "./ocpp";
+import {
+  describeShard,
+  parseShard,
+  selectShard,
+  type Shard,
+} from "./shard";
 import { readTrace } from "./trace";
 import {
   DEFAULT_SIM_IMAGE,
@@ -113,6 +119,14 @@ import {
   REMOTETRIGGER_SMARTCHARGING_SPECS,
 } from "./specs/index";
 import type { ScenarioSpec } from "./spec-types";
+import {
+  divergesFromReference,
+  establishStates,
+  FixtureLog,
+  isRunnable,
+  planStates,
+} from "./states-201";
+import { awaitCsmsReady, type ReadinessClock } from "./readiness";
 import { sleep } from "./util";
 import { WaitTimeoutError } from "./wait";
 
@@ -170,11 +184,132 @@ let warnedNoTrace = false;
  * `assertNoForeignSweep` is here: it reads the daemon before `prepareStation()`
  * writes to the CSMS, and a preflight that runs after the run has started is a
  * diagnosis nobody reads.
+ *
+ * THE ORDER IS CHEAPEST-FIRST AND THAT IS NOT COSMETIC. The environment check
+ * reads a variable, the foreign-sweep check reads the local daemon, and the
+ * readiness gate is the only step that leaves this host. A misspelt
+ * `SIM_OCPP_VERSION` must not spend a network round trip -- or, on a CSMS that
+ * is genuinely down, {@link CSMS_READY_TIMEOUT_MS} -- before it is reported.
  */
 async function preflight(cpIds: readonly string[]): Promise<void> {
   // defaultSimConfig() is called for its refusal, not its result.
   defaultSimConfig();
   await assertNoForeignSweep(cpIds);
+  await assertCsmsAnswers(cpIds[0]);
+}
+
+/**
+ * How long the gate goes on believing in a CSMS that has not answered yet, and
+ * how often it asks.
+ *
+ * DERIVED, NOT PICKED. The question "how long may a cold CSMS take before we
+ * stop believing in it" is one this repository has already answered twice, in
+ * the compose files it ships: SteVe's healthcheck gets `start_period: 150s`
+ * because it replays its Flyway migrations before it binds, and CitrineOS's
+ * gets 120s because it runs its migration set on a cold database. Those are
+ * the numbers `docker compose up --wait` is held to, so the gate takes the
+ * larger of them. Anything shorter and the gate becomes the first thing to
+ * give up: it would refuse a CSMS that is merely booting, which converts a
+ * wait an operator would have been happy to sit through into a failed run.
+ *
+ * THE INTERVAL IS THE SMALLER OF THE TWO COMPOSE POLL INTERVALS (CitrineOS
+ * polls every 5s, SteVe every 10s). A probe that is cheaper than a docker
+ * healthcheck has no reason to be lazier than one.
+ *
+ * WHAT IT COSTS WHEN THE CSMS IS UP is one round trip and no wait, which is
+ * the case CI is always in: the workflow runs `up -d --wait`, then
+ * `driver provision`, then `driver verify`, and only then the sweep. On run
+ * 33983705032 those three finished at 18:21:27, 18:21:29 and 18:21:29, and the
+ * sweep began at 18:21:29.8 -- so the gate's first attempt would have been
+ * answered by a CSMS that had just answered two other verbs.
+ */
+const CSMS_READY_TIMEOUT_MS = 150_000;
+const CSMS_READY_INTERVAL_MS = 5_000;
+
+/** The real clock. `unref()` on the deadline timer is load-bearing: without it
+ *  a 150s timer left behind by a probe that answered in 20ms keeps the process
+ *  alive for the rest of the budget after the run has finished. */
+const WALL_CLOCK: ReadinessClock = {
+  now: () => Date.now(),
+  pause: (ms) => new Promise((resolve) => setTimeout(resolve, ms)),
+  deadline: (ms) =>
+    new Promise((resolve) => {
+      setTimeout(resolve, ms).unref?.();
+    }),
+};
+
+/**
+ * The readiness gate: one cheap read the CSMS must answer before anything is
+ * dispatched at it.
+ *
+ * THE PROBE IS `driver selftest`'S FIRST ONE, `latestTransaction`, and reusing
+ * it rather than inventing a health endpoint is the whole point. It is in the
+ * core half of the contract, so every driver has it; it is a read, so it
+ * changes nothing; `""` is a legitimate answer, so it needs no fixture; and
+ * selftest has already established against both bundled drivers that a call
+ * which returns at all is a data path that works. A health endpoint would be a
+ * surface every future driver has to grow in order to be gated.
+ *
+ * A DRIVER THAT CANNOT ANSWER IT IS NOT A FAILED RUN. `create()` is allowed to
+ * demand a credential, a driver is allowed to decline a method, and the scope
+ * table is reviewable offline precisely because the preflight has never needed
+ * either -- see the two-stage note on `driverModule`/`driver` above. So
+ * anything but "the request got no answer" ends the gate as `unavailable`: it
+ * says so once and the run proceeds exactly as it would have without a gate,
+ * with whatever the driver was going to throw surfacing where it always did.
+ *
+ * WHAT IT DOES NOT COVER is stated at length in readiness.ts, and the summary
+ * is: this runs ONCE, before the first container, so it says nothing about a
+ * CSMS that stalls in the middle of a sweep. Issue #119 asked for a gate on
+ * the belief that the first batch races a warm-up; the artifact it cites shows
+ * its three failures dispatched eleven minutes into the sweep, against a CSMS
+ * that had been answering the whole time. Read that note before widening this.
+ *
+ * IT RUNS FOR A GROUP EVERY ROW OF WHICH IS NOT APPLICABLE, TOO, and that is
+ * the trade rather than an oversight: knowing which rows are applicable means
+ * resolving the scope table per scenario, which the sweep does inside its own
+ * loop and after this. `run-all` is a live verb -- README's table says
+ * "docker + CSMS" for it -- and `check-driver` is the offline one that answers
+ * scope questions without a server. A group that would have printed NOT
+ * APPLICABLE rows against a CSMS that is down is now refused instead, which is
+ * the same sentence about the same environment either way.
+ */
+async function assertCsmsAnswers(cpId: string | undefined): Promise<void> {
+  if (cpId === undefined) return;
+  const result = await awaitCsmsReady(
+    async () => (await driver()).records.latestTransaction(cpId),
+    {
+      timeoutMs: CSMS_READY_TIMEOUT_MS,
+      intervalMs: CSMS_READY_INTERVAL_MS,
+      clock: WALL_CLOCK,
+    },
+  );
+  switch (result.kind) {
+    case "ready":
+      if (result.attempts > 1) {
+        process.stderr.write(
+          `[runner] the CSMS answered on attempt ${result.attempts}; starting the run.\n`,
+        );
+      }
+      return;
+    case "unavailable":
+      process.stderr.write(
+        `[runner] WARN: no readiness gate for this driver -- it could not be ` +
+          `asked whether the CSMS answers (${result.detail}). Running anyway; ` +
+          `this is a gate that did not apply, not a CSMS that failed one.\n`,
+      );
+      return;
+    case "no-answer":
+      throw new Error(
+        `the CSMS did not answer a single record query in ` +
+          `${CSMS_READY_TIMEOUT_MS / 1000}s (${result.attempts} attempt(s), ` +
+          `last: ${result.detail}). Nothing has been started. Bring the CSMS ` +
+          `up and wait for it -- \`docker compose -f drivers/<csms>/compose.yaml ` +
+          `up -d --wait\` -- then check the driver's URL settings with ` +
+          `\`ocpp-tck driver selftest\`, which asks the same question one call ` +
+          `at a time.`,
+      );
+  }
 }
 
 /**
@@ -288,7 +423,17 @@ type ScenarioRun =
  * configuration. The scope table is consulted BEFORE any container starts, so
  * a scenario this CSMS cannot drive is reported NOT APPLICABLE without the
  * driver ever needing valid credentials -- which is what makes the scope table
- * reviewable offline. That only holds because the preflight stops at stage one.
+ * reviewable offline.
+ *
+ * THE PREFLIGHT DOES REACH STAGE TWO, and the promise above survives it only
+ * because of how: `assertCsmsAnswers` calls `driver()` inside a probe whose
+ * every failure but "the request got no answer" is reported and stepped over.
+ * A `create()` that throws for want of a credential therefore costs one warning
+ * line and changes nothing else -- the sweep proceeds, and the throw surfaces
+ * where it always did. What a reader must not do is promote that outcome to a
+ * refusal: it would make every verb that runs the preflight demand a credential
+ * in order to tell you it was not going to use one, which is the contradiction
+ * `scopeEntryFor` below spells out at length for the same reason.
  */
 let driverModulePromise: Promise<CsmsDriverModule> | undefined;
 let driverPartsPromise: Promise<CsmsDriverParts> | undefined;
@@ -530,6 +675,9 @@ async function runScenario<D>(
   process.stderr.write(`[runner] simulator container: ${sim.container}\n`);
 
   let driveState!: D;
+  /** What ScenarioSpec.states did. Empty unless the scenario declares any, so
+   *  a spec never branches on whether the mechanism ran. */
+  let fixtures = new FixtureLog();
   /** Set only when drive() reported an operation the CSMS cannot do. */
   let unsupported: string | undefined;
   try {
@@ -572,6 +720,77 @@ async function runScenario<D>(
       );
     }
     await sleep(bootWaitSecs * 1000);
+
+    // THE REUSABLE STATES, HERE AND NOWHERE ELSE. After the boot gate, because
+    // every fixture needs a station the CSMS has accepted; before the template
+    // and before drive(), because a fixture's whole job is to be the condition
+    // those two run against. See tck/states-201.ts for the model.
+    //
+    // INSIDE THIS try, deliberately. A CSMS-initiated state whose driver cannot
+    // dispatch throws UnsupportedOperationError, and the catch around drive()
+    // below is what turns that into NOT APPLICABLE -- which means the same
+    // thing whichever half of the scenario asked for the operation: the scope
+    // table missed it. A separate catch here would be a second answer to one
+    // question.
+    //
+    // A REFUSED PLAN IS A THROW AND NOT A DEGRADATION, and it is meant to be
+    // unreachable: tests/state-plan-201.ts fails the build on a scenario whose
+    // plan selects a segment this build has no reach for. Reaching it means a
+    // scenario got past the gate, so ERROR -- the scenario never got an answer
+    // -- is the honest verdict, and standing.ts already refuses to let a
+    // declaration excuse one.
+    if (spec.states && spec.states.length > 0) {
+      const plan = planStates(spec.states);
+      if (!isRunnable(plan)) {
+        throw new Error(
+          `${spec.templateId} declares Reusable States this build cannot ` +
+            `establish: ${plan.refusals
+              .map((refusal) =>
+                refusal.kind === "planned"
+                  ? `${refusal.state} (${refusal.reason})`
+                  : `${refusal.state} (${refusal.kind})`,
+              )
+              .join("; ")}`,
+        );
+      }
+      process.stderr.write(
+        `[runner] ${spec.templateId} declares ${spec.states.length} Reusable ` +
+          `State(s); the plan is ${plan.steps.map((step) => step.state).join(" -> ")}\n`,
+      );
+      fixtures = await establishStates(
+        plan,
+        { cpId: options.cpId, sim, csms201, records },
+        (step) =>
+          process.stderr.write(
+            `[runner] establishing Reusable State ${step.state} (segment ${step.segment})\n`,
+          ),
+      );
+      for (const outcome of fixtures.outcomes) {
+        if (outcome.established) {
+          // A fixture that RAN but promises less than the reference's post
+          // condition says so here, once per run, beside the step that
+          // produced it -- see `divergence` in tck/states-201.ts. Without it
+          // the log reads "establishing X" / no warning, which is what a state
+          // that reached its post condition also looks like.
+          const divergence = divergesFromReference(outcome.state);
+          if (divergence !== undefined) {
+            process.stderr.write(
+              `[runner] NOTE: Reusable State ${outcome.state} was exercised, ` +
+                `but this build does not reach the post condition the ` +
+                `reference declares for it: ${divergence}\n`,
+            );
+          }
+          continue;
+        }
+        process.stderr.write(
+          `[runner] WARN: Reusable State ${outcome.state} was not established ` +
+            `(${outcome.reason}) -- the scenario's precondition check will ` +
+            "report it, and this is a SKIPPED check rather than a finding " +
+            "against the CSMS\n",
+        );
+      }
+    }
+
     // BOTH STATEMENTS OR NEITHER -- see ScenarioSpec.runsSimTemplate. The wait
     // below is what the command above produces, so skipping the send and
     // keeping the wait would spend 20s proving that a scenario nobody started
@@ -758,6 +977,7 @@ async function runScenario<D>(
     rec,
     records,
     driveState,
+    fixtures,
   });
 
   for (const check of rec.results) {
@@ -782,8 +1002,8 @@ async function runScenario<D>(
 // Spec registry -- five groups mirror the upstream group names and array
 // membership/order exactly (47 scenarios: 15 core + 13 authlist-reservation +
 // 12 remotetrigger-smartcharging + 4 firmware + 3 authorize), and one has no
-// upstream counterpart at all: core-201, the 5 OCPP 2.0.1 scenarios written
-// here rather than ported. 52 in total.
+// upstream counterpart at all: core-201, the 33 OCPP 2.0.1 scenarios written
+// here rather than ported. 80 in total.
 //
 // A SIXTH BUCKET, NOT A SECOND AXIS, and the difference is worth stating here
 // because the note further down forbids the second. --group selects
@@ -1234,6 +1454,7 @@ async function writeSummary(
   groupName: string,
   outcomes: ScenarioOutcome[],
   parts: StandingPartition,
+  shardNote: string | null,
 ): Promise<string> {
   const anyRetried = outcomes.some((o) => o.isolatedRetry !== undefined);
 
@@ -1333,6 +1554,11 @@ async function writeSummary(
     [
       `# OCPP verification results — group: ${groupName}`,
       "",
+      // ON ITS OWN LINE AND NOT IN THE TITLE. `tools/flake-report.ts` reads the
+      // group as everything after "group: ", so a suffix there would make every
+      // sharded run its own group in the corpus and split each scenario's flake
+      // history across as many buckets as there are shards.
+      ...(shardNote ? [`**${shardNote}**`, ""] : []),
       `Run at ${timestampUtc()}. ${hostLoad()}`,
       "",
       header,
@@ -1353,11 +1579,26 @@ async function runGroupSweep(
   groupName: string,
   parallel: boolean,
   retryFailedIsolated: boolean,
+  shard?: Shard,
 ): Promise<number> {
-  const specs = GROUPS[groupName];
-  if (!specs) {
+  const selected = GROUPS[groupName];
+  if (!selected) {
     process.stderr.write(
       `Unknown group: ${groupName} (known: ${Object.keys(GROUPS).join(", ")})\n`,
+    );
+    return 1;
+  }
+
+  const specs = selectShard(selected, shard);
+  const shardNote = describeShard(shard, specs.length, selected.length);
+  // REFUSED RATHER THAN RUN EMPTY. More shards than scenarios is a workflow
+  // whose matrix grew and whose suite did not, and an empty sweep exits 0 with
+  // a table of no rows -- which reads as a pass.
+  if (specs.length === 0) {
+    process.stderr.write(
+      `[runner] ${shardNote ?? "the selection"} is empty: group '${groupName}' ` +
+        `has ${selected.length} scenario(s). Nothing to run, and an empty sweep ` +
+        `is not a passing one.\n`,
     );
     return 1;
   }
@@ -1375,6 +1616,7 @@ async function runGroupSweep(
     );
   }
 
+  if (shardNote) process.stderr.write(`[runner] ${shardNote}\n`);
   process.stderr.write(
     `[runner] group '${groupName}': ${specs.length} scenario(s), stations=[${stations.join(", ")}], lanes=${effectiveParallel ? lanes : 1}\n`,
   );
@@ -1430,7 +1672,7 @@ async function runGroupSweep(
   }
 
   const parts = partitionByStanding(outcomes);
-  const summaryPath = await writeSummary(groupName, outcomes, parts);
+  const summaryPath = await writeSummary(groupName, outcomes, parts, shardNote);
   process.stderr.write(`[runner] results table: ${summaryPath}\n`);
 
   const { unexpectedFails, expectedFails, unexpectedPasses, declaredButErrored, flakes } =
@@ -1516,6 +1758,10 @@ interface CliArgs {
   timeoutSecs?: number;
   /** `--results-dir`; beats OCPP_TCK_RESULTS_DIR, which beats ./results. */
   resultsDir?: string;
+  /** `--shard k/n`; absent means the whole selection. Not a way of NAMING a
+   *  subset -- `tck/shard.ts`'s header is why that distinction is the one this
+   *  option is careful about. */
+  shard?: Shard;
 }
 
 function requireValue(argv: string[], index: number, flag: string): string {
@@ -1553,7 +1799,7 @@ async function printUsage(): Promise<void> {
       "       ocpp-tck run --group " +
       `${Object.keys(GROUPS).join("|")} [--parallel] [--retry-failed-isolated]\n` +
       "       ocpp-tck run-all [--group <name>] [--parallel] " +
-      "[--retry-failed-isolated] [--results-dir DIR]\n" +
+      "[--retry-failed-isolated] [--results-dir DIR] [--shard k/n]\n" +
       "       ocpp-tck list-scenarios [--group <name>] [--json]\n" +
       "       ocpp-tck check-driver [--driver SPEC] [--json]\n" +
       "       ocpp-tck print-sim-image\n" +
@@ -1613,6 +1859,7 @@ function parseArgs(argv: string[]): CliArgs {
   let connector: number | undefined;
   let timeoutSecs: number | undefined;
   let resultsDirArg: string | undefined;
+  let shard: Shard | undefined;
 
   if (argv[0] === "run-all") {
     group = "all";
@@ -1630,6 +1877,15 @@ function parseArgs(argv: string[]): CliArgs {
         case "--results-dir":
           resultsDirArg = requireValue(argv, ++i, "--results-dir");
           break;
+        case "--shard": {
+          const parsed = parseShard(requireValue(argv, ++i, "--shard"));
+          if (typeof parsed === "string") {
+            process.stderr.write(`${parsed}\n`);
+            process.exit(1);
+          }
+          shard = parsed;
+          break;
+        }
         default:
           process.stderr.write(`Unknown argument: ${argv[i]}\n`);
           process.exit(1);
@@ -1642,6 +1898,7 @@ function parseArgs(argv: string[]): CliArgs {
       retryFailedIsolated,
       cpId,
       resultsDir: resultsDirArg,
+      shard,
     };
   }
 
@@ -2241,6 +2498,7 @@ export async function cli(argv: string[]): Promise<number> {
       args.group ?? "all",
       args.parallel,
       args.retryFailedIsolated,
+      args.shard,
     );
   }
 

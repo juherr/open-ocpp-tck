@@ -24,8 +24,8 @@ error.
 ## The gate
 
 `bun run verify` is every check CI runs before it starts a container —
-typecheck, committed declarations, three driver scope checks, ten in-process
-guards and thirteen shell guards — with one exit code, and every step runs even
+typecheck, committed declarations, three driver scope checks, seventeen in-process
+guards and sixteen shell guards — with one exit code, and every step runs even
 after one fails, where CI enumerates them and stops at the first.
 
 There is a third copy of that list — `bun run test`, the guards without the
@@ -37,7 +37,9 @@ sequence, and every link of `bun run test` to being one of its steps.
 
 It is usually the wrong command *during* iteration: `tests/spec-invariants.sh`
 pulls a pinned bun image, and it can only break if something under `tck/specs/`
-changed. The fast loop:
+changed. The fast loop — the typecheck, the driver scope checks, the
+in-process guards, and the two shell guards that read a scenario registry
+rather than a document:
 
 ```sh
 bun run typecheck
@@ -45,15 +47,26 @@ bun run check:driver:steve
 bun run check:driver:citrineos
 bun run check:driver:citrineos-v1     # the same driver's other release line
 bun tests/driver-env-scope.ts
+bun tests/capability-parity.ts
 bun tests/expected-failure-standing.ts
 bun tests/assert-answered.ts
 bun tests/get-configuration-filter.ts
 bun tests/foreign-sweep-scope.ts
+bun tests/csms-readiness-gate.ts
 bun tests/sim-docker-argv.ts
 bun tests/trace-frames.ts
 bun tests/steve-ui-session-race.ts
 bun tests/citrineos-transport-classification.ts
 bun tests/citrineos-device-model-fixture.ts
+bun tests/citrineos-redelivery-loops.ts
+bun tests/shard-selection.ts
+bun tests/state-plan-201.ts
+bun tests/certificate-material.ts
+bun tests/request-shape-201.ts
+bash tests/cert201-declares-its-version.sh
+bash tests/cert201-scope-rows.sh       # both read tck/specs/ASSERT-INVENTORY.txt,
+                                       # so a NEW scenario reaches them only once
+                                       # spec-invariants.sh has regenerated it
 ```
 
 then `bun run verify` once before committing.
@@ -86,6 +99,17 @@ and doing it *before* `bun run verify` saves a full gate run: the script
 bootstraps the patch and the digest in one step, in the only order that cannot
 record a digest for bytes that no longer exist.
 
+The manifest's other half is the **container image pins**, and they follow a
+different rule: hand-maintained, in one of `VENDOR.md`'s two-column pin tables
+and in the file that table's `declared in` row names — `tck/sim.ts` for the
+simulator, a driver's `compose.yaml` for a CSMS stack. Move a digest and you
+move both, in the same commit. `tests/vendor-integrity.sh`'s A14 compares every
+image, digest and resolved tag in both directions, and it is driven off
+`declared in` rather than off a list, so a new pin block is covered the moment
+it is written. Until it existed the pins were compared to nothing: the
+inventory parser selects rows by width, which excludes every two-column table
+in the file.
+
 ## Generated artifacts, committed on purpose
 
 Committed because this package is consumed as a pinned git dependency, and
@@ -110,10 +134,18 @@ There is no unit-test framework and no `*.test.ts`. `tests/` holds offline
 guards, each with a header stating the property it protects. `bun run test`
 chains them — note `bun test` is Bun's own runner and finds nothing here.
 
-Shell is the default, and the ten TypeScript ones are TypeScript because
+Shell is the default, and the seventeen TypeScript ones are TypeScript because
 what they assert is unreachable through the CLI. `driver-env-scope.ts`: a
 driver's declarations follow the env they are *resolved* with, where the CLI
-can only ever pass `process.env`. `expected-failure-standing.ts`: the rule that
+can only ever pass `process.env`. `capability-parity.ts`: the same reason and
+one more — what it compares a declaration against is the parts `create(env)`
+returns, which from the CLI means starting a sweep, and both halves have to be
+read for one synthetic env. Its per-action half calls the driver's mapper
+directly rather than `operations201.execute()`, because the client `execute`
+closes over is built inside `create()` with the real `fetch`; the header says
+what that weakens and why the two alternatives — exporting the driver's
+internal factory, patching the global `fetch` — cost more than it buys.
+`expected-failure-standing.ts`: the rule that
 decides whether a red sweep ends the build, which from a shell would cost a
 container per row — and, for the rows that matter, a CSMS engineered to fail a
 chosen scenario a chosen way. `tck/standing.ts` is a module of its own so that
@@ -129,6 +161,15 @@ a spelling and no sweep, offline or live, could say so.
 version would start a container per row on the daemon this repository's own
 sweeps share — and the rule is what can be wrong, so `classifyForeignSims` is
 exported without the daemon in it, the same split `tck/standing.ts` is.
+`csms-readiness-gate.ts`: the other preflight rule, and the same split for a
+longer list of reasons — a CSMS that accepts a connection and never answers, a
+driver that declines a core method, a probe that hangs for good are three
+states neither bundled CSMS can be asked for, and the direction that fails
+*silently* is the one worth the guard: a gate that waited on every rejection
+would spend its whole budget on a driver that was never going to answer, which
+looks exactly like a slow CSMS. So `awaitCsmsReady` takes its probe and its
+clock, and the runner keeps `Date.now`, `setTimeout` and one call into the
+contract.
 `sim-docker-argv.ts`: `buildDockerArgs` is pure and its one caller spawns
 docker in the next statement, so the argv a scenario would run is not printable
 from a shell — and `defaultSimConfig` resolving the env it is *handed* is the
@@ -153,7 +194,7 @@ cost a container and a misconfiguration to stage. What it holds is a line, not
 a behaviour: which failures `warnOpFailed` lets out, so it is wrong in two
 directions and half of its table asserts the *negative* — that a request the
 CSMS answered stays an ordinary failure.
-`citrineos-device-model-fixture.ts`: the last one, and the one whose subject is
+`citrineos-device-model-fixture.ts`: the one whose subject is
 least visible from anywhere else. It holds a SEQUENCE of writes — which rows
 `provision` seeds, which one the prepare hook points back, which ones teardown
 refuses to remove — against a CSMS that answers a right fixture and a wrong one
@@ -161,6 +202,91 @@ with the same empty `StatusNotificationResponse`. There is no wire assertion
 that could tell them apart, and the live measurement that can is four lines in
 a CSMS log rather than a verdict. So the seam again: the provisioner takes its
 `fetch`, and the guard answers from a store.
+`citrineos-redelivery-loops.ts`: the seam again, and the input is what makes it
+one. When a CSMS-initiated request is dispatched to a station that is no longer
+there, the pinned deployment re-enqueues and re-logs it forever; the loops
+accumulate, and eleven of them stopped the server answering mid-sweep while the
+run still exited 0. The log that shows it is 1.5 GB, produced once, by a run in
+which the server collapsed -- an input no offline run can make and no live run
+can be asked for, since reproducing it means breaking the CSMS. So the reader
+takes lines and the guard hands it fixtures. Its claims are ordinary except one:
+the envelope pattern is bound to that deployment's log format, key order
+included, so the way it fails is by matching NOTHING and reporting a healthy
+sweep. Two of its five rows exist to tell "nothing matched" from "nothing was
+there", which is the same failure `tools/summary-red-rows.ts`'s header names one
+artifact over.
+`shard-selection.ts`: the one whose subject is an ABSENCE. Sharding fails by
+DROPPING scenarios, and a dropped scenario is not a red row -- it is a green job
+that measured less than its table claims. Reaching that from the CLI would mean
+one container per scenario per shard count, on a shared daemon, to observe
+something not happening; `selectShard` is pure for that reason. Its load-bearing
+row is the UNION, not the count: an off-by-one in the modulus distributes evenly,
+reads correctly, and runs 82 of 83 scenarios, so the check is set equality
+against the input at every shard count from one to more shards than there are
+items. The balance row is the weaker one and says so -- it is not needed for
+correctness, only for the wall-clock argument the mechanism exists to make.
+`certificate-material.ts`: the one whose subject is a VALUE rather than a rule,
+and the reason it is here at all is WHEN that value is read. `tck/driver.ts`'s
+`InstallCertificate` carries a PEM, and at least one pinned CSMS parses it
+BEFORE it dispatches anything -- so a malformed one is refused with an HTTP
+error and no frame, which the runner reports as a non-dispatch: five
+certification cases ERROR against the CSMS for a defect in this repository. Its
+four claims are that deployment's requirements rather than the protocol's, and
+the one that could not be guessed from either is the serial: the CSMS stores
+`parseInt(serialNumberHex)` in an integer column, so a serial spelt with hex
+letters reads back as `NaN`. The expiry row is the one written for the future
+rather than for today -- nothing checks the date, so a certificate regenerated
+at openssl's default of thirty days would pass every other row here and pass
+every run for a month. The guard's own assumption is stated in its header: the
+parser available here is not the parser that matters there.
+`state-plan-201.ts`: the one whose subject mostly never touches a CSMS at all. What a scenario DECLARES — the OCPP 2.0.1 `Reusable State`s its
+case takes as a precondition — is not what the runner RUNS: `tck/states-201.ts`
+folds the states' own post conditions into a condition, executes a dependency
+edge only where that condition says the system is not already there, and picks
+a state's branch from it. Every step of that is a decision no sweep can show
+you, and the row that decides whether the rule is right — re-entering
+`EnergyTransferStarted` after the `EVDisconnected` chain, where deduplicating
+by a visited set silently drops an `Authorize` — walks a chain of five states
+of which most have no reach this build can execute, so no sweep, live or
+offline, could reach it. `planStates` is a total function for that reason, the
+same split `tck/standing.ts` is. Its third claim is the odd one and belongs
+with the rest anyway: a `states:` written as anything but a literal renders `·`
+and is then OMITTED from `ASSERT-INVENTORY.txt`, so the guard RUNS the
+extractor rather than reading the committed file — a guard comparing two
+committed files goes green on a declaration factored out after the artifact was
+generated. Its last two claims are the ones that DO touch a CSMS, and they are
+here because reaching them means handing `establishStates` a driver that fails a
+chosen way — which is the seam this file's other entries are built on. The
+sixth is the classification: everything a reach throws becomes an unestablished
+precondition, i.e. SKIPPED and then PARTIAL, EXCEPT the two classes that mean
+nobody was asked — `UnsupportedOperationError` and `CsmsNotDispatchedError`. The
+second of those was being swallowed, and the way that is wrong is silent: a
+driver pointed at a base URL that answers nothing turns every scenario declaring
+one of those states into a row whose `UNEXERCISED_PREFIX` claims the gap is in
+OUR scenarios. The seventh checks an ARGUMENT rather than a rule. Two Reusable
+States are `established: true` after a reach that does not reach the reference's
+post condition — the pinned station refuses both requests from a canned handler
+— and `tck/states-201.ts` declares that on the definition and argues it is safe
+because nothing depends on those post conditions. That is a claim about the rest
+of the table, so the guard walks it: no dependency edge invokes one, and their
+`establishes` is the identity from every condition, not only from the initial
+one.
+
+`request-shape-201.ts`: the last one, and the only one whose subject is what a
+scenario ACCEPTS rather than what it refuses. Every check in `tck/specs/core-201.ts`
+decides a verdict by reading a payload, and there are three ways that read is
+wrong while the row stays GREEN — which is the only direction worth a guard,
+because a check that reddens wrongly gets looked at. An ABSENT member read as a
+value: 2.0.1 tells scope apart by omission, `evse` absent is the whole station
+and `evseId` absent is every EVSE, and `payload.x ?? null` cannot tell that from
+`"x": null` — three payloads Part 3 forbids outright were reported as the
+requests the cases asked for. A VALUE read as a kind: `InstallCertificate`
+carries "A PEM encoded X.509 certificate", and armour around arbitrary bytes was
+read as one. MEMBER ORDER read as structure: TC_K_05 scraped a profile
+identifier with `"chargingProfile":[{"id":`, which is a fact about the pinned
+image's serialiser and nothing else. Half its rows go the other way, and they
+are what stops the fixes overshooting — a CSMS may re-wrap a PEM it was handed,
+so the certificate check may not become byte equality against the fixture.
 
 Two guards build a fixture instead of reading the tree, and they are the two
 that test the scripts under `tools/` which *write*.
@@ -196,7 +322,7 @@ weaker than its comment, and only the mutation nobody had to run said so.
 Stopping at the obvious ones is not rigour, it is luck: the guard ships, and
 its header is now a false claim about what the build checks.
 
-## Nine boundaries the guards enforce
+## Twelve boundaries the guards enforce
 
 - **The gate is one list.** `tools/verify.sh` and the workflow's `check` job
   must run the same commands in the same order, minus the CI-only setup the
@@ -243,7 +369,14 @@ its header is now a false claim about what the build checks.
   green. The file holds all 147 the rule selects, so that is now a regression
   rather than the state it sat in for a year; where it is owned is the
   selection page rather than here.
-  (`tests/oca-201-slice.sh`)
+  And the two names such a scenario has are one fact, which is the half of
+  this boundary that had nothing watching it: the slice guard keys on the
+  declared `ocppVersion`, every driver list and every other reader keys on the
+  `cert201-` prefix, and nothing tied the two together. A scenario carrying
+  only one of them is checked by half of what it looks checked by — and one
+  carrying only the prefix runs on the environment's protocol, 1.6 by default,
+  and goes six checks of seven green.
+  (`tests/oca-201-slice.sh`, `tests/cert201-declares-its-version.sh`)
 - **A selected case's operation cost is measured, and a row may not claim a
   case the contract cannot express.** `tck/specs/OCA-201-OPERATIONS.txt` names
   the CSMS-initiated operation each of those 147 cases obliges the CSMS to send
@@ -258,9 +391,62 @@ its header is now a false claim about what the build checks.
   and `TC_F_20` sat implemented for a milestone on a case whose only validation
   is a `TriggerMessage` no driver could be asked to send.
   (`tests/oca-201-operations.sh`)
+- **A capability a driver declares is one it implements.** A driver says what
+  it can do twice — `capabilities`, resolved offline, and the parts
+  `create(env)` returns — and `check-driver` reads only the first. It cannot
+  read the second by design: a declaration must be readable without
+  credentials. So the guard holds the two to each other for every env a bundled
+  driver's declarations are a function of, both directions, over the four
+  omissible halves; requires a present `operations201` to be non-empty, since
+  absent and empty are different claims and only one of them is ever honest
+  here; and pushes `SAMPLE_OPERATION_201`, one well-formed operation per
+  action that `tck/driver.ts` cannot compile without, through the driver's own
+  mapper. That last direction is the one nothing watched: `check-driver`'s
+  rule about `operations201` compares the declaration to
+  `CSMS_OPERATION_201_ACTIONS`, so an arm added to the contract grows both
+  sides in the same commit and the check is a tautology — CitrineOS declared
+  `new Set(CSMS_OPERATION_201_ACTIONS)`, the whole constant, and would have
+  claimed every one of the thirteen arms still to come at the moment each was
+  added. What no offline guard can add is that the route a `case` names
+  EXISTS: a plausible module/action pair compiles, is declared, and 404s, which
+  `api-client.ts` classifies as a non-dispatch rather than a capability gap.
+  (`tests/capability-parity.ts`)
+- **A demotion a driver keeps by hand covers every scenario it is about.**
+  `scopeCoverage` — what `check-driver` runs — reports a scope row that is
+  MISSING and one that is STALE. A demotion is neither: it is a rewrite a
+  derived table applies to the ids a driver lists, so a scenario the list
+  forgets is inherited unchanged from the table it derives from, and the
+  derived table goes on claiming a capability that release line does not have
+  with the build green. The list is the only place the fact is written, because
+  a scenario's declared protocol never reaches a driver. Not hypothetical, and
+  not even unknown: `drivers/citrineos/variant.ts`'s `CERT_201_SCENARIOS` held
+  five of the seven registered `cert201-` scenarios and the comment above it
+  described that exact hole in prose, for a milestone, with `check-driver`
+  green on both lines. (`tests/cert201-scope-rows.sh`)
 - **A scenario's assertions and its CSMS call sequence may not change.**
   Changing what a scenario measures is legitimate and moves the two committed
   artifacts above — say why in the pull request. (`tests/spec-invariants.sh`)
+- **A declared OCPP 2.0.1 `Reusable State` is one this build can establish, and
+  its parameters reach the committed artifact.** `tck/states-201.ts` holds the
+  fourteen Part 6 defines for the CSMS role; five have a reach and nine are
+  declared `planned` with a reason, which is what lets `OCA-201-SLICE.txt` cite
+  a missing fixture by name instead of restating a blocker. Naming a planned
+  one fails here rather than at run time, because a scenario that would go
+  orange for something the build already knew is a scenario the build should
+  have refused. The other half is the one with nothing else watching it: the
+  `states:` declaration is DATA on the spec object, and a non-literal renders
+  `·` and is then omitted from `ASSERT-INVENTORY.txt` rather than marked — so a
+  fixture re-pointed at another connector or another tag moves no committed
+  artifact and no diff says so. And two of the five promise LESS than the
+  reference: the pinned station refuses both certificate requests from a canned
+  handler, so `established` there means the state was exercised. That is
+  declared on the definition rather than only argued in prose, because what
+  makes it safe is a claim about the rest of the table — no dependency edge
+  invokes one, and their post condition is the identity — and a claim about
+  elsewhere is one a guard should hold. The same guard pins which failures are
+  NOT an unestablished precondition: an operation the driver cannot express, and
+  one that never became an OCPP CALL, both leave the fixture rather than being
+  reported as a gap in our own scenarios. (`tests/state-plan-201.ts`)
 - **The documented install command installs the contract the documents
   describe.** Every tracked `*.md` citing a `github:<owner>/<repo>#<ref>`
   install command names this repository and the same ref, and then that ref is

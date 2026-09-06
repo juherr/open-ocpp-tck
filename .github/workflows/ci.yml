@@ -80,6 +80,12 @@ jobs:
       - name: Driver scope follows the environment
         run: bun tests/driver-env-scope.ts
 
+      # The other half of that reading, and in-process for the same reason plus
+      # one of its own: what it compares a declaration against is the parts
+      # `create(env)` returns, which the CLI reaches only by starting a sweep.
+      - name: A declared capability is an implemented one
+        run: bun tests/capability-parity.ts
+
       # In-process for the same reason: the rule that decides whether a red
       # sweep ends the build is not reachable from a shell without running a
       # scenario, and the rows that matter would each need a CSMS engineered to
@@ -105,6 +111,15 @@ jobs:
       # own sweeps share, to check the rule that keeps two sweeps apart.
       - name: The foreign-sweep refusal sees every namespace
         run: bun tests/foreign-sweep-scope.ts
+
+      # The other preflight rule, in-process for a longer version of the same
+      # reason: every row needs a CSMS engineered a chosen way -- one that
+      # accepts a connection and never answers, one whose driver declines a core
+      # method, one whose probe hangs for good. None is a state either bundled
+      # CSMS can be asked for, and the direction that fails silently is a gate
+      # that waits on a rejection waiting cannot fix.
+      - name: The readiness gate waits on one thing only
+        run: bun tests/csms-readiness-gate.ts
 
       # In-process because `buildDockerArgs` is pure and its only caller spawns
       # docker in the next statement: the argv a scenario would run is not
@@ -142,6 +157,42 @@ jobs:
       - name: The 2.0.1 device-model fixture keeps its shape
         run: bun tests/citrineos-device-model-fixture.ts
 
+      # In-process for the one input it is about: a 1.5 GB CSMS log from the run
+      # where the server collapsed. No offline run can make it and no live run
+      # can be asked for it, since reproducing it means breaking the server.
+      - name: The CSMS log reader knows nothing-matched from nothing-there
+        run: bun tests/citrineos-redelivery-loops.ts
+
+      # In-process because what it protects is an ABSENCE: sharding fails by
+      # dropping scenarios, and reaching that from the CLI would mean one
+      # container per scenario per shard count to observe something not
+      # happening.
+      - name: The shards of a sweep partition it
+        run: bun tests/shard-selection.ts
+
+      # In-process because its subject is a PLAN, not a run. The row that
+      # matters -- re-entering EnergyTransferStarted after the EVDisconnected
+      # chain, where deduplicating by a visited set silently drops an Authorize
+      # -- walks five states of which eleven in the graph have no reach this
+      # build can execute, so no sweep, live or offline, could reach it.
+      - name: A Reusable State plan follows the condition
+        run: bun tests/state-plan-201.ts
+
+      # In-process because its subject is a VALUE the CSMS parses before it
+      # dispatches: a malformed PEM is refused with an HTTP error and no frame,
+      # so the five InstallCertificate cases would report ERROR against the CSMS
+      # for a defect in this repository. The expiry row is about the future --
+      # nothing checks the date, so a regeneration at openssl's default of 30
+      # days would pass every run for a month.
+      - name: The committed certificate is one a CSMS can store
+        run: bun tests/certificate-material.ts
+
+      # In-process for the reason tests/get-configuration-filter.ts gives: the
+      # payloads it hands the helpers are ones no CSMS here sends, so a sweep
+      # cannot reach the branches where a wrong request reads as the right one.
+      - name: A 2.0.1 request assertion refuses the shape it is not about
+        run: bun tests/request-shape-201.ts
+
       - name: Core names no CSMS
         run: bash tests/generic-core.sh
 
@@ -160,6 +211,9 @@ jobs:
       # list. Kept in step by hand, they drifted three times -- always the same
       # way, a guard added to the other two and linted here without ever being
       # run.
+      - name: Every shard of the suite runs somewhere
+        run: bash tests/shard-matrix.sh
+
       - name: Gate parity holds
         run: bash tests/gate-parity.sh
 
@@ -201,6 +255,15 @@ jobs:
       - name: Every OCA obligation has a check
         run: bash tests/oca-obligations.sh
 
+      # Before the slice, and off the same artifact. The slice is keyed on the
+      # declared version; the driver lists downstream are keyed on the
+      # `cert201-` prefix. Nothing tied the two together, so a scenario
+      # carrying only one of them was invisible to whichever guard read the
+      # other -- and an undeclared one runs on OCPP 1.6 and goes six checks of
+      # seven green.
+      - name: A 2.0.1 scenario is spelled both ways
+        run: bash tests/cert201-declares-its-version.sh
+
       # Same artifact, same reason for the ordering: the OCPP 2.0.1 scenarios
       # are the ones a written selection rule governs, and a rule and the
       # scenarios it governs are two files that can disagree.
@@ -213,6 +276,14 @@ jobs:
       # cannot contradict.
       - name: The OCPP 2.0.1 operations are the measured ones
         run: bash tests/oca-201-operations.sh
+
+      # Last of the 2.0.1 group and the only one about a DRIVER. `scopeCoverage`
+      # reports a row that is missing and a row that is stale; a demotion is not
+      # a row, so a hand-kept demotion list that forgets a scenario leaves the
+      # v1 table claiming a protocol that line does not speak, with
+      # check:driver:citrineos-v1 green.
+      - name: The v1 demotions cover every 2.0.1 scenario
+        run: bash tests/cert201-scope-rows.sh
 
       - name: Shell guards lint clean
         run: shellcheck tests/*.sh tools/*.sh
@@ -256,6 +327,22 @@ jobs:
       fail-fast: false
       matrix:
         driver: [steve, citrineos]
+        # SHARDS, AND THE ONE PLACE THE COUNT IS WRITTEN TWICE. This list and
+        # the SHARD_TOTAL below have to agree, and a disagreement is the silent
+        # kind: `--shard 1/3` and `--shard 2/3` with a two-entry matrix runs two
+        # thirds of the suite, twice green, saying nothing. tests/shard-matrix.sh
+        # holds them together.
+        #
+        # WHY TWO AND NOT MORE. Measured at 83 registered scenarios: a healthy
+        # CitrineOS job is 26m33s against a 45-minute wall, and the same job on
+        # a run where the CSMS degraded took 45m34s and was killed at the wall.
+        # Two shards put a healthy job near 14 minutes and a degraded one near
+        # 24, which is a margin rather than a coin flip. Each shard also boots
+        # its OWN CSMS, so it halves the scenarios one server sees -- the lever
+        # on citrineos/citrineos#223, where the loops accumulate with the number
+        # of requests one server handles. Growing this list is a two-line edit,
+        # and the guard makes it a three-line one.
+        shard: [1, 2]
     # ~10 min of sweep plus image pull, a cold CSMS boot and -- for SteVe --
     # the one-off provisioning restart. Generous, but far below the 6h default:
     # a wedged simulator container should fail the build, not occupy a runner
@@ -264,6 +351,7 @@ jobs:
     env:
       CSMS_DRIVER: ./drivers/${{ matrix.driver }}/index.ts
       OCPP_CP_IDS: CERTCP1,CERTCP2,CERTCP3
+      SHARD_TOTAL: 2
       # localhost, not the compose service name: the runner reaches the CSMS
       # through the published port, while the simulator containers reach it by
       # service name from inside the network. That asymmetry is why each driver
@@ -341,8 +429,12 @@ jobs:
       # anything. "authorize" is folded into "all" now (see the GROUPS registry
       # in tck/main.ts), so one invocation is the whole suite and the trap is
       # gone rather than documented.
+      # `--shard` PARTITIONS, it does not select: the group is still `all`, and
+      # the two jobs between them run every registered scenario. The runner
+      # prints what it left out and stamps it into results/summary.md, because a
+      # bounded sweep that reads like a complete one is worse than a slow one.
       - name: Conformance sweep
-        run: bun run e2e
+        run: bun run e2e -- --shard ${{ matrix.shard }}/$SHARD_TOTAL
 
       # The CSMS's OWN log, which no run of this project has ever captured.
       # `results/` is the charge-point side of the wire, so a CSMS answering
@@ -365,7 +457,7 @@ jobs:
       # nobody reads, in an artifact downloaded in bulk when mining the archive.
       # Into results/ so the existing upload carries it; a second
       # upload-artifact step would be a second retention policy to keep in step.
-      - name: Capture the CSMS log when any scenario went red
+      - name: Capture the CSMS log, and read it for redelivery loops
         if: always()
         run: |
           # mkdir -p: a sweep that died before writing its first scenario log
@@ -383,13 +475,43 @@ jobs:
           # way the `grep -q` it replaces did -- would abort the step.
           status=0
           bun tools/summary-red-rows.ts results/summary.md || status=$?
-          if [ "$status" -eq 1 ] && [ "${{ job.status }}" = success ]; then
-            echo "no red row and the job is green -- nothing worth capturing"
-            exit 0
-          fi
+          # CAPTURED UNCONDITIONALLY SINCE #119, where it used to be skipped on a
+          # green job. The question the reader below answers is one the summary
+          # cannot carry: the sweep that collapsed with eleven redelivery loops
+          # still exited 0, because every scenario it killed was reclassified by
+          # --retry-failed-isolated or was a declared expected failure. A run
+          # with one loop looks identical in the table to a run with none, and
+          # one is how the run with eleven started. The log is DELETED below
+          # when nothing wanted it, so the artifact cost is unchanged for the
+          # runs that used to skip this.
           docker compose -f drivers/${{ matrix.driver }}/compose.yaml logs \
             --no-color --timestamps > results/csms-${{ matrix.driver }}.log
           wc -l results/csms-${{ matrix.driver }}.log
+          # 0 loops found, 1 none, 2 the log could not be read -- the reader
+          # mirrors summary-red-rows.ts's codes, and `|| loops=$?` reads them the
+          # same way. Driver-conditional because the reader parses ONE CSMS's log
+          # format; AGENTS.md's boundary is why that is a named driver file
+          # rather than a generic one in tools/.
+          loops=1
+          if [ "${{ matrix.driver }}" = citrineos ]; then
+            loops=0
+            bun drivers/citrineos/redelivery-loops.ts \
+              results/csms-citrineos.log || loops=$?
+          fi
+          # A loop is a finding about the CSMS and not about this build, so it
+          # never fails the job -- it would fail every job, since the smallest
+          # sweep measured still starts one. Status 2 is different: it is THIS
+          # repository's reader having stopped matching, which is silent and
+          # makes every future number a lie. Same rule as below -- worth a red of
+          # its own only when the job is otherwise green, because a red job
+          # already has someone reading it.
+          if [ "$loops" -eq 2 ] && [ "${{ job.status }}" = success ]; then
+            exit 1
+          fi
+          if [ "$status" -eq 1 ] && [ "$loops" -eq 1 ]; then
+            echo "no red row and no redelivery loop -- dropping the CSMS log"
+            rm -f results/csms-${{ matrix.driver }}.log
+          fi
           # Status 2 is a summary the repository could not read, which captures
           # above (a log nobody needed costs a file; a log nobody took costs the
           # investigation) and is worth a red of its OWN only when the job is
@@ -405,7 +527,12 @@ jobs:
         if: always()
         uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
         with:
-          name: ocpp-tck-${{ matrix.driver }}-results-${{ github.run_id }}
+          # The shard is in the name because it has to be: two shards of one
+          # driver upload to the same run, and without it the second would
+          # collide with the first, leaving the archive holding half of each
+          # with nothing saying so. tools/flake-report.ts reads the directory
+          # name as the run label, so this keeps them apart there too.
+          name: ocpp-tck-${{ matrix.driver }}-shard${{ matrix.shard }}-results-${{ github.run_id }}
           path: results/
           if-no-files-found: warn
 

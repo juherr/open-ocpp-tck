@@ -197,6 +197,28 @@ export type ResetType201 = "Immediate" | "OnIdle";
  * same terms.
  */
 export type MessageTrigger201 = "BootNotification" | "FirmwareStatusNotification" | "Heartbeat" | "LogStatusNotification" | "MeterValues" | "PublishFirmwareStatusNotification" | "SignChargingStationCertificate" | "SignCombinedCertificate" | "SignV2GCertificate" | "StatusNotification" | "TransactionEvent";
+/**
+ * OCPP 2.0.1 `EVSEType` -- how a request addresses part of a station.
+ *
+ * NESTED, AND THAT IS THE WHOLE POINT rather than a transcription of the
+ * schema. 2.0.1 has no flat `evseId` member on this request: `id` names the
+ * EVSE, and `connectorId` INSIDE the same object narrows it to one connector.
+ * So the three addressing modes a request can be in are told apart by which of
+ * these two are present -- whole station (no `evse` at all), one EVSE (`evse`
+ * with `id` alone), one connector (`evse` with both) -- and a driver flattening
+ * them into a single number makes the first and third indistinguishable on the
+ * wire. Two of the six ChangeAvailability cases differ from two others in
+ * NOTHING ELSE, so the flat spelling would have made them duplicates that both
+ * pass.
+ *
+ * `ResetRequest`'s own `evseId` is a different member and stays flat, because
+ * that is what its schema carries: 2.0.1 does not address a connector for a
+ * reset.
+ */
+export interface Evse201 {
+    id: number;
+    connectorId?: number;
+}
 /** OCPP 2.0.1 `ComponentType` -- half of a device-model address. */
 export interface Component201 {
     name: string;
@@ -219,6 +241,250 @@ export interface SetVariableData201 {
      *  A driver must not "helpfully" send a number. */
     attributeValue: string;
 }
+/** OCPP 2.0.1 `ChargingProfilePurposeEnumType`, whole. NOT
+ *  {@link ChargingProfilePurpose}: 1.6 spells the station-wide purpose
+ *  `ChargePointMaxProfile` and has no external-constraints value at all. */
+export type ChargingProfilePurpose201 = "ChargingStationExternalConstraints" | "ChargingStationMaxProfile" | "TxDefaultProfile" | "TxProfile";
+/** OCPP 2.0.1 `ChargingProfileKindEnumType`. */
+export type ChargingProfileKind201 = "Absolute" | "Recurring" | "Relative";
+/** OCPP 2.0.1 `RecurrencyKindEnumType`. */
+export type RecurrencyKind201 = "Daily" | "Weekly";
+/** OCPP 2.0.1 `ChargingRateUnitEnumType`. */
+export type ChargingRateUnit201 = "W" | "A";
+/** OCPP 2.0.1 `ChargingSchedulePeriodType`. */
+export interface ChargingSchedulePeriod201 {
+    startPeriod: number;
+    limit: number;
+    numberPhases?: number;
+    phaseToUse?: number;
+}
+/**
+ * OCPP 2.0.1 `ChargingScheduleType`.
+ *
+ * `id` IS REQUIRED AND HAS NO 1.6 COUNTERPART. 1.6's chargingSchedule is
+ * anonymous -- it is identified by the profile that carries it -- where 2.0.1
+ * gives every schedule its own identifier, because a profile may carry up to
+ * three and `GetCompositeSchedule` and `NotifyEVChargingSchedule` name one.
+ *
+ * `startSchedule` is optional in the schema and NOT optional in practice for
+ * the two kinds this suite sends: 2.0.1 requires it for `Absolute` and
+ * `Recurring` and forbids it for `Relative`. That is a rule about the pair, so
+ * it is not expressible in this type without splitting the profile into three,
+ * and it is stated here rather than enforced.
+ */
+export interface ChargingSchedule201 {
+    id: number;
+    chargingRateUnit: ChargingRateUnit201;
+    /** 1..N on the wire, and the first period's `startPeriod` must be 0. */
+    chargingSchedulePeriod: [
+        ChargingSchedulePeriod201,
+        ...ChargingSchedulePeriod201[]
+    ];
+    startSchedule?: Date;
+    duration?: number;
+    minChargingRate?: number;
+}
+/**
+ * OCPP 2.0.1 `ChargingProfileType` -- the profile itself, INLINE.
+ *
+ * NOT A {@link ChargingProfileRef}, and the difference is the protocol's
+ * rather than this contract's. OCPP 1.6's `SetChargingProfile` is driven here
+ * through an opaque CSMS-side handle because 1.6 CSMSs keep a profile registry
+ * a scenario has to name a row of; 2.0.1 carries the whole profile in the
+ * request, so there is nothing to look up and a ref would be a key into a
+ * table no 2.0.1 driver has to have.
+ *
+ * `chargingSchedule` is a tuple of one to three because that is what the
+ * schema says, and the bound is worth keeping: a driver that forwards the
+ * array verbatim is forwarding something already known to be well-sized.
+ */
+export interface ChargingProfile201 {
+    id: number;
+    stackLevel: number;
+    chargingProfilePurpose: ChargingProfilePurpose201;
+    chargingProfileKind: ChargingProfileKind201;
+    chargingSchedule: [ChargingSchedule201] | [ChargingSchedule201, ChargingSchedule201] | [ChargingSchedule201, ChargingSchedule201, ChargingSchedule201];
+    recurrencyKind?: RecurrencyKind201;
+    validFrom?: Date;
+    validTo?: Date;
+    /** A STRING in 2.0.1, where 1.6's transactionId is a number -- 2.0.1 lets
+     *  the STATION mint the identifier, so it is text on the wire. Only a
+     *  `TxProfile` may carry it. */
+    transactionId?: string;
+}
+/**
+ * OCPP 2.0.1 `ChargingLimitSourceEnumType`, whole.
+ *
+ * WHO SET THE LIMIT, which is a thing 1.6 has no vocabulary for at all -- there
+ * is no homonym here to argue about, so this type needs none of the notes the
+ * four above carry. `CSO` is the charging station operator, i.e. the CSMS
+ * itself; `EMS` an energy management system, `SO` the system operator, `Other`
+ * anything else.
+ *
+ * Complete rather than minimal, by {@link MessageTrigger201}'s rule: an enum
+ * value costs a driver nothing to pass through, and adding one later is the
+ * breaking direction for a driver that switches on it exhaustively.
+ */
+export type ChargingLimitSource201 = "EMS" | "Other" | "SO" | "CSO";
+/**
+ * OCPP 2.0.1 `ChargingProfileCriterionType` -- which of the profiles a station
+ * holds a `GetChargingProfiles` is asking about.
+ *
+ * EVERY MEMBER IS OPTIONAL AND THE OBJECT IS NOT. The schema requires the
+ * `chargingProfile` member of the request and requires nothing inside it, so
+ * `{}` is the legal way to spell "all of them" and there is no way to spell it
+ * by omission. That asymmetry is the reason this is a named type rather than an
+ * inline shape: a driver that "helpfully" drops an empty criterion has sent a
+ * request the schema rejects.
+ *
+ * TUPLES RATHER THAN ARRAYS, for {@link ChargingSchedule201}'s reason: the
+ * schema says 1..N, so an empty array is not a value either member can take,
+ * and a driver forwarding one verbatim is forwarding something already known to
+ * be well-sized. The four the wire allows in `chargingLimitSource` are not
+ * expressible as a tuple bound without spelling four arms, and the enum has
+ * exactly four values, so the bound is stated rather than typed.
+ */
+export interface ChargingProfileCriterion201 {
+    chargingProfilePurpose?: ChargingProfilePurpose201;
+    stackLevel?: number;
+    chargingProfileId?: [number, ...number[]];
+    /** At most four on the wire. */
+    chargingLimitSource?: [ChargingLimitSource201, ...ChargingLimitSource201[]];
+}
+/**
+ * OCPP 2.0.1 `ClearChargingProfileType` -- which of the profiles a station
+ * holds a `ClearChargingProfile` is asking it to forget.
+ *
+ * A DIFFERENT TYPE FROM {@link ChargingProfileCriterion201}, and the two are
+ * near enough to be worth saying why. That one selects what to REPORT and this
+ * one what to REMOVE; the wire gives them different names, different members --
+ * this one has `evseId` INSIDE it where the query carries it as a sibling --
+ * and different cardinalities, since nothing here is a list. Folding them into
+ * one shape would let a scenario ask to clear by `chargingLimitSource`, which
+ * is not a thing the request can express.
+ *
+ * OPTIONAL AND OMISSIBLE, unlike the query's criterion: the schema requires no
+ * member of the request at all, so `undefined` here is a request that clears by
+ * identifier alone. That is TC_K_08's request and TC_K_05's.
+ */
+export interface ClearChargingProfileCriteria201 {
+    /** Absent = every EVSE; 0 = the station itself. Omit, never send null. */
+    evseId?: number;
+    chargingProfilePurpose?: ChargingProfilePurpose201;
+    stackLevel?: number;
+}
+/**
+ * OCPP 2.0.1 `InstallCertificateUseEnumType` -- what kind of root a certificate
+ * is being installed as.
+ *
+ * FOUR VALUES WHERE {@link GetCertificateIdUse201} HAS FIVE, and the pair is
+ * the reason both are named types rather than one shared enumeration. A
+ * certificate is installed as a root; it is asked about as a root or as a
+ * `V2GCertificateChain`, which is not a root at all. Sharing one type would
+ * make a request the schema rejects -- installing a chain -- spellable.
+ */
+export type InstallCertificateUse201 = "V2GRootCertificate" | "MORootCertificate" | "CSMSRootCertificate" | "ManufacturerRootCertificate";
+/**
+ * OCPP 2.0.1 `OCPPInterfaceEnumType` -- which physical interface a network
+ * connection profile is about.
+ *
+ * Complete rather than minimal, by {@link MessageTrigger201}'s rule: eight
+ * values, four wired and four wireless, and a station's slots may name any of
+ * them.
+ */
+export type OcppInterface201 = "Wired0" | "Wired1" | "Wired2" | "Wired3" | "Wireless0" | "Wireless1" | "Wireless2" | "Wireless3";
+/** OCPP 2.0.1 `OCPPTransportEnumType`. Both values, though a 2.0.1 station
+ *  only ever speaks the first: the enumeration is the protocol's and a driver
+ *  must be able to spell what a CSMS might send. */
+export type OcppTransport201 = "JSON" | "SOAP";
+/**
+ * OCPP 2.0.1 `OCPPVersionEnumType` -- which protocol version a network
+ * connection profile tells the station to speak on that slot.
+ *
+ * NOT THE VERSION ANYTHING ELSE HERE MEANS BY "OCPP VERSION", which is why the
+ * name is long. `ScenarioSpec`'s `ocppVersion` says which protocol a scenario
+ * runs; `CitrineOcppVersion` in a driver says which route a CSMS registered.
+ * This one is a MEMBER of a request, spelled the way 2.0.1 spells it -- and
+ * 2.0.1 spells its own version `OCPP20`, with no value for 2.0.1 or 2.1 at all.
+ * A shared type would put one of those spellings where another is required.
+ */
+export type NetworkProfileOcppVersion201 = "OCPP12" | "OCPP15" | "OCPP16" | "OCPP20";
+/** OCPP 2.0.1 `APNAuthenticationEnumType`. */
+export type ApnAuthentication201 = "CHAP" | "NONE" | "PAP" | "AUTO";
+/** OCPP 2.0.1 `VPNEnumType`. */
+export type VpnType201 = "IKEv2" | "IPSec" | "L2TP" | "PPTP";
+/**
+ * OCPP 2.0.1 `APNType` -- the cellular access point a profile dials through.
+ *
+ * HERE THOUGH NO SELECTED CASE NEEDS IT, by {@link MessageTrigger201}'s rule
+ * applied to a member rather than to an enum value: `TC_B_42` and `TC_B_44` are
+ * the only `SetNetworkProfile` cases the selection rule picks and neither
+ * carries an APN, but a driver whose CSMS manages cellular stations cannot
+ * spell one without this, and adding a member later is the breaking direction
+ * for nobody while omitting it is a contract that describes less than the wire.
+ */
+export interface Apn201 {
+    apn: string;
+    apnAuthentication: ApnAuthentication201;
+    apnUserName?: string;
+    apnPassword?: string;
+    simPin?: number;
+    preferredNetwork?: string;
+    useOnlyPreferredNetwork?: boolean;
+}
+/** OCPP 2.0.1 `VPNType`. Here for {@link Apn201}'s reason; its five required
+ *  members are required by the schema whenever the object is present at all. */
+export interface Vpn201 {
+    server: string;
+    user: string;
+    password: string;
+    key: string;
+    type: VpnType201;
+    group?: string;
+}
+/**
+ * OCPP 2.0.1 `NetworkConnectionProfileType` -- how a station should reach a
+ * CSMS on one of its configuration slots.
+ *
+ * SIX REQUIRED MEMBERS AND TWO OPTIONAL ONES, and the six are exactly what
+ * `TC_B_42` validates. That is unusual enough in this contract to say out loud:
+ * most cases here turn on which members are PRESENT, and this one turns on all
+ * six being carried unchanged -- so a driver that dropped one has failed the
+ * case rather than sent a different request.
+ *
+ * `securityProfile` IS A NUMBER AND NOT AN ENUM. OCPP defines profiles 1..3 and
+ * types the member as a plain integer; a union of three would refuse a value
+ * the wire accepts, and refusing it here would put this contract's opinion in
+ * front of a CSMS's.
+ */
+export interface NetworkConnectionProfile201 {
+    ocppVersion: NetworkProfileOcppVersion201;
+    ocppTransport: OcppTransport201;
+    /** Where the station should connect. A URL as text; nothing here parses it. */
+    ocppCsmsUrl: string;
+    /** Seconds the station waits for a response on this connection. */
+    messageTimeout: number;
+    /** 1..3 in the specification, an integer on the wire. */
+    securityProfile: number;
+    ocppInterface: OcppInterface201;
+    apn?: Apn201;
+    vpn?: Vpn201;
+}
+/**
+ * OCPP 2.0.1 `GetCertificateIdUseEnumType` -- which installed certificates a
+ * `GetInstalledCertificateIds` is asking the station to list.
+ *
+ * FIVE VALUES AND NOT FOUR, which is the whole reason this is its own type
+ * rather than a reuse of the enumeration `InstallCertificate` ranges over. A
+ * certificate can be INSTALLED only as one of the four roots; it can be ASKED
+ * ABOUT as one of those four or as `V2GCertificateChain`, which is not a root
+ * at all but the chain a station holds under one. The wire gives the two
+ * requests different enumerations for that reason, and a shared type would let
+ * a scenario ask to install a chain -- a request the schema rejects.
+ *
+ * Complete rather than minimal, by {@link MessageTrigger201}'s rule.
+ */
+export type GetCertificateIdUse201 = "V2GRootCertificate" | "MORootCertificate" | "CSMSRootCertificate" | "V2GCertificateChain" | "ManufacturerRootCertificate";
 export type CsmsOperation201 = {
     action: "Reset";
     type: ResetType201;
@@ -235,12 +501,122 @@ export type CsmsOperation201 = {
 } | {
     action: "TriggerMessage";
     requestedMessage: MessageTrigger201;
+} | {
+    action: "ChangeAvailability";
+    operationalStatus: "Inoperative" | "Operative";
+    /** WHICH PART OF THE STATION, and its absence is a value rather than a
+     *  default. Absent addresses the whole charging station; present with
+     *  `connectorId` absent addresses that EVSE; present with `connectorId`
+     *  addresses that connector. See {@link Evse201} for why this is not a
+     *  flat `evseId`. A driver must omit the member rather than send `null`
+     *  or an empty object. */
+    evse?: Evse201;
+} | {
+    action: "SetChargingProfile";
+    /** Which EVSE the profile is installed at. 0 addresses the charging
+     *  station itself, which is what a `ChargingStationMaxProfile` requires
+     *  and what a station-wide `TxDefaultProfile` uses; a `TxProfile` needs
+     *  a real EVSE. NOT optional the way `ChangeAvailability`'s `evse` is:
+     *  2.0.1's SetChargingProfileRequest makes this member required, so
+     *  there is no absence to give a meaning to. */
+    evseId: number;
+    chargingProfile: ChargingProfile201;
+} | {
+    action: "GetCompositeSchedule";
+    /** Same addressing as above, and 0 means the grid connection point --
+     *  the station's own total rather than "every EVSE". */
+    evseId: number;
+    /** Seconds forward from now that the schedule should cover. */
+    duration: number;
+    /** Absent means the station picks. Present, it is what the returned
+     *  schedule's limits are expressed in. */
+    chargingRateUnit?: ChargingRateUnit201;
+} | {
+    action: "GetChargingProfiles";
+    /** The station echoes it in every `ReportChargingProfiles` it answers
+     *  with, so it is how a report is tied back to the request that asked
+     *  for it. Required by the schema; a scenario chooses the value. */
+    requestId: number;
+    /** Absent = every EVSE; 0 = the station itself. Omit, never send null.
+     *  NOT `SetChargingProfile`'s required member and not
+     *  `GetCompositeSchedule`'s either -- this is the one charging-profile
+     *  request of the three whose scope has an absence to give a meaning
+     *  to. */
+    evseId?: number;
+    /** Wire name kept: the body IS the OCPP payload. Required by the schema
+     *  even when every criterion inside it is optional. */
+    chargingProfile: ChargingProfileCriterion201;
+} | {
+    action: "ClearChargingProfile";
+    /** The identifier the profile was installed under. One profile, not a
+     *  list -- `GetChargingProfiles`' criterion takes a list and this does
+     *  not, which is the wire's asymmetry and not ours. */
+    chargingProfileId?: number;
+    /** Absent means the request clears by identifier alone. */
+    chargingProfileCriteria?: ClearChargingProfileCriteria201;
+} | {
+    action: "GetInstalledCertificateIds";
+    /** Which kinds of certificate to list. Absent = every kind. Omit, never
+     *  send an empty array: the schema's `minItems` is 1, so `[]` asks for
+     *  nothing while looking like it asks for everything. */
+    certificateType?: [GetCertificateIdUse201, ...GetCertificateIdUse201[]];
+} | {
+    action: "InstallCertificate";
+    certificateType: InstallCertificateUse201;
+    /** The certificate itself, PEM, at most 5500 characters on the wire. */
+    certificate: string;
+} | {
+    action: "SetNetworkProfile";
+    /** Which of the station's slots to write. The station defines them; a
+     *  scenario names one it was told about. */
+    configurationSlot: number;
+    /** Wire name kept: the body IS the OCPP payload. */
+    connectionData: NetworkConnectionProfile201;
 };
 export type CsmsOperation201Action = CsmsOperation201["action"];
 /** Every 2.0.1 action name. Same job as {@link CSMS_OPERATION_16_ACTIONS},
  *  and a SECOND list rather than an extension of it -- see the note on
  *  {@link CsmsOperation201}'s `Reset` arm for why the two must not merge. */
-export declare const CSMS_OPERATION_201_ACTIONS: readonly ["Reset", "GetVariables", "SetVariables", "TriggerMessage"];
+export declare const CSMS_OPERATION_201_ACTIONS: readonly ["Reset", "GetVariables", "SetVariables", "TriggerMessage", "ChangeAvailability", "SetChargingProfile", "GetCompositeSchedule", "GetChargingProfiles", "ClearChargingProfile", "GetInstalledCertificateIds", "InstallCertificate", "SetNetworkProfile"];
+/**
+ * One well-formed operation per action, and its job is to make the union above
+ * expensive to grow in exactly one place.
+ *
+ * {@link CSMS_OPERATION_201_ACTIONS} is already bidirectional -- `everyOneOf`
+ * makes the list and the union agree about NAMES. Agreeing about names says
+ * nothing about whether anything can build one, and a name is all a driver
+ * needs to declare an operation it cannot express. This is the other half: the
+ * annotation is a mapped type over the action union whose value for each
+ * action is THAT action's arm, so an arm added to {@link CsmsOperation201} is
+ * a type error here until somebody writes a request of its shape. A compiler
+ * check rather than a guard, for the reason the note above `everyOneOf` gives
+ * -- the compiler already decides the other half, and a shell guard would be
+ * re-deciding from outside what tsc knows from inside.
+ *
+ * `Extract` rather than a plain `Record<CsmsOperation201Action,
+ * CsmsOperation201>`, which is the shape a reader reaches for first: that one
+ * types every value as the WHOLE union, so `Reset: { action: "TriggerMessage",
+ * … }` satisfies it. A table whose key and value may disagree is a table that
+ * eventually does.
+ *
+ * WHAT IT IS FOR, and it is not scenario data. Every value is the cheapest
+ * thing its arm admits, and the optional members are omitted rather than
+ * filled: the consumer is a driver's mapper, which
+ * `tests/capability-parity.ts` pushes each one through to ask whether the
+ * driver that DECLARED an action can actually express it. A scenario
+ * asserting on one of these would be asserting on a placeholder anyone is free
+ * to change. The device-model address is a real 2.0.1 one so that a mapper
+ * which looks a variable up does not fail for a reason this table invented.
+ *
+ * Exported because a third-party driver owes the same parity check, and a
+ * second table written over there is a second table free to disagree with this
+ * one.
+ */
+export declare const SAMPLE_OPERATION_201: {
+    readonly [A in CsmsOperation201Action]: Extract<CsmsOperation201, {
+        action: A;
+    }>;
+};
 /**
  * "This CSMS's API cannot express this operation or observation AT ALL."
  *

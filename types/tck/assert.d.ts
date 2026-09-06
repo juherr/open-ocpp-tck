@@ -89,6 +89,26 @@ export declare function assertReceived(rec: AssertRecorder, frames: readonly Fra
 /** check_log_not_contains equivalent, scoped to CALLs for one action/direction. */
 export declare function assertNotSent(rec: AssertRecorder, frames: readonly Frame[], action: string, direction?: Direction, description?: string): void;
 /**
+ * Exactly `expected` CALLs for `action`+`direction`, and no more.
+ *
+ * WHY A COUNT IS A CONFORMANCE CHECK AT ALL, because it looks like a test of
+ * the harness rather than of the CSMS. A scenario that puts two operations to
+ * the CSMS asserts on the first and the second by INDEX -- `assertCallPayload`
+ * has no occurrence, but every helper that reads a numbered request does -- and
+ * an index says nothing about what came after it. A CSMS that fanned one API
+ * call into several requests, retried one it had already sent, or emitted a
+ * third of its own leaves every indexed check passing. That is not
+ * hypothetical here: CitrineOS's message API takes a LIST of stations and its
+ * `packageGroupCall` sends one request per entry, so "one call in, one request
+ * out" is a property of the deployment rather than of the code path.
+ *
+ * MESSAGE-AGNOSTIC, so it belongs here rather than beside a scenario: the
+ * action is a parameter and nothing about any one message is known. It is the
+ * `assertNotSent` of counts -- that helper is this one at zero, kept separate
+ * because its failure message wants to print the frame it found.
+ */
+export declare function assertCallCount(rec: AssertRecorder, frames: readonly Frame[], direction: Direction, action: string, expected: number, description: string): void;
+/**
  * Asserts that SOME CALL for `action`+`direction` carries every member of
  * `expected`, compared by value.
  *

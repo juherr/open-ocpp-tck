@@ -33,8 +33,9 @@
  * Versions
  * --------
  * Both CitrineOS lines are supported, selected by CITRINE_VARIANT and
- * defaulting to v2 -- drivers/citrineos/compose.yaml pins v2.0.0-beta1 by
- * digest, and compose.v1.yaml overrides it with v1.9.1. v1 costs the six
+ * defaulting to v2 -- drivers/citrineos/compose.yaml pins the v2 prerelease by
+ * digest and is the one place naming which, and compose.v1.yaml overrides it
+ * with v1.9.1. v1 costs the six
  * local-auth-list scenarios, whose 1.6 endpoints exist only from the v2 line,
  * and renames the OCPP connection column. See variant.ts.
  *
