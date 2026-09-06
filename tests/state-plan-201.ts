@@ -27,9 +27,29 @@
  *   4. BRANCH SELECTION READS THE CONDITION AND NOTHING ELSE, and the planner
  *      is pure. A state is a transition, not a script.
  *   5. A STATE A SCENARIO NAMES HAS A RUNNABLE PLAN, and the edge graph
- *      terminates. Eleven of the fourteen states are declared with no reach
+ *      terminates. Nine of the fourteen states are declared with no reach
  *      this build can execute; naming one must fail HERE, at build time, and
  *      not as an orange scenario for a reason the build already knew.
+ *   6. A REACH THAT FAILS IS CLASSIFIED, AND TWO CLASSES ARE NOT "THE
+ *      PRECONDITION DID NOT HOLD". `establishStates` turns a failed reach into
+ *      an unestablished fixture, which a scenario reports as SKIPPED and the
+ *      sweep as PARTIAL -- the right answer for a station that did not reach
+ *      the condition, and the WRONG one for an operation that never became an
+ *      OCPP CALL or that the driver cannot express at all. Three reaches are
+ *      CSMS operations now, so both wrong answers are reachable, and the way
+ *      they are wrong is silent: a driver pointed at the wrong base URL turns
+ *      every scenario declaring one of those states into a row that says the
+ *      gap is in OUR scenarios. `UNEXERCISED_PREFIX` is defined to carry
+ *      exactly the opposite claim.
+ *   7. A FIXTURE THAT PROMISES LESS THAN THE REFERENCE HAS NO READER. Two
+ *      states are `established: true` after a reach that does not reach the
+ *      reference's post condition -- the pinned station refuses both requests
+ *      from a canned handler -- and `tck/states-201.ts` declares that on the
+ *      definition and argues it is safe because nothing depends on those post
+ *      conditions. That argument is a claim about the REST of the table: no
+ *      edge invokes them and their `establishes` is the identity. Both halves
+ *      are checked here, and which states carry the divergence is pinned, so a
+ *      third one cannot arrive silently.
  *
  * WHY IT IS A GUARD AND NOT A SWEEP, and why TypeScript, like
  * tests/expected-failure-standing.ts. Reaching claim 1's second row means a
@@ -57,7 +77,14 @@ import { readFileSync, readdirSync } from "node:fs";
 import { join } from "node:path";
 import * as ts from "typescript";
 import * as specModules from "../tck/specs/index";
+import { CsmsNotDispatchedError, UnsupportedOperationError } from "../tck/driver";
+import type { CsmsOperation201, CsmsOperations201, CsmsRecords } from "../tck/driver";
+import type { SimProcess } from "../tck/sim";
 import {
+  divergesFromReference,
+  edgeTargetOf,
+  establishesFrom,
+  establishStates,
   INITIAL_CONDITION,
   isPlanned,
   isRunnable,
@@ -363,6 +390,216 @@ for (const exported of Object.values(specModules)) {
           .join("; ")}`,
     );
   }
+}
+
+// ---------------------------------------------------------------------------
+// Claim 7 -- a fixture that promises less than the reference has no reader.
+//
+// THE ARGUMENT IS CHECKED, NOT THE COMMENT. tck/states-201.ts says a diverging
+// state is safe because `establishes` returns the condition untouched and
+// nothing depends on it. Both halves are properties of the whole table, so a
+// reach re-pointed at one, or a `...condition, state: X` slipped into one of
+// their `establishes`, would falsify the argument somewhere other than where it
+// is written. That is exactly the shape a guard is for.
+// ---------------------------------------------------------------------------
+
+const DIVERGING = REUSABLE_STATES_201.filter(
+  (state) => divergesFromReference(state) !== undefined,
+);
+
+check(
+  DIVERGING.join(",") === "CertificateInstalled,GetInstalledCertificates",
+  "the set of states whose reach establishes LESS than the reference's post " +
+    "condition has changed. That is a legitimate thing to do -- say so in the " +
+    "pull request, and check that the scenarios naming the state describe " +
+    "what is actually established rather than what the reference declares. " +
+    `Got: ${DIVERGING.join(",") || "<none>"}`,
+);
+
+for (const state of DIVERGING) {
+  check(
+    !isPlanned(state),
+    `${state} declares a post-condition divergence and has no reach this ` +
+      "build can execute. The two are different axes and only one can be " +
+      "true at a time: a divergence says the reach RUNS and promises less, " +
+      "and a planned state does not run at all.",
+  );
+
+  // The identity half, over both members of the condition and from more than
+  // the initial one -- an `establishes` that returned INITIAL_CONDITION would
+  // pass a single from-the-start row and silently rewind every declaration
+  // that reached this state from anywhere else.
+  for (const from of [
+    INITIAL_CONDITION,
+    { state: "Authorized", evConnected: false } as Condition,
+    { state: "EnergyTransferStarted", evConnected: true } as Condition,
+  ]) {
+    const after = establishesFrom(SAMPLES[state], from);
+    check(
+      after.state === from.state && after.evConnected === from.evConnected,
+      `${state} declares a post-condition divergence AND moves the condition ` +
+        `(${JSON.stringify(from)} -> ${JSON.stringify(after)}). Those cannot ` +
+        "both be true: the condition is what a later state's guard reads, so " +
+        "recording a state whose post condition this build does not reach is " +
+        "the reader the divergence note claims does not exist.",
+    );
+  }
+}
+
+for (const state of REUSABLE_STATES_201) {
+  const target = edgeTargetOf(SAMPLES[state]);
+  check(
+    target === undefined || divergesFromReference(target) === undefined,
+    `${state}'s dependency edge invokes ${target}, whose reach does not reach ` +
+      "the post condition the reference declares for it. The edge would then " +
+      `run ${state} on the strength of a condition that is not there, which ` +
+      "is the reader tck/states-201.ts's divergence note says nothing has.",
+  );
+}
+
+// ---------------------------------------------------------------------------
+// Claim 6 -- what establishStates does with a reach that throws.
+//
+// THE SEAM IS THE CONTEXT. `establishStates` takes its simulator and its
+// CsmsOperations201 as arguments, so every branch below is reached by handing
+// it a fake that fails a chosen way -- which is the only way to reach them at
+// all: "the driver could not dispatch" and "the CSMS answered and refused" are
+// two answers no CSMS here can be asked for on demand, and the difference
+// between them is a whole verdict.
+//
+// `Unavailable` is the state under test because its reach is one CSMS
+// operation followed by one wait, which is the shape all three CSMS-initiated
+// reaches have -- and it is the one whose invocation carries no certificate.
+// ---------------------------------------------------------------------------
+
+const UNAVAILABLE_PLAN = planStates([SAMPLES.Unavailable]);
+
+/** A simulator that answers every wait, or fails it the way a real timeout
+ *  does -- a plain `Error`, which is what tck/sim.ts's waitForLine rejects
+ *  with. */
+function fakeSim(wait: "answers" | "times-out"): SimProcess {
+  return {
+    cpId: "CERTCP1",
+    container: "simts-guard",
+    argv: "docker run (guard)",
+    lines: [],
+    send: async () => {},
+    waitForLine: async (pattern: RegExp) => {
+      if (wait === "answers") return "Sent: [2,\"1\",\"StatusNotification\",{}]";
+      throw new Error(`timed out after 15000ms waiting for /${pattern.source}/`);
+    },
+    stop: async () => {},
+  };
+}
+
+function fakeOps(fail: (() => never) | null): CsmsOperations201 {
+  return {
+    execute: async (_cpId: string, _op: CsmsOperation201) => {
+      if (fail) fail();
+      return "";
+    },
+  };
+}
+
+const NO_RECORDS = {} as CsmsRecords;
+
+/** Runs the one-step Unavailable plan and says what came back out: the
+ *  established flag, or the class of the error that escaped. */
+async function classify(
+  sim: SimProcess,
+  ops: CsmsOperations201,
+): Promise<"established" | "not-established" | string> {
+  try {
+    const log = await establishStates(UNAVAILABLE_PLAN, {
+      cpId: "CERTCP1",
+      sim,
+      csms201: ops,
+      records: NO_RECORDS,
+    });
+    return log.established("Unavailable") ? "established" : "not-established";
+  } catch (err) {
+    return err instanceof Error ? err.constructor.name : `threw ${String(err)}`;
+  }
+}
+
+const CLASSIFICATIONS: ReadonlyArray<{
+  what: string;
+  sim: SimProcess;
+  ops: CsmsOperations201;
+  want: string;
+  why: string;
+}> = [
+  {
+    what: "a reach that completes",
+    sim: fakeSim("answers"),
+    ops: fakeOps(null),
+    want: "established",
+    why:
+      "a reach whose operation was dispatched and whose wait was answered is " +
+      "the condition being reached, and nothing else here means anything if " +
+      "this row is wrong.",
+  },
+  {
+    what: "a wait that times out",
+    sim: fakeSim("times-out"),
+    ops: fakeOps(null),
+    want: "not-established",
+    why:
+      "the station did not produce the frame the condition IS, and a " +
+      "conformance tool may not file that as a finding against a CSMS that " +
+      "did exactly what it was asked. SKIPPED, then PARTIAL.",
+  },
+  {
+    what: "an operation the driver cannot express",
+    sim: fakeSim("answers"),
+    ops: fakeOps(() => {
+      throw new UnsupportedOperationError("operations201.ChangeAvailability", "no route");
+    }),
+    want: "UnsupportedOperationError",
+    why:
+      "it must reach the runner's catch around drive(), which records NOT " +
+      "APPLICABLE and warns that the scope table missed the scenario. Caught " +
+      "here it would become an unestablished precondition, i.e. a gap in our " +
+      "scenarios reported for a CSMS that never declared the operation.",
+  },
+  {
+    what: "an operation that never became an OCPP CALL",
+    sim: fakeSim("answers"),
+    ops: fakeOps(() => {
+      throw new CsmsNotDispatchedError("citrineos: POST /ocpp/2.0.1/...", "returned 401");
+    }),
+    want: "CsmsNotDispatchedError",
+    why:
+      "the station was never asked, so the condition's absence says nothing " +
+      "about it. Caught here it becomes a SKIPPED precondition carrying " +
+      "UNEXERCISED_PREFIX -- which claims the gap is in OUR scenarios and is " +
+      "identical for every driver -- when the cause is a driver that cannot " +
+      "reach the CSMS at all. That is issue #77's shape, and tck/op-warn.ts " +
+      "lets this one class out of drive() for exactly this reason.",
+  },
+  {
+    what: "an operation the CSMS answered and refused",
+    sim: fakeSim("answers"),
+    ops: fakeOps(() => {
+      throw new Error("citrineos: POST ... returned a body that is not a confirmation array");
+    }),
+    want: "not-established",
+    why:
+      "a plain Error is what a driver throws when it has no evidence either " +
+      "way, or when the CSMS refused an operation it did receive. The station " +
+      "is not in the condition and nothing was misattributed, so the default " +
+      "-- an unestablished precondition -- is the right one and must stay the " +
+      "default.",
+  },
+];
+
+for (const row of CLASSIFICATIONS) {
+  const got = await classify(row.sim, row.ops);
+  check(
+    got === row.want,
+    `establishStates classifies ${row.what} as ${got}, where it must be ` +
+      `${row.want}. ${row.why}`,
+  );
 }
 
 if (failures.length > 0) {

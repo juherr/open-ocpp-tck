@@ -70,6 +70,7 @@
 import { UNEXERCISED_PREFIX, type AssertRecorder } from "./assert";
 import { TEST_ROOT_CERTIFICATE_PEM } from "./certificate-material";
 import {
+  CsmsNotDispatchedError,
   UnsupportedOperationError,
   type CsmsOperations201,
   type CsmsRecords,
@@ -218,6 +219,28 @@ interface ReachSegment<S extends ReusableState201> {
 }
 
 interface StateDefinition<S extends ReusableState201> {
+  /**
+   * Set when this build's reach RUNS to completion without leaving the station
+   * in the post condition the reference declares -- so `established: true` for
+   * this state means "the state was exercised", not "the reference's post
+   * condition holds".
+   *
+   * A DECLARED FACT AND NOT A COMMENT, which is the whole of why this field
+   * exists. Two states are in that position today and the argument for why it
+   * is safe is written out at each of their reaches: the post condition has no
+   * reader, because `establishes` returns the condition untouched and no other
+   * state's edge invokes them. That argument is a claim about the REST of this
+   * table, and a claim about elsewhere is one a guard should be holding --
+   * `tests/state-plan-201.ts` checks both halves of it against the definitions
+   * and pins which states carry this, so a third one added silently, or an
+   * edge re-pointed at one of the two, fails the build instead of quietly
+   * letting a later step run on the strength of a condition that is not there.
+   *
+   * It is NOT a substitute for a reach: a state this build cannot execute at
+   * all declares `run: null` and a `planned` reason, and no scenario may name
+   * one. This is the other axis -- the reach runs, and promises less.
+   */
+  divergence?: string;
   /** The dependency edge, as the reference writes it: execute the prerequisite
    *  UNLESS the condition already says we are there. Absent for the nine roots
    *  (eight, plus `Reserved` which nothing invokes). */
@@ -483,6 +506,10 @@ const RECEIVED_GET_INSTALLED_CERTIFICATE_IDS =
  * a verdict in a fixture, which this file's header refuses, and it would make
  * every one of those four cases orange against a station whose answer the case
  * does not measure.
+ *
+ * THE GAP IS DECLARED AND NOT ONLY ARGUED: the definition below carries a
+ * `divergence`, `tests/state-plan-201.ts` checks the two halves of the argument
+ * above against the rest of the table, and the runner says it on stderr.
  */
 const reachGetInstalledCertificates: NonNullable<
   ReachSegment<"GetInstalledCertificates">["run"]
@@ -522,6 +549,10 @@ const RECEIVED_INSTALL_CERTIFICATE = /Received: \[2,"[^"]*","InstallCertificate"
  * asks for. Nothing on either side checks that a CSMS root is in fact a CSMS
  * root -- the type is a member of the request, and the material only has to
  * parse. {@link TEST_ROOT_CERTIFICATE_PEM}'s header carries the rest.
+ *
+ * THE GAP IS DECLARED AND NOT ONLY ARGUED, for the reason
+ * {@link reachGetInstalledCertificates} gives: the definition below carries a
+ * `divergence` and a guard walks the argument.
  */
 const reachCertificateInstalled: NonNullable<ReachSegment<"CertificateInstalled">["run"]> = async (
   ctx,
@@ -659,6 +690,11 @@ const STATE_DEFINITIONS: StateDefinitions = {
     // cases naming it four cases: nothing records it, so each one sends its own
     // request.
     establishes: (condition) => condition,
+    divergence:
+      "the pinned simulator answers InstallCertificate with a canned " +
+      "`Rejected` and stores nothing, so no certificate of the named type is " +
+      "held at the station afterwards -- what the reach establishes is that " +
+      "the CSMS sent the request. See reachCertificateInstalled.",
     reach: [{ run: reachCertificateInstalled }],
   },
 
@@ -709,6 +745,11 @@ const STATE_DEFINITIONS: StateDefinitions = {
     // it, so `planStates` never treats it as already held and every scenario
     // declaring it sends its own request.
     establishes: (condition) => condition,
+    divergence:
+      "the pinned simulator answers GetInstalledCertificateIds with a canned " +
+      "`NotFound` and holds no truststore, so no list is retrieved -- what " +
+      "the reach establishes is that the CSMS sent the request. See " +
+      "reachGetInstalledCertificates.",
     reach: [{ run: reachGetInstalledCertificates }],
   },
 
@@ -763,6 +804,46 @@ const STATE_DEFINITIONS: StateDefinitions = {
  *  what the code does. `OCA-201-SLICE.txt` cites this distinction by name. */
 export function isPlanned(state: ReusableState201): boolean {
   return STATE_DEFINITIONS[state].reach.every((segment) => segment.run === null);
+}
+
+/**
+ * Why this state's reach establishes LESS than the reference's post condition,
+ * or undefined when the two agree -- derived from the definitions for
+ * {@link isPlanned}'s reason.
+ *
+ * Read by the runner, which says it on stderr beside the fixture it ran, and by
+ * `tests/state-plan-201.ts`, which holds the argument that makes it safe.
+ */
+export function divergesFromReference(state: ReusableState201): string | undefined {
+  return STATE_DEFINITIONS[state].divergence;
+}
+
+/**
+ * Which state a dependency edge invokes, or undefined for a root.
+ *
+ * Exported for the guard alone, and it takes an invocation because
+ * `requires.invoke` is a function of one: the edge is declared as a
+ * transformation of the caller's parameters, so there is no edge target to read
+ * without one. Live, `planOne` is the only caller of `requires` and it has the
+ * invocation in hand.
+ */
+export function edgeTargetOf(invocation: StateInvocation): ReusableState201 | undefined {
+  const definition = STATE_DEFINITIONS[invocation.state] as StateDefinition<ReusableState201>;
+  if (!definition.requires) return undefined;
+  return definition.requires.invoke(invocation as InvocationOf<ReusableState201>).state;
+}
+
+/**
+ * What this state's `establishes` does to a condition, exposed for the guard so
+ * "the post condition has no reader" can be checked rather than asserted in a
+ * comment. Returns the condition the definition folds to.
+ */
+export function establishesFrom(
+  invocation: StateInvocation,
+  from: Condition,
+): Condition {
+  const definition = STATE_DEFINITIONS[invocation.state] as StateDefinition<ReusableState201>;
+  return definition.establishes(from, invocation as InvocationOf<ReusableState201>);
 }
 
 // ---------------------------------------------------------------------------
@@ -929,13 +1010,34 @@ export class FixtureLog {
  * scenario's own `assertStateEstablished` degrades to SKIPPED -- PARTIAL, which
  * already means "at least one check could not be evaluated".
  *
- * AN UNSUPPORTED OPERATION IS NOT CAUGHT HERE. A CSMS-initiated state whose
- * driver cannot dispatch throws `UnsupportedOperationError`, and the runner's
- * existing catch around drive() is what turns that into NOT APPLICABLE -- the
- * scope table missed the scenario, which means the same thing whether the
- * operation was asked for by a fixture or by the scenario. Rethrown explicitly
- * rather than left to fall through, so a later `catch` added here cannot
- * swallow it by accident.
+ * TWO CLASSES ARE NOT CAUGHT HERE, and the pair of them is the whole of what
+ * separates "the precondition did not hold" from "nobody was asked".
+ *
+ * `UnsupportedOperationError` -- a CSMS-initiated state whose driver cannot
+ * dispatch. The runner's existing catch around drive() turns it into NOT
+ * APPLICABLE: the scope table missed the scenario, which means the same thing
+ * whether the operation was asked for by a fixture or by the scenario.
+ *
+ * `CsmsNotDispatchedError` -- the request never became an OCPP CALL, so the
+ * station was never asked and the condition's absence says nothing about it.
+ * This is `tck/op-warn.ts`'s rule, read from the fixture side, and it was
+ * missing here until three reaches became CSMS operations rather than station
+ * commands. Swallowed, it produced the shape issue #77 cost a preserved wire
+ * trace to diagnose: a driver that cannot reach the CSMS at all -- a wrong
+ * base URL, a credential the operator did not set, a refused form post --
+ * turns every scenario declaring one of those states into a SKIPPED
+ * precondition, i.e. into PARTIAL rows that read as a known gap in OUR
+ * scenarios (`UNEXERCISED_PREFIX` says exactly that) when the cause is the
+ * harness. ERROR is the verdict the uncertainty deserves, and it is the one
+ * the same failure inside drive() already gets.
+ *
+ * EVERYTHING ELSE IS AN UNESTABLISHED PRECONDITION, which is the default and
+ * is deliberate. A wait that times out, a station command the CLI would not
+ * take, an operation the CSMS answered and refused: in all three the station
+ * is not in the declared condition, and that is precisely what a SKIPPED
+ * precondition reports. Both rethrows are explicit rather than left to fall
+ * through, so a later `catch` added here cannot swallow either by accident,
+ * and `tests/state-plan-201.ts` holds the three-way split as a table.
  *
  * NO TEARDOWN, and this is where it gets asked for. A fixture that opens a
  * transaction leaves one open, exactly as the inline setup it replaces did, and
@@ -997,6 +1099,7 @@ export async function establishStates(
       outcomes.push({ state: step.state, established: true });
     } catch (err) {
       if (err instanceof UnsupportedOperationError) throw err;
+      if (err instanceof CsmsNotDispatchedError) throw err;
       abandoned = err instanceof Error ? err.message : String(err);
       outcomes.push({ state: step.state, established: false, reason: abandoned });
     }

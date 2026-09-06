@@ -120,6 +120,7 @@ import {
 } from "./specs/index";
 import type { ScenarioSpec } from "./spec-types";
 import {
+  divergesFromReference,
   establishStates,
   FixtureLog,
   isRunnable,
@@ -765,7 +766,22 @@ async function runScenario<D>(
           ),
       );
       for (const outcome of fixtures.outcomes) {
-        if (outcome.established) continue;
+        if (outcome.established) {
+          // A fixture that RAN but promises less than the reference's post
+          // condition says so here, once per run, beside the step that
+          // produced it -- see `divergence` in tck/states-201.ts. Without it
+          // the log reads "establishing X" / no warning, which is what a state
+          // that reached its post condition also looks like.
+          const divergence = divergesFromReference(outcome.state);
+          if (divergence !== undefined) {
+            process.stderr.write(
+              `[runner] NOTE: Reusable State ${outcome.state} was exercised, ` +
+                `but this build does not reach the post condition the ` +
+                `reference declares for it: ${divergence}\n`,
+            );
+          }
+          continue;
+        }
         process.stderr.write(
           `[runner] WARN: Reusable State ${outcome.state} was not established ` +
             `(${outcome.reason}) -- the scenario's precondition check will ` +
