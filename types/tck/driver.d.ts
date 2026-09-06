@@ -374,6 +374,103 @@ export interface ClearChargingProfileCriteria201 {
     stackLevel?: number;
 }
 /**
+ * OCPP 2.0.1 `InstallCertificateUseEnumType` -- what kind of root a certificate
+ * is being installed as.
+ *
+ * FOUR VALUES WHERE {@link GetCertificateIdUse201} HAS FIVE, and the pair is
+ * the reason both are named types rather than one shared enumeration. A
+ * certificate is installed as a root; it is asked about as a root or as a
+ * `V2GCertificateChain`, which is not a root at all. Sharing one type would
+ * make a request the schema rejects -- installing a chain -- spellable.
+ */
+export type InstallCertificateUse201 = "V2GRootCertificate" | "MORootCertificate" | "CSMSRootCertificate" | "ManufacturerRootCertificate";
+/**
+ * OCPP 2.0.1 `OCPPInterfaceEnumType` -- which physical interface a network
+ * connection profile is about.
+ *
+ * Complete rather than minimal, by {@link MessageTrigger201}'s rule: eight
+ * values, four wired and four wireless, and a station's slots may name any of
+ * them.
+ */
+export type OcppInterface201 = "Wired0" | "Wired1" | "Wired2" | "Wired3" | "Wireless0" | "Wireless1" | "Wireless2" | "Wireless3";
+/** OCPP 2.0.1 `OCPPTransportEnumType`. Both values, though a 2.0.1 station
+ *  only ever speaks the first: the enumeration is the protocol's and a driver
+ *  must be able to spell what a CSMS might send. */
+export type OcppTransport201 = "JSON" | "SOAP";
+/**
+ * OCPP 2.0.1 `OCPPVersionEnumType` -- which protocol version a network
+ * connection profile tells the station to speak on that slot.
+ *
+ * NOT THE VERSION ANYTHING ELSE HERE MEANS BY "OCPP VERSION", which is why the
+ * name is long. `ScenarioSpec`'s `ocppVersion` says which protocol a scenario
+ * runs; `CitrineOcppVersion` in a driver says which route a CSMS registered.
+ * This one is a MEMBER of a request, spelled the way 2.0.1 spells it -- and
+ * 2.0.1 spells its own version `OCPP20`, with no value for 2.0.1 or 2.1 at all.
+ * A shared type would put one of those spellings where another is required.
+ */
+export type NetworkProfileOcppVersion201 = "OCPP12" | "OCPP15" | "OCPP16" | "OCPP20";
+/** OCPP 2.0.1 `APNAuthenticationEnumType`. */
+export type ApnAuthentication201 = "CHAP" | "NONE" | "PAP" | "AUTO";
+/** OCPP 2.0.1 `VPNEnumType`. */
+export type VpnType201 = "IKEv2" | "IPSec" | "L2TP" | "PPTP";
+/**
+ * OCPP 2.0.1 `APNType` -- the cellular access point a profile dials through.
+ *
+ * HERE THOUGH NO SELECTED CASE NEEDS IT, by {@link MessageTrigger201}'s rule
+ * applied to a member rather than to an enum value: `TC_B_42` and `TC_B_44` are
+ * the only `SetNetworkProfile` cases the selection rule picks and neither
+ * carries an APN, but a driver whose CSMS manages cellular stations cannot
+ * spell one without this, and adding a member later is the breaking direction
+ * for nobody while omitting it is a contract that describes less than the wire.
+ */
+export interface Apn201 {
+    apn: string;
+    apnAuthentication: ApnAuthentication201;
+    apnUserName?: string;
+    apnPassword?: string;
+    simPin?: number;
+    preferredNetwork?: string;
+    useOnlyPreferredNetwork?: boolean;
+}
+/** OCPP 2.0.1 `VPNType`. Here for {@link Apn201}'s reason; its five required
+ *  members are required by the schema whenever the object is present at all. */
+export interface Vpn201 {
+    server: string;
+    user: string;
+    password: string;
+    key: string;
+    type: VpnType201;
+    group?: string;
+}
+/**
+ * OCPP 2.0.1 `NetworkConnectionProfileType` -- how a station should reach a
+ * CSMS on one of its configuration slots.
+ *
+ * SIX REQUIRED MEMBERS AND TWO OPTIONAL ONES, and the six are exactly what
+ * `TC_B_42` validates. That is unusual enough in this contract to say out loud:
+ * most cases here turn on which members are PRESENT, and this one turns on all
+ * six being carried unchanged -- so a driver that dropped one has failed the
+ * case rather than sent a different request.
+ *
+ * `securityProfile` IS A NUMBER AND NOT AN ENUM. OCPP defines profiles 1..3 and
+ * types the member as a plain integer; a union of three would refuse a value
+ * the wire accepts, and refusing it here would put this contract's opinion in
+ * front of a CSMS's.
+ */
+export interface NetworkConnectionProfile201 {
+    ocppVersion: NetworkProfileOcppVersion201;
+    ocppTransport: OcppTransport201;
+    /** Where the station should connect. A URL as text; nothing here parses it. */
+    ocppCsmsUrl: string;
+    /** Seconds the station waits for a response on this connection. */
+    messageTimeout: number;
+    /** 1..3 in the specification, an integer on the wire. */
+    securityProfile: number;
+    ocppInterface: OcppInterface201;
+    apn?: Apn201;
+    vpn?: Vpn201;
+}
+/**
  * OCPP 2.0.1 `GetCertificateIdUseEnumType` -- which installed certificates a
  * `GetInstalledCertificateIds` is asking the station to list.
  *
@@ -463,12 +560,24 @@ export type CsmsOperation201 = {
      *  send an empty array: the schema's `minItems` is 1, so `[]` asks for
      *  nothing while looking like it asks for everything. */
     certificateType?: [GetCertificateIdUse201, ...GetCertificateIdUse201[]];
+} | {
+    action: "InstallCertificate";
+    certificateType: InstallCertificateUse201;
+    /** The certificate itself, PEM, at most 5500 characters on the wire. */
+    certificate: string;
+} | {
+    action: "SetNetworkProfile";
+    /** Which of the station's slots to write. The station defines them; a
+     *  scenario names one it was told about. */
+    configurationSlot: number;
+    /** Wire name kept: the body IS the OCPP payload. */
+    connectionData: NetworkConnectionProfile201;
 };
 export type CsmsOperation201Action = CsmsOperation201["action"];
 /** Every 2.0.1 action name. Same job as {@link CSMS_OPERATION_16_ACTIONS},
  *  and a SECOND list rather than an extension of it -- see the note on
  *  {@link CsmsOperation201}'s `Reset` arm for why the two must not merge. */
-export declare const CSMS_OPERATION_201_ACTIONS: readonly ["Reset", "GetVariables", "SetVariables", "TriggerMessage", "ChangeAvailability", "SetChargingProfile", "GetCompositeSchedule", "GetChargingProfiles", "ClearChargingProfile", "GetInstalledCertificateIds"];
+export declare const CSMS_OPERATION_201_ACTIONS: readonly ["Reset", "GetVariables", "SetVariables", "TriggerMessage", "ChangeAvailability", "SetChargingProfile", "GetCompositeSchedule", "GetChargingProfiles", "ClearChargingProfile", "GetInstalledCertificateIds", "InstallCertificate", "SetNetworkProfile"];
 /**
  * One well-formed operation per action, and its job is to make the union above
  * expensive to grow in exactly one place.

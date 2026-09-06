@@ -68,11 +68,13 @@
  */
 
 import { UNEXERCISED_PREFIX, type AssertRecorder } from "./assert";
+import { TEST_ROOT_CERTIFICATE_PEM } from "./certificate-material";
 import {
   UnsupportedOperationError,
   type CsmsOperations201,
   type CsmsRecords,
   type GetCertificateIdUse201,
+  type InstallCertificateUse201,
 } from "./driver";
 import type { SimProcess } from "./sim";
 
@@ -125,10 +127,13 @@ export interface Condition {
 export const INITIAL_CONDITION: Condition = { state: null, evConnected: false };
 
 /**
- * Certificate uses Part 6 parameterises `CertificateInstalled` by, and the
- * enumeration `InstallCertificate` ranges over on the wire. Spelled out rather
- * than imported from a generated OCPP model because nothing in this tree has
- * one.
+ * The certificate uses Part 6 parameterises `CertificateInstalled` by.
+ *
+ * AN ALIAS AND NOT A SECOND LIST, since the reach exists: the state's parameter
+ * IS the request's `certificateType`, so the values belong to the contract and
+ * a copy here would be a copy free to disagree. The name is kept because it is
+ * this file's vocabulary and because it is exported -- what changed is where
+ * the four values are written down.
  *
  * ONE STATE AND NOT TWO, which it was until `GetInstalledCertificates` got a
  * reach. That state is parameterised by the enumeration the LISTING request
@@ -136,11 +141,7 @@ export const INITIAL_CONDITION: Condition = { state: null, evConnected: false };
  * takes {@link GetCertificateIdUse201} for it. A shared type would let a
  * scenario ask to install a chain, which is a request the schema rejects.
  */
-export type CertificateUse201 =
-  | "V2GRootCertificate"
-  | "MORootCertificate"
-  | "CSMSRootCertificate"
-  | "ManufacturerRootCertificate";
+export type CertificateUse201 = InstallCertificateUse201;
 
 /**
  * A state plus the arguments it is invoked with -- a discriminated union rather
@@ -493,6 +494,47 @@ const reachGetInstalledCertificates: NonNullable<
   await ctx.sim.waitForLine(RECEIVED_GET_INSTALLED_CERTIFICATE_IDS, REACH_TIMEOUT_MS);
 };
 
+/** The other certificate request arriving at the station, matched the way
+ *  {@link RECEIVED_GET_INSTALLED_CERTIFICATE_IDS} is and for its reason. */
+const RECEIVED_INSTALL_CERTIFICATE = /Received: \[2,"[^"]*","InstallCertificate"/;
+
+/**
+ * The third fixture whose reach is a CSMS operation, and the second whose
+ * declared post condition this deployment does not establish.
+ *
+ * THE STATION REFUSES EVERY CERTIFICATE, and it refuses them without looking.
+ * Part 6 has it answer `Accepted` and store what it was sent; the pinned
+ * simulator answers `Rejected` from a canned handler that reads no request
+ * member. So no certificate is stored, and "a certificate of the specified type
+ * is stored at the station" is not true after this fixture runs.
+ *
+ * IT IS STILL THE RIGHT FIXTURE, for the reason
+ * {@link reachGetInstalledCertificates} gives at length and which holds here in
+ * the same shape: `establishes` returns the condition untouched, nothing
+ * depends on this state, and the four cases that name it ARE it. There is no
+ * later step running on the strength of a certificate the station never kept.
+ * What is measured is what a CSMS campaign can measure -- the request the CSMS
+ * sent, and the type it named.
+ *
+ * THE CERTIFICATE IS THE SAME ONE EVERY TIME, and Part 6 says "the
+ * corresponding certificate" rather than naming one, so the correspondence is
+ * ours to define: one certificate, installed under whichever type the case
+ * asks for. Nothing on either side checks that a CSMS root is in fact a CSMS
+ * root -- the type is a member of the request, and the material only has to
+ * parse. {@link TEST_ROOT_CERTIFICATE_PEM}'s header carries the rest.
+ */
+const reachCertificateInstalled: NonNullable<ReachSegment<"CertificateInstalled">["run"]> = async (
+  ctx,
+  invocation,
+) => {
+  await ctx.csms201.execute(ctx.cpId, {
+    action: "InstallCertificate",
+    certificateType: invocation.certificateType,
+    certificate: TEST_ROOT_CERTIFICATE_PEM,
+  });
+  await ctx.sim.waitForLine(RECEIVED_INSTALL_CERTIFICATE, REACH_TIMEOUT_MS);
+};
+
 const AUTHORIZED: StateDefinition<"Authorized"> = {
   establishes: (condition) => ({ state: "Authorized", evConnected: condition.evConnected }),
   reach: [
@@ -612,9 +654,12 @@ const STATE_DEFINITIONS: StateDefinitions = {
 
   CertificateInstalled: {
     // NO `State` VALUE. Its post condition is about a certificate being stored,
-    // not about a transition, so the condition is returned untouched.
+    // not about a transition, so the condition is returned untouched -- and, as
+    // for `GetInstalledCertificates` below, that is also what makes the four
+    // cases naming it four cases: nothing records it, so each one sends its own
+    // request.
     establishes: (condition) => condition,
-    reach: [{ run: null, planned: CSMS_INITIATED }],
+    reach: [{ run: reachCertificateInstalled }],
   },
 
   EVConnectedPostSession: {

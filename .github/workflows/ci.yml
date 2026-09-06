@@ -178,6 +178,15 @@ jobs:
       - name: A Reusable State plan follows the condition
         run: bun tests/state-plan-201.ts
 
+      # In-process because its subject is a VALUE the CSMS parses before it
+      # dispatches: a malformed PEM is refused with an HTTP error and no frame,
+      # so the five InstallCertificate cases would report ERROR against the CSMS
+      # for a defect in this repository. The expiry row is about the future --
+      # nothing checks the date, so a regeneration at openssl's default of 30
+      # days would pass every run for a month.
+      - name: The committed certificate is one a CSMS can store
+        run: bun tests/certificate-material.ts
+
       - name: Core names no CSMS
         run: bash tests/generic-core.sh
 

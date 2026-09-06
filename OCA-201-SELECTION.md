@@ -172,8 +172,8 @@ The other half of that gap was whether a list this long may be committed at
 all, given that the references are CC BY-ND, and it is
 [answered](#what-may-be-committed-here-and-what-may-not): it may.
 
-Forty-two of the 147 are implemented and 105 decline with a reason. Those
-reasons are written per group rather than per case — 24 of them across the 105 —
+Forty-nine of the 147 are implemented and 98 decline with a reason. Those
+reasons are written per group rather than per case — 21 of them across the 98 —
 and the file's header says why that is the granularity the decision was taken
 at rather than a placeholder. What a guard still cannot say is whether these
 are the *right* 147, and that is [unchanged](#the-guard).
@@ -241,6 +241,38 @@ leaves behind for the same fact and not the same reason: they need
 `DeleteCertificate` *and* hash data to echo back, and a station that answers
 `NotFound` gives them nothing to echo.
 
+**Seven more arrived with `InstallCertificate` and `SetNetworkProfile`, bought
+together for `GetCompositeSchedule`'s reason and not for a shared module.**
+Neither verb heads the table alone — five cases and two — and they landed in one
+tranche because the block they finish is one block: the same reading of *Part 6*
+covered all seven, and the two that are not certificate operations sit in the
+same profile. Five of the seven were declined on certificate material this suite
+does not generate. It does now: one self-signed root, committed once, in
+[`tck/certificate-material.ts`](tck/certificate-material.ts). Its header says why
+committing beat generating — building an X.509 certificate means emitting ASN.1,
+which `node:crypto` cannot do, so generating it would mean a certificate library
+in this package's dependencies to produce a value that never varies.
+
+**What that material has to satisfy is a CSMS's parser, not OCPP's schema.** The
+protocol says `certificate` is a string of at most 5500 characters and says
+nothing else; the pinned deployment reads the PEM before it dispatches anything
+and stores fields out of it — a serial into an integer column, a country and a
+signature algorithm into columns whose model types enumerate one value each. A
+certificate that parses fine and carries a hex serial would be stored as `NaN`.
+So the material has a guard of its own,
+[`tests/certificate-material.ts`](tests/certificate-material.ts), whose four
+claims are that deployment's requirements rather than the protocol's — including
+the one that is about the future rather than about today, since nothing checks
+the expiry and a regeneration at openssl's default of thirty days would pass
+every other check and every run for a month.
+
+**The ISO 15118 rows in this block were declined on the profile and blocked by
+nothing.** `TC_M_03` and `TC_M_04` install a V2G root and an MO root, and what
+makes a root either of those is the `certificateType` member of the request —
+not anything inside the certificate, which neither side of the exchange looks
+at. That is the third time this page has recorded a group reason generalising
+past the rows it was drawn for, and the second time in the same block.
+
 **Four of the first eleven arrived by falsifying a reason rather than by adding
 an operation**, which is worth naming because it is the cheapest way this number
 moves. `TC_C_02`, `TC_E_10`, `TC_F_27` and `TC_J_01` need no member
@@ -277,7 +309,7 @@ trigger and `CsmsOperation201` carries the verb.
 
 ## How wide a vocabulary the 147 ask for
 
-**Twenty kinds of operation**, against the ten the contract carries. Ninety of the 147 drive at
+**Twenty kinds of operation**, against the twelve the contract carries. Ninety of the 147 drive at
 least one CSMS-initiated request and **57 drive none at all** — a case that only
 observes charge-point-initiated traffic needs no verb, which is why "add the
 rest of the 2.0.1 messages" was the wrong shape for this and why the answer is
@@ -294,28 +326,25 @@ note here because it is a two-level read that looks like a one-level one, and
 the extractor's header says why.
 
 **Tranches, sized by cases completed rather than by cases mentioning a verb.**
-Six cases need more than one operation, so the two counts differ: adding
-`InstallCertificate` is named by seven rows and finishes five of them, because
-`TC_M_20` and `TC_M_21` want `DeleteCertificate` as well. Greedy from the ten
-the union has, which leaves **40** of the 147 short of a verb — six fewer than
-before `GetInstalledCertificateIds` was added, and the row that used to head
-this table's certificate block is gone from it for that reason. `bun
-tools/extract-201-operations.ts --tranches` is what prints this table — no PDF,
-just the row file and the contract — and `tests/oca-201-operations.sh` holds the
-two together:
+Two cases still need more than one operation, so the two counts differ: adding
+`DeleteCertificate` is named by two rows and finishes both, and it is last but
+one because those two rows need nothing else once it lands. Greedy from the
+twelve the union has, which leaves **33** of the 147 short of a verb — thirteen
+fewer than before the certificate tranches, and three operations have left this
+table entirely by being written. `bun tools/extract-201-operations.ts
+--tranches` is what prints this table — no PDF, just the row file and the
+contract — and `tests/oca-201-operations.sh` holds the two together:
 
 | # | operation | cases it completes | still blocked after |
 |---|---|---|---|
-| 1 | `UpdateFirmware` | 10 | 30 |
-| 2 | `CustomerInformation` | 6 | 24 |
-| 3 | `InstallCertificate` | 5 | 19 |
-| 4 | `RequestStartTransaction` | 5 | 14 |
-| 5 | `GetLog` | 4 | 10 |
-| 6 | `CertificateSigned` | 3 | 7 |
-| 7 | `ClearCache` | 2 | 5 |
-| 8 | `DeleteCertificate` | 2 | 3 |
-| 9 | `SetNetworkProfile` | 2 | 1 |
-| 10 | `RequestStopTransaction` | 1 | 0 |
+| 1 | `UpdateFirmware` | 10 | 23 |
+| 2 | `CustomerInformation` | 6 | 17 |
+| 3 | `RequestStartTransaction` | 5 | 12 |
+| 4 | `GetLog` | 4 | 8 |
+| 5 | `CertificateSigned` | 3 | 5 |
+| 6 | `ClearCache` | 2 | 3 |
+| 7 | `DeleteCertificate` | 2 | 1 |
+| 8 | `RequestStopTransaction` | 1 | 0 |
 
 The right-hand column is the number a tranche is worth arguing about, and it is
 not the number of scenarios that become writable: a verb removes *one* blocker,

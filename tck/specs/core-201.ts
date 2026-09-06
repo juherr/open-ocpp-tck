@@ -88,6 +88,7 @@ import {
   UNEXERCISED_PREFIX,
   type AssertRecorder,
 } from "../assert";
+import { TEST_ROOT_CERTIFICATE_PEM } from "../certificate-material";
 import type { CsmsRecords } from "../driver";
 import {
   findAllCalls,
@@ -1706,6 +1707,175 @@ const TC_F_20: ScenarioSpec = {
       "Heartbeat",
       "currentTime",
       "Heartbeat.conf carries a currentTime the charge point can parse",
+    );
+  },
+};
+
+/**
+ * The CSMS told the station where to connect, and every member of the profile
+ * survived the crossing.
+ *
+ * ALL SEVEN AND NOT A SUBSET, which is what makes this different from every
+ * other request helper in this file. `TC_B_42`'s tool validation names the slot
+ * and the six required members of the connection data, so what is being asked is
+ * not "which members are present" -- the shape most cases here turn on -- but
+ * whether a CSMS carried a nested object through unchanged. A helper that
+ * checked the ones it was told to expect would go green on a CSMS that dropped
+ * the other, which is why this one also reports members it did NOT expect.
+ */
+function assertNetworkProfileRequested(
+  rec: AssertRecorder,
+  frames: readonly Frame[],
+  occurrence: number,
+  expectedSlot: number,
+  expected: Readonly<Record<string, string | number>>,
+  description: string,
+): void {
+  const found = receivedCallPayload(frames, occurrence, "SetNetworkProfile");
+  if ("error" in found) {
+    rec.fail(description, found.error);
+    return;
+  }
+  const wrong: string[] = [];
+  if (!Object.is(found.payload.configurationSlot, expectedSlot)) {
+    wrong.push(`configurationSlot=${JSON.stringify(found.payload.configurationSlot)}`);
+  }
+  const sent = found.payload.connectionData;
+  if (typeof sent !== "object" || sent === null || Array.isArray(sent)) {
+    wrong.push(`connectionData=${JSON.stringify(sent)}, which is not an object`);
+  } else {
+    const members = sent as Record<string, unknown>;
+    wrong.push(
+      ...wrongMembers(members, expected).map((member) => `connectionData.${member}`),
+    );
+    for (const key of Object.keys(members)) {
+      if (!(key in expected)) {
+        wrong.push(
+          `connectionData.${key}=${JSON.stringify(members[key])}, which this case does not send`,
+        );
+      }
+    }
+  }
+  if (wrong.length === 0) rec.pass(description);
+  else rec.fail(description, wrong.join(", "));
+}
+
+/**
+ * WHAT THE TWO `SetNetworkProfile` CASES SHARE, said once.
+ *
+ * THEY SEND THE SAME REQUEST AND MEASURE OPPOSITE HALVES OF IT. `TC_B_42`'s
+ * validation is entirely on the request and `TC_B_44` has none at all -- what
+ * separates them is the answer the reference scripts, `Accepted` there and
+ * `Failed` here. So the first asserts the seven members and does not read the
+ * ack; the second reads the ack and does not restate the members.
+ *
+ * THE PINNED STATION ANSWERS `Rejected` TO BOTH, from a canned handler that
+ * reads no request member. That is the wrong negative for `TC_B_44` -- the case
+ * scripts `Failed` -- so what that scenario exercises is "the CSMS carried back
+ * *a* refusal" rather than the scripted one. It is worth having anyway, since
+ * `Rejected` and `Failed` are both refusals and a CSMS that reported either as a
+ * success is the finding; but a reader must not take the assertion below for the
+ * case's own expectation, which is why this is written here.
+ *
+ * THE PROFILE IS NEVER DIALLED. `.invalid` is the reserved TLD, and the station
+ * answers before it would have tried: no scenario here can observe a station
+ * migrating to another CSMS, so the URL's job is to be well formed and
+ * obviously not a real endpoint.
+ */
+const NETWORK_PROFILE_SLOT = 1;
+
+const TC_B_42: ScenarioSpec = {
+  templateId: "cert201-tcb42-set-network-profile",
+  description:
+    "TC_B_42 Set Network Profile: the CSMS writes a new connection profile into one of the station's configuration slots.",
+  ocppVersion: "OCPP-2.0.1",
+  runsSimTemplate: false,
+  connector: 1,
+  bootWaitSecs: 4,
+  holdSecs: 10,
+  // LITERALS AND NOT A SHARED PROFILE CONSTANT, for TC_B_21's reason: an
+  // identifier renders as `·` in ASSERT-INVENTORY.txt, and the six members
+  // below are exactly what this case validates -- pinning them is the point.
+  // `NETWORK_PROFILE_SLOT` is the one identifier here and it is a number the
+  // assertion repeats, so it lands on the artifact either way.
+  async drive({ cpId, csms201 }) {
+    await csms201.execute(cpId, {
+      action: "SetNetworkProfile",
+      configurationSlot: NETWORK_PROFILE_SLOT,
+      connectionData: {
+        ocppVersion: "OCPP20",
+        ocppTransport: "JSON",
+        ocppCsmsUrl: "ws://csms.invalid:9000/ocpp",
+        messageTimeout: 30,
+        securityProfile: 1,
+        ocppInterface: "Wired0",
+      },
+    });
+  },
+  assert({ frames, rec }) {
+    assertReceived(rec, frames, "SetNetworkProfile", "SetNetworkProfile.req received");
+    assertNetworkProfileRequested(
+      rec,
+      frames,
+      0,
+      1,
+      {
+        ocppVersion: "OCPP20",
+        ocppTransport: "JSON",
+        ocppCsmsUrl: "ws://csms.invalid:9000/ocpp",
+        messageTimeout: 30,
+        securityProfile: 1,
+        ocppInterface: "Wired0",
+      },
+      "SetNetworkProfile.req names slot 1 and carries all six members of the connection profile",
+    );
+    // NO ACK ASSERTION. The reference scripts Accepted and the pinned station
+    // answers Rejected whatever it is sent, so reading the ack here would fail
+    // this case for the station's script rather than for the CSMS. TC_B_44 is
+    // where the refusal is the subject.
+  },
+};
+
+const TC_B_44: ScenarioSpec = {
+  templateId: "cert201-tcb44-set-network-profile-refused",
+  description:
+    "TC_B_44 Set Network Profile: the station refuses the connection profile, and the CSMS carries the refusal back unchanged.",
+  ocppVersion: "OCPP-2.0.1",
+  runsSimTemplate: false,
+  connector: 1,
+  bootWaitSecs: 4,
+  holdSecs: 10,
+  // THE SAME REQUEST AS TC_B_42's, deliberately: this case has no tool
+  // validation of its own, so writing a DIFFERENT profile here would make the
+  // pair differ in something the reference does not distinguish them by.
+  async drive({ cpId, csms201 }) {
+    await csms201.execute(cpId, {
+      action: "SetNetworkProfile",
+      configurationSlot: NETWORK_PROFILE_SLOT,
+      connectionData: {
+        ocppVersion: "OCPP20",
+        ocppTransport: "JSON",
+        ocppCsmsUrl: "ws://csms.invalid:9000/ocpp",
+        messageTimeout: 30,
+        securityProfile: 1,
+        ocppInterface: "Wired0",
+      },
+    });
+  },
+  assert({ frames, rec }) {
+    assertReceived(rec, frames, "SetNetworkProfile", "SetNetworkProfile.req received");
+    // A REFUSAL, AND NOT THIS CASE'S REFUSAL. The reference scripts `Failed`;
+    // the pinned station answers `Rejected` from a canned handler. Both are
+    // refusals and the finding either would catch is the same -- a CSMS
+    // reporting a declined profile as installed -- but the status asserted here
+    // is the station's, not the case's. See the note above TC_B_42.
+    assertResponseStatus(
+      rec,
+      frames,
+      "SetNetworkProfile",
+      "Rejected",
+      "the station refused the connection profile (Rejected, where the case scripts Failed)",
+      { direction: "received" },
     );
   },
 };
@@ -4537,6 +4707,242 @@ const TC_K_08: ScenarioSpec = {
 };
 
 /**
+ * The CSMS asked the station to install a certificate of `expectedType`.
+ *
+ * THE CERTIFICATE IS CHECKED FOR BEING ONE, not for being ours. Part 6 asks for
+ * "a certificate" and nothing more, and a CSMS is entitled to re-encode, re-wrap
+ * or re-order what it was handed -- what would be a finding is a member that is
+ * empty, absent, or not a certificate at all. So the armour lines are the test
+ * and the bytes between them are not.
+ */
+function assertCertificateInstallRequested(
+  rec: AssertRecorder,
+  frames: readonly Frame[],
+  occurrence: number,
+  expectedType: string,
+  description: string,
+): void {
+  const found = receivedCallPayload(frames, occurrence, "InstallCertificate");
+  if ("error" in found) {
+    rec.fail(description, found.error);
+    return;
+  }
+  const wrong: string[] = [];
+  if (!Object.is(found.payload.certificateType, expectedType)) {
+    wrong.push(`certificateType=${JSON.stringify(found.payload.certificateType)}`);
+  }
+  const certificate = found.payload.certificate;
+  if (typeof certificate !== "string") {
+    wrong.push(`certificate=${JSON.stringify(certificate)}, which is not a string`);
+  } else if (
+    !certificate.includes("-----BEGIN CERTIFICATE-----") ||
+    !certificate.includes("-----END CERTIFICATE-----")
+  ) {
+    wrong.push(
+      `certificate is ${certificate.length} character(s) and carries no PEM armour, so it is not a certificate`,
+    );
+  }
+  if (wrong.length === 0) rec.pass(description);
+  else rec.fail(description, wrong.join(", "));
+}
+
+/**
+ * WHAT THE FOUR FIXTURE-DRIVEN INSTALL CASES SHARE, said once here rather than
+ * four times below.
+ *
+ * THE FIXTURE IS THE CASE, TC_G_03's shape and TC_M_13's: Part 6 gives TC_M_01
+ * through TC_M_04 no tool validation of their own, and each one's whole scenario
+ * is the execution of the `CertificateInstalled` Reusable State for one
+ * `certificateType`. A `drive()` would put a second request on the wire.
+ *
+ * NO ASSERTION READS THE ACK, for TC_M_13's reason and one more. The reference
+ * has the station answer `Accepted` and store the certificate; the pinned
+ * simulator answers `Rejected` from a canned handler that reads no request
+ * member and has nowhere to store one. So the certificate is never installed --
+ * which also means these four cases can be run in any order, any number of
+ * times, against a station that never accumulates state. TC_M_05 is the case
+ * whose scripted answer is a refusal, and it is the only one of the five that
+ * reads the ack.
+ */
+const TC_M_01: ScenarioSpec = {
+  templateId: "cert201-tcm01-install-csms-root",
+  description:
+    "TC_M_01 Install CA certificate: the CSMS asks the station to install a new CSMSRootCertificate.",
+  ocppVersion: "OCPP-2.0.1",
+  runsSimTemplate: false,
+  connector: 1,
+  bootWaitSecs: 4,
+  holdSecs: 10,
+  // LITERALS AND NOT A SHARED CONSTANT, for TC_G_03's reason. The type is the
+  // whole of what separates these four cases, so it has to reach
+  // ASSERT-INVENTORY.txt; the certificate does not travel here at all, because
+  // Part 6 says only "the corresponding certificate" and the fixture is where
+  // the correspondence is defined.
+  states: [{ state: "CertificateInstalled", certificateType: "CSMSRootCertificate" }],
+  assert({ frames, rec, fixtures }) {
+    assertStateEstablished(
+      rec,
+      fixtures,
+      "CertificateInstalled",
+      "the station was asked to install a certificate",
+    );
+    assertReceived(rec, frames, "InstallCertificate", "InstallCertificate.req received");
+    assertCertificateInstallRequested(
+      rec,
+      frames,
+      0,
+      "CSMSRootCertificate",
+      "InstallCertificate.req installs a CSMSRootCertificate and carries a certificate",
+    );
+  },
+};
+
+const TC_M_02: ScenarioSpec = {
+  templateId: "cert201-tcm02-install-manufacturer-root",
+  description:
+    "TC_M_02 Install CA certificate: the CSMS asks the station to install a new ManufacturerRootCertificate.",
+  ocppVersion: "OCPP-2.0.1",
+  runsSimTemplate: false,
+  connector: 1,
+  bootWaitSecs: 4,
+  holdSecs: 10,
+  states: [{ state: "CertificateInstalled", certificateType: "ManufacturerRootCertificate" }],
+  assert({ frames, rec, fixtures }) {
+    assertStateEstablished(
+      rec,
+      fixtures,
+      "CertificateInstalled",
+      "the station was asked to install a certificate",
+    );
+    assertReceived(rec, frames, "InstallCertificate", "InstallCertificate.req received");
+    assertCertificateInstallRequested(
+      rec,
+      frames,
+      0,
+      "ManufacturerRootCertificate",
+      "InstallCertificate.req installs a ManufacturerRootCertificate and carries a certificate",
+    );
+  },
+};
+
+const TC_M_03: ScenarioSpec = {
+  templateId: "cert201-tcm03-install-v2g-root",
+  description:
+    "TC_M_03 Install CA certificate: the CSMS asks the station to install a new V2GRootCertificate.",
+  ocppVersion: "OCPP-2.0.1",
+  runsSimTemplate: false,
+  connector: 1,
+  bootWaitSecs: 4,
+  holdSecs: 10,
+  // ISO 15118 SUPPORT, AND NOTHING HERE IS ISO 15118. The slice declined this
+  // case and TC_M_04 on "V2G and MO material on top", and the material is the
+  // same certificate the other two install: what makes a root a V2G root is the
+  // `certificateType` member of this request, not anything inside the PEM, and
+  // neither side of this exchange looks. The row's reason was true about the
+  // profile and false about the blocker.
+  states: [{ state: "CertificateInstalled", certificateType: "V2GRootCertificate" }],
+  assert({ frames, rec, fixtures }) {
+    assertStateEstablished(
+      rec,
+      fixtures,
+      "CertificateInstalled",
+      "the station was asked to install a certificate",
+    );
+    assertReceived(rec, frames, "InstallCertificate", "InstallCertificate.req received");
+    assertCertificateInstallRequested(
+      rec,
+      frames,
+      0,
+      "V2GRootCertificate",
+      "InstallCertificate.req installs a V2GRootCertificate and carries a certificate",
+    );
+  },
+};
+
+const TC_M_04: ScenarioSpec = {
+  templateId: "cert201-tcm04-install-mo-root",
+  description:
+    "TC_M_04 Install CA certificate: the CSMS asks the station to install a new MORootCertificate.",
+  ocppVersion: "OCPP-2.0.1",
+  runsSimTemplate: false,
+  connector: 1,
+  bootWaitSecs: 4,
+  holdSecs: 10,
+  states: [{ state: "CertificateInstalled", certificateType: "MORootCertificate" }],
+  assert({ frames, rec, fixtures }) {
+    assertStateEstablished(
+      rec,
+      fixtures,
+      "CertificateInstalled",
+      "the station was asked to install a certificate",
+    );
+    assertReceived(rec, frames, "InstallCertificate", "InstallCertificate.req received");
+    assertCertificateInstallRequested(
+      rec,
+      frames,
+      0,
+      "MORootCertificate",
+      "InstallCertificate.req installs an MORootCertificate and carries a certificate",
+    );
+  },
+};
+
+const TC_M_05: ScenarioSpec = {
+  templateId: "cert201-tcm05-install-refused",
+  description:
+    "TC_M_05 Install CA certificate: the station reports it could not install the certificate, and the CSMS carries the refusal back unchanged.",
+  ocppVersion: "OCPP-2.0.1",
+  runsSimTemplate: false,
+  connector: 1,
+  bootWaitSecs: 4,
+  holdSecs: 10,
+  // WRITTEN INLINE RATHER THAN THROUGH THE FIXTURE, TC_M_19's shape: this case
+  // has its own tool validation -- the type and that a certificate is carried --
+  // and the fixture's post condition is that a certificate was stored, which is
+  // the thing this case is about NOT happening. The request is the same one
+  // TC_M_01 sends; what separates the two is the answer the reference scripts.
+  //
+  // THE CERTIFICATE IS THE SUITE'S, and here it travels through an identifier
+  // rather than as a literal. That renders as `·` in ASSERT-INVENTORY.txt, which
+  // is the right trade for this argument and the wrong one for `certificateType`
+  // beside it: the case says "certificate contains <A certificate>", so its value
+  // is not what the case distinguishes, and a 1,115-character literal on the
+  // artifact would pin bytes nothing measures. The material has a guard of its
+  // own.
+  async drive({ cpId, csms201 }) {
+    await csms201.execute(cpId, {
+      action: "InstallCertificate",
+      certificateType: "CSMSRootCertificate",
+      certificate: TEST_ROOT_CERTIFICATE_PEM,
+    });
+  },
+  assert({ frames, rec }) {
+    assertReceived(rec, frames, "InstallCertificate", "InstallCertificate.req received");
+    assertCertificateInstallRequested(
+      rec,
+      frames,
+      0,
+      "CSMSRootCertificate",
+      "InstallCertificate.req installs a CSMSRootCertificate and carries a certificate",
+    );
+    // A REFUSAL, AND NOT THIS CASE'S REFUSAL. The reference scripts `Failed`;
+    // the pinned station answers `Rejected` from a canned handler that reads no
+    // request member. Both are refusals, and the finding either would catch is
+    // the same -- a CSMS reporting a declined installation as done -- but the
+    // status asserted here is the station's rather than the case's. TC_B_44
+    // carries the same substitution one block up.
+    assertResponseStatus(
+      rec,
+      frames,
+      "InstallCertificate",
+      "Rejected",
+      "the station refused the certificate (Rejected, where the case scripts Failed)",
+      { direction: "received" },
+    );
+  },
+};
+
+/**
  * The CSMS asked the station to list the certificates it holds, and asked
  * about `expected`.
  *
@@ -4836,8 +5242,8 @@ const TC_M_19: ScenarioSpec = {
 };
 
 /**
- * The scenarios, in case order -- the forty-two of `OCA-201-SLICE.txt`'s 147
- * that are implemented. The other 105 are declined there rather than here,
+ * The scenarios, in case order -- the forty-nine of `OCA-201-SLICE.txt`'s 147
+ * that are implemented. The other 98 are declined there rather than here,
  * with the reason in the row: one place per fact, and the guard reads that one.
  */
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
@@ -4848,6 +5254,8 @@ export const CORE_201_SPECS: ScenarioSpec<any>[] = [
   TC_B_20,
   TC_B_21,
   TC_B_22,
+  TC_B_42,
+  TC_B_44,
   TC_C_02,
   TC_E_10,
   TC_F_20,
@@ -4878,6 +5286,11 @@ export const CORE_201_SPECS: ScenarioSpec<any>[] = [
   TC_K_44,
   TC_K_60,
   TC_K_70,
+  TC_M_01,
+  TC_M_02,
+  TC_M_03,
+  TC_M_04,
+  TC_M_05,
   TC_M_13,
   TC_M_14,
   TC_M_15,

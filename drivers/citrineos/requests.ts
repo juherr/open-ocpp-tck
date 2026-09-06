@@ -418,6 +418,68 @@ function route201(op: CsmsOperation201, variant: CitrineVariant): CitrineRoute {
         body: body({ certificateType: op.certificateType }),
       };
 
+    // CERTIFICATES' SECOND, and the one arm in this file whose endpoint DOES
+    // work before it dispatches. `InstallCertificateHelperService`
+    // `prepareToInstallCertificate` runs first: it parses the PEM with
+    // `jsrsasign`, and on a value it cannot read it throws -- an HTTP error
+    // with nothing on the wire, which `send` classifies as a non-dispatch. So a
+    // malformed certificate here reads as "the request never reached the CSMS"
+    // rather than as a red assertion, which is why the material this suite
+    // sends has a guard of its own (`tests/certificate-material.ts`) instead of
+    // being trusted to be well formed.
+    //
+    // IT ALSO WRITES BEFORE IT SENDS -- a `Certificate` row and an
+    // `InstallCertificateAttempt` row, and the certificate file into that
+    // deployment's file storage. Nothing here depends on those rows and nothing
+    // here removes them; they are named because a reader looking for why a
+    // second run of the same case behaves differently will find the answer
+    // there and not in this file. The one branch that could refuse the request
+    // outright, M05.FR.10's additional-root check, reads
+    // `SecurityCtrlr.AdditionalRootCertificateCheck` from the device model and
+    // returns early unless it is `true`, which the fixture does not set.
+    //
+    // BOTH MEMBERS ARE REQUIRED, so there is nothing for body() to drop and the
+    // body is written out.
+    case "InstallCertificate":
+      return {
+        module: "certificates",
+        action: "installCertificate",
+        body: {
+          certificateType: op.certificateType,
+          certificate: op.certificate,
+        },
+      };
+
+    // Configuration's, like Reset's and TriggerMessage's, and NOT Certificates'
+    // -- a network profile is where a station connects rather than what it
+    // trusts, and the security profile it carries is a number in that request
+    // rather than certificate material. Read off the `@AsMessageEndpoint`
+    // decorator in
+    // `packages/core/src/modules/Configuration/src/module/2/MessageApi.ts`.
+    //
+    // ONE QUERY PARAMETER THIS DRIVER DOES NOT SEND, and it is worth naming
+    // because sending it would change what the request does. That endpoint
+    // takes an optional `websocketServerConfigId` querystring; when ANY extra
+    // query parameter is present it writes a `SetNetworkProfile` row before
+    // dispatching. `api-client.ts` sends `identifier` and `tenantId` and
+    // nothing else, which the endpoint reads as no extra queries at all, so
+    // this arm reaches the wire without a database round trip.
+    //
+    // THE PROFILE GOES THROUGH AS THE CONTRACT BUILT IT, `ChangeAvailability`'s
+    // `evse` treatment: the body is the OCPP payload, this CSMS validates it
+    // against `SetNetworkProfileRequestSchema` and forwards it, and TC_B_42
+    // validates all six of its required members -- so rebuilding it member by
+    // member here would put a second place for one of them to be dropped.
+    case "SetNetworkProfile":
+      return {
+        module: "configuration",
+        action: "setNetworkProfile",
+        body: {
+          configurationSlot: op.configurationSlot,
+          connectionData: op.connectionData,
+        },
+      };
+
     default:
       return assertNever(op, "citrineos.operations201.execute");
   }

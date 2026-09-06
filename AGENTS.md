@@ -24,7 +24,7 @@ error.
 ## The gate
 
 `bun run verify` is every check CI runs before it starts a container —
-typecheck, committed declarations, three driver scope checks, fifteen in-process
+typecheck, committed declarations, three driver scope checks, sixteen in-process
 guards and sixteen shell guards — with one exit code, and every step runs even
 after one fails, where CI enumerates them and stops at the first.
 
@@ -61,6 +61,7 @@ bun tests/citrineos-device-model-fixture.ts
 bun tests/citrineos-redelivery-loops.ts
 bun tests/shard-selection.ts
 bun tests/state-plan-201.ts
+bun tests/certificate-material.ts
 bash tests/cert201-declares-its-version.sh
 bash tests/cert201-scope-rows.sh       # both read tck/specs/ASSERT-INVENTORY.txt,
                                        # so a NEW scenario reaches them only once
@@ -132,7 +133,7 @@ There is no unit-test framework and no `*.test.ts`. `tests/` holds offline
 guards, each with a header stating the property it protects. `bun run test`
 chains them — note `bun test` is Bun's own runner and finds nothing here.
 
-Shell is the default, and the fifteen TypeScript ones are TypeScript because
+Shell is the default, and the sixteen TypeScript ones are TypeScript because
 what they assert is unreachable through the CLI. `driver-env-scope.ts`: a
 driver's declarations follow the env they are *resolved* with, where the CLI
 can only ever pass `process.env`. `capability-parity.ts`: the same reason and
@@ -223,6 +224,20 @@ reads correctly, and runs 82 of 83 scenarios, so the check is set equality
 against the input at every shard count from one to more shards than there are
 items. The balance row is the weaker one and says so -- it is not needed for
 correctness, only for the wall-clock argument the mechanism exists to make.
+`certificate-material.ts`: the one whose subject is a VALUE rather than a rule,
+and the reason it is here at all is WHEN that value is read. `tck/driver.ts`'s
+`InstallCertificate` carries a PEM, and at least one pinned CSMS parses it
+BEFORE it dispatches anything -- so a malformed one is refused with an HTTP
+error and no frame, which the runner reports as a non-dispatch: five
+certification cases ERROR against the CSMS for a defect in this repository. Its
+four claims are that deployment's requirements rather than the protocol's, and
+the one that could not be guessed from either is the serial: the CSMS stores
+`parseInt(serialNumberHex)` in an integer column, so a serial spelt with hex
+letters reads back as `NaN`. The expiry row is the one written for the future
+rather than for today -- nothing checks the date, so a certificate regenerated
+at openssl's default of thirty days would pass every other row here and pass
+every run for a month. The guard's own assumption is stated in its header: the
+parser available here is not the parser that matters there.
 `state-plan-201.ts`: the last one, and the only one whose subject never touches
 a CSMS at all. What a scenario DECLARES — the OCPP 2.0.1 `Reusable State`s its
 case takes as a precondition — is not what the runner RUNS: `tck/states-201.ts`
@@ -381,7 +396,7 @@ its header is now a false claim about what the build checks.
   artifacts above — say why in the pull request. (`tests/spec-invariants.sh`)
 - **A declared OCPP 2.0.1 `Reusable State` is one this build can establish, and
   its parameters reach the committed artifact.** `tck/states-201.ts` holds the
-  fourteen Part 6 defines for the CSMS role; four have a reach and ten are
+  fourteen Part 6 defines for the CSMS role; five have a reach and nine are
   declared `planned` with a reason, which is what lets `OCA-201-SLICE.txt` cite
   a missing fixture by name instead of restating a blocker. Naming a planned
   one fails here rather than at run time, because a scenario that would go

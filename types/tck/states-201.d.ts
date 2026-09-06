@@ -65,7 +65,7 @@
  * shape, not this one widened.
  */
 import { type AssertRecorder } from "./assert";
-import { type CsmsOperations201, type CsmsRecords, type GetCertificateIdUse201 } from "./driver";
+import { type CsmsOperations201, type CsmsRecords, type GetCertificateIdUse201, type InstallCertificateUse201 } from "./driver";
 import type { SimProcess } from "./sim";
 /**
  * Every state, once, as the list -- and the type is DERIVED from it, which is
@@ -97,10 +97,13 @@ export interface Condition {
 /** A station that has booted and done nothing else. */
 export declare const INITIAL_CONDITION: Condition;
 /**
- * Certificate uses Part 6 parameterises `CertificateInstalled` by, and the
- * enumeration `InstallCertificate` ranges over on the wire. Spelled out rather
- * than imported from a generated OCPP model because nothing in this tree has
- * one.
+ * The certificate uses Part 6 parameterises `CertificateInstalled` by.
+ *
+ * AN ALIAS AND NOT A SECOND LIST, since the reach exists: the state's parameter
+ * IS the request's `certificateType`, so the values belong to the contract and
+ * a copy here would be a copy free to disagree. The name is kept because it is
+ * this file's vocabulary and because it is exported -- what changed is where
+ * the four values are written down.
  *
  * ONE STATE AND NOT TWO, which it was until `GetInstalledCertificates` got a
  * reach. That state is parameterised by the enumeration the LISTING request
@@ -108,7 +111,7 @@ export declare const INITIAL_CONDITION: Condition;
  * takes {@link GetCertificateIdUse201} for it. A shared type would let a
  * scenario ask to install a chain, which is a request the schema rejects.
  */
-export type CertificateUse201 = "V2GRootCertificate" | "MORootCertificate" | "CSMSRootCertificate" | "ManufacturerRootCertificate";
+export type CertificateUse201 = InstallCertificateUse201;
 /**
  * A state plus the arguments it is invoked with -- a discriminated union rather
  * than a name and a bag, so `tsc` refuses a parameter the state does not take

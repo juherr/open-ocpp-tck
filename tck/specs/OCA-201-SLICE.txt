@@ -55,7 +55,7 @@
 #                                                one, where the scenario says it>
 #
 # A REASON IS WRITTEN PER GROUP, NOT PER CASE, and the repetition below is that
-# rather than a placeholder. Twenty-four reasons cover the 105 declined rows,
+# rather than a placeholder. Twenty-one reasons cover the 98 declined rows,
 # because that is the granularity the decision was actually taken at: a block's
 # cases are blocked by one missing thing -- an operation the
 # `CsmsOperation201` union does not have, a station-side message the pinned
@@ -144,8 +144,8 @@ TC_B_09    cert201-tcb09-set-variables
 TC_B_20    cert201-tcb20-reset-accepted
 TC_B_21    cert201-tcb21-reset-scheduled
 TC_B_22    cert201-tcb22-reset-rejected
-TC_B_42    not-implemented    setting a network connection profile is CSMS-initiated and CsmsOperation201 has no member for it, so no driver can be asked for it.
-TC_B_44    not-implemented    setting a network connection profile is CSMS-initiated and CsmsOperation201 has no member for it, so no driver can be asked for it.
+TC_B_42    cert201-tcb42-set-network-profile
+TC_B_44    cert201-tcb44-set-network-profile-refused
 TC_B_58    not-implemented    the subprotocol is negotiated by the simulator during connect, before any scenario runs, and nothing in tck/sim.ts can offer a different one.
 TC_C_02    cert201-tcc02-authorize-invalid
 TC_C_06    not-implemented    the CSMS has to be holding the idToken in a particular state -- blocked, expired, in the authorization cache, in a group, a master pass -- and a scenario has no way to ask for one: fixtures are written per driver in its own provision step, and the driver contract has no member a case can use to demand the state it needs. Presenting the token is no longer the blocker, which is what TC_C_02 measured: one CLI command puts an Authorize on the wire with no template behind it.
@@ -245,11 +245,11 @@ TC_L_09    not-implemented    UpdateFirmware is not one of CsmsOperation201's me
 TC_L_10    not-implemented    UpdateFirmware is not one of CsmsOperation201's members, and the station then has to fetch and install an image, which needs a file server this suite does not stand up.
 TC_L_11    not-implemented    UpdateFirmware is not one of CsmsOperation201's members, and the station then has to fetch and install an image, which needs a file server this suite does not stand up.
 TC_L_13    not-implemented    UpdateFirmware is not one of CsmsOperation201's members, and the station then has to fetch and install an image, which needs a file server this suite does not stand up.
-TC_M_01    not-implemented    installing and deleting certificates are CSMS-initiated and neither is among CsmsOperation201's members; each also needs certificate material this suite does not generate.
-TC_M_02    not-implemented    installing and deleting certificates are CSMS-initiated and neither is among CsmsOperation201's members; each also needs certificate material this suite does not generate.
-TC_M_03    not-implemented    ISO 15118 Support. The same certificate operations as this block's Core rows, with V2G and MO material on top.
-TC_M_04    not-implemented    ISO 15118 Support. The same certificate operations as this block's Core rows, with V2G and MO material on top.
-TC_M_05    not-implemented    installing and deleting certificates are CSMS-initiated and neither is among CsmsOperation201's members; each also needs certificate material this suite does not generate.
+TC_M_01    cert201-tcm01-install-csms-root
+TC_M_02    cert201-tcm02-install-manufacturer-root
+TC_M_03    cert201-tcm03-install-v2g-root
+TC_M_04    cert201-tcm04-install-mo-root
+TC_M_05    cert201-tcm05-install-refused
 TC_M_13    cert201-tcm13-installed-ids-manufacturer-root
 TC_M_14    cert201-tcm14-installed-ids-v2g-root
 TC_M_15    cert201-tcm15-installed-ids-v2g-chain

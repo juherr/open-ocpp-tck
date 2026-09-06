@@ -133,6 +133,7 @@ the drivers are native here, and the name now says so.
 | `tck/expected.ts` | `local-native` | `—` | `—` | `—` | `—` |
 | `tck/standing.ts` | `local-native` | `—` | `—` | `—` | `—` |
 | `tck/shard.ts` | `local-native` | `—` | `—` | `—` | `—` |
+| `tck/certificate-material.ts` | `local-native` | `—` | `—` | `—` | `—` |
 | `tck/readiness.ts` | `local-native` | `—` | `—` | `—` | `—` |
 | `tck/op-warn.ts` | `local-native` | `—` | `—` | `—` | `—` |
 | `tck/time.ts` | `local-native` | `—` | `—` | `—` | `—` |

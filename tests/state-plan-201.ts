@@ -233,7 +233,7 @@ for (const state of REUSABLE_STATES_201) {
 
 check(
   REUSABLE_STATES_201.filter((state) => !isPlanned(state)).join(",") ===
-    "Authorized,EnergyTransferStarted,GetInstalledCertificates,Unavailable",
+    "Authorized,CertificateInstalled,EnergyTransferStarted,GetInstalledCertificates,Unavailable",
   "the set of states with a reach this build can execute has changed. That " +
     "is a legitimate thing to do -- say so in the pull request, and move " +
     "OCA-201-SLICE.txt's reasons that cite a planned state by name. Got: " +

@@ -698,6 +698,124 @@ export interface ClearChargingProfileCriteria201 {
 }
 
 /**
+ * OCPP 2.0.1 `InstallCertificateUseEnumType` -- what kind of root a certificate
+ * is being installed as.
+ *
+ * FOUR VALUES WHERE {@link GetCertificateIdUse201} HAS FIVE, and the pair is
+ * the reason both are named types rather than one shared enumeration. A
+ * certificate is installed as a root; it is asked about as a root or as a
+ * `V2GCertificateChain`, which is not a root at all. Sharing one type would
+ * make a request the schema rejects -- installing a chain -- spellable.
+ */
+export type InstallCertificateUse201 =
+  | "V2GRootCertificate"
+  | "MORootCertificate"
+  | "CSMSRootCertificate"
+  | "ManufacturerRootCertificate";
+
+/**
+ * OCPP 2.0.1 `OCPPInterfaceEnumType` -- which physical interface a network
+ * connection profile is about.
+ *
+ * Complete rather than minimal, by {@link MessageTrigger201}'s rule: eight
+ * values, four wired and four wireless, and a station's slots may name any of
+ * them.
+ */
+export type OcppInterface201 =
+  | "Wired0"
+  | "Wired1"
+  | "Wired2"
+  | "Wired3"
+  | "Wireless0"
+  | "Wireless1"
+  | "Wireless2"
+  | "Wireless3";
+
+/** OCPP 2.0.1 `OCPPTransportEnumType`. Both values, though a 2.0.1 station
+ *  only ever speaks the first: the enumeration is the protocol's and a driver
+ *  must be able to spell what a CSMS might send. */
+export type OcppTransport201 = "JSON" | "SOAP";
+
+/**
+ * OCPP 2.0.1 `OCPPVersionEnumType` -- which protocol version a network
+ * connection profile tells the station to speak on that slot.
+ *
+ * NOT THE VERSION ANYTHING ELSE HERE MEANS BY "OCPP VERSION", which is why the
+ * name is long. `ScenarioSpec`'s `ocppVersion` says which protocol a scenario
+ * runs; `CitrineOcppVersion` in a driver says which route a CSMS registered.
+ * This one is a MEMBER of a request, spelled the way 2.0.1 spells it -- and
+ * 2.0.1 spells its own version `OCPP20`, with no value for 2.0.1 or 2.1 at all.
+ * A shared type would put one of those spellings where another is required.
+ */
+export type NetworkProfileOcppVersion201 = "OCPP12" | "OCPP15" | "OCPP16" | "OCPP20";
+
+/** OCPP 2.0.1 `APNAuthenticationEnumType`. */
+export type ApnAuthentication201 = "CHAP" | "NONE" | "PAP" | "AUTO";
+
+/** OCPP 2.0.1 `VPNEnumType`. */
+export type VpnType201 = "IKEv2" | "IPSec" | "L2TP" | "PPTP";
+
+/**
+ * OCPP 2.0.1 `APNType` -- the cellular access point a profile dials through.
+ *
+ * HERE THOUGH NO SELECTED CASE NEEDS IT, by {@link MessageTrigger201}'s rule
+ * applied to a member rather than to an enum value: `TC_B_42` and `TC_B_44` are
+ * the only `SetNetworkProfile` cases the selection rule picks and neither
+ * carries an APN, but a driver whose CSMS manages cellular stations cannot
+ * spell one without this, and adding a member later is the breaking direction
+ * for nobody while omitting it is a contract that describes less than the wire.
+ */
+export interface Apn201 {
+  apn: string;
+  apnAuthentication: ApnAuthentication201;
+  apnUserName?: string;
+  apnPassword?: string;
+  simPin?: number;
+  preferredNetwork?: string;
+  useOnlyPreferredNetwork?: boolean;
+}
+
+/** OCPP 2.0.1 `VPNType`. Here for {@link Apn201}'s reason; its five required
+ *  members are required by the schema whenever the object is present at all. */
+export interface Vpn201 {
+  server: string;
+  user: string;
+  password: string;
+  key: string;
+  type: VpnType201;
+  group?: string;
+}
+
+/**
+ * OCPP 2.0.1 `NetworkConnectionProfileType` -- how a station should reach a
+ * CSMS on one of its configuration slots.
+ *
+ * SIX REQUIRED MEMBERS AND TWO OPTIONAL ONES, and the six are exactly what
+ * `TC_B_42` validates. That is unusual enough in this contract to say out loud:
+ * most cases here turn on which members are PRESENT, and this one turns on all
+ * six being carried unchanged -- so a driver that dropped one has failed the
+ * case rather than sent a different request.
+ *
+ * `securityProfile` IS A NUMBER AND NOT AN ENUM. OCPP defines profiles 1..3 and
+ * types the member as a plain integer; a union of three would refuse a value
+ * the wire accepts, and refusing it here would put this contract's opinion in
+ * front of a CSMS's.
+ */
+export interface NetworkConnectionProfile201 {
+  ocppVersion: NetworkProfileOcppVersion201;
+  ocppTransport: OcppTransport201;
+  /** Where the station should connect. A URL as text; nothing here parses it. */
+  ocppCsmsUrl: string;
+  /** Seconds the station waits for a response on this connection. */
+  messageTimeout: number;
+  /** 1..3 in the specification, an integer on the wire. */
+  securityProfile: number;
+  ocppInterface: OcppInterface201;
+  apn?: Apn201;
+  vpn?: Vpn201;
+}
+
+/**
  * OCPP 2.0.1 `GetCertificateIdUseEnumType` -- which installed certificates a
  * `GetInstalledCertificateIds` is asking the station to list.
  *
@@ -869,6 +987,39 @@ export type CsmsOperation201 =
        *  send an empty array: the schema's `minItems` is 1, so `[]` asks for
        *  nothing while looking like it asks for everything. */
       certificateType?: [GetCertificateIdUse201, ...GetCertificateIdUse201[]];
+    }
+  // BOTH MEMBERS REQUIRED, which no arm above this one has and which is the
+  // whole of TC_M_01..TC_M_05: the certificate travels IN the request, so there
+  // is no handle, no registry and nothing for a driver to look up. See
+  // {@link ChargingProfile201} for the same shape argued one protocol over --
+  // 1.6 names a profile by reference because 1.6 CSMSs keep a registry, and
+  // 2.0.1 carries the thing itself.
+  //
+  // `certificate` IS OPAQUE TO THIS CONTRACT and not to every CSMS. Nothing
+  // here parses it; the pinned CitrineOS deployment PARSES IT BEFORE DISPATCH
+  // and refuses a value it cannot read with an HTTP error and no frame, which
+  // a driver reports as a non-dispatch. So a scenario owes a well-formed
+  // certificate even where the case only asks for "a certificate", and
+  // `tck/specs/certificate-material.ts` is where the one this suite sends is
+  // written down and what its guard is about.
+  | {
+      action: "InstallCertificate";
+      certificateType: InstallCertificateUse201;
+      /** The certificate itself, PEM, at most 5500 characters on the wire. */
+      certificate: string;
+    }
+  // THE ONE ARM WHOSE CASE VALIDATES EVERY MEMBER, which is why the profile is
+  // a named type with six required members rather than a bag: TC_B_42's
+  // validation names all six, so a driver that dropped one has failed the case
+  // rather than sent a different request. Contrast `ChangeAvailability`, where
+  // which members are present is the whole measurement.
+  | {
+      action: "SetNetworkProfile";
+      /** Which of the station's slots to write. The station defines them; a
+       *  scenario names one it was told about. */
+      configurationSlot: number;
+      /** Wire name kept: the body IS the OCPP payload. */
+      connectionData: NetworkConnectionProfile201;
     };
 
 export type CsmsOperation201Action = CsmsOperation201["action"];
@@ -887,6 +1038,8 @@ export const CSMS_OPERATION_201_ACTIONS = everyOneOf<CsmsOperation201Action>()([
   "GetChargingProfiles",
   "ClearChargingProfile",
   "GetInstalledCertificateIds",
+  "InstallCertificate",
+  "SetNetworkProfile",
 ]);
 
 /**
@@ -1015,6 +1168,38 @@ export const SAMPLE_OPERATION_201: {
   // mapper mistake through -- sending `certificateType: []` for an absent one,
   // which the schema refuses.
   GetInstalledCertificateIds: { action: "GetInstalledCertificateIds" },
+  // A PEM-SHAPED PLACEHOLDER AND NOT THE SUITE'S CERTIFICATE, which is this
+  // table's rule read the way its header states it: every value here is the
+  // cheapest thing its arm admits, and the consumer is a driver's MAPPER rather
+  // than a CSMS. `tests/capability-parity.ts` pushes this through
+  // `toCitrineRequest201` and never sends it, so what it has to be is a string
+  // -- and importing `tck/specs/`'s material into the contract would point the
+  // driver contract at the scenarios, which is the wrong direction and the one
+  // `tests/generic-core.ts` exists to keep straight. The real certificate is
+  // what the scenarios send, and its own guard is what holds it well formed.
+  InstallCertificate: {
+    action: "InstallCertificate",
+    certificateType: "CSMSRootCertificate",
+    certificate: "-----BEGIN CERTIFICATE-----\nsample\n-----END CERTIFICATE-----\n",
+  },
+  // EVERY REQUIRED MEMBER AND NEITHER OPTIONAL ONE. Unlike most values here the
+  // "cheapest" one is not small: the schema requires six members of the nested
+  // profile, so a mapper that reshaped it -- the thing this sample exists to
+  // push through -- fails here before a container starts. `ocppVersion` is
+  // `OCPP20` because that is the only value 2.0.1's own enumeration has for
+  // itself; there is no `OCPP201`.
+  SetNetworkProfile: {
+    action: "SetNetworkProfile",
+    configurationSlot: 1,
+    connectionData: {
+      ocppVersion: "OCPP20",
+      ocppTransport: "JSON",
+      ocppCsmsUrl: "ws://localhost:8080/ocpp",
+      messageTimeout: 30,
+      securityProfile: 1,
+      ocppInterface: "Wired0",
+    },
+  },
 };
 
 // ---------------------------------------------------------------------------

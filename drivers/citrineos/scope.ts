@@ -701,6 +701,62 @@ const V2_SCOPE = {
       "block that reads the ack, and the only one that would notice a CSMS " +
       "reporting an empty list as a success.",
   ),
+  // --- OCPP 2.0.1 SetNetworkProfile, NOT YET MEASURED ---------------------
+  // Configuration's module rather than Certificates', and the endpoint has one
+  // conditional pre-dispatch write: it persists a row whenever ANY query
+  // parameter beyond identifier and tenantId is present. This driver sends
+  // neither, so the pair below reach the wire without one -- which is exactly
+  // the kind of fact a first run confirms rather than a table asserting it.
+  "cert201-tcb42-set-network-profile": c(
+    "Do SEVEN members survive, six of them nested? Every other 2.0.1 row here "
+      + "turns on which members are PRESENT; this case's validation names all "
+      + "six of the connection profile's required members, so a CSMS that "
+      + "rebuilt the object and dropped one has failed the case rather than "
+      + "sent a different request. It is the widest single-request assertion "
+      + "in the 2.0.1 set.",
+  ),
+  "cert201-tcb44-set-network-profile-refused": c(
+    "Does the CSMS carry a refusal back unchanged? Same request as the row "
+      + "above and the opposite half measured. The station's canned answer is "
+      + "Rejected where the case scripts Failed, so what this row can show is "
+      + "that a declined profile is not reported as installed -- the "
+      + "distinction between the two negatives is beyond this station.",
+  ),
+  // --- OCPP 2.0.1 InstallCertificate, NOT YET MEASURED --------------------
+  // The one block here whose endpoint does real work BEFORE it dispatches: it
+  // parses the PEM and writes a certificate row and an attempt row. Two
+  // consequences for these five rows and for nothing else in the suite. A
+  // malformed certificate is refused with an HTTP error and no frame, which
+  // api-client.ts classifies as a non-dispatch -- so a defect in
+  // tck/certificate-material.ts arrives as an ERROR naming the CSMS, which is
+  // why that file has a guard. And the rows the endpoint writes survive the
+  // run: nothing here removes them, and a second sweep against the same
+  // database re-uses them rather than writing again.
+  "cert201-tcm01-install-csms-root": c(
+    "Does the type the case names reach the wire beside a certificate? These "
+      + "four rows differ in one enum value, and the CSMS is the first thing "
+      + "in the path that PARSES what it is given -- so an unexpected red here "
+      + "is as likely to be about the material as about the request.",
+  ),
+  "cert201-tcm02-install-manufacturer-root": c(
+    "The same question for ManufacturerRootCertificate.",
+  ),
+  "cert201-tcm03-install-v2g-root": c(
+    "The same question for V2GRootCertificate, and its own risk is this "
+      + "deployment's ISO 15118 handling: a CSMS that routed V2G material "
+      + "through a path of its own could answer before the wire.",
+  ),
+  "cert201-tcm04-install-mo-root": c(
+    "The same question for MORootCertificate, and the fourth control for the "
+      + "three above: four requests differing in one member are what make any "
+      + "of them evidence that the member is carried rather than defaulted.",
+  ),
+  "cert201-tcm05-install-refused": c(
+    "Does the CSMS carry a refusal back unchanged? The station answers "
+      + "Rejected whatever it is sent, which is a refusal where the case "
+      + "scripts Failed -- so this row shows that a declined installation is "
+      + "not reported as done, and cannot show which refusal it was.",
+  ),
 } satisfies ScopeTable;
 
 /**

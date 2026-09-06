@@ -109,6 +109,14 @@ run "the shards of a sweep partition it" bun tests/shard-selection.ts
 # build has no reach for, so no sweep could ever run it; and the rule it holds
 # is one `&&` away from being a visited set, which is wrong only there.
 run "a Reusable State plan follows the condition" bun tests/state-plan-201.ts
+# In-process because its subject is a VALUE the CSMS parses before it
+# dispatches. A malformed PEM is refused with an HTTP error and no frame, so the
+# five InstallCertificate cases would report ERROR against the CSMS for a defect
+# in this repository -- a live run costs a container and points at the wrong
+# system when it arrives. The expiry row is the one that is about the future:
+# nothing checks the date, so a regeneration at openssl's default of 30 days
+# would pass every other check and every run for a month.
+run "the committed certificate is one a CSMS can store" bun tests/certificate-material.ts
 run "core is CSMS-neutral" bash tests/generic-core.sh
 # The one reading in this repository that lives in the workflow rather than in
 # a file the gate can run -- so it is a file now, and this is what runs it.

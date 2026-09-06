@@ -43,6 +43,16 @@
  *  - the charge-point selector, however it is spelled: it names the station
  *    the whole trace is about.
  *
+ * Rendered as a summary rather than verbatim:
+ *  - a PEM block: the certificate `InstallCertificate` carries is 1,115
+ *    characters of base64 that no scenario measures the bytes of -- the cases
+ *    say "a certificate" and the assertion checks the armour. Verbatim it would
+ *    put twenty lines of base64 into a one-line-per-operation artifact FIVE
+ *    times, and break the line structure while doing it, so it is rendered
+ *    `<pem:N>` with its length. A different certificate of the same length is
+ *    therefore invisible here, which is the right trade: what the trace pins is
+ *    which certificate TYPE each case installs, and that lands beside it.
+ *
  * Observations (the CsmsRecords surface) are recorded under canonical ids from
  * OBSERVATION_ALIASES below, for the same reason: a trace keyed on a method
  * name would move when that method is renamed.
@@ -223,6 +233,11 @@ const PLACEHOLDER: Readonly<Record<string, string>> = {
 
 const DATEISH = /^\d{4}-\d{2}-\d{2}([T ]\d{2}:\d{2})?/;
 
+/** A PEM block, however many certificates it holds. Matched on the armour
+ *  rather than on the length, so a short malformed one is not summarised into
+ *  looking like a certificate. */
+const PEM = /^-----BEGIN [A-Z ]+-----/;
+
 let trace: string[] = [];
 const record = (line: string): void => {
   trace.push(`  ${line}`);
@@ -239,6 +254,7 @@ function normaliseValue(raw: unknown): string | null {
   if (raw === "") return null; // in-band "absent" pre-refactor, absent after
   if (raw === CP_ID) return null; // the station the trace is about
   if (DATEISH.test(raw)) return "<ts>";
+  if (PEM.test(raw)) return `<pem:${raw.length}>`;
   return raw.toLowerCase();
 }
 

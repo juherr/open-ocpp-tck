@@ -12,6 +12,49 @@ Released as `0.3.0`. The documented install ref already points at that tag, so
 
 ### Added
 
+- Seven more OCPP 2.0.1 certification cases, which closes #127's block:
+  `TC_M_01`..`TC_M_05` (`InstallCertificate`) and `TC_B_42`/`TC_B_44`
+  (`SetNetworkProfile`). The slice reaches **49 of 147**, and three operations
+  leave the tranche table by being written rather than by being re-argued.
+
+  **The suite now installs a certificate, and it is committed rather than
+  generated.** Building an X.509 certificate means emitting ASN.1, which
+  `node:crypto` cannot do and Bun cannot either — so generating one would put a
+  certificate library in this package's dependencies to produce a value that
+  never varies. `tck/certificate-material.ts` holds one self-signed root; its
+  private key was created and discarded in the same step, and nothing here signs
+  anything.
+
+  **What that value has to satisfy is a CSMS's parser, not OCPP's schema.** The
+  protocol caps `certificate` at 5500 characters and says nothing else; the
+  pinned deployment reads the PEM *before* it dispatches and stores fields out
+  of it — a serial into an integer column, a country and a signature algorithm
+  into columns whose model types enumerate one value each. A certificate that
+  parses cleanly but carries a hex serial is stored as `NaN`. So the material
+  has a guard, `tests/certificate-material.ts`, whose four claims are that
+  deployment's requirements; one of them exists for the future rather than for
+  today, since nothing checks the expiry and a regeneration at openssl's default
+  of thirty days would pass every other check and every run for a month.
+
+  **`TC_M_03` and `TC_M_04` were declined on the profile and blocked by
+  nothing.** What makes a root a V2G root or an MO root is the `certificateType`
+  member of the request; neither side of the exchange looks inside the
+  certificate. Their ISO 15118 reason was true about the profile and false about
+  the blocker.
+
+  **`TC_B_42` is the widest single-request assertion in the 2.0.1 set** — a slot
+  plus all six required members of the nested connection profile — which is why
+  `NetworkConnectionProfile201` is a named type: a driver that rebuilt the object
+  and dropped a member has failed the case rather than sent a different request
+  ([#127])
+- `CertificateInstalled` gets a reach, the third fixture whose reach is a CSMS
+  operation. Like `GetInstalledCertificates` it establishes less than the
+  reference says — the pinned station answers `Rejected` from a canned handler
+  and stores nothing — and for the same reason that is safe: it moves no
+  condition, nothing depends on it, and the four cases naming it *are* it. One
+  useful consequence: since no certificate is ever stored, those four cases can
+  run in any order and any number of times against a station that never
+  accumulates state ([#127])
 - Six OCPP 2.0.1 certification cases — `TC_M_13`, `TC_M_14`, `TC_M_15`,
   `TC_M_16`, `TC_M_18` and `TC_M_19`, the whole of the block that asks a station
   which certificates it holds. `CsmsOperation201` gains a
@@ -375,6 +418,13 @@ Released as `0.3.0`. The documented install ref already points at that tag, so
 
 ### Changed
 
+- `tck/specs/DRIVE-TRACE.txt` renders a PEM block as `<pem:N>` rather than
+  verbatim. The certificate `InstallCertificate` carries is 1,115 characters of
+  base64 that no case measures the bytes of — they say "a certificate", and the
+  assertion checks the armour — so verbatim it put twenty lines of base64 into a
+  one-line-per-operation artifact five times, breaking the line structure while
+  doing it. What the trace pins for those cases is which certificate *type* each
+  installs, and that still lands beside it ([#127])
 - The C, E and J blocks of `tck/specs/OCA-201-SLICE.txt` declined on a premise
   that was false — "the pinned image ships no `cert201-` template, so nothing
   here drives that side" — and their reasons now name what actually remains: a
