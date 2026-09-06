@@ -363,6 +363,21 @@ FILE core-201.ts
       ·.pass(·)
       RETURN
     ·.fail(·, ·)
+  HELPER assertCertificateTypesRequested
+    IF
+      ·.fail(·, ·)
+      RETURN
+    IF
+      IF
+        ·.pass(·)
+        ·.fail(·, ·)
+      RETURN
+    IF
+      ·.fail(·, ·)
+      RETURN
+    IF
+      ·.pass(·)
+      ·.fail(·, ·)
   SPEC cert201-tcb06-get-variables connector=1 bootWaitSecs=4 holdSecs=12 ocppVersion="OCPP-2.0.1" runsSimTemplate=false
     assertReceived(·, ·, "GetVariables", "GetVariables.req received")
     assertVariableRequested(·, ·, "GetVariables", "getVariableData", ·, ·, ·)
@@ -591,6 +606,29 @@ FILE core-201.ts
     assertClearProfileRequested(·, ·, 0, {chargingProfileId:9308}, "ClearChargingProfile.req names profile 9308 and carries no criteria")
     assertNotSent(·, ·, "SetChargingProfile", "received", "no profile was installed before the request, so the identifier matches nothing the station holds")
     assertResponseStatus(·, ·, "ClearChargingProfile", "Unknown", "the station declined an identifier it holds no profile under", {direction:"received"})
+  SPEC cert201-tcm13-installed-ids-manufacturer-root connector=1 bootWaitSecs=4 holdSecs=10 ocppVersion="OCPP-2.0.1" runsSimTemplate=false states=[{state:"GetInstalledCertificates",certificateType:"ManufacturerRootCertificate"}]
+    assertStateEstablished(·, ·, "GetInstalledCertificates", "the station was asked for the certificates it holds")
+    assertReceived(·, ·, "GetInstalledCertificateIds", "GetInstalledCertificateIds.req received")
+    assertCertificateTypesRequested(·, ·, 0, ["ManufacturerRootCertificate"], "GetInstalledCertificateIds.req asks about ManufacturerRootCertificate and nothing else")
+  SPEC cert201-tcm14-installed-ids-v2g-root connector=1 bootWaitSecs=4 holdSecs=10 ocppVersion="OCPP-2.0.1" runsSimTemplate=false states=[{state:"GetInstalledCertificates",certificateType:"V2GRootCertificate"}]
+    assertStateEstablished(·, ·, "GetInstalledCertificates", "the station was asked for the certificates it holds")
+    assertReceived(·, ·, "GetInstalledCertificateIds", "GetInstalledCertificateIds.req received")
+    assertCertificateTypesRequested(·, ·, 0, ["V2GRootCertificate"], "GetInstalledCertificateIds.req asks about V2GRootCertificate and nothing else")
+  SPEC cert201-tcm15-installed-ids-v2g-chain connector=1 bootWaitSecs=4 holdSecs=10 ocppVersion="OCPP-2.0.1" runsSimTemplate=false states=[{state:"GetInstalledCertificates",certificateType:"V2GCertificateChain"}]
+    assertStateEstablished(·, ·, "GetInstalledCertificates", "the station was asked for the certificates it holds")
+    assertReceived(·, ·, "GetInstalledCertificateIds", "GetInstalledCertificateIds.req received")
+    assertCertificateTypesRequested(·, ·, 0, ["V2GCertificateChain"], "GetInstalledCertificateIds.req asks about V2GCertificateChain and nothing else")
+  SPEC cert201-tcm16-installed-ids-mo-root connector=1 bootWaitSecs=4 holdSecs=10 ocppVersion="OCPP-2.0.1" runsSimTemplate=false states=[{state:"GetInstalledCertificates",certificateType:"MORootCertificate"}]
+    assertStateEstablished(·, ·, "GetInstalledCertificates", "the station was asked for the certificates it holds")
+    assertReceived(·, ·, "GetInstalledCertificateIds", "GetInstalledCertificateIds.req received")
+    assertCertificateTypesRequested(·, ·, 0, ["MORootCertificate"], "GetInstalledCertificateIds.req asks about MORootCertificate and nothing else")
+  SPEC cert201-tcm18-installed-ids-all-types connector=1 bootWaitSecs=4 holdSecs=10 ocppVersion="OCPP-2.0.1" runsSimTemplate=false
+    assertReceived(·, ·, "GetInstalledCertificateIds", "GetInstalledCertificateIds.req received")
+    assertCertificateTypesRequested(·, ·, 0, null, "GetInstalledCertificateIds.req omits certificateType, which asks about every type")
+  SPEC cert201-tcm19-installed-ids-not-found connector=1 bootWaitSecs=4 holdSecs=10 ocppVersion="OCPP-2.0.1" runsSimTemplate=false
+    assertReceived(·, ·, "GetInstalledCertificateIds", "GetInstalledCertificateIds.req received")
+    assertCertificateTypesRequested(·, ·, 0, ["ManufacturerRootCertificate"], "GetInstalledCertificateIds.req asks about ManufacturerRootCertificate")
+    assertResponseStatus(·, ·, "GetInstalledCertificateIds", "NotFound", "the station holds no certificate of the type asked for", {direction:"received"})
 
 FILE core.ts
   HELPER assertGetConfigurationUnfiltered

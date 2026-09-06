@@ -320,3 +320,29 @@ GROUP core-201
     OP 201:SetChargingProfile [0, 1, 70, 9000, 9170, 9170, <ts>, <ts>, <ts>, absolute, txdefaultprofile, w]
     OP 201:SetChargingProfile [0, 1, 4000, 71, 9171, 9171, <ts>, <ts>, <ts>, absolute, txdefaultprofile, w]
     -> driveState keys=[]
+  SPEC cert201-tcm13-installed-ids-manufacturer-root
+    STATE GetInstalledCertificates [manufacturerrootcertificate] segment=0
+    OP 201:GetInstalledCertificateIds [manufacturerrootcertificate]
+    SIM wait-for-line Received: \[2,"[^"]*","GetInstalledCertificateIds" 15000
+    -> driveState keys=[]
+  SPEC cert201-tcm14-installed-ids-v2g-root
+    STATE GetInstalledCertificates [v2grootcertificate] segment=0
+    OP 201:GetInstalledCertificateIds [v2grootcertificate]
+    SIM wait-for-line Received: \[2,"[^"]*","GetInstalledCertificateIds" 15000
+    -> driveState keys=[]
+  SPEC cert201-tcm15-installed-ids-v2g-chain
+    STATE GetInstalledCertificates [v2gcertificatechain] segment=0
+    OP 201:GetInstalledCertificateIds [v2gcertificatechain]
+    SIM wait-for-line Received: \[2,"[^"]*","GetInstalledCertificateIds" 15000
+    -> driveState keys=[]
+  SPEC cert201-tcm16-installed-ids-mo-root
+    STATE GetInstalledCertificates [morootcertificate] segment=0
+    OP 201:GetInstalledCertificateIds [morootcertificate]
+    SIM wait-for-line Received: \[2,"[^"]*","GetInstalledCertificateIds" 15000
+    -> driveState keys=[]
+  SPEC cert201-tcm18-installed-ids-all-types
+    OP 201:GetInstalledCertificateIds
+    -> driveState keys=[]
+  SPEC cert201-tcm19-installed-ids-not-found
+    OP 201:GetInstalledCertificateIds [manufacturerrootcertificate]
+    -> driveState keys=[]
