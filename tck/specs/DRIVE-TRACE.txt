@@ -191,6 +191,12 @@ GROUP core-201
   SPEC cert201-tcb22-reset-rejected
     OP 201:Reset [9, immediate]
     -> driveState keys=[]
+  SPEC cert201-tcb42-set-network-profile
+    OP 201:SetNetworkProfile [1, 1, 30, json, ocpp20, wired0, ws://csms.invalid:9000/ocpp]
+    -> driveState keys=[]
+  SPEC cert201-tcb44-set-network-profile-refused
+    OP 201:SetNetworkProfile [1, 1, 30, json, ocpp20, wired0, ws://csms.invalid:9000/ocpp]
+    -> driveState keys=[]
   SPEC cert201-tcc02-authorize-invalid
     SIM send {"command":"authorize","params":{"tagId":"CE71FFFF"}}
     -> driveState keys=[]
@@ -319,6 +325,29 @@ GROUP core-201
   SPEC cert201-tck70-stack-profiles
     OP 201:SetChargingProfile [0, 1, 70, 9000, 9170, 9170, <ts>, <ts>, <ts>, absolute, txdefaultprofile, w]
     OP 201:SetChargingProfile [0, 1, 4000, 71, 9171, 9171, <ts>, <ts>, <ts>, absolute, txdefaultprofile, w]
+    -> driveState keys=[]
+  SPEC cert201-tcm01-install-csms-root
+    STATE CertificateInstalled [csmsrootcertificate] segment=0
+    OP 201:InstallCertificate [<pem:1115>, csmsrootcertificate]
+    SIM wait-for-line Received: \[2,"[^"]*","InstallCertificate" 15000
+    -> driveState keys=[]
+  SPEC cert201-tcm02-install-manufacturer-root
+    STATE CertificateInstalled [manufacturerrootcertificate] segment=0
+    OP 201:InstallCertificate [<pem:1115>, manufacturerrootcertificate]
+    SIM wait-for-line Received: \[2,"[^"]*","InstallCertificate" 15000
+    -> driveState keys=[]
+  SPEC cert201-tcm03-install-v2g-root
+    STATE CertificateInstalled [v2grootcertificate] segment=0
+    OP 201:InstallCertificate [<pem:1115>, v2grootcertificate]
+    SIM wait-for-line Received: \[2,"[^"]*","InstallCertificate" 15000
+    -> driveState keys=[]
+  SPEC cert201-tcm04-install-mo-root
+    STATE CertificateInstalled [morootcertificate] segment=0
+    OP 201:InstallCertificate [<pem:1115>, morootcertificate]
+    SIM wait-for-line Received: \[2,"[^"]*","InstallCertificate" 15000
+    -> driveState keys=[]
+  SPEC cert201-tcm05-install-refused
+    OP 201:InstallCertificate [<pem:1115>, csmsrootcertificate]
     -> driveState keys=[]
   SPEC cert201-tcm13-installed-ids-manufacturer-root
     STATE GetInstalledCertificates [manufacturerrootcertificate] segment=0

@@ -327,6 +327,19 @@ FILE core-201.ts
       ·.pass(·)
       RETURN
     ·.fail(·, ·)
+  HELPER assertNetworkProfileRequested
+    IF
+      ·.fail(·, ·)
+      RETURN
+    IF
+    IF
+      OR
+        OR
+      FOROF
+        IF
+    IF
+      ·.pass(·)
+      ·.fail(·, ·)
   HELPER assertClearProfileRequested
     IF
       ·.fail(·, ·)
@@ -363,6 +376,17 @@ FILE core-201.ts
       ·.pass(·)
       RETURN
     ·.fail(·, ·)
+  HELPER assertCertificateInstallRequested
+    IF
+      ·.fail(·, ·)
+      RETURN
+    IF
+    IF
+      IF
+        OR
+    IF
+      ·.pass(·)
+      ·.fail(·, ·)
   HELPER assertCertificateTypesRequested
     IF
       ·.fail(·, ·)
@@ -419,6 +443,12 @@ FILE core-201.ts
     assertSent(·, ·, "Heartbeat", "Heartbeat.req sent")
     assertAllAnswered(·, ·, "Heartbeat")
     assertResponseTimestamp(·, ·, "Heartbeat", "currentTime", "Heartbeat.conf carries a currentTime the charge point can parse")
+  SPEC cert201-tcb42-set-network-profile connector=1 bootWaitSecs=4 holdSecs=10 ocppVersion="OCPP-2.0.1" runsSimTemplate=false
+    assertReceived(·, ·, "SetNetworkProfile", "SetNetworkProfile.req received")
+    assertNetworkProfileRequested(·, ·, 0, 1, {ocppVersion:"OCPP20",ocppTransport:"JSON",ocppCsmsUrl:"ws://csms.invalid:9000/ocpp",messageTimeout:30,securityProfile:1,ocppInterface:"Wired0"}, "SetNetworkProfile.req names slot 1 and carries all six members of the connection profile")
+  SPEC cert201-tcb44-set-network-profile-refused connector=1 bootWaitSecs=4 holdSecs=10 ocppVersion="OCPP-2.0.1" runsSimTemplate=false
+    assertReceived(·, ·, "SetNetworkProfile", "SetNetworkProfile.req received")
+    assertResponseStatus(·, ·, "SetNetworkProfile", "Rejected", "the station refused the connection profile (Rejected, where the case scripts Failed)", {direction:"received"})
   SPEC cert201-tcc02-authorize-invalid connector=1 bootWaitSecs=4 holdSecs=10 ocppVersion="OCPP-2.0.1" runsSimTemplate=false
     assertSent(·, ·, "Authorize", "Authorize.req sent")
     assertIdTokenSent(·, ·, "Authorize", "CE71FFFF", "Authorize.req presents the unknown idToken this scenario asked about")
@@ -606,6 +636,26 @@ FILE core-201.ts
     assertClearProfileRequested(·, ·, 0, {chargingProfileId:9308}, "ClearChargingProfile.req names profile 9308 and carries no criteria")
     assertNotSent(·, ·, "SetChargingProfile", "received", "no profile was installed before the request, so the identifier matches nothing the station holds")
     assertResponseStatus(·, ·, "ClearChargingProfile", "Unknown", "the station declined an identifier it holds no profile under", {direction:"received"})
+  SPEC cert201-tcm01-install-csms-root connector=1 bootWaitSecs=4 holdSecs=10 ocppVersion="OCPP-2.0.1" runsSimTemplate=false states=[{state:"CertificateInstalled",certificateType:"CSMSRootCertificate"}]
+    assertStateEstablished(·, ·, "CertificateInstalled", "the station was asked to install a certificate")
+    assertReceived(·, ·, "InstallCertificate", "InstallCertificate.req received")
+    assertCertificateInstallRequested(·, ·, 0, "CSMSRootCertificate", "InstallCertificate.req installs a CSMSRootCertificate and carries a certificate")
+  SPEC cert201-tcm02-install-manufacturer-root connector=1 bootWaitSecs=4 holdSecs=10 ocppVersion="OCPP-2.0.1" runsSimTemplate=false states=[{state:"CertificateInstalled",certificateType:"ManufacturerRootCertificate"}]
+    assertStateEstablished(·, ·, "CertificateInstalled", "the station was asked to install a certificate")
+    assertReceived(·, ·, "InstallCertificate", "InstallCertificate.req received")
+    assertCertificateInstallRequested(·, ·, 0, "ManufacturerRootCertificate", "InstallCertificate.req installs a ManufacturerRootCertificate and carries a certificate")
+  SPEC cert201-tcm03-install-v2g-root connector=1 bootWaitSecs=4 holdSecs=10 ocppVersion="OCPP-2.0.1" runsSimTemplate=false states=[{state:"CertificateInstalled",certificateType:"V2GRootCertificate"}]
+    assertStateEstablished(·, ·, "CertificateInstalled", "the station was asked to install a certificate")
+    assertReceived(·, ·, "InstallCertificate", "InstallCertificate.req received")
+    assertCertificateInstallRequested(·, ·, 0, "V2GRootCertificate", "InstallCertificate.req installs a V2GRootCertificate and carries a certificate")
+  SPEC cert201-tcm04-install-mo-root connector=1 bootWaitSecs=4 holdSecs=10 ocppVersion="OCPP-2.0.1" runsSimTemplate=false states=[{state:"CertificateInstalled",certificateType:"MORootCertificate"}]
+    assertStateEstablished(·, ·, "CertificateInstalled", "the station was asked to install a certificate")
+    assertReceived(·, ·, "InstallCertificate", "InstallCertificate.req received")
+    assertCertificateInstallRequested(·, ·, 0, "MORootCertificate", "InstallCertificate.req installs an MORootCertificate and carries a certificate")
+  SPEC cert201-tcm05-install-refused connector=1 bootWaitSecs=4 holdSecs=10 ocppVersion="OCPP-2.0.1" runsSimTemplate=false
+    assertReceived(·, ·, "InstallCertificate", "InstallCertificate.req received")
+    assertCertificateInstallRequested(·, ·, 0, "CSMSRootCertificate", "InstallCertificate.req installs a CSMSRootCertificate and carries a certificate")
+    assertResponseStatus(·, ·, "InstallCertificate", "Rejected", "the station refused the certificate (Rejected, where the case scripts Failed)", {direction:"received"})
   SPEC cert201-tcm13-installed-ids-manufacturer-root connector=1 bootWaitSecs=4 holdSecs=10 ocppVersion="OCPP-2.0.1" runsSimTemplate=false states=[{state:"GetInstalledCertificates",certificateType:"ManufacturerRootCertificate"}]
     assertStateEstablished(·, ·, "GetInstalledCertificates", "the station was asked for the certificates it holds")
     assertReceived(·, ·, "GetInstalledCertificateIds", "GetInstalledCertificateIds.req received")
