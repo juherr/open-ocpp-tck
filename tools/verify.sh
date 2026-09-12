@@ -127,6 +127,10 @@ run "a 2.0.1 request assertion refuses the shape it is not about" bun tests/requ
 # inside the pinned simulator -- a connect-triggered template re-arms on every
 # reconnect -- and the failure is a second run a sweep reports as a CSMS finding.
 run "a scenario template runs exactly once across a reconnect" bun tests/template-once.ts
+# In-process because the rule lives in the pump startSim builds over its spawn
+# result, and reaching it from the CLI means a docker daemon and an image chosen
+# to fail -- so the pump takes its streams, and the guard closes them itself.
+run "a simulator that exited rejects its pending waits" bun tests/sim-exit-rejects-waits.ts
 run "core is CSMS-neutral" bash tests/generic-core.sh
 # The one reading in this repository that lives in the workflow rather than in
 # a file the gate can run -- so it is a file now, and this is what runs it.

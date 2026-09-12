@@ -1,5 +1,5 @@
 /**
- * Derived from shiv3/ocpp-cp-simulator scripts/steve-verify/runner/sim.ts @ 604054adb0d7d7129a26a5f1ad2d5fdc290d1ca1 (Apache-2.0). Modified: the hardcoded docker argv is now built from SimConfig; the `-v <repoRoot>:/app -w /app` bind mount and `repoRoot` are gone (the published image ships the CLI sources); the image is pinned by digest; `--network` left the default path; outgoing WS Basic auth and an optional cpId-in-path WS URL were added; every trace of the command redacts the password; the waiter list takes a predicate so `call()` can correlate a JSON command with its response by id, waitForLine is that predicate applied to a RegExp, and stdout's EOF rejects every pending wait with the exit code instead of leaving it to its timeout. The line pump, stop(), container cleanup and signal handlers are byte-for-byte upstream.
+ * Derived from shiv3/ocpp-cp-simulator scripts/steve-verify/runner/sim.ts @ 604054adb0d7d7129a26a5f1ad2d5fdc290d1ca1 (Apache-2.0). Modified: the hardcoded docker argv is now built from SimConfig; the `-v <repoRoot>:/app -w /app` bind mount and `repoRoot` are gone (the published image ships the CLI sources); the image is pinned by digest; `--network` left the default path; outgoing WS Basic auth and an optional cpId-in-path WS URL were added; every trace of the command redacts the password; the line pump, the waiter list, `send` and an id-correlated `call()` live in `attachSimStreams` over a `SimIo` so a guard can drive them without a process, waitForLine is a predicate wait applied to a RegExp, and stdout's EOF rejects every pending wait with the exit code instead of leaving it to its timeout. stop(), container cleanup and signal handlers are byte-for-byte upstream.
  *
  * sim.ts -- docker-spawned simulator process: launches the ocpp-cp-simulator
  * CLI in JSON Lines mode inside a container (port of lib.sh's sim_start),
@@ -655,33 +655,51 @@ async function readLines(
   }
 }
 
-/** Starts a detached-from-shell but attached-to-us simulator container for
- *  one charge point, running JSON-Lines mode. `templateId` is only used to
- *  build a readable, collision-avoiding container name (mirrors lib.sh's
- *  sim_container_name). */
-export async function startSim(
-  cpId: string,
-  templateId: string,
-  cfg: SimConfig,
-): Promise<SimProcess> {
-  installSignalHandlersOnce();
+/** What {@link attachSimStreams} needs from a container process: its two
+ *  output streams, its exit, and a way to write to its stdin. Named so a guard
+ *  can hand it in-memory streams and a resolved exit. */
+export interface SimIo {
+  readonly container: string;
+  readonly stdout: ReadableStream<Uint8Array>;
+  readonly stderr: ReadableStream<Uint8Array>;
+  /** Resolves with the exit code once the process is gone. */
+  readonly exited: Promise<number | null>;
+  /** Writes one line (newline included) to the process's stdin. */
+  write(text: string): Promise<void>;
+  /** How long to wait for `exited` after stdout closes before rejecting the
+   *  pending waits with an unknown exit code. Defaults to
+   *  {@link EXIT_GRACE_MS}; a guard shortens it. */
+  readonly exitGraceMs?: number;
+}
 
-  const container = containerName(cpId, templateId);
+/** The waiting half of a {@link SimProcess}, over a {@link SimIo}. */
+export interface SimStreams {
+  readonly lines: readonly string[];
+  readonly stderrLines: readonly string[];
+  send(command: Record<string, unknown>): Promise<void>;
+  call(
+    command: string,
+    params?: Record<string, unknown>,
+    timeoutMs?: number,
+  ): Promise<unknown>;
+  waitForLine(pattern: RegExp, timeoutMs: number): Promise<string>;
+  /** Settles once both output streams have been read to their end. */
+  readonly drained: Promise<void>;
+}
 
-  // Best-effort cleanup of a stale container from an interrupted previous
-  // run with the same name (mirrors lib.sh's sim_start).
-  await runDocker(["rm", "-f", container]).catch(() => {});
+/** After stdout closes, how long {@link attachSimStreams} waits for the exit
+ *  code before rejecting the pending waits without one. */
+const EXIT_GRACE_MS = 2_000;
 
-  const dockerArgs = buildDockerArgs(cpId, container, cfg);
-  const argv = renderDockerArgs(dockerArgs);
-  process.stderr.write(`[runner] ${argv}\n`);
-
-  const proc = Bun.spawn(["docker", ...dockerArgs], {
-    stdin: "pipe",
-    stdout: "pipe",
-    stderr: "pipe",
-  });
-
+/**
+ * The line pump, the waiter list, `send` and `call` -- everything a
+ * {@link SimProcess} does with its process's streams -- over a {@link SimIo}
+ * rather than over the `Bun.spawn` result, so that tests/sim-exit-rejects-waits.ts
+ * can drive it with streams that close when the guard says so. `startSim` is
+ * its one production caller.
+ */
+export function attachSimStreams(io: SimIo): SimStreams {
+  const { container } = io;
   const lines: string[] = [];
   const stderrLines: string[] = [];
   interface Waiter {
@@ -695,7 +713,7 @@ export async function startSim(
   const recentStderr = (): string =>
     `last stderr:\n${stderrLines.slice(-20).join("\n")}`;
 
-  const stdoutTask = readLines(proc.stdout, (line) => {
+  const stdoutTask = readLines(io.stdout, (line) => {
     lines.push(line);
     for (let i = waiters.length - 1; i >= 0; i--) {
       if (waiters[i].test(line)) {
@@ -704,7 +722,7 @@ export async function startSim(
       }
     }
   });
-  const stderrTask = readLines(proc.stderr, (line) => {
+  const stderrTask = readLines(io.stderr, (line) => {
     stderrLines.push(line);
   });
 
@@ -716,11 +734,12 @@ export async function startSim(
   // the exit code and the stderr that explains it, and a wait armed after
   // that point is refused on the spot rather than parked.
   let exited: string | undefined;
-  const EXIT_GRACE_MS = 2_000;
   void stdoutTask.then(async () => {
     const code = await Promise.race([
-      proc.exited,
-      new Promise<null>((resolve) => setTimeout(() => resolve(null), EXIT_GRACE_MS)),
+      io.exited,
+      new Promise<null>((resolve) =>
+        setTimeout(() => resolve(null), io.exitGraceMs ?? EXIT_GRACE_MS),
+      ),
     ]);
     exited = `simulator container ${container} exited (exit code ${code ?? "unknown"})`;
     for (const waiter of waiters.splice(0)) {
@@ -778,8 +797,7 @@ export async function startSim(
   }
 
   async function send(command: Record<string, unknown>): Promise<void> {
-    proc.stdin.write(`${JSON.stringify(command)}\n`);
-    await proc.stdin.flush();
+    await io.write(`${JSON.stringify(command)}\n`);
   }
 
   // Per container, so a response can only ever be matched against a call this
@@ -817,6 +835,56 @@ export async function startSim(
     return response.data;
   }
 
+
+  return {
+    lines,
+    stderrLines,
+    send,
+    call,
+    waitForLine,
+    drained: Promise.allSettled([stdoutTask, stderrTask]).then(() => undefined),
+  };
+}
+
+/** Starts a detached-from-shell but attached-to-us simulator container for
+ *  one charge point, running JSON-Lines mode. `templateId` is only used to
+ *  build a readable, collision-avoiding container name (mirrors lib.sh's
+ *  sim_container_name). */
+export async function startSim(
+  cpId: string,
+  templateId: string,
+  cfg: SimConfig,
+): Promise<SimProcess> {
+  installSignalHandlersOnce();
+
+  const container = containerName(cpId, templateId);
+
+  // Best-effort cleanup of a stale container from an interrupted previous
+  // run with the same name (mirrors lib.sh's sim_start).
+  await runDocker(["rm", "-f", container]).catch(() => {});
+
+  const dockerArgs = buildDockerArgs(cpId, container, cfg);
+  const argv = renderDockerArgs(dockerArgs);
+  process.stderr.write(`[runner] ${argv}\n`);
+
+  const proc = Bun.spawn(["docker", ...dockerArgs], {
+    stdin: "pipe",
+    stdout: "pipe",
+    stderr: "pipe",
+  });
+
+  const streams = attachSimStreams({
+    container,
+    stdout: proc.stdout,
+    stderr: proc.stderr,
+    exited: proc.exited,
+    write: async (text) => {
+      proc.stdin.write(text);
+      await proc.stdin.flush();
+    },
+  });
+  const { lines, send, call, waitForLine } = streams;
+
   let stopped = false;
   async function stop(): Promise<void> {
     if (stopped) return;
@@ -844,7 +912,7 @@ export async function startSim(
       proc.kill("SIGKILL");
     }
     await proc.exited.catch(() => {});
-    await Promise.allSettled([stdoutTask, stderrTask]);
+    await streams.drained;
   }
 
   const simProcess: SimProcess = {

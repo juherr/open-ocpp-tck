@@ -24,7 +24,7 @@ error.
 ## The gate
 
 `bun run verify` is every check CI runs before it starts a container —
-typecheck, committed declarations, three driver scope checks, eighteen in-process
+typecheck, committed declarations, three driver scope checks, nineteen in-process
 guards and sixteen shell guards — with one exit code, and every step runs even
 after one fails, where CI enumerates them and stops at the first.
 
@@ -64,6 +64,7 @@ bun tests/state-plan-201.ts
 bun tests/certificate-material.ts
 bun tests/request-shape-201.ts
 bun tests/template-once.ts
+bun tests/sim-exit-rejects-waits.ts
 bash tests/cert201-declares-its-version.sh
 bash tests/cert201-scope-rows.sh       # both read tck/specs/ASSERT-INVENTORY.txt,
                                        # so a NEW scenario reaches them only once
@@ -135,7 +136,7 @@ There is no unit-test framework and no `*.test.ts`. `tests/` holds offline
 guards, each with a header stating the property it protects. `bun run test`
 chains them — note `bun test` is Bun's own runner and finds nothing here.
 
-Shell is the default, and the eighteen TypeScript ones are TypeScript because
+Shell is the default, and the nineteen TypeScript ones are TypeScript because
 what they assert is unreachable through the CLI. `driver-env-scope.ts`: a
 driver's declarations follow the env they are *resolved* with, where the CLI
 can only ever pass `process.env`. `capability-parity.ts`: the same reason and
@@ -311,6 +312,25 @@ than a rule -- the load has to precede `connect`, because an enabled instance
 on an Available station starts at load, and moving the call after the boot
 gate reads as tidier and reintroduces the double run. The model is the
 guard's one assumption, and the next pin move is when to re-read it.
+
+`sim-exit-rejects-waits.ts`: the one whose subject is a process that is GONE.
+`startSim`'s first call is a `status` probe with a 120-second budget, because
+on a runner that has never seen the image the pull happens between `docker
+run` returning and the CLI's first read of stdin -- and a `docker run` that
+failed in its first second left that probe parked for the whole budget, then
+every later wait for its own, reporting "timed out" for a container that had
+said "not found" at once. stdout closing is the one signal that no further
+line will come, so the pump rejects every pending wait with the exit code and
+the recent stderr once the buffered output is drained, and refuses a wait
+armed after that on the spot. Reaching that from the CLI is a docker daemon
+and an image chosen to fail, for a property that is entirely about two
+streams closing -- so the pump is `attachSimStreams` over a `SimIo`,
+`startSim` hands it the process, and the guard hands it streams it closes
+itself. Its control row holds the other direction: an OPEN stdout leaves the
+timeout as the only rejection, which is what tells the rows from a pump that
+rejects everything. Its budgets are seconds, not `startSim`'s, so a row that
+fails by falling through to its timeout fails while someone is still
+watching.
 
 Two guards build a fixture instead of reading the tree, and they are the two
 that test the scripts under `tools/` which *write*.

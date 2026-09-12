@@ -1,5 +1,5 @@
 /**
- * Derived from shiv3/ocpp-cp-simulator scripts/steve-verify/runner/sim.ts @ 604054adb0d7d7129a26a5f1ad2d5fdc290d1ca1 (Apache-2.0). Modified: the hardcoded docker argv is now built from SimConfig; the `-v <repoRoot>:/app -w /app` bind mount and `repoRoot` are gone (the published image ships the CLI sources); the image is pinned by digest; `--network` left the default path; outgoing WS Basic auth and an optional cpId-in-path WS URL were added; every trace of the command redacts the password; the waiter list takes a predicate so `call()` can correlate a JSON command with its response by id, waitForLine is that predicate applied to a RegExp, and stdout's EOF rejects every pending wait with the exit code instead of leaving it to its timeout. The line pump, stop(), container cleanup and signal handlers are byte-for-byte upstream.
+ * Derived from shiv3/ocpp-cp-simulator scripts/steve-verify/runner/sim.ts @ 604054adb0d7d7129a26a5f1ad2d5fdc290d1ca1 (Apache-2.0). Modified: the hardcoded docker argv is now built from SimConfig; the `-v <repoRoot>:/app -w /app` bind mount and `repoRoot` are gone (the published image ships the CLI sources); the image is pinned by digest; `--network` left the default path; outgoing WS Basic auth and an optional cpId-in-path WS URL were added; every trace of the command redacts the password; the line pump, the waiter list, `send` and an id-correlated `call()` live in `attachSimStreams` over a `SimIo` so a guard can drive them without a process, waitForLine is a predicate wait applied to a RegExp, and stdout's EOF rejects every pending wait with the exit code instead of leaving it to its timeout. stop(), container cleanup and signal handlers are byte-for-byte upstream.
  *
  * sim.ts -- docker-spawned simulator process: launches the ocpp-cp-simulator
  * CLI in JSON Lines mode inside a container (port of lib.sh's sim_start),
@@ -294,6 +294,40 @@ export declare function classifyForeignSims(containers: readonly string[], cpIds
  * never look foreign to each other.
  */
 export declare function assertNoForeignSweep(cpIds: readonly string[]): Promise<void>;
+/** What {@link attachSimStreams} needs from a container process: its two
+ *  output streams, its exit, and a way to write to its stdin. Named so a guard
+ *  can hand it in-memory streams and a resolved exit. */
+export interface SimIo {
+    readonly container: string;
+    readonly stdout: ReadableStream<Uint8Array>;
+    readonly stderr: ReadableStream<Uint8Array>;
+    /** Resolves with the exit code once the process is gone. */
+    readonly exited: Promise<number | null>;
+    /** Writes one line (newline included) to the process's stdin. */
+    write(text: string): Promise<void>;
+    /** How long to wait for `exited` after stdout closes before rejecting the
+     *  pending waits with an unknown exit code. Defaults to
+     *  {@link EXIT_GRACE_MS}; a guard shortens it. */
+    readonly exitGraceMs?: number;
+}
+/** The waiting half of a {@link SimProcess}, over a {@link SimIo}. */
+export interface SimStreams {
+    readonly lines: readonly string[];
+    readonly stderrLines: readonly string[];
+    send(command: Record<string, unknown>): Promise<void>;
+    call(command: string, params?: Record<string, unknown>, timeoutMs?: number): Promise<unknown>;
+    waitForLine(pattern: RegExp, timeoutMs: number): Promise<string>;
+    /** Settles once both output streams have been read to their end. */
+    readonly drained: Promise<void>;
+}
+/**
+ * The line pump, the waiter list, `send` and `call` -- everything a
+ * {@link SimProcess} does with its process's streams -- over a {@link SimIo}
+ * rather than over the `Bun.spawn` result, so that tests/sim-exit-rejects-waits.ts
+ * can drive it with streams that close when the guard says so. `startSim` is
+ * its one production caller.
+ */
+export declare function attachSimStreams(io: SimIo): SimStreams;
 /** Starts a detached-from-shell but attached-to-us simulator container for
  *  one charge point, running JSON-Lines mode. `templateId` is only used to
  *  build a readable, collision-avoiding container name (mirrors lib.sh's

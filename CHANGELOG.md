@@ -456,7 +456,11 @@ Released as `0.3.0`. The documented install ref already points at that tag, so
   `startSim` now returns only once the CLI has answered a `status`, with a
   budget that covers pulling the image: the first call of every CI lane had
   timed out while the image was still downloading, which the boot gate's soft
-  30 seconds used to hide.
+  30 seconds used to hide. And a simulator that exits before answering rejects
+  its pending waits at once, with the exit code and its recent stderr, instead
+  of sitting out that budget -- `tests/sim-exit-rejects-waits.ts`, the
+  nineteenth in-process guard, drives the pump over in-memory streams to hold
+  it, which is why the pump is now `attachSimStreams` over a `SimIo`.
 - **A Reusable State that promises less than the reference declares says so on
   its definition.** `CertificateInstalled` and `GetInstalledCertificates` are
   `established: true` after a reach the pinned station refuses from a canned

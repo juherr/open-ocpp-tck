@@ -199,6 +199,12 @@ jobs:
       - name: A scenario template runs exactly once across a reconnect
         run: bun tests/template-once.ts
 
+      # In-process because the rule lives in the pump startSim builds over its
+      # spawn result; reaching it from the CLI means a daemon and an image
+      # chosen to fail, so the pump takes its streams and the guard closes them.
+      - name: A simulator that exited rejects its pending waits
+        run: bun tests/sim-exit-rejects-waits.ts
+
       - name: Core names no CSMS
         run: bash tests/generic-core.sh
 
