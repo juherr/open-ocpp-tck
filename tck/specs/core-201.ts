@@ -2277,8 +2277,8 @@ const TC_F_27: ScenarioSpec = {
   },
 };
 
-// WHAT THIS CASE ASKS FOR THAT THE PINNED IMAGE CANNOT SPELL, and it is two
-// members rather than TC_F_27's zero. The case's station-side message carries
+// WHAT THIS CASE ASKS FOR THAT THE PINNED IMAGE CANNOT SPELL, down from two
+// members to one since 0.7.10. The case's station-side message carries
 // `sampledValue.context` as the clock-aligned reading context, and its note
 // says the readings arrive one configured interval apart. Until 0.7.10 the
 // pinned image dropped `context` from every 2.0.1 sampled value (issue #114);
