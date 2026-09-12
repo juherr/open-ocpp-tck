@@ -1,5 +1,5 @@
 /**
- * Derived from shiv3/ocpp-cp-simulator scripts/steve-verify/runner/sim.ts @ 604054adb0d7d7129a26a5f1ad2d5fdc290d1ca1 (Apache-2.0). Modified: the hardcoded docker argv is now built from SimConfig; the `-v <repoRoot>:/app -w /app` bind mount and `repoRoot` are gone (the published image ships the CLI sources); the image is pinned by digest; `--network` left the default path; outgoing WS Basic auth and an optional cpId-in-path WS URL were added; every trace of the command redacts the password; the waiter list takes a predicate so `call()` can correlate a JSON command with its response by id, and waitForLine is that predicate applied to a RegExp. The line pump, stop(), container cleanup and signal handlers are byte-for-byte upstream.
+ * Derived from shiv3/ocpp-cp-simulator scripts/steve-verify/runner/sim.ts @ 604054adb0d7d7129a26a5f1ad2d5fdc290d1ca1 (Apache-2.0). Modified: the hardcoded docker argv is now built from SimConfig; the `-v <repoRoot>:/app -w /app` bind mount and `repoRoot` are gone (the published image ships the CLI sources); the image is pinned by digest; `--network` left the default path; outgoing WS Basic auth and an optional cpId-in-path WS URL were added; every trace of the command redacts the password; the waiter list takes a predicate so `call()` can correlate a JSON command with its response by id, waitForLine is that predicate applied to a RegExp, and stdout's EOF rejects every pending wait with the exit code instead of leaving it to its timeout. The line pump, stop(), container cleanup and signal handlers are byte-for-byte upstream.
  *
  * sim.ts -- docker-spawned simulator process: launches the ocpp-cp-simulator
  * CLI in JSON Lines mode inside a container (port of lib.sh's sim_start),
@@ -686,9 +686,14 @@ export async function startSim(
   const stderrLines: string[] = [];
   interface Waiter {
     test: (line: string) => boolean;
+    what: string;
     resolve: (line: string) => void;
+    reject: (err: Error) => void;
   }
   const waiters: Waiter[] = [];
+
+  const recentStderr = (): string =>
+    `last stderr:\n${stderrLines.slice(-20).join("\n")}`;
 
   const stdoutTask = readLines(proc.stdout, (line) => {
     lines.push(line);
@@ -703,8 +708,31 @@ export async function startSim(
     stderrLines.push(line);
   });
 
+  // A SIMULATOR THAT EXITED IS NOT ONE THAT IS SLOW TO ANSWER. stdout closing
+  // is the one signal that no further line will come, and without it every
+  // pending wait sat out its full budget -- START_TIMEOUT_MS of it for the
+  // probe, when `docker run` had refused the image in the first second. So
+  // the EOF, once the buffered output is drained, rejects every waiter with
+  // the exit code and the stderr that explains it, and a wait armed after
+  // that point is refused on the spot rather than parked.
+  let exited: string | undefined;
+  const EXIT_GRACE_MS = 2_000;
+  void stdoutTask.then(async () => {
+    const code = await Promise.race([
+      proc.exited,
+      new Promise<null>((resolve) => setTimeout(() => resolve(null), EXIT_GRACE_MS)),
+    ]);
+    exited = `simulator container ${container} exited (exit code ${code ?? "unknown"})`;
+    for (const waiter of waiters.splice(0)) {
+      waiter.reject(
+        new Error(`${exited} before ${waiter.what}; ${recentStderr()}`),
+      );
+    }
+  });
+
   /** The one wait: the first line (existing or future) `test` accepts, or a
-   *  rejection after `timeoutMs` naming `what` was waited for. */
+   *  rejection after `timeoutMs` -- or as soon as the simulator has exited --
+   *  naming `what` was waited for. */
   function waitFor(
     test: (line: string) => boolean,
     what: string,
@@ -712,13 +740,23 @@ export async function startSim(
   ): Promise<string> {
     const existing = lines.find(test);
     if (existing !== undefined) return Promise.resolve(existing);
+    if (exited !== undefined) {
+      return Promise.reject(
+        new Error(`${exited} before ${what}; ${recentStderr()}`),
+      );
+    }
 
     return new Promise<string>((resolve, reject) => {
       const waiter: Waiter = {
         test,
+        what,
         resolve: (line) => {
           clearTimeout(timer);
           resolve(line);
+        },
+        reject: (err) => {
+          clearTimeout(timer);
+          reject(err);
         },
       };
       const timer = setTimeout(() => {
@@ -727,7 +765,7 @@ export async function startSim(
         reject(
           new Error(
             `timed out after ${timeoutMs}ms waiting for ${what} on ${container}; ` +
-              `last stderr:\n${stderrLines.slice(-20).join("\n")}`,
+              recentStderr(),
           ),
         );
       }, timeoutMs);
