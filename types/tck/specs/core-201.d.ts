@@ -77,6 +77,22 @@ import { type AssertRecorder } from "../assert";
 import { type Frame } from "../ocpp";
 import type { ScenarioSpec } from "../spec-types";
 /**
+ * Every `sampledValue` in every sent `action` request carries
+ * `context === expected`. FAILS ON THE FIRST ONE THAT DOES NOT, naming what it
+ * found, and on a sample that carries no `context` at all -- Part 3 makes the
+ * member optional with a default of `Sample.Periodic`, so an absent one IS a
+ * periodic reading, and a check that skipped it would pass the very payload the
+ * case is told apart from.
+ *
+ * ALL OF THEM, NOT THE FIRST. `assertMeterValueSampled` reads the first request
+ * because what it decides -- which protocol was spoken -- is settled by one.
+ * What this decides is the case's identifying condition, and TC_J_01 sends
+ * three readings: a stimulus that named the context on one of them and not
+ * the others would pass a first-only check while two thirds of the evidence
+ * carried the wrong case's context.
+ */
+export declare function assertSampledContext(rec: AssertRecorder, frames: readonly Frame[], action: string, expected: string, description: string): void;
+/**
  * The CSMS put a `ChangeAvailability` on the wire in one of the three scopes
  * 2.0.1 gives it, and asked for the availability the scenario asked for.
  *
