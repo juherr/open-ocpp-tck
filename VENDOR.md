@@ -368,12 +368,12 @@ conformance run that cannot name the bytes it tested proves nothing.
 | field | value |
 |---|---|
 | image | `ghcr.io/juherr/steve` |
-| tag resolved | `steve-3.14.0` |
-| digest | `sha256:aa56949a639328a11461a3e448d40549b521f232ee0fdeef22389ddff3c9901f` |
+| tag resolved | `steve-3.14.1` |
+| digest | `sha256:c3fbfcc3f220dc63c13c4accbab7a90757984c1902af2c9e4233bedcc3675400` |
 | image | `mariadb` |
 | tag resolved | `11.8` |
 | digest | `sha256:d9f7eb2637296652f24b484afd5d246f759f49f5babcadc6a9e344c9acb75fbf` |
-| resolved on | 2026-08-11, from the registry manifest `Docker-Content-Digest` |
+| resolved on | SteVe 2026-09-12, MariaDB 2026-08-11, from the registry manifest `Docker-Content-Digest` |
 | declared in | `drivers/steve/compose.yaml` |
 
 ### Validation history
@@ -394,21 +394,34 @@ read as a vendored-file row and fails the build.
 
 | SteVe | digest | validated | `all` (44) | `authorize` (3) |
 |---|---|---|---|---|
-| `steve-3.14.0` — **current pin** | `sha256:aa56949a…` | 2026-08-11 | 44 PASS, 0 PARTIAL, 0 N/A; 1 parallel-only flake (`tc013-hard-reset`) PASS on isolated retry | 3 PASS |
+| `steve-3.14.1` — **current pin** | `sha256:c3fbfcc3…` | 2026-09-12 | 47 OCPP 1.6 scenarios in one `run-all` (`authorize` folded in): 40 PASS, 5 PARTIAL, 0 FAIL; 2 parallel-only flakes (`tc003`, `tc004`) PASS on isolated retry — 42 PASS counting it. The 5 PARTIAL are the same five SKIPPED checks the 3.14.0 pin reports the same day on CI (`tc001`, `tc010`, `tc011`, `tc054`, `tc059`), so the verdict set is unchanged | in the sweep: 3 PASS |
+| `steve-3.14.0` | `sha256:aa56949a…` | 2026-08-11 | 44 PASS, 0 PARTIAL, 0 N/A; 1 parallel-only flake (`tc013-hard-reset`) PASS on isolated retry | 3 PASS |
 | `steve-3.13.0` | `sha256:a1e6647d…` | 2026-08-11 | 44 PASS, 0 PARTIAL, 0 N/A; 1 parallel-only flake (`tc014-soft-reset`) PASS on isolated retry | 3 PASS |
 
-Neither version needed a single line of driver or provisioner change — that is
-the column that would have mattered most, and it is uniform, so it is stated
-here rather than repeated per row.
+None of the three versions needed a single line of driver or provisioner
+change — that is the column that would have mattered most, and it is uniform,
+so it is stated here rather than repeated per row. The 3.14.1 row's PARTIALs
+are not a regression against the 3.14.0 row's zero: the suite grew SKIPPED
+checks between the two dates, and the same five rows are PARTIAL on 3.14.0 in
+that day's CI run.
 
-Both flakes were parallel-lane interference, not CSMS behaviour: each passed on
-the isolated sequential retry, and they were different scenarios on the two
-runs. That is the pattern `--retry-failed-isolated` exists for.
+3.14.1 is a security release (steve-community/steve#2102, `StopTransaction`
+now validates its `idTag`, GHSA-67fq-r6rm-rqpm) on Java 25; the provisioner's
+four bullets below were re-measured against it before the pin moved — the
+three missing controllers still answer 403, `ocppTags` and `transactions`
+answer 200 with their filters, a past `expiryDate` is still refused 400, and
+`web_user.api_password` still gates the WebAPI — and `driver selftest`
+answered all 12 record calls.
+
+Every flake in the table was parallel-lane interference, not CSMS behaviour:
+each passed on the isolated sequential retry, and they were different
+scenarios on every run. That is the pattern `--retry-failed-isolated` exists
+for.
 
 Moving this pin is not a version bump — every statement below is what the
-provisioner is built on, so each was re-measured against the running 3.14.0
-container before the pin moved. All of them still hold, and held identically on
-3.13.0:
+provisioner is built on, so each was re-measured against the running container
+before each move (3.14.0 on 2026-08-11, 3.14.1 on 2026-09-12). All of them
+still hold, and held identically on 3.13.0:
 
 - SteVe's WebAPI exposes `ocppTags`, `operations` and `transactions` — and
   nothing else. Probed on this digest: `chargePoints`, `reservations` and

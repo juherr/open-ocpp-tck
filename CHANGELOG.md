@@ -426,6 +426,13 @@ Released as `0.3.0`. The documented install ref already points at that tag, so
 
 ### Changed
 
+- **The SteVe stack pin moved from `steve-3.14.0` to `steve-3.14.1`** —
+  `ghcr.io/juherr/steve@sha256:c3fbfcc3…`, resolved 2026-09-12. A security
+  release (steve-community/steve#2102: `StopTransaction` validates its `idTag`,
+  GHSA-67fq-r6rm-rqpm) on Java 25. No driver or provisioner change; the four
+  WebAPI facts the provisioner is built on were re-measured and hold, and the
+  full sweep's verdict set is identical to 3.14.0's — `VENDOR.md`'s validation
+  history has the row.
 - **The simulator image pin moved from `0.7.5` to `0.7.12`** —
   `ghcr.io/shiv3/ocpp-cp-simulator@sha256:b94ee6c7…`, the multi-arch index
   digest resolved on 2026-09-12. (`0.7.11` never had an image: its build failed
