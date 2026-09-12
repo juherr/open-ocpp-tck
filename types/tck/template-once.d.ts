@@ -31,6 +31,13 @@
  *
  * The seam is `SimProcess.call` and nothing else, so the guard can hand it a
  * station that models the walker instead of a container.
+ *
+ * FOUR CALLS BECAUSE A TEMPLATE'S INSTANCE ONLY EXISTS ONCE LOADED, and loading
+ * is what arms it. The one-parameter form -- `run_scenario_template` with
+ * `once: true`, or `load_scenario_template` taking `enabled: false` -- is asked
+ * for upstream as shiv3/ocpp-cp-simulator#352; the day it ships, this module
+ * is one call and tests/template-once.ts's control row is what says the old
+ * shape is gone for the right reason.
  */
 /** The half of {@link import("./sim").SimProcess} these functions need. */
 export interface SimCalls {
