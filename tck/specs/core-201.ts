@@ -2280,10 +2280,12 @@ const TC_F_27: ScenarioSpec = {
 // WHAT THIS CASE ASKS FOR THAT THE PINNED IMAGE CANNOT SPELL, and it is two
 // members rather than TC_F_27's zero. The case's station-side message carries
 // `sampledValue.context` as the clock-aligned reading context, and its note
-// says the readings arrive one configured interval apart. The pinned image
-// drops `context` from every 2.0.1 sampled value (issue #114) and has no
-// clock-aligned scheduler on the 2.0.1 path at all, so this scenario sends
-// three readings on its own clock instead. NEITHER MEMBER CARRIES A TOOL
+// says the readings arrive one configured interval apart. Until 0.7.10 the
+// pinned image dropped `context` from every 2.0.1 sampled value (issue #114);
+// it now carries `Sample.Periodic` by default and `send_meter_value` takes a
+// `context` (upstream #350), but there is still no clock-aligned scheduler on
+// the 2.0.1 path, so this scenario sends three readings on its own clock and
+// leaves naming `Sample.Clock` to #114's follow-up. NEITHER MEMBER CARRIES A TOOL
 // VALIDATION -- the case's are `N/a`, and both belong to the test tool's own
 // behaviour rather than to the CSMS's -- so what is measured here is the whole
 // of what the case measures of a CSMS: that it answered.
