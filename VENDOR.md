@@ -267,10 +267,10 @@ deterministic and network-free.
 | field | value |
 |---|---|
 | image | `ghcr.io/shiv3/ocpp-cp-simulator` |
-| tag resolved | `0.7.5` |
-| digest | `sha256:ac35788f136c27db9371051b446af2b49270f1fc007d2172556fb761c7b01026` |
+| tag resolved | `0.7.9` |
+| digest | `sha256:377e3b7535c95ba366e71011f0219f75b9f7117eb92e3920f5d9ce65e6f26733` |
 | digest kind | multi-arch OCI image index (selects the `linux/amd64` or `linux/arm64` manifest automatically) |
-| resolved on | 2026-07-31, with `docker buildx imagetools inspect ghcr.io/shiv3/ocpp-cp-simulator:0.7.5` |
+| resolved on | 2026-09-12, with `docker buildx imagetools inspect ghcr.io/shiv3/ocpp-cp-simulator:0.7.9` |
 | declared in | `tck/sim.ts` (`DEFAULT_SIM_IMAGE`), overridable with `SIM_IMAGE` |
 
 Verified on that digest:
@@ -284,7 +284,46 @@ Verified on that digest:
   which switches the CLI into daemon/web-console mode (auto-connects, emits
   `[server] …` lines, no JSON Lines event stream on stdout). `sim.ts`
   therefore passes `--entrypoint bun` and runs `src/cli/main.ts` from the
-  image's own embedded sources. See `P0-FINDINGS.md` §9.
+  image's own embedded sources. Upstream's `docker/entrypoint.sh` is where
+  that bundle is composed; it was re-read at `v0.7.9` and the `[server] …`
+  lines observed again on this digest.
+
+### Moving this pin
+
+The first move was `0.7.5` (resolved 2026-07-31) to `0.7.9` on 2026-09-12,
+and what was read before it moved is the checklist for the next one. Two of the facts
+below are about the source pin rather than the image, and they are here
+because a simulator release is the moment someone asks whether the source pin
+should follow it:
+
+- **The `upstream-verbatim` rows did not need a re-import.** `tck/ocpp.ts`,
+  `tck/util.ts` and `tsconfig.json` hash at `v0.7.9` to the digests in the
+  inventory above, byte for byte, so `Pinned commit` stayed where it was. The
+  image and the source pin name different commits by design -- the image is
+  what a sweep runs, the source pin is where three files were copied from --
+  and the first bump is the one that establishes that they may differ.
+- **Nothing the runner drives changed.** Read from upstream's diff between the
+  pinned source commit and the tag, then confirmed on the digest: the JSON
+  Lines commands `sim.ts` and the specs send (`connect`,
+  `run_scenario_template`, `start_transaction`, `stop_transaction`,
+  `authorize`, `heartbeat`, `send_meter_value`) and the `scenario_started`
+  event are intact and the additions are new commands only; the CLI flags
+  `buildDockerArgs` emits are in `--help` unchanged, with the same six
+  `--ocpp-version` values `SIM_OCPP_VERSIONS` spells; the Logger's
+  `Sent:`/`Received:` line format `tck/ocpp.ts` parses has no diff; the trace
+  record `tck/trace.ts` reads is still schema v1.1; and the `cert16-*` /
+  `cert201-*` scenario templates under `src/utils/scenarios/` have no diff.
+- **What did change, and why none of it needs a runner edit.** A station now
+  logs a warn line when a CSMS-initiated `RemoteStartTransaction` was handled
+  by its default path before the scenario's trigger node armed (the opt-in
+  that closes that race is on the daemon's `run_scenario` RPC, not on JSON
+  mode's `run_scenario_template`); a refused WebSocket handshake is replayed
+  once as a plain GET and its status logged; `MeterValues` samples on the
+  default path are bounded by the active charging schedule, and the
+  charging-curve EV model behind them is opt-in (`chargingCurve` is absent
+  from `defaultEVSettings`) -- no scenario here asserts a sample's value.
+  Upstream's boot-gate key-order fix (its #262) was already in `tck/main.ts`.
+- **Still no `NOTICE` file upstream** at `v0.7.9`.
 
 ## CSMS container images
 

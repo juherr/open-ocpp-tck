@@ -16,14 +16,15 @@
  * `--http-host 0.0.0.0 --unsafe-remote --web-console $HTTP_PORT`, which puts
  * the CLI in daemon/web-console mode: it auto-connects on startup and emits
  * `[server] …` lines instead of the JSON Lines event stream this runner
- * parses (verified live against 0.7.5 -- see P0-FINDINGS.md §9). The
- * entrypoint is therefore overridden back to `bun src/cli/main.ts`, which
- * runs the very same embedded sources in true JSON Lines mode.
+ * parses (upstream's `docker/entrypoint.sh` composes that flag bundle; re-read
+ * at v0.7.9 and observed live on the pinned digest). The entrypoint is
+ * therefore overridden back to `bun src/cli/main.ts`, which runs the very
+ * same embedded sources in true JSON Lines mode.
  */
 /**
  * Default simulator image, PINNED BY DIGEST (repo convention: never
  * `latest`, never a bare tag). This is the multi-arch index digest of
- * `ghcr.io/shiv3/ocpp-cp-simulator:0.7.5`, resolved 2026-07-31 with
+ * `ghcr.io/shiv3/ocpp-cp-simulator:0.7.9`, resolved 2026-09-12 with
  * `docker buildx imagetools inspect`; it therefore still selects the right
  * per-platform manifest on amd64 and arm64. Override with `SIM_IMAGE`.
  *
@@ -34,7 +35,7 @@
  * another, and once the wrapper lives in a different repository from this
  * file, nothing can ever make the two agree again.
  */
-export declare const DEFAULT_SIM_IMAGE = "ghcr.io/shiv3/ocpp-cp-simulator@sha256:ac35788f136c27db9371051b446af2b49270f1fc007d2172556fb761c7b01026";
+export declare const DEFAULT_SIM_IMAGE = "ghcr.io/shiv3/ocpp-cp-simulator@sha256:377e3b7535c95ba366e71011f0219f75b9f7117eb92e3920f5d9ce65e6f26733";
 /**
  * The OCPP versions the pinned image's CLI accepts, spelled as it spells them.
  *

@@ -426,6 +426,20 @@ Released as `0.3.0`. The documented install ref already points at that tag, so
 
 ### Changed
 
+- **The simulator image pin moved from `0.7.5` to `0.7.9`** —
+  `ghcr.io/shiv3/ocpp-cp-simulator@sha256:377e3b75…`, the multi-arch index
+  digest resolved on 2026-09-12. What a sweep drives is unchanged: the JSON
+  Lines commands, the CLI flags, the log-line and trace formats and the
+  `cert16-*` / `cert201-*` templates have no diff between the pinned source
+  commit and `v0.7.9`, and the three `upstream-verbatim` files hash
+  identically there, so the source pin did not move. What a consumer may notice
+  in a run's evidence: the station now logs a warn line when a CSMS-initiated
+  `RemoteStartTransaction` reached its default handler before the scenario
+  armed; a refused WebSocket handshake is replayed once as a plain GET and the
+  HTTP status logged; `MeterValues` samples are bounded by the active charging
+  schedule (the charging-curve EV model behind them is opt-in and off here).
+  `VENDOR.md`'s "Moving this pin" records the checklist this bump was read
+  against.
 - **A Reusable State that promises less than the reference declares says so on
   its definition.** `CertificateInstalled` and `GetInstalledCertificates` are
   `established: true` after a reach the pinned station refuses from a canned
