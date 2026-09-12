@@ -305,7 +305,10 @@ the moment someone asks whether the source pin should follow it:
   behaviour-neutral move of the charging-curve interpolator; everything else
   is a fleet benchmark, k6 export and docs. A pin names bytes a sweep can
   pull, so `0.7.10` it is; re-check the registry before believing a release
-  page.
+  page. Upstream's fix is its #353 (the `ui` stage did not copy a tsconfig
+  the root one references), and it says the next tag is where an image
+  reappears -- so the move after this one is to `0.7.12` or later, never
+  `0.7.11`.
 - **The `upstream-verbatim` rows did not need a re-import.** `tck/ocpp.ts`,
   `tck/util.ts` and `tsconfig.json` hash at `v0.7.10` (and at `v0.7.11`) to
   the digests in the inventory above, byte for byte, so `Pinned commit`
