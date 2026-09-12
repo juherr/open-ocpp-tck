@@ -238,9 +238,9 @@ GROUP core-201
     OP 201:ChangeAvailability [1, 1, operative]
     -> driveState keys=[]
   SPEC cert201-tcj01-clock-aligned-meter-values
-    SIM send {"command":"send_meter_value","params":{"connector":1}}
-    SIM send {"command":"send_meter_value","params":{"connector":1}}
-    SIM send {"command":"send_meter_value","params":{"connector":1}}
+    SIM send {"command":"send_meter_value","params":{"connector":1,"context":"Sample.Clock"}}
+    SIM send {"command":"send_meter_value","params":{"connector":1,"context":"Sample.Clock"}}
+    SIM send {"command":"send_meter_value","params":{"connector":1,"context":"Sample.Clock"}}
     -> driveState keys=[]
   SPEC cert201-tck01-set-tx-default-profile
     OP 201:SetChargingProfile [0, 1, 1, 11000, 3600, 9101, 9101, <ts>, <ts>, <ts>, absolute, txdefaultprofile, w]
