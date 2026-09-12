@@ -193,6 +193,12 @@ jobs:
       - name: A 2.0.1 request assertion refuses the shape it is not about
         run: bun tests/request-shape-201.ts
 
+      # In-process because what it pins is a sequence of JSON commands against
+      # a rule inside the pinned simulator, whose failure is a second run that a
+      # sweep reports as a CSMS finding.
+      - name: A scenario template runs exactly once across a reconnect
+        run: bun tests/template-once.ts
+
       - name: Core names no CSMS
         run: bash tests/generic-core.sh
 

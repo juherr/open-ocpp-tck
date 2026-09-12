@@ -24,7 +24,7 @@ error.
 ## The gate
 
 `bun run verify` is every check CI runs before it starts a container —
-typecheck, committed declarations, three driver scope checks, seventeen in-process
+typecheck, committed declarations, three driver scope checks, eighteen in-process
 guards and sixteen shell guards — with one exit code, and every step runs even
 after one fails, where CI enumerates them and stops at the first.
 
@@ -63,6 +63,7 @@ bun tests/shard-selection.ts
 bun tests/state-plan-201.ts
 bun tests/certificate-material.ts
 bun tests/request-shape-201.ts
+bun tests/template-once.ts
 bash tests/cert201-declares-its-version.sh
 bash tests/cert201-scope-rows.sh       # both read tck/specs/ASSERT-INVENTORY.txt,
                                        # so a NEW scenario reaches them only once
@@ -134,7 +135,7 @@ There is no unit-test framework and no `*.test.ts`. `tests/` holds offline
 guards, each with a header stating the property it protects. `bun run test`
 chains them — note `bun test` is Bun's own runner and finds nothing here.
 
-Shell is the default, and the seventeen TypeScript ones are TypeScript because
+Shell is the default, and the eighteen TypeScript ones are TypeScript because
 what they assert is unreachable through the CLI. `driver-env-scope.ts`: a
 driver's declarations follow the env they are *resolved* with, where the CLI
 can only ever pass `process.env`. `capability-parity.ts`: the same reason and
@@ -287,6 +288,29 @@ identifier with `"chargingProfile":[{"id":`, which is a fact about the pinned
 image's serialiser and nothing else. Half its rows go the other way, and they
 are what stops the fixes overshooting — a CSMS may re-wrap a PEM it was handed,
 so the certificate check may not become byte equality against the fixture.
+
+`template-once.ts`: the one whose subject is a rule inside the SIMULATOR
+rather than in this repository, and the guard exists because the rule moved
+under a pin. From 0.7.6 the pinned image re-arms a `triggerOn: "connect"`
+scenario on every reconnect (shiv3/ocpp-cp-simulator#253) -- so a completed
+template runs again the moment the station comes back, and TC_013, which
+reboots the station by design, re-authorised and opened a second transaction
+after its `Reset(Hard)` on 0.7.9, with the DB check reading the newest
+transaction, still open, as `stop_reason ''`. Every `cert16-*` template is
+connect-triggered. Upstream's documented run-once shape is what
+`tck/template-once.ts` does: load the instance `enabled: false`, which the
+auto-start walker skips, and start it with an explicit `run_scenario`, which
+does not consult `enabled`. What the guard holds is a SEQUENCE against that
+walker, and from the CLI that is one reconnecting scenario per row against a
+live CSMS to observe something not happening -- so the two functions take
+`SimProcess.call` as their seam and the guard hands them a station that
+models the walker at the pinned digest. Its first row is a control: the old
+`run_scenario_template` sequence runs twice on the model, which is what tells
+a green second row from a vacuous fake. Its third row pins an ORDER rather
+than a rule -- the load has to precede `connect`, because an enabled instance
+on an Available station starts at load, and moving the call after the boot
+gate reads as tidier and reintroduces the double run. The model is the
+guard's one assumption, and the next pin move is when to re-read it.
 
 Two guards build a fixture instead of reading the tree, and they are the two
 that test the scripts under `tools/` which *write*.

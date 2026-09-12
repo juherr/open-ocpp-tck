@@ -1,5 +1,5 @@
 /**
- * Derived from shiv3/ocpp-cp-simulator scripts/steve-verify/runner/sim.ts @ 604054adb0d7d7129a26a5f1ad2d5fdc290d1ca1 (Apache-2.0). Modified: the hardcoded docker argv is now built from SimConfig; the `-v <repoRoot>:/app -w /app` bind mount and `repoRoot` are gone (the published image ships the CLI sources); the image is pinned by digest; `--network` left the default path; outgoing WS Basic auth and an optional cpId-in-path WS URL were added; every trace of the command redacts the password. The line pump, waitForLine, stop(), container cleanup and signal handlers are byte-for-byte upstream.
+ * Derived from shiv3/ocpp-cp-simulator scripts/steve-verify/runner/sim.ts @ 604054adb0d7d7129a26a5f1ad2d5fdc290d1ca1 (Apache-2.0). Modified: the hardcoded docker argv is now built from SimConfig; the `-v <repoRoot>:/app -w /app` bind mount and `repoRoot` are gone (the published image ships the CLI sources); the image is pinned by digest; `--network` left the default path; outgoing WS Basic auth and an optional cpId-in-path WS URL were added; every trace of the command redacts the password; the waiter list takes a predicate so `call()` can correlate a JSON command with its response by id, and waitForLine is that predicate applied to a RegExp. The line pump, stop(), container cleanup and signal handlers are byte-for-byte upstream.
  *
  * sim.ts -- docker-spawned simulator process: launches the ocpp-cp-simulator
  * CLI in JSON Lines mode inside a container (port of lib.sh's sim_start),
@@ -62,6 +62,43 @@ const DEFAULT_SIM_COMMAND = ["src/cli/main.ts"];
 
 /** Replaces a secret in any human-visible rendering of the docker argv. */
 const REDACTED = "<redacted>";
+
+/** How long {@link SimProcess.call} waits for the CLI to answer. The commands
+ *  it carries are in-process on the CLI's side -- loading a definition, reading
+ *  one back -- so this bounds a hung CLI, not a slow CSMS. */
+const CALL_TIMEOUT_MS = 10_000;
+
+/** What the CLI writes back for a command that carried an `id`
+ *  (`toJsonResponse` in the pinned image's `src/cli/output.ts`). */
+export type SimResponse =
+  | { ok: true; data: unknown }
+  | { ok: false; error: string };
+
+/**
+ * The response to the call whose id is `id`, or undefined when `line` is
+ * anything else -- an event, another call's response, a frame log line.
+ *
+ * ATTRIBUTED BY THE `id` MEMBER AND NOTHING ELSE. Not by position in the
+ * stream (events interleave with responses on the same stdout), and not by
+ * where `id` sits in the line: the CLI happens to serialise it first, and a
+ * pattern anchored on that would be a fact about upstream's key order wearing
+ * the shape of a protocol. The line is parsed, then asked.
+ */
+export function parseResponse(line: string, id: string): SimResponse | undefined {
+  if (!line.startsWith("{")) return undefined;
+  let parsed: unknown;
+  try {
+    parsed = JSON.parse(line);
+  } catch {
+    return undefined;
+  }
+  if (typeof parsed !== "object" || parsed === null) return undefined;
+  const response = parsed as { id?: unknown; ok?: unknown; data?: unknown; error?: unknown };
+  if (response.id !== id || typeof response.ok !== "boolean") return undefined;
+  return response.ok
+    ? { ok: true, data: response.data }
+    : { ok: false, error: String(response.error ?? "") };
+}
 
 // ---------------------------------------------------------------------------
 // Signal-safe cleanup -- a bare try/finally around a run does NOT survive
@@ -359,6 +396,26 @@ export interface SimProcess {
   readonly lines: readonly string[];
   /** Writes one JSON command line to the CLI's stdin (JSON Lines protocol). */
   send(command: Record<string, unknown>): Promise<void>;
+  /**
+   * Sends one JSON command WITH an id and resolves with the `data` of the
+   * response that carries that id, or rejects with the CLI's own error text
+   * when it answers `ok: false` -- and after `timeoutMs` when it does not
+   * answer at all.
+   *
+   * WHY A SECOND VERB BESIDE `send`. The commands the runner has always sent
+   * are fire-and-forget by nature -- `connect` is answered by a frame on the
+   * wire, `run_scenario_template` by a `scenario_started` event -- and their
+   * responses were ignored, which is how a refused one (`already running`)
+   * sat in every results/*.log for a year. The template-once sequence in
+   * tck/template-once.ts is different in kind: its second command needs the
+   * FIRST one's answer (the scenario id, then the definition), so the
+   * response is the payload rather than a receipt.
+   */
+  call(
+    command: string,
+    params?: Record<string, unknown>,
+    timeoutMs?: number,
+  ): Promise<unknown>;
   /** Resolves with the first line (existing or future) matching `pattern`,
    *  or rejects after `timeoutMs` -- every wait in this module is bounded. */
   waitForLine(pattern: RegExp, timeoutMs: number): Promise<string>;
@@ -623,7 +680,7 @@ export async function startSim(
   const lines: string[] = [];
   const stderrLines: string[] = [];
   interface Waiter {
-    pattern: RegExp;
+    test: (line: string) => boolean;
     resolve: (line: string) => void;
   }
   const waiters: Waiter[] = [];
@@ -631,7 +688,7 @@ export async function startSim(
   const stdoutTask = readLines(proc.stdout, (line) => {
     lines.push(line);
     for (let i = waiters.length - 1; i >= 0; i--) {
-      if (waiters[i].pattern.test(line)) {
+      if (waiters[i].test(line)) {
         const [waiter] = waiters.splice(i, 1);
         waiter.resolve(line);
       }
@@ -641,13 +698,19 @@ export async function startSim(
     stderrLines.push(line);
   });
 
-  function waitForLine(pattern: RegExp, timeoutMs: number): Promise<string> {
-    const existing = lines.find((line) => pattern.test(line));
+  /** The one wait: the first line (existing or future) `test` accepts, or a
+   *  rejection after `timeoutMs` naming `what` was waited for. */
+  function waitFor(
+    test: (line: string) => boolean,
+    what: string,
+    timeoutMs: number,
+  ): Promise<string> {
+    const existing = lines.find(test);
     if (existing !== undefined) return Promise.resolve(existing);
 
     return new Promise<string>((resolve, reject) => {
       const waiter: Waiter = {
-        pattern,
+        test,
         resolve: (line) => {
           clearTimeout(timer);
           resolve(line);
@@ -658,7 +721,7 @@ export async function startSim(
         if (idx >= 0) waiters.splice(idx, 1);
         reject(
           new Error(
-            `timed out after ${timeoutMs}ms waiting for /${pattern.source}/ on ${container}; ` +
+            `timed out after ${timeoutMs}ms waiting for ${what} on ${container}; ` +
               `last stderr:\n${stderrLines.slice(-20).join("\n")}`,
           ),
         );
@@ -667,9 +730,48 @@ export async function startSim(
     });
   }
 
+  function waitForLine(pattern: RegExp, timeoutMs: number): Promise<string> {
+    return waitFor((line) => pattern.test(line), `/${pattern.source}/`, timeoutMs);
+  }
+
   async function send(command: Record<string, unknown>): Promise<void> {
     proc.stdin.write(`${JSON.stringify(command)}\n`);
     await proc.stdin.flush();
+  }
+
+  // Per container, so a response can only ever be matched against a call this
+  // process made on this stdin.
+  let nextCallId = 0;
+  async function call(
+    command: string,
+    params?: Record<string, unknown>,
+    timeoutMs: number = CALL_TIMEOUT_MS,
+  ): Promise<unknown> {
+    const id = `tck-${++nextCallId}`;
+    // The wait is armed BEFORE the write: the CLI answers in-process, and a
+    // response that lands between the write and the wait is still in `lines`,
+    // but ordering it this way makes that a fact rather than a guarantee.
+    const answered = waitFor(
+      (line) => parseResponse(line, id) !== undefined,
+      `the response to ${command} (${id})`,
+      timeoutMs,
+    );
+    try {
+      await send(params === undefined ? { id, command } : { id, command, params });
+    } catch (err) {
+      // A write that failed (stdin closed under us) leaves a waiter that will
+      // time out with nobody listening; own its rejection so the write's error
+      // is the one that surfaces.
+      answered.catch(() => {});
+      throw err;
+    }
+    const response = parseResponse(await answered, id);
+    if (response === undefined || !response.ok) {
+      throw new Error(
+        `${command} refused by the simulator on ${container}: ${response?.error ?? "unreadable response"}`,
+      );
+    }
+    return response.data;
   }
 
   let stopped = false;
@@ -710,6 +812,7 @@ export async function startSim(
       return lines;
     },
     send,
+    call,
     waitForLine,
     stop,
   };

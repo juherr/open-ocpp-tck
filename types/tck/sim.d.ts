@@ -1,5 +1,5 @@
 /**
- * Derived from shiv3/ocpp-cp-simulator scripts/steve-verify/runner/sim.ts @ 604054adb0d7d7129a26a5f1ad2d5fdc290d1ca1 (Apache-2.0). Modified: the hardcoded docker argv is now built from SimConfig; the `-v <repoRoot>:/app -w /app` bind mount and `repoRoot` are gone (the published image ships the CLI sources); the image is pinned by digest; `--network` left the default path; outgoing WS Basic auth and an optional cpId-in-path WS URL were added; every trace of the command redacts the password. The line pump, waitForLine, stop(), container cleanup and signal handlers are byte-for-byte upstream.
+ * Derived from shiv3/ocpp-cp-simulator scripts/steve-verify/runner/sim.ts @ 604054adb0d7d7129a26a5f1ad2d5fdc290d1ca1 (Apache-2.0). Modified: the hardcoded docker argv is now built from SimConfig; the `-v <repoRoot>:/app -w /app` bind mount and `repoRoot` are gone (the published image ships the CLI sources); the image is pinned by digest; `--network` left the default path; outgoing WS Basic auth and an optional cpId-in-path WS URL were added; every trace of the command redacts the password; the waiter list takes a predicate so `call()` can correlate a JSON command with its response by id, and waitForLine is that predicate applied to a RegExp. The line pump, stop(), container cleanup and signal handlers are byte-for-byte upstream.
  *
  * sim.ts -- docker-spawned simulator process: launches the ocpp-cp-simulator
  * CLI in JSON Lines mode inside a container (port of lib.sh's sim_start),
@@ -36,6 +36,26 @@
  * file, nothing can ever make the two agree again.
  */
 export declare const DEFAULT_SIM_IMAGE = "ghcr.io/shiv3/ocpp-cp-simulator@sha256:377e3b7535c95ba366e71011f0219f75b9f7117eb92e3920f5d9ce65e6f26733";
+/** What the CLI writes back for a command that carried an `id`
+ *  (`toJsonResponse` in the pinned image's `src/cli/output.ts`). */
+export type SimResponse = {
+    ok: true;
+    data: unknown;
+} | {
+    ok: false;
+    error: string;
+};
+/**
+ * The response to the call whose id is `id`, or undefined when `line` is
+ * anything else -- an event, another call's response, a frame log line.
+ *
+ * ATTRIBUTED BY THE `id` MEMBER AND NOTHING ELSE. Not by position in the
+ * stream (events interleave with responses on the same stdout), and not by
+ * where `id` sits in the line: the CLI happens to serialise it first, and a
+ * pattern anchored on that would be a fact about upstream's key order wearing
+ * the shape of a protocol. The line is parsed, then asked.
+ */
+export declare function parseResponse(line: string, id: string): SimResponse | undefined;
 /**
  * The OCPP versions the pinned image's CLI accepts, spelled as it spells them.
  *
@@ -176,6 +196,22 @@ export interface SimProcess {
     readonly lines: readonly string[];
     /** Writes one JSON command line to the CLI's stdin (JSON Lines protocol). */
     send(command: Record<string, unknown>): Promise<void>;
+    /**
+     * Sends one JSON command WITH an id and resolves with the `data` of the
+     * response that carries that id, or rejects with the CLI's own error text
+     * when it answers `ok: false` -- and after `timeoutMs` when it does not
+     * answer at all.
+     *
+     * WHY A SECOND VERB BESIDE `send`. The commands the runner has always sent
+     * are fire-and-forget by nature -- `connect` is answered by a frame on the
+     * wire, `run_scenario_template` by a `scenario_started` event -- and their
+     * responses were ignored, which is how a refused one (`already running`)
+     * sat in every results/*.log for a year. The template-once sequence in
+     * tck/template-once.ts is different in kind: its second command needs the
+     * FIRST one's answer (the scenario id, then the definition), so the
+     * response is the payload rather than a receipt.
+     */
+    call(command: string, params?: Record<string, unknown>, timeoutMs?: number): Promise<unknown>;
     /** Resolves with the first line (existing or future) matching `pattern`,
      *  or rejects after `timeoutMs` -- every wait in this module is bounded. */
     waitForLine(pattern: RegExp, timeoutMs: number): Promise<string>;

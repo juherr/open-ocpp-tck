@@ -123,6 +123,10 @@ run "the committed certificate is one a CSMS can store" bun tests/certificate-ma
 # What it holds is the GREEN direction -- an absent member read as `null`, PEM
 # armour read as a certificate, a member position read as structure.
 run "a 2.0.1 request assertion refuses the shape it is not about" bun tests/request-shape-201.ts
+# In-process because what it pins is a SEQUENCE of JSON commands against a rule
+# inside the pinned simulator -- a connect-triggered template re-arms on every
+# reconnect -- and the failure is a second run a sweep reports as a CSMS finding.
+run "a scenario template runs exactly once across a reconnect" bun tests/template-once.ts
 run "core is CSMS-neutral" bash tests/generic-core.sh
 # The one reading in this repository that lives in the workflow rather than in
 # a file the gate can run -- so it is a file now, and this is what runs it.

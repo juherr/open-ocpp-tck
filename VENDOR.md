@@ -141,6 +141,7 @@ the drivers are native here, and the name now says so.
 | `tck/unverifiable.ts` | `local-native` | `—` | `—` | `—` | `—` |
 | `tck/wait.ts` | `local-native` | `—` | `—` | `—` | `—` |
 | `tck/states-201.ts` | `local-native` | `—` | `—` | `—` | `—` |
+| `tck/template-once.ts` | `local-native` | `—` | `—` | `—` | `—` |
 | `bin/ocpp-tck.ts` | `local-native` | `—` | `—` | `—` | `—` |
 | `tck/specs/core-201.ts` | `local-native` | `—` | `—` | `—` | `—` |
 | `tck/specs/ASSERT-INVENTORY.txt` | `local-native` | `—` | `—` | `—` | `—` |
@@ -302,27 +303,41 @@ should follow it:
   image and the source pin name different commits by design -- the image is
   what a sweep runs, the source pin is where three files were copied from --
   and the first bump is the one that establishes that they may differ.
-- **Nothing the runner drives changed.** Read from upstream's diff between the
-  pinned source commit and the tag, then confirmed on the digest: the JSON
-  Lines commands `sim.ts` and the specs send (`connect`,
-  `run_scenario_template`, `start_transaction`, `stop_transaction`,
-  `authorize`, `heartbeat`, `send_meter_value`) and the `scenario_started`
-  event are intact and the additions are new commands only; the CLI flags
-  `buildDockerArgs` emits are in `--help` unchanged, with the same six
-  `--ocpp-version` values `SIM_OCPP_VERSIONS` spells; the Logger's
-  `Sent:`/`Received:` line format `tck/ocpp.ts` parses has no diff; the trace
-  record `tck/trace.ts` reads is still schema v1.1; and the `cert16-*` /
-  `cert201-*` scenario templates under `src/utils/scenarios/` have no diff.
-- **What did change, and why none of it needs a runner edit.** A station now
-  logs a warn line when a CSMS-initiated `RemoteStartTransaction` was handled
-  by its default path before the scenario's trigger node armed (the opt-in
-  that closes that race is on the daemon's `run_scenario` RPC, not on JSON
-  mode's `run_scenario_template`); a refused WebSocket handshake is replayed
-  once as a plain GET and its status logged; `MeterValues` samples on the
-  default path are bounded by the active charging schedule, and the
-  charging-curve EV model behind them is opt-in (`chargingCurve` is absent
-  from `defaultEVSettings`) -- no scenario here asserts a sample's value.
-  Upstream's boot-gate key-order fix (its #262) was already in `tck/main.ts`.
+- **The wire the runner reads did not change.** Read from upstream's diff
+  between the pinned source commit and the tag, then confirmed on the digest:
+  the JSON Lines commands `sim.ts` and the specs send (`connect`,
+  `start_transaction`, `stop_transaction`, `authorize`, `heartbeat`,
+  `send_meter_value`, and the scenario commands `tck/template-once.ts`
+  sequences) and the `scenario_started` event are intact and the additions are
+  new commands only; the CLI flags `buildDockerArgs` emits are in `--help`
+  unchanged, with the same six `--ocpp-version` values `SIM_OCPP_VERSIONS`
+  spells; the Logger's `Sent:`/`Received:` line format `tck/ocpp.ts` parses
+  has no diff; the trace record `tck/trace.ts` reads is still schema v1.1;
+  and the `cert16-*` / `cert201-*` scenario templates under
+  `src/utils/scenarios/` have no diff.
+- **The one change that needed a runner edit, and it was not in the diff
+  read -- the sweep found it.** From 0.7.6 (upstream #253) a loaded
+  `triggerOn: "connect"` scenario re-arms on every reconnect, so a completed
+  template runs again when the station comes back: TC_013 re-authorised and
+  opened a second transaction after its `Reset(Hard)`, and its DB check read
+  the newest transaction, still open, as `stop_reason ''`. The runner no
+  longer sends `run_scenario_template`; `tck/template-once.ts` loads the
+  instance disabled before `connect` and starts it with an explicit
+  `run_scenario`, which is upstream's documented run-once shape. The lesson
+  for the next move is the method: the diff of the commands the runner sends
+  was read and was clean, and the rule that broke lives in the scenario
+  engine those commands drive -- read `docs/concepts/scenario-format.md`'s
+  behaviour notes too, and run the reconnecting scenarios before the sweep.
+- **What else changed, and why none of it needs a runner edit.** A station
+  now logs a warn line when a CSMS-initiated `RemoteStartTransaction` was
+  handled by its default path before the scenario's trigger node armed (the
+  opt-in that closes that race is on the daemon's `run_scenario` RPC, not in
+  JSON mode); a refused WebSocket handshake is replayed once as a plain GET
+  and its status logged; `MeterValues` samples on the default path are
+  bounded by the active charging schedule, and the charging-curve EV model
+  behind them is opt-in (`chargingCurve` is absent from `defaultEVSettings`)
+  -- no scenario here asserts a sample's value. Upstream's boot-gate
+  key-order fix (its #262) was already in `tck/main.ts`.
 - **Still no `NOTICE` file upstream** at `v0.7.9`.
 
 ## CSMS container images

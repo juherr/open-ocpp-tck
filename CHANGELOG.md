@@ -428,7 +428,7 @@ Released as `0.3.0`. The documented install ref already points at that tag, so
 
 - **The simulator image pin moved from `0.7.5` to `0.7.9`** —
   `ghcr.io/shiv3/ocpp-cp-simulator@sha256:377e3b75…`, the multi-arch index
-  digest resolved on 2026-09-12. What a sweep drives is unchanged: the JSON
+  digest resolved on 2026-09-12. What a sweep reads is unchanged: the JSON
   Lines commands, the CLI flags, the log-line and trace formats and the
   `cert16-*` / `cert201-*` templates have no diff between the pinned source
   commit and `v0.7.9`, and the three `upstream-verbatim` files hash
@@ -438,8 +438,16 @@ Released as `0.3.0`. The documented install ref already points at that tag, so
   armed; a refused WebSocket handshake is replayed once as a plain GET and the
   HTTP status logged; `MeterValues` samples are bounded by the active charging
   schedule (the charging-curve EV model behind them is opt-in and off here).
-  `VENDOR.md`'s "Moving this pin" records the checklist this bump was read
-  against.
+  One upstream change did need a runner edit, below under Fixed. `VENDOR.md`'s
+  "Moving this pin" records the checklist this bump was read against, and the
+  one it was missing.
+- **The runner starts a scenario template with an explicit `run_scenario` on
+  an instance it loaded disabled**, instead of `run_scenario_template`. The
+  observable difference in a `results/*.log` is five `{"id":"tck-N",…}`
+  responses before `connect` and one after the boot gate, in place of the
+  `already running` refusal every log used to carry. `SimProcess` gains
+  `call()` -- a command with an id, answered by the response that carries it --
+  beside `send()`, and `tck/template-once.ts` holds the sequence.
 - **A Reusable State that promises less than the reference declares says so on
   its definition.** `CertificateInstalled` and `GetInstalledCertificates` are
   `established: true` after a reach the pinned station refuses from a canned
@@ -595,6 +603,22 @@ Released as `0.3.0`. The documented install ref already points at that tag, so
   ([#55])
 
 ### Fixed
+
+- **TC_013 ran its template twice on the 0.7.9 simulator, and reported the
+  CSMS for it.** From 0.7.6 the simulator re-arms a `triggerOn: "connect"`
+  scenario on every reconnect (shiv3/ocpp-cp-simulator#253), so a template
+  that reboots the station -- TC_013's `Reset(Hard)` -- ran again the moment
+  it came back: a second `Authorize`, a second transaction, and a `DB:
+  stop_reason is HardReset` check reading the newest, still-open transaction
+  as `''`. Confirmed in isolation on the first sweep on the new digest; every
+  `cert16-*` template is connect-triggered, so any future reconnecting
+  scenario had the same exposure. The runner now loads the template's
+  instance with `enabled: false` -- which the auto-start walker skips -- before
+  `connect`, and starts it once with `run_scenario`, which is the run-once
+  shape upstream documents. `tests/template-once.ts`, the eighteenth
+  in-process guard, holds that sequence against a model of the walker, with a
+  control row that reproduces the double run on the old sequence and a row
+  that pins the load's placement before `connect`.
 
 - **A Reusable State fixture could turn a broken harness into a known gap in
   our own scenarios.** `establishStates` caught everything a reach threw except
