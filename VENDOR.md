@@ -268,10 +268,10 @@ deterministic and network-free.
 | field | value |
 |---|---|
 | image | `ghcr.io/shiv3/ocpp-cp-simulator` |
-| tag resolved | `0.7.10` |
-| digest | `sha256:16bcf4669a5b27c583e9fe741d9af0ce957b4dce77d4d166d9ea89a4d9a269c8` |
+| tag resolved | `0.7.12` |
+| digest | `sha256:b94ee6c78e3976943a268ce68e6095564db1f048d049ea020cb204b2d826504b` |
 | digest kind | multi-arch OCI image index (selects the `linux/amd64` or `linux/arm64` manifest automatically) |
-| resolved on | 2026-09-12, with `docker buildx imagetools inspect ghcr.io/shiv3/ocpp-cp-simulator:0.7.10` |
+| resolved on | 2026-09-12, with `docker buildx imagetools inspect ghcr.io/shiv3/ocpp-cp-simulator:0.7.12` |
 | declared in | `tck/sim.ts` (`DEFAULT_SIM_IMAGE`), overridable with `SIM_IMAGE` |
 
 Verified on that digest:
@@ -286,33 +286,31 @@ Verified on that digest:
   `[server] …` lines, no JSON Lines event stream on stdout). `sim.ts`
   therefore passes `--entrypoint bun` and runs `src/cli/main.ts` from the
   image's own embedded sources. Upstream's `docker/entrypoint.sh` is where
-  that bundle is composed; it was re-read at `v0.7.10` and the `[server] …`
+  that bundle is composed; it was re-read at `v0.7.12` and the `[server] …`
   lines observed again on this digest.
 
 ### Moving this pin
 
-The pin has moved twice, both on 2026-09-12: `0.7.5` (resolved 2026-07-31)
-to `0.7.9`, then `0.7.9` to `0.7.10` once upstream shipped the
-`TransactionEvent` parameters (its #350). What was read before each move is
-the checklist for the next one. Two of the facts below are about the source
-pin rather than the image, and they are here because a simulator release is
-the moment someone asks whether the source pin should follow it:
+The pin has moved three times, all on 2026-09-12: `0.7.5` (resolved
+2026-07-31) to `0.7.9`; to `0.7.10` once upstream shipped the
+`TransactionEvent` parameters (its #350); to `0.7.12` once a tag with an
+image existed again. What was read before each move is the checklist for the
+next one. Two of the facts below are about the source pin rather than the
+image, and they are here because a simulator release is the moment someone
+asks whether the source pin should follow it:
 
-- **Why `0.7.10` and not `0.7.11`, the release that was current when the pin
-  moved.** `v0.7.11`'s image build failed upstream -- the UI stage's
-  `bun run build` -- so the registry has no `0.7.11` tag, and `:latest` is a
-  `0.0.0` development build. Its one runtime change over `0.7.10` is a
-  behaviour-neutral move of the charging-curve interpolator; everything else
-  is a fleet benchmark, k6 export and docs. A pin names bytes a sweep can
-  pull, so `0.7.10` it is; re-check the registry before believing a release
-  page. Upstream's fix is its #353 (the `ui` stage did not copy a tsconfig
-  the root one references), and it says the next tag is where an image
-  reappears -- so the move after this one is to `0.7.12` or later, never
-  `0.7.11`.
+- **A release page is not a registry.** `v0.7.11`'s image build failed
+  upstream -- the `ui` stage did not copy a tsconfig the root one references
+  (its #353) -- so the registry never had a `0.7.11` tag, and `:latest` was a
+  `0.0.0` development build. Resolve the digest before reading the notes; a
+  tag that resolves to nothing is a pin nobody can pull. `0.7.12` is `0.7.11`
+  plus that Dockerfile fix, and `0.7.11` over `0.7.10` is a behaviour-neutral
+  move of the charging-curve interpolator plus a fleet benchmark, k6 export
+  and docs.
 - **The `upstream-verbatim` rows did not need a re-import.** `tck/ocpp.ts`,
-  `tck/util.ts` and `tsconfig.json` hash at `v0.7.10` (and at `v0.7.11`) to
-  the digests in the inventory above, byte for byte, so `Pinned commit`
-  stayed where it was. The
+  `tck/util.ts` and `tsconfig.json` hash at `v0.7.10`, `v0.7.11` and
+  `v0.7.12` to the digests in the inventory above, byte for byte, so
+  `Pinned commit` stayed where it was. The
   image and the source pin name different commits by design -- the image is
   what a sweep runs, the source pin is where three files were copied from --
   and the first bump is the one that establishes that they may differ.
@@ -358,7 +356,7 @@ the moment someone asks whether the source pin should follow it:
   behind them is opt-in (`chargingCurve` is absent from `defaultEVSettings`)
   -- no scenario here asserts a sample's value. Upstream's boot-gate
   key-order fix (its #262) was already in `tck/main.ts`.
-- **Still no `NOTICE` file upstream** at `v0.7.10` or `v0.7.11`.
+- **Still no `NOTICE` file upstream** at `v0.7.12`.
 
 ## CSMS container images
 

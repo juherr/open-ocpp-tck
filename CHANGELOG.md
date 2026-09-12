@@ -426,14 +426,13 @@ Released as `0.3.0`. The documented install ref already points at that tag, so
 
 ### Changed
 
-- **The simulator image pin moved from `0.7.5` to `0.7.10`** —
-  `ghcr.io/shiv3/ocpp-cp-simulator@sha256:16bcf466…`, the multi-arch index
-  digest resolved on 2026-09-12. Not `0.7.11`, the release current at the time:
-  its image build failed upstream and the registry has no such tag, and its one
-  runtime change is a behaviour-neutral refactor. What a sweep reads is
+- **The simulator image pin moved from `0.7.5` to `0.7.12`** —
+  `ghcr.io/shiv3/ocpp-cp-simulator@sha256:b94ee6c7…`, the multi-arch index
+  digest resolved on 2026-09-12. (`0.7.11` never had an image: its build failed
+  upstream, and `0.7.12` is that fix.) What a sweep reads is
   unchanged: the JSON Lines commands, the CLI flags, the log-line and trace
   formats and the `cert16-*` / `cert201-*` templates have no diff between the
-  pinned source commit and `v0.7.10` beyond optional members — `0.7.10` ships
+  pinned source commit and `v0.7.12` beyond optional members — `0.7.10` shipped
   shiv3/ocpp-cp-simulator#350, the `TransactionEvent` `triggerReason` /
   `chargingState` / `stoppedReason` parameters and a `transaction_event`
   command, which is what #114's ~24 OCPP 2.0.1 cases were blocked on and are
