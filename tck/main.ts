@@ -1334,8 +1334,16 @@ async function runOneForSweep<D>(
       skipped: run.rec.skipped,
     };
   } catch (err) {
+    // The stack when it carries the message, the message ahead of it when it
+    // does not: a timeout thrown from inside a timer rendered as a bare
+    // `Error` and a line number on the CI runtime, which is a location and
+    // not a reason.
     const message =
-      err instanceof Error ? (err.stack ?? err.message) : String(err);
+      err instanceof Error
+        ? err.stack && err.stack.includes(err.message)
+          ? err.stack
+          : `${err.message}\n${err.stack ?? ""}`
+        : String(err);
     process.stderr.write(
       `[runner] ERROR: ${spec.templateId} on ${cpId} threw before completing: ${message}\n`,
     );

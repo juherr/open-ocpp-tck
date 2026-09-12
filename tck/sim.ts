@@ -68,6 +68,11 @@ const REDACTED = "<redacted>";
  *  one back -- so this bounds a hung CLI, not a slow CSMS. */
 const CALL_TIMEOUT_MS = 10_000;
 
+/** How long {@link startSim} waits for the CLI's first answer. This one
+ *  covers the container START, which on a machine that has never seen the
+ *  image includes pulling it -- see the probe in startSim. */
+const START_TIMEOUT_MS = 120_000;
+
 /** What the CLI writes back for a command that carried an `id`
  *  (`toJsonResponse` in the pinned image's `src/cli/output.ts`). */
 export type SimResponse =
@@ -817,5 +822,22 @@ export async function startSim(
     stop,
   };
   activeSims.add(simProcess);
+
+  // THE CLI ANSWERS BEFORE THE CALLER GETS THE HANDLE. `docker run` returns
+  // the moment the daemon accepts the command, and on a runner that has never
+  // seen the image the pull happens between that and the CLI's first read of
+  // stdin. Measured on CI, once: the first call of every lane timed out at
+  // CALL_TIMEOUT_MS while the image was still downloading, and the isolated
+  // retry passed on the cached image -- three ERROR rows per driver that read
+  // as flakes. Until then the pull had been hiding inside the boot gate's soft
+  // 30s, because nothing before `connect` waited on an answer. `status` is
+  // answered from memory, so once it comes back every later call's budget is
+  // the CLI's answer time and nothing else.
+  try {
+    await call("status", undefined, START_TIMEOUT_MS);
+  } catch (err) {
+    await stop();
+    throw err;
+  }
   return simProcess;
 }

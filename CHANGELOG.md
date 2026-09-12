@@ -447,7 +447,11 @@ Released as `0.3.0`. The documented install ref already points at that tag, so
   responses before `connect` and one after the boot gate, in place of the
   `already running` refusal every log used to carry. `SimProcess` gains
   `call()` -- a command with an id, answered by the response that carries it --
-  beside `send()`, and `tck/template-once.ts` holds the sequence.
+  beside `send()`, and `tck/template-once.ts` holds the sequence. And
+  `startSim` now returns only once the CLI has answered a `status`, with a
+  budget that covers pulling the image: the first call of every CI lane had
+  timed out while the image was still downloading, which the boot gate's soft
+  30 seconds used to hide.
 - **A Reusable State that promises less than the reference declares says so on
   its definition.** `CertificateInstalled` and `GetInstalledCertificates` are
   `established: true` after a reach the pinned station refuses from a canned
