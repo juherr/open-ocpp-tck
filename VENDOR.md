@@ -141,6 +141,7 @@ the drivers are native here, and the name now says so.
 | `tck/unverifiable.ts` | `local-native` | `—` | `—` | `—` | `—` |
 | `tck/wait.ts` | `local-native` | `—` | `—` | `—` | `—` |
 | `tck/states-201.ts` | `local-native` | `—` | `—` | `—` | `—` |
+| `tck/template-once.ts` | `local-native` | `—` | `—` | `—` | `—` |
 | `bin/ocpp-tck.ts` | `local-native` | `—` | `—` | `—` | `—` |
 | `tck/specs/core-201.ts` | `local-native` | `—` | `—` | `—` | `—` |
 | `tck/specs/ASSERT-INVENTORY.txt` | `local-native` | `—` | `—` | `—` | `—` |
@@ -267,10 +268,10 @@ deterministic and network-free.
 | field | value |
 |---|---|
 | image | `ghcr.io/shiv3/ocpp-cp-simulator` |
-| tag resolved | `0.7.5` |
-| digest | `sha256:ac35788f136c27db9371051b446af2b49270f1fc007d2172556fb761c7b01026` |
+| tag resolved | `0.7.12` |
+| digest | `sha256:b94ee6c78e3976943a268ce68e6095564db1f048d049ea020cb204b2d826504b` |
 | digest kind | multi-arch OCI image index (selects the `linux/amd64` or `linux/arm64` manifest automatically) |
-| resolved on | 2026-07-31, with `docker buildx imagetools inspect ghcr.io/shiv3/ocpp-cp-simulator:0.7.5` |
+| resolved on | 2026-09-12, with `docker buildx imagetools inspect ghcr.io/shiv3/ocpp-cp-simulator:0.7.12` |
 | declared in | `tck/sim.ts` (`DEFAULT_SIM_IMAGE`), overridable with `SIM_IMAGE` |
 
 Verified on that digest:
@@ -284,7 +285,78 @@ Verified on that digest:
   which switches the CLI into daemon/web-console mode (auto-connects, emits
   `[server] …` lines, no JSON Lines event stream on stdout). `sim.ts`
   therefore passes `--entrypoint bun` and runs `src/cli/main.ts` from the
-  image's own embedded sources. See `P0-FINDINGS.md` §9.
+  image's own embedded sources. Upstream's `docker/entrypoint.sh` is where
+  that bundle is composed; it was re-read at `v0.7.12` and the `[server] …`
+  lines observed again on this digest.
+
+### Moving this pin
+
+The pin has moved three times, all on 2026-09-12: `0.7.5` (resolved
+2026-07-31) to `0.7.9`; to `0.7.10` once upstream shipped the
+`TransactionEvent` parameters (its #350); to `0.7.12` once a tag with an
+image existed again. What was read before each move is the checklist for the
+next one. Two of the facts below are about the source pin rather than the
+image, and they are here because a simulator release is the moment someone
+asks whether the source pin should follow it:
+
+- **A release page is not a registry.** `v0.7.11`'s image build failed
+  upstream -- the `ui` stage did not copy a tsconfig the root one references
+  (its #353) -- so the registry never had a `0.7.11` tag, and `:latest` was a
+  `0.0.0` development build. Resolve the digest before reading the notes; a
+  tag that resolves to nothing is a pin nobody can pull. `0.7.12` is `0.7.11`
+  plus that Dockerfile fix, and `0.7.11` over `0.7.10` is a behaviour-neutral
+  move of the charging-curve interpolator plus a fleet benchmark, k6 export
+  and docs.
+- **The `upstream-verbatim` rows did not need a re-import.** `tck/ocpp.ts`,
+  `tck/util.ts` and `tsconfig.json` hash at `v0.7.10`, `v0.7.11` and
+  `v0.7.12` to the digests in the inventory above, byte for byte, so
+  `Pinned commit` stayed where it was. The
+  image and the source pin name different commits by design -- the image is
+  what a sweep runs, the source pin is where three files were copied from --
+  and the first bump is the one that establishes that they may differ.
+- **The wire the runner reads did not change.** Read from upstream's diff
+  between the pinned source commit and the tag, then confirmed on the digest:
+  the JSON Lines commands `sim.ts` and the specs send (`connect`,
+  `start_transaction`, `stop_transaction`, `authorize`, `heartbeat`,
+  `send_meter_value`, and the scenario commands `tck/template-once.ts`
+  sequences) and the `scenario_started` event are intact and the additions are
+  new commands and OPTIONAL members only -- `0.7.10` gives
+  `start_transaction` a `triggerReason` and a `chargingState`,
+  `stop_transaction` a `reason` and a `triggerReason`, `send_meter_value` a
+  `context`, and adds `transaction_event`, which is what the OCPP 2.0.1 cases
+  behind issue #114 were waiting for and what the next tranche of
+  `cert201-` scenarios drives; the auto-start walker still skips
+  `enabled === false` and `run_scenario` still does not consult it, so the
+  sequence in `tck/template-once.ts` holds; the CLI flags `buildDockerArgs`
+  emits are in `--help` unchanged, with the same six `--ocpp-version` values
+  `SIM_OCPP_VERSIONS` spells; the Logger's `Sent:`/`Received:` line format
+  `tck/ocpp.ts` parses has no diff; the trace record `tck/trace.ts` reads is
+  still schema v1.1; and the `cert16-*` / `cert201-*` scenario templates
+  under `src/utils/scenarios/` have no diff.
+- **The one change that needed a runner edit, and it was not in the diff
+  read -- the sweep found it.** From 0.7.6 (upstream #253) a loaded
+  `triggerOn: "connect"` scenario re-arms on every reconnect, so a completed
+  template runs again when the station comes back: TC_013 re-authorised and
+  opened a second transaction after its `Reset(Hard)`, and its DB check read
+  the newest transaction, still open, as `stop_reason ''`. The runner no
+  longer sends `run_scenario_template`; `tck/template-once.ts` loads the
+  instance disabled before `connect` and starts it with an explicit
+  `run_scenario`, which is upstream's documented run-once shape. The lesson
+  for the next move is the method: the diff of the commands the runner sends
+  was read and was clean, and the rule that broke lives in the scenario
+  engine those commands drive -- read `docs/concepts/scenario-format.md`'s
+  behaviour notes too, and run the reconnecting scenarios before the sweep.
+- **What else changed, and why none of it needs a runner edit.** A station
+  now logs a warn line when a CSMS-initiated `RemoteStartTransaction` was
+  handled by its default path before the scenario's trigger node armed (the
+  opt-in that closes that race is on the daemon's `run_scenario` RPC, not in
+  JSON mode); a refused WebSocket handshake is replayed once as a plain GET
+  and its status logged; `MeterValues` samples on the default path are
+  bounded by the active charging schedule, and the charging-curve EV model
+  behind them is opt-in (`chargingCurve` is absent from `defaultEVSettings`)
+  -- no scenario here asserts a sample's value. Upstream's boot-gate
+  key-order fix (its #262) was already in `tck/main.ts`.
+- **Still no `NOTICE` file upstream** at `v0.7.12`.
 
 ## CSMS container images
 
@@ -296,12 +368,12 @@ conformance run that cannot name the bytes it tested proves nothing.
 | field | value |
 |---|---|
 | image | `ghcr.io/juherr/steve` |
-| tag resolved | `steve-3.14.0` |
-| digest | `sha256:aa56949a639328a11461a3e448d40549b521f232ee0fdeef22389ddff3c9901f` |
+| tag resolved | `steve-3.14.1` |
+| digest | `sha256:c3fbfcc3f220dc63c13c4accbab7a90757984c1902af2c9e4233bedcc3675400` |
 | image | `mariadb` |
 | tag resolved | `11.8` |
 | digest | `sha256:d9f7eb2637296652f24b484afd5d246f759f49f5babcadc6a9e344c9acb75fbf` |
-| resolved on | 2026-08-11, from the registry manifest `Docker-Content-Digest` |
+| resolved on | SteVe 2026-09-12, MariaDB 2026-08-11, from the registry manifest `Docker-Content-Digest` |
 | declared in | `drivers/steve/compose.yaml` |
 
 ### Validation history
@@ -322,21 +394,34 @@ read as a vendored-file row and fails the build.
 
 | SteVe | digest | validated | `all` (44) | `authorize` (3) |
 |---|---|---|---|---|
-| `steve-3.14.0` — **current pin** | `sha256:aa56949a…` | 2026-08-11 | 44 PASS, 0 PARTIAL, 0 N/A; 1 parallel-only flake (`tc013-hard-reset`) PASS on isolated retry | 3 PASS |
+| `steve-3.14.1` — **current pin** | `sha256:c3fbfcc3…` | 2026-09-12 | 47 OCPP 1.6 scenarios in one `run-all` (`authorize` folded in): 40 PASS, 5 PARTIAL, 0 FAIL; 2 parallel-only flakes (`tc003`, `tc004`) PASS on isolated retry — 42 PASS counting it. The 5 PARTIAL are the same five SKIPPED checks the 3.14.0 pin reports the same day on CI (`tc001`, `tc010`, `tc011`, `tc054`, `tc059`), so the verdict set is unchanged | in the sweep: 3 PASS |
+| `steve-3.14.0` | `sha256:aa56949a…` | 2026-08-11 | 44 PASS, 0 PARTIAL, 0 N/A; 1 parallel-only flake (`tc013-hard-reset`) PASS on isolated retry | 3 PASS |
 | `steve-3.13.0` | `sha256:a1e6647d…` | 2026-08-11 | 44 PASS, 0 PARTIAL, 0 N/A; 1 parallel-only flake (`tc014-soft-reset`) PASS on isolated retry | 3 PASS |
 
-Neither version needed a single line of driver or provisioner change — that is
-the column that would have mattered most, and it is uniform, so it is stated
-here rather than repeated per row.
+None of the three versions needed a single line of driver or provisioner
+change — that is the column that would have mattered most, and it is uniform,
+so it is stated here rather than repeated per row. The 3.14.1 row's PARTIALs
+are not a regression against the 3.14.0 row's zero: the suite grew SKIPPED
+checks between the two dates, and the same five rows are PARTIAL on 3.14.0 in
+that day's CI run.
 
-Both flakes were parallel-lane interference, not CSMS behaviour: each passed on
-the isolated sequential retry, and they were different scenarios on the two
-runs. That is the pattern `--retry-failed-isolated` exists for.
+3.14.1 is a security release (steve-community/steve#2102, `StopTransaction`
+now validates its `idTag`, GHSA-67fq-r6rm-rqpm) on Java 25; the provisioner's
+four bullets below were re-measured against it before the pin moved — the
+three missing controllers still answer 403, `ocppTags` and `transactions`
+answer 200 with their filters, a past `expiryDate` is still refused 400, and
+`web_user.api_password` still gates the WebAPI — and `driver selftest`
+answered all 12 record calls.
+
+Every flake in the table was parallel-lane interference, not CSMS behaviour:
+each passed on the isolated sequential retry, and they were different
+scenarios on every run. That is the pattern `--retry-failed-isolated` exists
+for.
 
 Moving this pin is not a version bump — every statement below is what the
-provisioner is built on, so each was re-measured against the running 3.14.0
-container before the pin moved. All of them still hold, and held identically on
-3.13.0:
+provisioner is built on, so each was re-measured against the running container
+before each move (3.14.0 on 2026-08-11, 3.14.1 on 2026-09-12). All of them
+still hold, and held identically on 3.13.0:
 
 - SteVe's WebAPI exposes `ocppTags`, `operations` and `transactions` — and
   nothing else. Probed on this digest: `chargePoints`, `reservations` and

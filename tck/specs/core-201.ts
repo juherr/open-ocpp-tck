@@ -650,6 +650,62 @@ function assertMeterValueSampled(
 }
 
 /**
+ * Every `sampledValue` in every sent `action` request carries
+ * `context === expected`. FAILS ON THE FIRST ONE THAT DOES NOT, naming what it
+ * found, and on a sample that carries no `context` at all -- Part 3 makes the
+ * member optional with a default of `Sample.Periodic`, so an absent one IS a
+ * periodic reading, and a check that skipped it would pass the very payload the
+ * case is told apart from.
+ *
+ * ALL OF THEM, NOT THE FIRST. `assertMeterValueSampled` reads the first request
+ * because what it decides -- which protocol was spoken -- is settled by one.
+ * What this decides is the case's identifying condition, and TC_J_01 sends
+ * three readings: a stimulus that named the context on one of them and not
+ * the others would pass a first-only check while two thirds of the evidence
+ * carried the wrong case's context.
+ */
+export function assertSampledContext(
+  rec: AssertRecorder,
+  frames: readonly Frame[],
+  action: string,
+  expected: string,
+  description: string,
+): void {
+  const calls = findAllCalls(frames, "sent", action);
+  if (calls.length === 0) {
+    rec.fail(description, `no Sent CALL found for action=${action}`);
+    return;
+  }
+  let samples = 0;
+  for (const [index, call] of calls.entries()) {
+    const payload = call.payload as { meterValue?: unknown } | null;
+    const meterValues = Array.isArray(payload?.meterValue) ? payload.meterValue : [];
+    for (const meterValue of meterValues) {
+      const sampled = (meterValue as { sampledValue?: unknown } | null)?.sampledValue;
+      if (!Array.isArray(sampled)) continue;
+      for (const sample of sampled) {
+        samples++;
+        const context = (sample as { context?: unknown } | null)?.context;
+        if (context !== expected) {
+          rec.fail(
+            description,
+            `${action} #${index + 1} carries a sampledValue whose context is ` +
+              `${context === undefined ? "absent (Sample.Periodic by default)" : JSON.stringify(context)}` +
+              `, not ${JSON.stringify(expected)}`,
+          );
+          return;
+        }
+      }
+    }
+  }
+  if (samples === 0) {
+    rec.fail(description, `no ${action} request carries a sampledValue`);
+    return;
+  }
+  rec.pass(description);
+}
+
+/**
  * Whether an object carries `key` AT ALL, as opposed to carrying it as `null`
  * or reading as `undefined` because nothing is there.
  *
@@ -2277,16 +2333,20 @@ const TC_F_27: ScenarioSpec = {
   },
 };
 
-// WHAT THIS CASE ASKS FOR THAT THE PINNED IMAGE CANNOT SPELL, and it is two
-// members rather than TC_F_27's zero. The case's station-side message carries
-// `sampledValue.context` as the clock-aligned reading context, and its note
-// says the readings arrive one configured interval apart. The pinned image
-// drops `context` from every 2.0.1 sampled value (issue #114) and has no
-// clock-aligned scheduler on the 2.0.1 path at all, so this scenario sends
-// three readings on its own clock instead. NEITHER MEMBER CARRIES A TOOL
-// VALIDATION -- the case's are `N/a`, and both belong to the test tool's own
-// behaviour rather than to the CSMS's -- so what is measured here is the whole
-// of what the case measures of a CSMS: that it answered.
+// WHAT THIS CASE ASKS FOR, AND WHICH HALF THE PINNED IMAGE SPELLS. The case's
+// station-side message carries `sampledValue.context` as the clock-aligned
+// reading context, and its note says the readings arrive one configured
+// interval apart. The context is spelt: since 0.7.10 (upstream #350)
+// `send_meter_value` takes one, drive() names `Sample.Clock` on every reading,
+// and assertSampledContext holds every emitted sample to it -- before that the
+// image dropped the member from every 2.0.1 sampled value (issue #114), and
+// this scenario passed on `Sample.Periodic`, which is TC_J_02's reading. The
+// interval is not spelt: there is no clock-aligned scheduler on the 2.0.1
+// path, so the three readings arrive on this runner's clock. NEITHER MEMBER
+// CARRIES A TOOL VALIDATION -- the case's are `N/a`, and both belong to the
+// test tool's own behaviour rather than to the CSMS's -- so the context check
+// is the case's premise, and the answered-check is the whole of what it
+// measures of a CSMS.
 //
 // AND WHY THE CASE IS STILL THIS ONE. Of the mandatory J cases, this is the
 // only one whose station-side message is a bare MeterValuesRequest with no
@@ -2318,11 +2378,18 @@ const TC_J_01: ScenarioSpec = {
     // tick would reach the CSMS as one queue and say nothing about whether it
     // can answer a repeated request, which is the only thing this case asks
     // of it.
-    await sim.send({ command: "send_meter_value", params: { connector } });
+    //
+    // `context` NAMED ON EVERY READING, because it is the member that makes
+    // these the case's: the pinned image defaults it to Sample.Periodic, which
+    // is TC_J_02's reading, and it takes the parameter since 0.7.10 (upstream
+    // #350). The 2s spacing is this runner's clock -- the interval is the
+    // station's business and the case does not validate it.
+    const clock = { connector, context: "Sample.Clock" };
+    await sim.send({ command: "send_meter_value", params: clock });
     await sleep(2000);
-    await sim.send({ command: "send_meter_value", params: { connector } });
+    await sim.send({ command: "send_meter_value", params: clock });
     await sleep(2000);
-    await sim.send({ command: "send_meter_value", params: { connector } });
+    await sim.send({ command: "send_meter_value", params: clock });
   },
   assert({ frames, rec }) {
     // FIRST, because it is what separates this case from its neighbour. A
@@ -2346,6 +2413,18 @@ const TC_J_01: ScenarioSpec = {
       frames,
       "MeterValues",
       "MeterValues.req is the OCPP 2.0.1 request (an evseId and a sampled reading)",
+    );
+    // THE CASE'S IDENTIFYING CONDITION, on every sample of every reading. It
+    // is what tells TC_J_01 from TC_J_02, and it is the station's own member:
+    // a red here is a stimulus that did not produce the case, not a finding
+    // against the CSMS -- which is why it sits before the answered-check and
+    // reads as the premise of it.
+    assertSampledContext(
+      rec,
+      frames,
+      "MeterValues",
+      "Sample.Clock",
+      "every reading is clock-aligned (sampledValue.context is Sample.Clock)",
     );
     // THE CASE'S ONE CSMS OBLIGATION, three times over. `minimum: 3` is what
     // keeps the count a requirement: fewer readings on the wire is the

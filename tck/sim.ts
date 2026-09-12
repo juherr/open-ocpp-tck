@@ -1,5 +1,5 @@
 /**
- * Derived from shiv3/ocpp-cp-simulator scripts/steve-verify/runner/sim.ts @ 604054adb0d7d7129a26a5f1ad2d5fdc290d1ca1 (Apache-2.0). Modified: the hardcoded docker argv is now built from SimConfig; the `-v <repoRoot>:/app -w /app` bind mount and `repoRoot` are gone (the published image ships the CLI sources); the image is pinned by digest; `--network` left the default path; outgoing WS Basic auth and an optional cpId-in-path WS URL were added; every trace of the command redacts the password. The line pump, waitForLine, stop(), container cleanup and signal handlers are byte-for-byte upstream.
+ * Derived from shiv3/ocpp-cp-simulator scripts/steve-verify/runner/sim.ts @ 604054adb0d7d7129a26a5f1ad2d5fdc290d1ca1 (Apache-2.0). Modified: the hardcoded docker argv is now built from SimConfig; the `-v <repoRoot>:/app -w /app` bind mount and `repoRoot` are gone (the published image ships the CLI sources); the image is pinned by digest; `--network` left the default path; outgoing WS Basic auth and an optional cpId-in-path WS URL were added; every trace of the command redacts the password; the line pump, the waiter list, `send` and an id-correlated `call()` live in `attachSimStreams` over a `SimIo` so a guard can drive them without a process, waitForLine is a predicate wait applied to a RegExp, and stdout's EOF rejects every pending wait with the exit code instead of leaving it to its timeout. stop(), container cleanup and signal handlers are byte-for-byte upstream.
  *
  * sim.ts -- docker-spawned simulator process: launches the ocpp-cp-simulator
  * CLI in JSON Lines mode inside a container (port of lib.sh's sim_start),
@@ -16,9 +16,10 @@
  * `--http-host 0.0.0.0 --unsafe-remote --web-console $HTTP_PORT`, which puts
  * the CLI in daemon/web-console mode: it auto-connects on startup and emits
  * `[server] …` lines instead of the JSON Lines event stream this runner
- * parses (verified live against 0.7.5 -- see P0-FINDINGS.md §9). The
- * entrypoint is therefore overridden back to `bun src/cli/main.ts`, which
- * runs the very same embedded sources in true JSON Lines mode.
+ * parses (upstream's `docker/entrypoint.sh` composes that flag bundle; re-read
+ * at v0.7.12 and observed live on the pinned digest). The entrypoint is
+ * therefore overridden back to `bun src/cli/main.ts`, which runs the very
+ * same embedded sources in true JSON Lines mode.
  */
 
 import { basename, dirname } from "node:path";
@@ -41,7 +42,7 @@ const TRACE_MOUNT = "/trace";
 /**
  * Default simulator image, PINNED BY DIGEST (repo convention: never
  * `latest`, never a bare tag). This is the multi-arch index digest of
- * `ghcr.io/shiv3/ocpp-cp-simulator:0.7.5`, resolved 2026-07-31 with
+ * `ghcr.io/shiv3/ocpp-cp-simulator:0.7.12`, resolved 2026-09-12 with
  * `docker buildx imagetools inspect`; it therefore still selects the right
  * per-platform manifest on amd64 and arm64. Override with `SIM_IMAGE`.
  *
@@ -53,7 +54,7 @@ const TRACE_MOUNT = "/trace";
  * file, nothing can ever make the two agree again.
  */
 export const DEFAULT_SIM_IMAGE =
-  "ghcr.io/shiv3/ocpp-cp-simulator@sha256:ac35788f136c27db9371051b446af2b49270f1fc007d2172556fb761c7b01026";
+  "ghcr.io/shiv3/ocpp-cp-simulator@sha256:b94ee6c78e3976943a268ce68e6095564db1f048d049ea020cb204b2d826504b";
 
 /** What the entrypoint override runs inside the image (WorkingDir /app). */
 const DEFAULT_SIM_ENTRYPOINT = "bun";
@@ -61,6 +62,48 @@ const DEFAULT_SIM_COMMAND = ["src/cli/main.ts"];
 
 /** Replaces a secret in any human-visible rendering of the docker argv. */
 const REDACTED = "<redacted>";
+
+/** How long {@link SimProcess.call} waits for the CLI to answer. The commands
+ *  it carries are in-process on the CLI's side -- loading a definition, reading
+ *  one back -- so this bounds a hung CLI, not a slow CSMS. */
+const CALL_TIMEOUT_MS = 10_000;
+
+/** How long {@link startSim} waits for the CLI's first answer. This one
+ *  covers the container START, which on a machine that has never seen the
+ *  image includes pulling it -- see the probe in startSim. */
+const START_TIMEOUT_MS = 120_000;
+
+/** What the CLI writes back for a command that carried an `id`
+ *  (`toJsonResponse` in the pinned image's `src/cli/output.ts`). */
+export type SimResponse =
+  | { ok: true; data: unknown }
+  | { ok: false; error: string };
+
+/**
+ * The response to the call whose id is `id`, or undefined when `line` is
+ * anything else -- an event, another call's response, a frame log line.
+ *
+ * ATTRIBUTED BY THE `id` MEMBER AND NOTHING ELSE. Not by position in the
+ * stream (events interleave with responses on the same stdout), and not by
+ * where `id` sits in the line: the CLI happens to serialise it first, and a
+ * pattern anchored on that would be a fact about upstream's key order wearing
+ * the shape of a protocol. The line is parsed, then asked.
+ */
+export function parseResponse(line: string, id: string): SimResponse | undefined {
+  if (!line.startsWith("{")) return undefined;
+  let parsed: unknown;
+  try {
+    parsed = JSON.parse(line);
+  } catch {
+    return undefined;
+  }
+  if (typeof parsed !== "object" || parsed === null) return undefined;
+  const response = parsed as { id?: unknown; ok?: unknown; data?: unknown; error?: unknown };
+  if (response.id !== id || typeof response.ok !== "boolean") return undefined;
+  return response.ok
+    ? { ok: true, data: response.data }
+    : { ok: false, error: String(response.error ?? "") };
+}
 
 // ---------------------------------------------------------------------------
 // Signal-safe cleanup -- a bare try/finally around a run does NOT survive
@@ -358,6 +401,26 @@ export interface SimProcess {
   readonly lines: readonly string[];
   /** Writes one JSON command line to the CLI's stdin (JSON Lines protocol). */
   send(command: Record<string, unknown>): Promise<void>;
+  /**
+   * Sends one JSON command WITH an id and resolves with the `data` of the
+   * response that carries that id, or rejects with the CLI's own error text
+   * when it answers `ok: false` -- and after `timeoutMs` when it does not
+   * answer at all.
+   *
+   * WHY A SECOND VERB BESIDE `send`. The commands the runner has always sent
+   * are fire-and-forget by nature -- `connect` is answered by a frame on the
+   * wire, `run_scenario_template` by a `scenario_started` event -- and their
+   * responses were ignored, which is how a refused one (`already running`)
+   * sat in every results/*.log for a year. The template-once sequence in
+   * tck/template-once.ts is different in kind: its second command needs the
+   * FIRST one's answer (the scenario id, then the definition), so the
+   * response is the payload rather than a receipt.
+   */
+  call(
+    command: string,
+    params?: Record<string, unknown>,
+    timeoutMs?: number,
+  ): Promise<unknown>;
   /** Resolves with the first line (existing or future) matching `pattern`,
    *  or rejects after `timeoutMs` -- every wait in this module is bounded. */
   waitForLine(pattern: RegExp, timeoutMs: number): Promise<string>;
@@ -592,6 +655,197 @@ async function readLines(
   }
 }
 
+/** What {@link attachSimStreams} needs from a container process: its two
+ *  output streams, its exit, and a way to write to its stdin. Named so a guard
+ *  can hand it in-memory streams and a resolved exit. */
+export interface SimIo {
+  readonly container: string;
+  readonly stdout: ReadableStream<Uint8Array>;
+  readonly stderr: ReadableStream<Uint8Array>;
+  /** Resolves with the exit code once the process is gone. */
+  readonly exited: Promise<number | null>;
+  /** Writes one line (newline included) to the process's stdin. */
+  write(text: string): Promise<void>;
+  /** How long to wait for `exited` after stdout closes before rejecting the
+   *  pending waits with an unknown exit code. Defaults to
+   *  {@link EXIT_GRACE_MS}; a guard shortens it. */
+  readonly exitGraceMs?: number;
+}
+
+/** The waiting half of a {@link SimProcess}, over a {@link SimIo}. */
+export interface SimStreams {
+  readonly lines: readonly string[];
+  readonly stderrLines: readonly string[];
+  send(command: Record<string, unknown>): Promise<void>;
+  call(
+    command: string,
+    params?: Record<string, unknown>,
+    timeoutMs?: number,
+  ): Promise<unknown>;
+  waitForLine(pattern: RegExp, timeoutMs: number): Promise<string>;
+  /** Settles once both output streams have been read to their end. */
+  readonly drained: Promise<void>;
+}
+
+/** After stdout closes, how long {@link attachSimStreams} waits for the exit
+ *  code before rejecting the pending waits without one. */
+const EXIT_GRACE_MS = 2_000;
+
+/**
+ * The line pump, the waiter list, `send` and `call` -- everything a
+ * {@link SimProcess} does with its process's streams -- over a {@link SimIo}
+ * rather than over the `Bun.spawn` result, so that tests/sim-exit-rejects-waits.ts
+ * can drive it with streams that close when the guard says so. `startSim` is
+ * its one production caller.
+ */
+export function attachSimStreams(io: SimIo): SimStreams {
+  const { container } = io;
+  const lines: string[] = [];
+  const stderrLines: string[] = [];
+  interface Waiter {
+    test: (line: string) => boolean;
+    what: string;
+    resolve: (line: string) => void;
+    reject: (err: Error) => void;
+  }
+  const waiters: Waiter[] = [];
+
+  const recentStderr = (): string =>
+    `last stderr:\n${stderrLines.slice(-20).join("\n")}`;
+
+  const stdoutTask = readLines(io.stdout, (line) => {
+    lines.push(line);
+    for (let i = waiters.length - 1; i >= 0; i--) {
+      if (waiters[i].test(line)) {
+        const [waiter] = waiters.splice(i, 1);
+        waiter.resolve(line);
+      }
+    }
+  });
+  const stderrTask = readLines(io.stderr, (line) => {
+    stderrLines.push(line);
+  });
+
+  // A SIMULATOR THAT EXITED IS NOT ONE THAT IS SLOW TO ANSWER. stdout closing
+  // is the one signal that no further line will come, and without it every
+  // pending wait sat out its full budget -- START_TIMEOUT_MS of it for the
+  // probe, when `docker run` had refused the image in the first second. So
+  // the EOF, once the buffered output is drained, rejects every waiter with
+  // the exit code and the stderr that explains it, and a wait armed after
+  // that point is refused on the spot rather than parked.
+  let exited: string | undefined;
+  void stdoutTask.then(async () => {
+    const code = await Promise.race([
+      io.exited,
+      new Promise<null>((resolve) =>
+        setTimeout(() => resolve(null), io.exitGraceMs ?? EXIT_GRACE_MS),
+      ),
+    ]);
+    exited = `simulator container ${container} exited (exit code ${code ?? "unknown"})`;
+    for (const waiter of waiters.splice(0)) {
+      waiter.reject(
+        new Error(`${exited} before ${waiter.what}; ${recentStderr()}`),
+      );
+    }
+  });
+
+  /** The one wait: the first line (existing or future) `test` accepts, or a
+   *  rejection after `timeoutMs` -- or as soon as the simulator has exited --
+   *  naming `what` was waited for. */
+  function waitFor(
+    test: (line: string) => boolean,
+    what: string,
+    timeoutMs: number,
+  ): Promise<string> {
+    const existing = lines.find(test);
+    if (existing !== undefined) return Promise.resolve(existing);
+    if (exited !== undefined) {
+      return Promise.reject(
+        new Error(`${exited} before ${what}; ${recentStderr()}`),
+      );
+    }
+
+    return new Promise<string>((resolve, reject) => {
+      const waiter: Waiter = {
+        test,
+        what,
+        resolve: (line) => {
+          clearTimeout(timer);
+          resolve(line);
+        },
+        reject: (err) => {
+          clearTimeout(timer);
+          reject(err);
+        },
+      };
+      const timer = setTimeout(() => {
+        const idx = waiters.indexOf(waiter);
+        if (idx >= 0) waiters.splice(idx, 1);
+        reject(
+          new Error(
+            `timed out after ${timeoutMs}ms waiting for ${what} on ${container}; ` +
+              recentStderr(),
+          ),
+        );
+      }, timeoutMs);
+      waiters.push(waiter);
+    });
+  }
+
+  function waitForLine(pattern: RegExp, timeoutMs: number): Promise<string> {
+    return waitFor((line) => pattern.test(line), `/${pattern.source}/`, timeoutMs);
+  }
+
+  async function send(command: Record<string, unknown>): Promise<void> {
+    await io.write(`${JSON.stringify(command)}\n`);
+  }
+
+  // Per container, so a response can only ever be matched against a call this
+  // process made on this stdin.
+  let nextCallId = 0;
+  async function call(
+    command: string,
+    params?: Record<string, unknown>,
+    timeoutMs: number = CALL_TIMEOUT_MS,
+  ): Promise<unknown> {
+    const id = `tck-${++nextCallId}`;
+    // The wait is armed BEFORE the write: the CLI answers in-process, and a
+    // response that lands between the write and the wait is still in `lines`,
+    // but ordering it this way makes that a fact rather than a guarantee.
+    const answered = waitFor(
+      (line) => parseResponse(line, id) !== undefined,
+      `the response to ${command} (${id})`,
+      timeoutMs,
+    );
+    try {
+      await send(params === undefined ? { id, command } : { id, command, params });
+    } catch (err) {
+      // A write that failed (stdin closed under us) leaves a waiter that will
+      // time out with nobody listening; own its rejection so the write's error
+      // is the one that surfaces.
+      answered.catch(() => {});
+      throw err;
+    }
+    const response = parseResponse(await answered, id);
+    if (response === undefined || !response.ok) {
+      throw new Error(
+        `${command} refused by the simulator on ${container}: ${response?.error ?? "unreadable response"}`,
+      );
+    }
+    return response.data;
+  }
+
+
+  return {
+    lines,
+    stderrLines,
+    send,
+    call,
+    waitForLine,
+    drained: Promise.allSettled([stdoutTask, stderrTask]).then(() => undefined),
+  };
+}
+
 /** Starts a detached-from-shell but attached-to-us simulator container for
  *  one charge point, running JSON-Lines mode. `templateId` is only used to
  *  build a readable, collision-avoiding container name (mirrors lib.sh's
@@ -619,57 +873,17 @@ export async function startSim(
     stderr: "pipe",
   });
 
-  const lines: string[] = [];
-  const stderrLines: string[] = [];
-  interface Waiter {
-    pattern: RegExp;
-    resolve: (line: string) => void;
-  }
-  const waiters: Waiter[] = [];
-
-  const stdoutTask = readLines(proc.stdout, (line) => {
-    lines.push(line);
-    for (let i = waiters.length - 1; i >= 0; i--) {
-      if (waiters[i].pattern.test(line)) {
-        const [waiter] = waiters.splice(i, 1);
-        waiter.resolve(line);
-      }
-    }
+  const streams = attachSimStreams({
+    container,
+    stdout: proc.stdout,
+    stderr: proc.stderr,
+    exited: proc.exited,
+    write: async (text) => {
+      proc.stdin.write(text);
+      await proc.stdin.flush();
+    },
   });
-  const stderrTask = readLines(proc.stderr, (line) => {
-    stderrLines.push(line);
-  });
-
-  function waitForLine(pattern: RegExp, timeoutMs: number): Promise<string> {
-    const existing = lines.find((line) => pattern.test(line));
-    if (existing !== undefined) return Promise.resolve(existing);
-
-    return new Promise<string>((resolve, reject) => {
-      const waiter: Waiter = {
-        pattern,
-        resolve: (line) => {
-          clearTimeout(timer);
-          resolve(line);
-        },
-      };
-      const timer = setTimeout(() => {
-        const idx = waiters.indexOf(waiter);
-        if (idx >= 0) waiters.splice(idx, 1);
-        reject(
-          new Error(
-            `timed out after ${timeoutMs}ms waiting for /${pattern.source}/ on ${container}; ` +
-              `last stderr:\n${stderrLines.slice(-20).join("\n")}`,
-          ),
-        );
-      }, timeoutMs);
-      waiters.push(waiter);
-    });
-  }
-
-  async function send(command: Record<string, unknown>): Promise<void> {
-    proc.stdin.write(`${JSON.stringify(command)}\n`);
-    await proc.stdin.flush();
-  }
+  const { lines, send, call, waitForLine } = streams;
 
   let stopped = false;
   async function stop(): Promise<void> {
@@ -698,7 +912,7 @@ export async function startSim(
       proc.kill("SIGKILL");
     }
     await proc.exited.catch(() => {});
-    await Promise.allSettled([stdoutTask, stderrTask]);
+    await streams.drained;
   }
 
   const simProcess: SimProcess = {
@@ -709,9 +923,27 @@ export async function startSim(
       return lines;
     },
     send,
+    call,
     waitForLine,
     stop,
   };
   activeSims.add(simProcess);
+
+  // THE CLI ANSWERS BEFORE THE CALLER GETS THE HANDLE. `docker run` returns
+  // the moment the daemon accepts the command, and on a runner that has never
+  // seen the image the pull happens between that and the CLI's first read of
+  // stdin. Measured on CI, once: the first call of every lane timed out at
+  // CALL_TIMEOUT_MS while the image was still downloading, and the isolated
+  // retry passed on the cached image -- three ERROR rows per driver that read
+  // as flakes. Until then the pull had been hiding inside the boot gate's soft
+  // 30s, because nothing before `connect` waited on an answer. `status` is
+  // answered from memory, so once it comes back every later call's budget is
+  // the CLI's answer time and nothing else.
+  try {
+    await call("status", undefined, START_TIMEOUT_MS);
+  } catch (err) {
+    await stop();
+    throw err;
+  }
   return simProcess;
 }

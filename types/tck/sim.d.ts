@@ -1,5 +1,5 @@
 /**
- * Derived from shiv3/ocpp-cp-simulator scripts/steve-verify/runner/sim.ts @ 604054adb0d7d7129a26a5f1ad2d5fdc290d1ca1 (Apache-2.0). Modified: the hardcoded docker argv is now built from SimConfig; the `-v <repoRoot>:/app -w /app` bind mount and `repoRoot` are gone (the published image ships the CLI sources); the image is pinned by digest; `--network` left the default path; outgoing WS Basic auth and an optional cpId-in-path WS URL were added; every trace of the command redacts the password. The line pump, waitForLine, stop(), container cleanup and signal handlers are byte-for-byte upstream.
+ * Derived from shiv3/ocpp-cp-simulator scripts/steve-verify/runner/sim.ts @ 604054adb0d7d7129a26a5f1ad2d5fdc290d1ca1 (Apache-2.0). Modified: the hardcoded docker argv is now built from SimConfig; the `-v <repoRoot>:/app -w /app` bind mount and `repoRoot` are gone (the published image ships the CLI sources); the image is pinned by digest; `--network` left the default path; outgoing WS Basic auth and an optional cpId-in-path WS URL were added; every trace of the command redacts the password; the line pump, the waiter list, `send` and an id-correlated `call()` live in `attachSimStreams` over a `SimIo` so a guard can drive them without a process, waitForLine is a predicate wait applied to a RegExp, and stdout's EOF rejects every pending wait with the exit code instead of leaving it to its timeout. stop(), container cleanup and signal handlers are byte-for-byte upstream.
  *
  * sim.ts -- docker-spawned simulator process: launches the ocpp-cp-simulator
  * CLI in JSON Lines mode inside a container (port of lib.sh's sim_start),
@@ -16,14 +16,15 @@
  * `--http-host 0.0.0.0 --unsafe-remote --web-console $HTTP_PORT`, which puts
  * the CLI in daemon/web-console mode: it auto-connects on startup and emits
  * `[server] …` lines instead of the JSON Lines event stream this runner
- * parses (verified live against 0.7.5 -- see P0-FINDINGS.md §9). The
- * entrypoint is therefore overridden back to `bun src/cli/main.ts`, which
- * runs the very same embedded sources in true JSON Lines mode.
+ * parses (upstream's `docker/entrypoint.sh` composes that flag bundle; re-read
+ * at v0.7.12 and observed live on the pinned digest). The entrypoint is
+ * therefore overridden back to `bun src/cli/main.ts`, which runs the very
+ * same embedded sources in true JSON Lines mode.
  */
 /**
  * Default simulator image, PINNED BY DIGEST (repo convention: never
  * `latest`, never a bare tag). This is the multi-arch index digest of
- * `ghcr.io/shiv3/ocpp-cp-simulator:0.7.5`, resolved 2026-07-31 with
+ * `ghcr.io/shiv3/ocpp-cp-simulator:0.7.12`, resolved 2026-09-12 with
  * `docker buildx imagetools inspect`; it therefore still selects the right
  * per-platform manifest on amd64 and arm64. Override with `SIM_IMAGE`.
  *
@@ -34,7 +35,27 @@
  * another, and once the wrapper lives in a different repository from this
  * file, nothing can ever make the two agree again.
  */
-export declare const DEFAULT_SIM_IMAGE = "ghcr.io/shiv3/ocpp-cp-simulator@sha256:ac35788f136c27db9371051b446af2b49270f1fc007d2172556fb761c7b01026";
+export declare const DEFAULT_SIM_IMAGE = "ghcr.io/shiv3/ocpp-cp-simulator@sha256:b94ee6c78e3976943a268ce68e6095564db1f048d049ea020cb204b2d826504b";
+/** What the CLI writes back for a command that carried an `id`
+ *  (`toJsonResponse` in the pinned image's `src/cli/output.ts`). */
+export type SimResponse = {
+    ok: true;
+    data: unknown;
+} | {
+    ok: false;
+    error: string;
+};
+/**
+ * The response to the call whose id is `id`, or undefined when `line` is
+ * anything else -- an event, another call's response, a frame log line.
+ *
+ * ATTRIBUTED BY THE `id` MEMBER AND NOTHING ELSE. Not by position in the
+ * stream (events interleave with responses on the same stdout), and not by
+ * where `id` sits in the line: the CLI happens to serialise it first, and a
+ * pattern anchored on that would be a fact about upstream's key order wearing
+ * the shape of a protocol. The line is parsed, then asked.
+ */
+export declare function parseResponse(line: string, id: string): SimResponse | undefined;
 /**
  * The OCPP versions the pinned image's CLI accepts, spelled as it spells them.
  *
@@ -175,6 +196,22 @@ export interface SimProcess {
     readonly lines: readonly string[];
     /** Writes one JSON command line to the CLI's stdin (JSON Lines protocol). */
     send(command: Record<string, unknown>): Promise<void>;
+    /**
+     * Sends one JSON command WITH an id and resolves with the `data` of the
+     * response that carries that id, or rejects with the CLI's own error text
+     * when it answers `ok: false` -- and after `timeoutMs` when it does not
+     * answer at all.
+     *
+     * WHY A SECOND VERB BESIDE `send`. The commands the runner has always sent
+     * are fire-and-forget by nature -- `connect` is answered by a frame on the
+     * wire, `run_scenario_template` by a `scenario_started` event -- and their
+     * responses were ignored, which is how a refused one (`already running`)
+     * sat in every results/*.log for a year. The template-once sequence in
+     * tck/template-once.ts is different in kind: its second command needs the
+     * FIRST one's answer (the scenario id, then the definition), so the
+     * response is the payload rather than a receipt.
+     */
+    call(command: string, params?: Record<string, unknown>, timeoutMs?: number): Promise<unknown>;
     /** Resolves with the first line (existing or future) matching `pattern`,
      *  or rejects after `timeoutMs` -- every wait in this module is bounded. */
     waitForLine(pattern: RegExp, timeoutMs: number): Promise<string>;
@@ -257,6 +294,40 @@ export declare function classifyForeignSims(containers: readonly string[], cpIds
  * never look foreign to each other.
  */
 export declare function assertNoForeignSweep(cpIds: readonly string[]): Promise<void>;
+/** What {@link attachSimStreams} needs from a container process: its two
+ *  output streams, its exit, and a way to write to its stdin. Named so a guard
+ *  can hand it in-memory streams and a resolved exit. */
+export interface SimIo {
+    readonly container: string;
+    readonly stdout: ReadableStream<Uint8Array>;
+    readonly stderr: ReadableStream<Uint8Array>;
+    /** Resolves with the exit code once the process is gone. */
+    readonly exited: Promise<number | null>;
+    /** Writes one line (newline included) to the process's stdin. */
+    write(text: string): Promise<void>;
+    /** How long to wait for `exited` after stdout closes before rejecting the
+     *  pending waits with an unknown exit code. Defaults to
+     *  {@link EXIT_GRACE_MS}; a guard shortens it. */
+    readonly exitGraceMs?: number;
+}
+/** The waiting half of a {@link SimProcess}, over a {@link SimIo}. */
+export interface SimStreams {
+    readonly lines: readonly string[];
+    readonly stderrLines: readonly string[];
+    send(command: Record<string, unknown>): Promise<void>;
+    call(command: string, params?: Record<string, unknown>, timeoutMs?: number): Promise<unknown>;
+    waitForLine(pattern: RegExp, timeoutMs: number): Promise<string>;
+    /** Settles once both output streams have been read to their end. */
+    readonly drained: Promise<void>;
+}
+/**
+ * The line pump, the waiter list, `send` and `call` -- everything a
+ * {@link SimProcess} does with its process's streams -- over a {@link SimIo}
+ * rather than over the `Bun.spawn` result, so that tests/sim-exit-rejects-waits.ts
+ * can drive it with streams that close when the guard says so. `startSim` is
+ * its one production caller.
+ */
+export declare function attachSimStreams(io: SimIo): SimStreams;
 /** Starts a detached-from-shell but attached-to-us simulator container for
  *  one charge point, running JSON-Lines mode. `templateId` is only used to
  *  build a readable, collision-avoiding container name (mirrors lib.sh's

@@ -43,7 +43,9 @@ commit it derives from and what was changed at the fork:
                                (UNVERIFIABLE_PREFIX sentinel)
   tck/sim.ts        FORKED     config-driven docker argv, published image
                                pinned by digest, no repo bind-mount,
-                               outgoing WS Basic auth, secret redaction
+                               outgoing WS Basic auth, secret redaction,
+                               id-correlated call() beside send(), the
+                               pump split out over a stream seam
   tck/main.ts       FORKED     driver loaded from a module specifier, scope
                                table, NOT APPLICABLE + PARTIAL verdicts,
                                exit-code policy, station-derived lanes,
