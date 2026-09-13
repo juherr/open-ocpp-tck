@@ -24,6 +24,21 @@
 # local-auth-list scenarios report NOT APPLICABLE. VENDOR.md carries the run.
 #
 # Re-pin exactly as compose.yaml documents, substituting the v1.9.1 tag.
+#
+# THE ENVIRONMENT BLOCK IS THE OTHER HALF OF THE OVERRIDE, since v2.0.0-beta4.
+# v1.9.1 reads the configuration scheme beta4 deleted: an `APP_ENV=docker`
+# app-env whose values the BOOTSTRAP_CITRINEOS_* variables patch. The base
+# file no longer sets any of those, and without them v1.9.1 boots on its local
+# defaults and looks for Postgres on localhost. Compose merges `environment`
+# maps, so the base's CITRINEOS_* keys are also present here and are ignored
+# by an image that never reads them.
 services:
   citrine:
     image: ghcr.io/citrineos/citrineos-server:v1.9.1@sha256:4f8791510686af47d5a5cbb55bf69eea7435734836e858d8cc983c0a4edaa884
+    environment:
+      APP_ENV: "docker"
+      BOOTSTRAP_CITRINEOS_DATABASE_HOST: "ocpp-db"
+      BOOTSTRAP_CITRINEOS_CONFIG_FILENAME: "config.json"
+      BOOTSTRAP_CITRINEOS_FILE_ACCESS_TYPE: "local"
+      BOOTSTRAP_CITRINEOS_FILE_ACCESS_LOCAL_DEFAULT_FILE_PATH: "/data"
+      CONFIG_CITRINEOS_WIPE_FILE_ON_START: "false"

@@ -508,8 +508,8 @@ anywhere in this file is read as a vendored-file row.
 | field | value |
 |---|---|
 | image | `ghcr.io/citrineos/citrineos-server` |
-| tag resolved | `v2.0.0-beta3` |
-| digest | `sha256:ddd8e98791b4f75523cf6a2aa3fd7cc35bd15bfb019d1461200e2c2e65462fd5` |
+| tag resolved | `v2.0.0-beta4` |
+| digest | `sha256:e33badb992d7b7fd28a8d1ac0d0ee6f10817f34f2647db168603424102eeb7c2` |
 | image | `postgis/postgis` |
 | tag resolved | `16-3.5` |
 | digest | `sha256:4e07b425403ba55c20b541884db2e80c686dd6476bf9265046ac9c163895605d` |
@@ -519,7 +519,7 @@ anywhere in this file is read as a vendored-file row.
 | image | `hasura/graphql-engine` |
 | tag resolved | `v2.40.3` |
 | digest | `sha256:679fb764590e848e59ab6b82b3e906cc46f87d776f869f49132ca728660df244` |
-| resolved on | CitrineOS 2026-09-05, the rest 2026-08-11, from the registry manifest `Docker-Content-Digest` |
+| resolved on | CitrineOS 2026-09-13, the rest 2026-08-11, from the registry manifest `Docker-Content-Digest` |
 | declared in | `drivers/citrineos/compose.yaml` |
 
 A **prerelease**, which is the one thing here that needs defending. The OCPP
@@ -528,50 +528,67 @@ the v2 line, and six scenarios need them. Pinning by digest is what makes
 depending on a moving tag safe — the alternative is `v1.9.1`, whose cost is
 spelled out in `drivers/citrineos/README.md`.
 
-WHY beta3 RATHER THAN beta1, and it is why a pin moved rather than a tidy-up:
-citrineos-core#830 replaced a trigger that ran entirely `BEFORE INSERT`, whose
-CALL branch back-filled `requestMessageId = NEW.id` on a row that did not exist
-yet. Postgres checks the foreign key at the end of that UPDATE, so every CALL
-arriving after its own response killed the dispatcher — and this suite measured
-it: 53 events across 43 of 92 archived CitrineOS artifacts, every one at
-`ocpp_correlate_message()` line 44, SteVe zero. The migration that fixes it is
-absent at beta1 and byte-identical at beta2, beta3 and `main`. Issue #97 is
-what it cost: a swallowed response reported as an unanswered request, which is
-a conformance finding against a CSMS that answered.
+WHY beta4 RATHER THAN beta3: four findings this suite carried closed at once,
+and the configuration surface the compose file is written against was
+replaced. citrineos-core#890 registers the 1.6 `FirmwareStatusNotification`
+request handler that was missing, so the three TC_044 rows get the `.conf`
+OCA requires instead of a `NotSupported` CALLERROR; citrineos-core#907 maps a
+stored non-Accepted authorization status directly, so TC_023.3's `Blocked`
+answers `Blocked`; citrineos-core#846 wraps the message-audit insert whose
+rejection used to kill the process. All four were declared in
+`drivers/citrineos/expected.ts`, came back UNEXPECTED PASS on the new digest,
+and the table is empty. The other half is #956: the `docker` app-env and every
+`BOOTSTRAP_CITRINEOS_*` variable are gone, config is `CITRINEOS_<PATH>` over
+the schema's defaults, and the websocket servers are read from a JSON file
+relative to the fileAccess root — the compose file's environment block was
+re-derived from upstream's at this tag.
+
+beta3 before it was citrineos-core#830: a trigger that ran entirely `BEFORE
+INSERT`, whose CALL branch back-filled `requestMessageId = NEW.id` on a row
+that did not exist yet. Postgres checks the foreign key at the end of that
+UPDATE, so every CALL arriving after its own response killed the dispatcher —
+and this suite measured it: 53 events across 43 of 92 archived CitrineOS
+artifacts, every one at `ocpp_correlate_message()` line 44, SteVe zero. Issue
+#97 is what it cost: a swallowed response reported as an unanswered request,
+which is a conformance finding against a CSMS that answered.
 
 The statements the driver is built on, each read from citrineos-core at
-`v2.0.0-beta3` and cross-checked at `v1.9.1` and `main`. Re-check them before
-moving the pin — several are the difference between a driver and a fiction.
-They were re-read when the pin moved, on evidence rather than on the version
-number: all four `modules/*/src/module/1.6/MessageApi.ts` blobs are
-byte-identical between beta1 and beta3, so the endpoint counts below carried
-over unchanged:
+`v2.0.0-beta4` and cross-checked at `v1.9.1`. Re-check them before moving the
+pin — several are the difference between a driver and a fiction. The source
+moved under this pin (`packages/core` became `packages/ocpp`, the module
+`MessageApi.ts` files became per-protocol route tables under
+`packages/ocpp/src/apis/ocpp/{1.6,2}/`), so nothing carried over on a file
+identity this time: the route tables were re-read and the running container's
+`/docs/json` re-counted.
 
-- **No `@AsMessageEndpoint` binds `ReserveNow` or `CancelReservation` to
-  `OCPPVersion.OCPP1_6`.** Confirmed against the running container, whose
-  `/docs/json` advertises 18 `/ocpp/1.6/` paths with neither among them. Seven
-  scenarios are `NOT_APPLICABLE` because of this one fact.
-- `AuthorizeRequestOcpp16Handler` reaches its status mapper **only** through
-  the `status === 'Accepted'` branch, and consults `cacheExpiryDateTime` inside
-  it. So `CERT023-EXP` is provisioned `Accepted`-with-a-past-expiry, and a
-  stored `Blocked` answers `Invalid`.
-- The container registers `authorizers: asValue([])` with no setting that
-  changes it, which is what makes `Blocked` unreachable.
+- **No 1.6 route binds `ReserveNow` or `CancelReservation`.** The four
+  `packages/ocpp/src/apis/ocpp/1.6/*.ts` tables register 18 actions, and
+  `/docs/json` on the running container advertises exactly those 18
+  `/ocpp/1.6/` paths with neither among them. Seven scenarios are
+  `NOT_APPLICABLE` because of this one fact.
+- `AuthorizeRequestOcpp16Handler` consults `cacheExpiryDateTime` **only**
+  inside its `status === 'Accepted'` branch, so `CERT023-EXP` is provisioned
+  `Accepted`-with-a-past-expiry. A stored non-Accepted status is mapped
+  directly from `AuthorizationMapper.toIdTagInfoStatus` since #907, which is
+  what makes the provisioned `Blocked` answer `Blocked`; before it the handler
+  fell through to `Invalid`. A row with no status at all is refused as
+  `Invalid` (#877), which every fixture here satisfies.
+- The container still registers `authorizers: asValue([])` with no setting
+  that changes it. That used to be the reason `Blocked` was unreachable; it
+  is now only the reason no authorizer can turn an Accepted row into anything
+  else.
 - More than one `Authorizations` row for an idToken makes that handler answer
   `Invalid` outright — the invariant `provision` upserts for and `verify`
   counts.
-- **The data API this driver reads and seeds through is Hasura, not REST.**
-  Probed on this digest: `/data/*` carries 22 routes, none of them touching
-  `Authorizations`, and the one transaction route requires the `transactionId`
-  it should help find (400 without it) while returning `authorizationId`
-  rather than the idTag. `sendLocalList` answers `"Authorization not found for
-  idTag '…' (create the Authorization before adding it to a local auth list)"`
-  — an instruction with no REST route behind it. GraphQL is what CitrineOS's
-  own shipped `packages/ocpi-base`, operator UI and e2e fixtures use, and its
-  compose starts `graphql-engine` ungated while gating the UI and OCPI server
-  behind `profiles:`. The `v2.40.3` pin above is the plain image, NOT upstream's
-  `.cli-migrations-v3` one: nothing of their metadata is vendored here, and
-  `driver provision` tracks the tables through the metadata API instead.
+- **The data API this driver reads and seeds through is Hasura, and from this
+  tag it is the only one there is.** The REST `/data/*` surface was dropped
+  (citrineos-core#849); `/docs/json` advertises zero such paths. GraphQL is
+  what CitrineOS's own shipped `packages/ocpi-base`, operator UI and e2e
+  fixtures use, and its compose starts `graphql-engine` ungated while gating
+  the UI and OCPI server behind `profiles:`. The `v2.40.3` pin above is the
+  plain image, NOT upstream's `.cli-migrations-v3` one: nothing of their
+  metadata is vendored here, and `driver provision` tracks the tables through
+  the metadata API instead.
 - **Four foreign keys reference `Authorizations`** and none cascades:
   `Transactions.authorizationId`, `LocalListAuthorizations.authorizationId`,
   `LocalListAuthorizations.groupAuthorizationId`, and the self-reference
@@ -584,14 +601,16 @@ over unchanged:
 - `LocalAuthListService` refuses a `listVersion` not strictly greater than the
   station's stored one, before anything reaches the wire — hence the local-list
   reset in `prepareStation`.
-- The shipped `docker` app-env selects `LocalBypassAuthProvider`, so the
-  message API takes no credentials at all.
-- **No 1.6 request handler for `FirmwareStatusNotification`**: every one is
-  answered with a `NotSupported` CALLERROR, which is the only CALLERROR the
-  CSMS emits anywhere in the suite. OCA `TC_044_{1,2,3}_CSMS` require a
-  `FirmwareStatusNotification.conf` instead, so this is a non-conformance —
-  and one the scenarios do not detect, because they assert only on what the
-  charge point sent. Recorded in `drivers/citrineos/README.md`.
+- `auth.localBypass` defaults to `true` in the config schema, so the
+  message API takes no credentials at all unless a deployment opts into OIDC.
+- **`FirmwareStatusNotification` on 1.6 is answered with an empty `.conf`**
+  (`handlers/requests/1.6/firmware-status-notification-request-ocpp-16-handler.ts`,
+  citrineos-core#890). Until beta4 no handler existed and every one drew a
+  `NotSupported` CALLERROR — the only CALLERROR the CSMS emitted anywhere in
+  the suite, and for a milestone one the scenarios did not detect because they
+  asserted only on what the charge point sent. `assertAllAnswered` closed the
+  blind spot before the pin closed the finding; both halves are in
+  `drivers/citrineos/README.md`.
 
 #### Validation history
 
@@ -635,10 +654,33 @@ did not include; the next row taken is where the larger number appears.
 
 | CitrineOS | digest | validated | `all` (44), parallel pass | `authorize` (3) |
 |---|---|---|---|---|
-| `v2.0.0-beta3` — **current pin**, `CITRINE_VARIANT=v2` | `sha256:ddd8e987…` | 2026-09-05 | 38 PASS, 5 PARTIAL, 7 N/A, 4 EXPECTED FAIL — **0 flakes**, all four confirmed isolated; the 54-scenario sweep, `authorize` included | in the sweep: 2 PASS, 1 EXPECTED FAIL (`tc023-3`) |
+| `v2.0.0-beta4` — **current pin**, `CITRINE_VARIANT=v2` | `sha256:e33badb9…` | 2026-09-13 | **OCPP 1.6 half only**: 35 PASS, 5 PARTIAL, 7 N/A, **0 FAIL and 0 EXPECTED FAIL** — the four beta3 declarations all PASS outright; three lanes, one stack. The OCPP 2.0.1 half is NOT in this row: see the paragraph below the table | in the sweep: 3 PASS (`tc023-3` answers `Blocked`) |
+| `v2.0.0-beta3` — superseded pin, `CITRINE_VARIANT=v2` | `sha256:ddd8e987…` | 2026-09-05 | 38 PASS, 5 PARTIAL, 7 N/A, 4 EXPECTED FAIL — **0 flakes**, all four confirmed isolated; the 54-scenario sweep, `authorize` included | in the sweep: 2 PASS, 1 EXPECTED FAIL (`tc023-3`) |
 | `v2.0.0-beta1` — superseded pin, `CITRINE_VARIANT=v2` | `sha256:58800f45…` | 2026-08-11 | 34 PASS, 7 N/A, 3 FAIL — two lane flakes PASS on isolated retry, `tc044-2` confirmed | 2 PASS, 1 FAIL (`tc023-3`) |
 | `v1.9.1` — `CITRINE_VARIANT=v1` | `sha256:4f879151…` | 2026-08-11 | 16 PASS, 13 N/A, 15 FAIL — **all 15 confirmed on isolated retry, no flakes** | 2 PASS, 1 FAIL (`tc023-3`) |
 | `v2.0.0-beta1` — same pin, GraphQL transport | `sha256:58800f45…` | 2026-08-12 | 37 PASS, 7 N/A, **0 FAIL, and no flakes** — the parallel pass needed no isolated retry at all | 2 PASS, 1 FAIL (`tc023-3`) |
+
+THE beta4 ROW IS HALF A SWEEP, and the half it lacks was not skipped but
+could not be measured on the machine that took it. The 96-scenario sweep
+collapsed at its first all-2.0.1 boot burst — three stations sending
+`BootNotification` within 7 ms — on the seed open-ocpp-tck#119 describes:
+the Sequelize pool (five connections, the default on both pins) is exhausted,
+the 2.0.1 `StatusNotification` handlers wait 60 s for a connection and stay
+"call in progress", the next `Reset` dispatched to that station is refused
+with `RetryMessageError` and requeued every millisecond, and the event loop
+never gets to expire the entry. Two loops, then four; 150,267 envelopes in
+the log; every `cert201-` row after 16:56:54 collateral. A `down -v` shard
+1/2 on a fresh stack — CI's own arrangement — collapsed at the same burst.
+So it was CONTROLLED rather than attributed: the same shard, on a fresh stack,
+against the `v2.0.0-beta3` image with its own environment block, collapsed
+at the same burst with the same two `Reset` loops. The seed is the CSMS's,
+the amplifier is this host (`postgis/postgis` runs under amd64 emulation on
+an Apple Silicon Docker Desktop, and the DB is what the pool is waiting on),
+and neither is the pin. The 2.0.1 measurement for this digest is therefore
+the pull request's CI `e2e` jobs, two shards on two fresh stacks on amd64
+runners, where the same seed has produced two collapses and many clean runs
+against beta3; read the artifact size and the loop count before the
+verdicts, per #119, and re-run a collapsed shard for a second sample.
 
 One row, two runs: the second was taken from `down -v` and **agreed exactly in
 shape** — 34/7/3 in the parallel pass, two of the three failures reclassified as

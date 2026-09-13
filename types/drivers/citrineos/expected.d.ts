@@ -9,38 +9,27 @@
  * file the only alternative was `continue-on-error` on the whole CI job, which
  * muted the other 46 scenarios along with the one finding.
  *
- * THE MECHANISM SENTENCE LIVES HERE and scope.ts imports it, the same way
- * variant.ts owns NO_RESERVATIONS for both scope.ts and requests.ts. The two
- * halves a reader compares -- "this row is drivable, and here is what the CSMS
- * does with it" and "this row is expected to fail, and here is why" -- must not
- * be free to disagree.
+ * EMPTY AT THE PINNED DIGEST, and kept rather than deleted: the mechanism is
+ * the driver contract's, and the day a row is needed again this is where it
+ * goes. It held four rows against `v2.0.0-beta3`, and all four closed when
+ * the pin moved to `v2.0.0-beta4` -- `cert16-tc023-3-authorize-blocked`, a
+ * stored `Blocked` answered `Invalid` because the 1.6 Authorize handler
+ * reached its status mapper only through its Accepted branch
+ * (citrineos-core#907), and `cert16-tc044-{1,2,3}`, every 1.6
+ * `FirmwareStatusNotification` answered with a `NotSupported` CALLERROR
+ * because no request handler existed (citrineos-core#890). Each came back
+ * UNEXPECTED PASS on the new digest, which is the exit this table is designed
+ * to have: a row leaves by turning green and failing the build until it is
+ * deleted, never by being forgotten. The history lives in
+ * drivers/citrineos/README.md's gap table, marked fixed.
+ *
+ * WHEN A ROW COMES BACK, THE MECHANISM SENTENCE LIVES HERE and scope.ts
+ * imports it, the same way variant.ts owns NO_RESERVATIONS for both scope.ts
+ * and requests.ts. The two halves a reader compares -- "this row is drivable,
+ * and here is what the CSMS does with it" and "this row is expected to fail,
+ * and here is why" -- must not be free to disagree.
  */
 import type { ExpectedFailureTable } from "../../tck/expected";
 import type { CitrineVariant } from "./variant";
-/**
- * Why a stored `Blocked` idTag comes back `Invalid`, worded once.
- *
- * Read in the sources and confirmed on the running image, 3 runs out of 3:
- * `AuthorizeRequestOcpp16Handler` reaches its status mapper only through the
- * `status === Accepted` branch, so a stored `Blocked` falls through to the
- * default `Invalid`. The only route to a real `Blocked` is an `IAuthorizer`,
- * and `container.ts` registers `authorizers: asValue([])` with no setting that
- * changes it.
- */
-export declare const BLOCKED_UNREACHABLE: string;
-/**
- * Why every FirmwareStatusNotification the charge point sends comes back as a
- * CALLERROR, worded once.
- *
- * Read in the sources and confirmed on the running image: CitrineOS registers
- * no 1.6 REQUEST handler for FirmwareStatusNotification --
- * `packages/core/src/handlers/requests/1.6/` has one for
- * DiagnosticsStatusNotification and none for this -- so the router answers
- * `[4,…,"NotSupported","No handler found for action: FirmwareStatusNotification
- * at module configuration"]`. Ten of them across the three TC_044 logs of a
- * sequential sweep, and the only CALLERROR the CSMS emits anywhere in the
- * suite.
- */
-export declare const FIRMWARE_STATUS_NOT_HANDLED: string;
 /** The expected-failure list for a declared variant. See variant.ts. */
 export declare function citrineosExpectedFailures(variant: CitrineVariant): ExpectedFailureTable;
