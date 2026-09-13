@@ -8,49 +8,49 @@ assertion gets tested.
 
 It reports the answer rather than flattering it.
 
-**Measured 2026-08-12 against the pinned image: 39 `PASS`, 7 `NOT APPLICABLE`,
-1 `FAIL` out of the 47 OCPP 1.6 scenarios.** The 7 OCPP 2.0.1 ones came later
-and in three measurements: four `PASS` on 2026-08-19, `TC_B_21` on 2026-08-20
-once its fixture existed, and `TC_B_06` / `TC_B_09` on 2026-08-21. **All 7
-`PASS`**; twenty-six more were registered afterwards and have not been swept —
-see [OCPP 2.0.1](#ocpp-201) below.
+**Measured 2026-09-13 against the pinned image, OCPP 1.6: 35 `PASS`,
+5 `PARTIAL`, 7 `NOT APPLICABLE`, 0 `FAIL` out of the 47 scenarios.** The
+number to read is the last one. Through `v2.0.0-beta3` this page opened with
+"1 `FAIL`" and then "4 `FAIL`", every one a finding against CitrineOS that
+[`expected.ts`](expected.ts) declared rather than the scope table hid — and
+on `v2.0.0-beta4` all four came back `UNEXPECTED PASS` and left that table
+empty. Both findings are marked fixed in the gap table below, with the
+upstream change that fixed each.
 
-That run needed no isolated retry at all, which had never happened before —
-but read it as one run rather than as a property. The parallel pass is
-sensitive to what else the host is doing: on a workstation carrying an
-unrelated build, later runs of the same commit produced nine lane artifacts,
-every one of them green on the isolated retry. `--retry-failed-isolated` is
-what makes the verdict independent of that, and it is why CI does not treat a
-parallel FAIL as final.
+The 49 OCPP 2.0.1 scenarios were measured on earlier pins in three passes —
+four `PASS` on 2026-08-19, `TC_B_21` on 2026-08-20 once its fixture existed,
+`TC_B_06` / `TC_B_09` on 2026-08-21 — and the rows registered since have run
+in CI against beta3. On beta4 they have **not** been measured on a developer
+machine, and `VENDOR.md`'s validation history says why: the sweep collapses
+at its first all-2.0.1 boot burst on the seed
+[#119](https://github.com/juherr/open-ocpp-tck/issues/119) describes, the
+`v2.0.0-beta3` image collapses identically on the same host, and the
+measurement that stands is the CI `e2e` job. See [OCPP 2.0.1](#ocpp-201)
+below.
+
+The parallel pass is sensitive to what else the host is doing: on a
+workstation carrying an unrelated build, later runs of the same commit
+produced nine lane artifacts, every one of them green on the isolated retry.
+`--retry-failed-isolated` is what makes the verdict independent of that, and
+it is why CI does not treat a parallel FAIL as final.
 
 The seven `NOT APPLICABLE` are one missing capability — CitrineOS routes no
-OCPP 1.6 reservation endpoints. The single failure is a deterministic finding
-against CitrineOS: TC_023.3, `Blocked` answered as `Invalid`. It is not demoted
-in the scope table: `tck/scope.ts` forbids demoting a row to `NOT_APPLICABLE`
-to make a red scenario go away, and a TCK whose second driver reports 100%
-green is a TCK that has stopped measuring. It is below.
+OCPP 1.6 reservation endpoints. Nothing is demoted in the scope table to make
+a red scenario go away: `tck/scope.ts` forbids it, and a TCK whose second
+driver reports 100% green is a TCK that has stopped measuring. What this
+driver reports green, it measured.
 
-It is **declared**, in [`expected.ts`](expected.ts), which is why the CI job
-that runs this driver is blocking rather than `continue-on-error`. The
-scenario still runs and still prints `FAIL`; the sweep reports it as
-`EXPECTED FAIL` and exits 0, so a *new* red still fails the build. The day
-upstream fixes the `Blocked` mapping, that row comes back `UNEXPECTED PASS`
-and fails the build until the entry is deleted — which is how the list shrinks
-instead of rotting.
-
-The count was 38 / 7 / 2 on 2026-08-11. The second failure was TC_044.2, and it
-was **ours**: the scenario asked for a retrieveDate +90s against a 110s hold,
-leaving ~20s for the status train. That is fixed in `tck/specs/firmware.ts`, so
-what remains is the CitrineOS finding alone.
-
-A second CitrineOS defect **is** counted here now, and it used to be invisible:
-OCPP 1.6 `FirmwareStatusNotification` is answered with a `NotSupported`
-CALLERROR where OCA TC_044 puts a `.conf` on the Central System
-([citrineos/citrineos#216][i216]). The assertions used to read only what the
-CHARGE POINT sent, so three scenarios stayed green over ten CALLERRORs — a gap
-in the scenarios, not evidence about CitrineOS. Issue #11 closed it, and the
-three TC_044 rows are red: in each, every pre-existing check still passes and
-the one failure is the CALLERROR.
+**How the four findings left.** A red row a CSMS earns is declared in
+[`expected.ts`](expected.ts), which is why the CI job that runs this driver is
+blocking rather than `continue-on-error`: the scenario still runs and still
+prints `FAIL`, the sweep reports it as `EXPECTED FAIL` and exits 0, so a *new*
+red still fails the build — and the day upstream fixes the defect the row
+comes back `UNEXPECTED PASS` and fails the build until the entry is deleted.
+That is exactly what happened on 2026-09-13: TC_023.3, `Blocked` answered as
+`Invalid` since the driver was written, and the three TC_044 rows, every
+`FirmwareStatusNotification` answered with a `NotSupported` CALLERROR
+([citrineos/citrineos#216][i216]) since issue #11 made the scenarios look at
+the answer, all passed outright on the new digest.
 
 Five scenarios are `PARTIAL`, and they are not a CitrineOS result: an OCA
 obligation exists that no scenario here exercises, which is the same on every
@@ -91,12 +91,12 @@ while the simulator container reaches the same CitrineOS as `ws://citrine:8081/`
 from inside the compose network. That asymmetry is why the two are separate
 settings — the same one SteVe's driver has, for the same reason.
 
-**No HTTP API credentials are required.** CitrineOS's shipped `docker` app-env selects
-`LocalBypassAuthProvider`, which accepts every HTTP request and synthesises an
-admin principal; it logs a warning saying so on startup. That is a property of
-this development environment, not of CitrineOS in production, and swapping in
-the OIDC provider would be a change to [`api-client.ts`](api-client.ts) rather
-than a setting.
+**No HTTP API credentials are required.** CitrineOS's config schema defaults
+`auth.localBypass` to `true`, which selects `LocalBypassAuthProvider`: it
+accepts every HTTP request and synthesises an admin principal, and logs a
+warning saying so on startup. That is a property of the shipped defaults, not
+of CitrineOS in production, and swapping in the OIDC provider would be a
+change to [`api-client.ts`](api-client.ts) rather than a setting.
 
 ## Running two workspaces at once
 
@@ -133,10 +133,10 @@ project network by *service* name, and only the container names move.
 
 ## The pinned version
 
-[`compose.yaml`](compose.yaml) pins **`v2.0.0-beta3`** by digest:
+[`compose.yaml`](compose.yaml) pins **`v2.0.0-beta4`** by digest:
 
 ```text
-ghcr.io/citrineos/citrineos-server:v2.0.0-beta3@sha256:ddd8e98791b4f75523cf6a2aa3fd7cc35bd15bfb019d1461200e2c2e65462fd5
+ghcr.io/citrineos/citrineos-server:v2.0.0-beta4@sha256:e33badb992d7b7fd28a8d1ac0d0ee6f10817f34f2647db168603424102eeb7c2
 ```
 
 A prerelease rather than the `v1.9.1` stable, and deliberately: the OCPP 1.6
@@ -145,29 +145,44 @@ v2 line, and six scenarios need them. Pinning by digest is what makes a
 prerelease safe to depend on — `:latest` currently resolves to the same bytes,
 and will not for long.
 
-**`beta3` rather than the `beta1` this pinned until now**, because beta1 has a
-defect this suite spent a milestone measuring. The message-correlation trigger
-`beta1` installs runs entirely `BEFORE INSERT`; its CALL branch back-fills
-`"requestMessageId" = NEW.id` on a row Postgres has not inserted yet, so
-`OCPPMessages_requestMessageId_fkey` fires and the violation escapes the
-dispatcher as an unhandled rejection. What a sweep sees is a response that was
+**`beta4` rather than the `beta3` this pinned until 2026-09-13**, because
+four findings this driver declared closed at once and the configuration
+surface the compose file speaks was replaced:
+
+- [citrineos-core#890][pr890] adds the OCPP 1.6 `FirmwareStatusNotification`
+  request handler. The three `TC_044` rows, red on beta3 because every
+  notification drew a `NotSupported` CALLERROR, get the `.conf` OCA requires.
+- [citrineos-core#907][pr907] maps a stored non-Accepted authorization status
+  straight to the 1.6 answer. `TC_023.3`'s provisioned `Blocked` answers
+  `Blocked` where beta3 fell through to `Invalid`.
+- [citrineos-core#846][pr846] wraps the message-audit inserts in
+  `WebhookDispatcher`, so a failed insert no longer escapes as an unhandled
+  rejection and kills the process. That was the crash *mechanism* beta3 left
+  in place after removing its most frequent trigger.
+- [citrineos-core#956][pr956] deletes the `docker` app-env and every
+  `BOOTSTRAP_CITRINEOS_*` variable. Configuration is now `CITRINEOS_<PATH>`
+  over the schema defaults, and the websocket servers are read from a JSON
+  file relative to the fileAccess root — [`compose.yaml`](compose.yaml)'s
+  environment block is re-derived from upstream's at this tag, and says which
+  of upstream's opt-ins it leaves off and why.
+
+Each of the first three came back `UNEXPECTED PASS` on the new digest, which
+is how [`expected.ts`](expected.ts) is designed to empty.
+
+`beta3` before it was [citrineos-core#830][pr830]: the message-correlation
+trigger `beta1` installed ran entirely `BEFORE INSERT`, its CALL branch
+back-filled `"requestMessageId" = NEW.id` on a row Postgres had not inserted
+yet, and the `OCPPMessages_requestMessageId_fkey` violation escaped the
+dispatcher as an unhandled rejection. What a sweep saw was a response that was
 never delivered, reported as an unanswered request — 53 of them across 43 of
-the 92 archived CitrineOS artefacts, every one at `ocpp_correlate_message()`
-line 44, which is that `UPDATE`.
-
-[citrineos-core#830][pr830] splits the trigger — the CALL side moves to
-`AFTER INSERT` where `NEW.id` is a real row, the response side stays
-`BEFORE INSERT` because it must mutate `NEW` for `RETURNING`. It merged
-2026-08-06 and `v2.0.0-beta2` was cut the same evening; the migration
+the 92 archived CitrineOS artefacts. #830 splits the trigger; the migration
 (`apps/ocpp-server/migrations/20260806120000-fix-ocpp-message-correlation-trigger.ts`)
-is absent at `beta1` and present at `beta2`, `beta3` and `main`. `beta3` is the
-newest tag, so that is what this pins.
-
-The crash *mechanism* is not fixed by that bump — only its most frequent
-trigger. See the gap table row "A failed message-audit insert still kills the
-process".
+is present from `beta2` on.
 
 [pr830]: https://github.com/citrineos/citrineos-core/pull/830
+[pr890]: https://github.com/citrineos/citrineos-core/pull/890
+[pr907]: https://github.com/citrineos/citrineos-core/pull/907
+[pr956]: https://github.com/citrineos/citrineos-core/pull/956
 
 Re-resolve a digest with:
 
@@ -176,7 +191,7 @@ T=$(curl -sS "https://ghcr.io/token?scope=repository:citrineos/citrineos-server:
      | sed -n 's/.*"token":"\([^"]*\)".*/\1/p')
 curl -sSI -H "Authorization: Bearer $T" \
   -H "Accept: application/vnd.oci.image.index.v1+json" \
-  https://ghcr.io/v2/citrineos/citrineos-server/manifests/v2.0.0-beta3 \
+  https://ghcr.io/v2/citrineos/citrineos-server/manifests/v2.0.0-beta4 \
   | grep -i docker-content-digest
 ```
 
@@ -360,8 +375,9 @@ the same client — `/ocpp/2.0.1/…` instead of `/ocpp/1.6/…`. The routing is
 | `GetChargingProfiles` | `smartcharging/getChargingProfiles` |
 
 The module is CitrineOS's rather than the specification's, read off the
-`@AsMessageEndpoint` decorators in the pinned image; `toCitrineRequest201`'s
-doc comment is where that is argued.
+`eventGroup` each route table under `packages/ocpp/src/apis/ocpp/2/` declares
+in the pinned image; `toCitrineRequest201`'s doc comment is where that is
+argued.
 
 `changeAvailability` validates against `ChangeAvailabilityRequestSchema`, whose
 2.0.1 spelling is `operationalStatus` (required) plus an optional `evse` object
@@ -549,24 +565,25 @@ a `reason` that cannot name the limitation is `CONDITIONAL`, not
 
 | Gap | Effect | Source |
 |---|---|---|
-| **No OCPP 1.6 reservation endpoints.** No `@AsMessageEndpoint` binds `ReserveNow` or `CancelReservation` to `OCPPVersion.OCPP1_6`. The 1.6 schemas exist, the `Reservations` table exists, `evdriver.responses` lists both actions — nothing routes them, and no 1.6 response handler exists either. | 7 scenarios `NOT APPLICABLE`; the driver omits `records.reservations` entirely. | Verified at `v1.9.1`, `v2.0.0-beta1` and `main`. |
-| **Local auth list is v2-only.** `EVDriverOcpp16Api` gained `sendLocalList` / `getLocalListVersion` in the v2 line. | 6 scenarios, drivable only on the pinned prerelease. | `packages/core/src/modules/EVDriver/src/module/1.6/MessageApi.ts` |
-| **No charging-profile registry.** `ChargingProfiles` has no `description` or `name` column, and nothing to look one up by. | `refByDescription` resolves from this driver's own catalogue instead. Not a scenario cost: OCPP 1.6 carries the profile inline. | `packages/core/src/dal/layers/drizzle/schema/ChargingProfile.ts`, and [`profiles.ts`](profiles.ts) |
-| **`Blocked` is unreachable from the 1.6 `Authorize` path.** The handler reaches its status mapper only through the `status === Accepted` branch, so a stored `Blocked` falls through to the default `Invalid`. The only route to a real `Blocked` is an `IAuthorizer`, and the container registers `authorizers: asValue([])` with no setting that changes it. | **TC_023.3 fails**, deterministically: CitrineOS answers `{"idTagInfo":{"status":"Invalid"}}` where the scenario requires `Blocked`. Observed 3 runs out of 3. `scope.ts` keeps the row DRIVABLE and `expected.ts` declares the red, so the sweep reports it as `EXPECTED FAIL` and the job stays blocking — and `UNEXPECTED PASS` the day it is fixed. | `AuthorizeRequestOcpp16Handler.ts`, `apps/ocpp-server/src/container.ts` |
-| **No REST for `Authorizations`.** `EVDriverDataApi` exposes exactly one route, a read-only local-list-version GET. | `driver provision` writes fixtures through GraphQL. | [`provision.ts`](provision.ts) |
+| **No OCPP 1.6 reservation endpoints.** No 1.6 route table lists `ReserveNow` or `CancelReservation` — the 2.x one does. The 1.6 schemas exist, the `Reservations` table exists — nothing routes them, and no 1.6 response handler exists either. | 7 scenarios `NOT APPLICABLE`; the driver omits `records.reservations` entirely. | `packages/ocpp/src/apis/ocpp/1.6/ev-driver.ts` against `…/2/ev-driver.ts`. Verified at `v1.9.1`, `v2.0.0-beta1`, `v2.0.0-beta4`. |
+| **Local auth list is v2-only.** `EVDriverOcpp16Api` gained `sendLocalList` / `getLocalListVersion` in the v2 line. | 6 scenarios, drivable only on the pinned prerelease. | `packages/ocpp/src/apis/ocpp/1.6/ev-driver.ts` (`SendLocalListEndpoint`, `GetLocalListVersion`) |
+| **No charging-profile registry.** `ChargingProfiles` has no `description` or `name` column, and nothing to look one up by. | `refByDescription` resolves from this driver's own catalogue instead. Not a scenario cost: OCPP 1.6 carries the profile inline. | `packages/dal/src/db/drizzle/schema/charging-profile.ts`, and [`profiles.ts`](profiles.ts) |
+| **[FIXED at the pinned digest] `Blocked` was unreachable from the 1.6 `Authorize` path.** Through beta3 the handler reached its status mapper only through the `status === Accepted` branch, so a stored `Blocked` fell through to the default `Invalid`; the only route to a real `Blocked` was an `IAuthorizer`, and the container registers `authorizers: asValue([])` with no setting that changes it. | **TC_023.3 failed**, deterministically, 3 runs out of 3, and was declared in [`expected.ts`](expected.ts) for a milestone rather than demoted. On beta4 it came back `UNEXPECTED PASS` — the answer is `Blocked` — and the declaration was deleted, which is the exit that table is built for. | [citrineos-core#907][pr907] maps a stored non-Accepted status straight through `AuthorizationMapper.toIdTagInfoStatus`; `packages/ocpp/src/handlers/requests/1.6/authorize-request-ocpp-16-handler.ts`. |
+| **No REST data API at all.** Through beta3 `/data/*` carried 22 routes, none touching `Authorizations`; [citrineos-core#849][pr849] drops the surface, and `/docs/json` on the pinned image advertises zero `/data/` paths. | `driver provision` writes fixtures through GraphQL, which is now the only data path there is — the Hasura sidecar is the vendor's, not a convenience. | [`provision.ts`](provision.ts) |
 | **Four foreign keys reference `Authorizations`, none cascading**: `Transactions.authorizationId`, `LocalListAuthorizations.authorizationId`, `LocalListAuthorizations.groupAuthorizationId`, and the self-reference `Authorizations.groupAuthorizationId`. | `teardown` derives its guards from the foreign keys Hasura reports instead of listing them, so a fifth on a future CitrineOS is picked up rather than aborting the whole delete. Guarding only the first was measured to leave *every* fixture in place, because psql ran the script in one implicit transaction. | Read from the foreign keys Hasura derives; see `references()` in [`provision.ts`](provision.ts). |
-| **A 2.0.1 `StatusNotification` needs a device model the CSMS will not create.** `processStatusNotification` wants an `Evse` whose `evseTypeId` matches the request's `evseId` with a `Connector` under it, and a `Connector` component joined to an `EvseType` with `id = evseId` **and** `connectorId = connectorId` carrying an `AvailabilityState` variable. Neither is created on demand — the 1.6 path in the same class auto-commissions, the 2.0.1 path does not. | Four `StatusNotificationService` warnings per run, and nothing stored, while every request is still answered. `driver provision` and `prepareStation` seed both halves; [issue #86](https://github.com/juherr/open-ocpp-tck/issues/86) carries the log either side. | `packages/core/src/modules/Transactions/src/module/StatusNotificationService.ts` |
-| **`Connectors.evseTypeConnectorId` is not the foreign key it is declared as.** The column carries `@ForeignKey(() => EvseType)` and the database has **no** constraint behind it; its own comment says "the serial int starting at 1 used in OCPP 2.0.1 to refer to the connector, unique per EVSE", and every transaction path agrees — `TransactionEvent` looks a connector up by `evseTypeConnectorId: value.evse.connectorId`. | The fixture writes the OCPP connector number there. Writing an EVSE type's key instead makes that lookup miss, so the CSMS inserts its own connector and collides with the fixture on `(stationId, connectorId)` — one `CALLERROR InternalError: Failed handling message: Validation error` per transaction, which the suite sees as an unanswered `TransactionEvent`. Measured. | `packages/core/src/dal/layers/sequelize/repository/TransactionEvent.ts`, `model/Location/Connector.ts` |
-| **`0` is falsy where an `evseId` may be `0`.** `findOrCreateEvseAndComponent` resolves a component's EVSE with `connectorId ? connectorId : null`, so filing the station-scope status — `(evseId 0, connectorId 0)` — creates a *second* EVSE type numbered 0 with a null connector and repoints the component at it. The next status's lookup filters on the pair and no longer matches. | The fixture cannot be provisioned once: `prepareStation` re-asserts the join before every scenario, and the device-model read addresses the component by name and instance rather than through it. Without the repair the warning is back on the second scenario. Measured, twice. | `packages/core/src/dal/layers/sequelize/repository/DeviceModel.ts` |
-| **No 1.6 request handler for `FirmwareStatusNotification`.** Every one the charge point sends is answered with `[4,…,"NotSupported","No handler found for action: FirmwareStatusNotification at module configuration"]` — 10 across the three TC_044 logs, and the only CALLERROR the CSMS emits anywhere in the suite. | **A non-conformance, and the suite now detects it.** OCA `TC_044_{1,2,3}_CSMS` put steps 4 and 6 on the Central System — *"The Central responds with a FirmwareStatusNotification.conf"* — and a CALLERROR is not that conf. **TC_044.1/.2/.3 fail**, each on that check alone. Until issue #11 they passed, because they asserted only the statuses the charge point *sent*. | `packages/core/src/handlers/requests/1.6/` — `DiagnosticsStatusNotification` has one, `FirmwareStatusNotification` does not. No ticket upstream. |
-| **A failed message-audit insert still kills the process.** `WebhookDispatcher.dispatchMessageReceived` and `dispatchMessageSent` both `await this._ocppMessageRepository.createOCPPMessage(…)` *outside* the `try` that wraps the rest of the method. Any rejection from that insert leaves the async method as an uncaught rejection, and nothing catches it: there is no `process.on('unhandledRejection')` anywhere in citrineos-core. | Node exits. Compose's `restart: unless-stopped` brings it back, so from the charge point's side it is a 1006 followed by a reconnect and a reboot; scenarios caught mid-restart fail for reasons that have nothing to do with what they assert. **Run sequentially and re-run any isolated failure before believing it.** The pinned image no longer supplies the frequent trigger (row below), so this is now a latent fault rather than an observed one — any *new* insert failure still crashes the server. | `packages/core/src/modules/OcppRouter/src/module/webhook.dispatcher.ts`. [citrineos-core#846][pr846] wraps both inserts and is merged on `next` only; `main`, `beta2` and `beta3` are unchanged. **Re-check that PR's port to `main` before removing this row.** |
+| **A 2.0.1 `StatusNotification` needs a device model the CSMS will not create.** `processStatusNotification` wants an `Evse` whose `evseTypeId` matches the request's `evseId` with a `Connector` under it, and a `Connector` component joined to an `EvseType` with `id = evseId` **and** `connectorId = connectorId` carrying an `AvailabilityState` variable. From beta4 the `Evse` half is created on demand when the websocket server has `allowUnknownChargingStations` (port 8081 does); the component-and-variable half still is not, and the 1.6 path in the same class auto-commissions both. | `Missing component or variable for status notification` warnings, and nothing stored, while every request is still answered. `driver provision` and `prepareStation` seed both halves; [issue #86](https://github.com/juherr/open-ocpp-tck/issues/86) carries the log either side. | `packages/ocpp/src/modules/transactions/status-notification-service.ts` (`processStatusNotification`) |
+| **`Connectors.evseTypeConnectorId` is not the foreign key it is declared as.** The column carries `@ForeignKey(() => EvseType)` and the database has **no** constraint behind it; its own comment says "the serial int starting at 1 used in OCPP 2.0.1 to refer to the connector, unique per EVSE", and every transaction path agrees — `TransactionEvent` looks a connector up by `evseTypeConnectorId: value.evse.connectorId`. | The fixture writes the OCPP connector number there. Writing an EVSE type's key instead makes that lookup miss, so the CSMS inserts its own connector and collides with the fixture on `(stationId, connectorId)` — one `CALLERROR InternalError: Failed handling message: Validation error` per transaction, which the suite sees as an unanswered `TransactionEvent`. Measured. | `packages/dal/src/repositories/sequelize/transaction-event.ts`, `packages/dal/src/models/location/connector.ts` |
+| **`0` is falsy where an `evseId` may be `0`.** `findOrCreateEvseAndComponent` resolves a component's EVSE with `connectorId ? connectorId : null`, so filing the station-scope status — `(evseId 0, connectorId 0)` — creates a *second* EVSE type numbered 0 with a null connector and repoints the component at it. The next status's lookup filters on the pair and no longer matches. | The fixture cannot be provisioned once: `prepareStation` re-asserts the join before every scenario, and the device-model read addresses the component by name and instance rather than through it. Without the repair the warning is back on the second scenario. Measured, twice. | `packages/dal/src/repositories/sequelize/device-model.ts` (`findOrCreateEvseAndComponent`, still `connectorId ? connectorId : null` at beta4) |
+| **[FIXED at the pinned digest] No 1.6 request handler for `FirmwareStatusNotification`.** Through beta3 every one the charge point sent was answered with `[4,…,"NotSupported","No handler found for action: FirmwareStatusNotification at module configuration"]` — 10 across the three TC_044 logs, and the only CALLERROR the CSMS emitted anywhere in the suite. | **A non-conformance the suite learned to detect before upstream fixed it.** OCA `TC_044_{1,2,3}_CSMS` put steps 4 and 6 on the Central System — *"The Central responds with a FirmwareStatusNotification.conf"* — and a CALLERROR is not that conf. Until issue #11 the three passed because they asserted only the statuses the charge point *sent*; then they failed on that check alone and were declared in [`expected.ts`](expected.ts); on beta4 all three came back `UNEXPECTED PASS` and left it. | [citrineos-core#890][pr890]: `packages/ocpp/src/handlers/requests/1.6/firmware-status-notification-request-ocpp-16-handler.ts` answers `{}`. |
+| **[FIXED at the pinned digest] A failed message-audit insert killed the process.** Through beta3 `WebhookDispatcher.dispatchMessageReceived` and `dispatchMessageSent` both awaited the `OCPPMessages` insert *outside* the `try` that wrapped the rest of the method, and nothing caught the rejection: there was no `process.on('unhandledRejection')` anywhere in citrineos-core. | Node exited; compose's `restart: unless-stopped` brought it back, so from the charge point's side it was a 1006 followed by a reconnect and a reboot, and scenarios caught mid-restart failed for reasons unrelated to what they assert. beta3 removed the frequent trigger (row below), beta4 removes the mechanism. | [citrineos-core#846][pr846] wraps both inserts; in the tree from beta4. |
 | **[FIXED at the pinned digest] The correlation trigger violated its own foreign key.** History, kept because it is what a reader chasing a 1006 will find in the archives. The `BEFORE INSERT` trigger `v2.0.0-beta1` installed back-filled `"requestMessageId" = NEW.id` from its CALL branch, on a row that did not exist yet; `OCPPMessages_requestMessageId_fkey` fired, and the rejection escaped through the row above. | 53 events across 43 of 92 archived artefacts, all at `ocpp_correlate_message()` line 44 — the back-filling `UPDATE`. 21 restarts across one 26h session and 2 more inside a single sequential sweep. A swallowed response, reported by the suite as an unanswered request. | [citrineos-core#830][pr830] splits the trigger and ships as `apps/ocpp-server/migrations/20260806120000-fix-ocpp-message-correlation-trigger.ts`, present from `v2.0.0-beta2`. **Do not hunt this FK on the pinned image: it is gone.** |
-| **A request to a station that has gone is redelivered forever.** A CSMS-initiated OCPP message whose charge point disconnects before it is delivered is re-enqueued and re-logged without bound, and never expires: the loop lasts for the rest of the run and the loops ACCUMULATE. `Reset` is the reliable trigger, because a station that resets disconnects by design; under load any request will do it. Each loop keeps doing database work, and the pool timeouts follow. | Measured across three archived sweeps: **1** loop → healthy (0 boot timeouts), **2** → healthy (1), **11** → the CSMS stopped answering entirely for the last 25 minutes, 38 `did not see BootNotification.conf`, 8 scenarios red as collateral, and the sweep still **exited 0**. This is the mechanism behind [#119](https://github.com/juherr/open-ocpp-tck/issues/119) and [#56](https://github.com/juherr/open-ocpp-tck/issues/56). Not fixable here; [`redelivery-loops.ts`](redelivery-loops.ts) counts them off the captured CSMS log and CI prints the count, so the accumulation is visible before it is fatal. | `router.ts` throws `RetryMessageError('Call already in progress')`; `util/queue/rabbit-mq/receiver.ts` answers it with a bare `channel.nack(message)`, whose amqplib default is `requeue: true`, with no delivery-count check, no cap and no delay. The per-station flag is never cleared when the connection goes away. Upstream [citrineos/citrineos#223](https://github.com/citrineos/citrineos/issues/223). |
-| **No 1.6 response handler for `UnlockConnector` or `UpdateFirmware`.** The Calls are routed and sent; the CallResults are answered with the same `NotSupported` CALLERROR. | Harmless — the six affected scenarios all pass. | `packages/core/src/handlers/responses/1.6/` |
-| **`GetConfiguration` is batched server-side.** The endpoint splits a request into batches of the station's stored `GetConfigurationMaxKeys`. | *Not* a problem in practice: an unprovisioned station has no such value, so the request stays one `GetConfiguration` on the wire and both TC_019 scenarios pass. Listed because provisioning that key would change it. | `Configuration/src/module/1.6/MessageApi.ts` |
-| **`SendLocalList` requires a strictly increasing `listVersion`,** and refuses otherwise *before* anything reaches the wire. Four scenarios send version 1. | `prepareStation` clears the station's stored list version each run, so a refusal cannot masquerade as a charge point ignoring the request. | `LocalAuthListService.ts`, and [`records.ts`](records.ts) |
+| **A request to a station that has gone is redelivered forever.** A CSMS-initiated OCPP message whose charge point disconnects before it is delivered is re-enqueued and re-logged without bound, and never expires: the loop lasts for the rest of the run and the loops ACCUMULATE. `Reset` is the reliable trigger, because a station that resets disconnects by design; under load any request will do it. Each loop keeps doing database work, and the pool timeouts follow. | Measured across three archived sweeps: **1** loop → healthy (0 boot timeouts), **2** → healthy (1), **11** → the CSMS stopped answering entirely for the last 25 minutes, 38 `did not see BootNotification.conf`, 8 scenarios red as collateral, and the sweep still **exited 0**. This is the mechanism behind [#119](https://github.com/juherr/open-ocpp-tck/issues/119) and [#56](https://github.com/juherr/open-ocpp-tck/issues/56). Not fixable here; [`redelivery-loops.ts`](redelivery-loops.ts) counts them off the captured CSMS log and CI prints the count, so the accumulation is visible before it is fatal. | `modules/ocpp-router/…/router.ts` throws `RetryMessageError('Call already in progress')`; `packages/ocpp/src/transport/queue/rabbit-mq/receiver.ts` answers it with a bare `channel.nack(message)`, whose amqplib default is `requeue: true`, with no delivery-count check, no cap and no delay — unchanged at beta4. What beta4 adds is an opt-in `timeouts.staleCallMaxAgeSeconds` (`packages/base/src/interfaces/router/abstract-router.ts`) that drops a queued Call older than the limit instead of delivering it to a later connection; [`compose.yaml`](compose.yaml) leaves it unset so the sweep measures the vendor's defaults, and the loop count CI prints is the instrument for evaluating it. Upstream [citrineos/citrineos#223](https://github.com/citrineos/citrineos/issues/223). |
+| **No 1.6 response handler for `UnlockConnector` or `UpdateFirmware`.** The Calls are routed and sent; the CallResults are answered with the same `NotSupported` CALLERROR. | Harmless — the six affected scenarios all pass. | `packages/ocpp/src/handlers/responses/1.6/` — fifteen handlers at beta4, neither of these among them. |
+| **`GetConfiguration` is batched server-side.** The endpoint splits a request into batches of the station's stored `GetConfigurationMaxKeys`. | *Not* a problem in practice: an unprovisioned station has no such value, so the request stays one `GetConfiguration` on the wire and both TC_019 scenarios pass. Listed because provisioning that key would change it. | `packages/ocpp/src/apis/ocpp/1.6/configuration/get-configuration-endpoint.ts` |
+| **`SendLocalList` requires a strictly increasing `listVersion`,** and refuses otherwise *before* anything reaches the wire. Four scenarios send version 1. | `prepareStation` clears the station's stored list version each run, so a refusal cannot masquerade as a charge point ignoring the request. | `packages/ocpp/src/apis/ocpp/1.6/ev-driver/send-local-list-endpoint.ts`, and [`records.ts`](records.ts) |
 
 [pr846]: https://github.com/citrineos/citrineos-core/pull/846
+[pr849]: https://github.com/citrineos/citrineos-core/pull/849
 
 ### Checked against the OCA reference
 
@@ -580,12 +597,13 @@ case is the one that applies.
 
 Three things that changed as a result:
 
-1. **TC_023.3 is confirmed, and it is mandatory.** `TC_023_3_CSMS` states the
+1. **TC_023.3 was confirmed, and it is mandatory.** `TC_023_3_CSMS` states the
    prerequisite as *"The Central System has an idTag in memory with status
    'Blocked'"* — exactly what `provision` writes — and its tool validation as
    *"(Message: Authorize.conf) idTagInfo.status is Blocked"*. The test plan
-   marks TC_023_1/2/3 **M** for the Central System. So this is a failure
-   against a mandatory case, not a driver setup artifact.
+   marks TC_023_1/2/3 **M** for the Central System. So the beta3 failure was
+   one against a mandatory case, not a driver setup artifact — and beta4
+   passes it.
 
 2. **The seven `NOT_APPLICABLE` reservation rows match the reference's own
    gating.** The test plan carries `R-0 — Support for Reservations — Yes / No`
@@ -595,13 +613,14 @@ Three things that changed as a result:
    routes no 1.6 reservation endpoint is what the reference intends, not a
    convenience.
 
-3. **The firmware rows are green for a reason the reference does not accept.**
+3. **The firmware rows were green for a reason the reference does not accept.**
    `TC_044_{1,2,3}_CSMS` require the Central System to answer each
-   `FirmwareStatusNotification.req` with a `.conf`; CitrineOS answers a
-   `NotSupported` CALLERROR. Our scenarios assert only on the statuses the
-   charge point sent, so they do not see it. **That is a gap in the scenarios,
-   and closing it would change what they measure** — `ASSERT-INVENTORY.txt`
-   would move — so it is recorded here rather than fixed in passing.
+   `FirmwareStatusNotification.req` with a `.conf`; through beta3 CitrineOS
+   answered a `NotSupported` CALLERROR, and our scenarios asserted only on the
+   statuses the charge point sent, so they did not see it. Closing that gap
+   (issue #11, `assertAllAnswered`) moved `ASSERT-INVENTORY.txt` and turned
+   the three rows red; beta4 answers the `.conf` and they are green for the
+   right reason.
 
 **Upstream tickets.** `citrineos-core` has GitHub issues disabled; the tracker
 is the umbrella repo [`citrineos/citrineos`][tracker].
@@ -610,8 +629,9 @@ SmartCharging, Diagnostics"* is the ticket for the reservation gap. It is
 **closed**, answered with *"the intention is to fully implement OCPP 1.6J, but
 … it is lower in priority"* — and the rest of its list (local list, smart
 charging, diagnostics, clear cache) did ship, while reservations did not: they
-are still unrouted at `v2.0.0-beta1`. There is **no** ticket for the `Blocked`
-mapping or for the missing `FirmwareStatusNotification` handler.
+are still unrouted at `v2.0.0-beta4`. The `Blocked` mapping and the missing
+`FirmwareStatusNotification` handler never had a ticket; both were fixed in
+the beta4 line ([#907][pr907], [#890][pr890]).
 
 [tracker]: https://github.com/citrineos/citrineos/issues
 [i169]: https://github.com/citrineos/citrineos/issues/169

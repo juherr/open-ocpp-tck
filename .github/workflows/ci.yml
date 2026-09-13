@@ -313,15 +313,15 @@ jobs:
   # CitrineOS had no part in writing the scenarios, so it is where the core
   # would be caught quietly re-acquiring a dependency on how SteVe happens to
   # behave. A CSMS-neutrality claim that only one CSMS ever exercises is a
-  # claim, not a check. It carries one known finding, and carries it in the
-  # open: cert16-tc023-3-authorize-blocked fails deterministically (3 runs of
-  # 3) because CitrineOS answers Invalid where OCPP 1.6 requires Blocked. The
-  # row is kept red rather than demoted in the scope table, which tck/scope.ts
-  # forbids, and it is DECLARED in drivers/citrineos/expected.ts -- so the
-  # sweep reports it as EXPECTED FAIL and exits 0, a NEW red still fails the
-  # build, and the day upstream fixes the mapping that row fails as UNEXPECTED
-  # PASS until its entry is deleted. drivers/citrineos/README.md carries the
-  # full gap table.
+  # claim, not a check. When it carries a known finding it carries it in the
+  # open: a row that fails deterministically for a CitrineOS reason is kept
+  # red rather than demoted in the scope table, which tck/scope.ts forbids,
+  # and is DECLARED in drivers/citrineos/expected.ts -- so the sweep reports
+  # it as EXPECTED FAIL and exits 0, a NEW red still fails the build, and the
+  # day upstream fixes it that row fails as UNEXPECTED PASS until its entry
+  # is deleted. That is exactly how the four it held against v2.0.0-beta3
+  # left when the pin moved to beta4; the table is empty at the pinned digest
+  # and drivers/citrineos/README.md carries the full gap table.
   #
   # ONE JOB RATHER THAN TWO NEAR-IDENTICAL COPIES, and it is only legal because
   # both lanes are blocking: a matrix carries one continue-on-error for the

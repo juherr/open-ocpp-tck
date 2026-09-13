@@ -447,6 +447,7 @@ fi
 # in one place and not the other was invisible, and has been done by hand:
 # the CitrineOS stack moved from `v2.0.0-beta1` to `v2.0.0-beta3` with the
 # manifest updated by hand precisely because no check would have said so.
+# (The beta3 -> beta4 move was the first one this check watched.)
 #
 # SO IT IS DRIVEN OFF THE MANIFEST'S OWN `declared in` FIELD rather than off a
 # list of the three blocks that exist today. A fourth pin block -- a second
