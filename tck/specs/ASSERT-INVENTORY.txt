@@ -201,6 +201,22 @@ FILE core-201.ts
       ·.fail(·, ·)
       RETURN
     ·.pass(·)
+  HELPER assertSampledContext
+    IF
+      ·.fail(·, ·)
+      RETURN
+    FOROF
+      TERNARY
+      FOROF
+        IF
+        FOROF
+          IF
+            ·.fail(·, ·)
+            RETURN
+    IF
+      ·.fail(·, ·)
+      RETURN
+    ·.pass(·)
   HELPER assertChangeAvailabilityScope
     IF
       ·.fail(·, ·)
@@ -480,6 +496,7 @@ FILE core-201.ts
       ·.skip(·, ·)
     assertSent(·, ·, "MeterValues", "MeterValues.req sent")
     assertMeterValueSampled(·, ·, "MeterValues", "MeterValues.req is the OCPP 2.0.1 request (an evseId and a sampled reading)")
+    assertSampledContext(·, ·, "MeterValues", "Sample.Clock", "every reading is clock-aligned (sampledValue.context is Sample.Clock)")
     assertAllAnswered(·, ·, "MeterValues", ·, {minimum:3})
   SPEC cert201-tcg03-evse-inoperative connector=1 bootWaitSecs=4 holdSecs=10 ocppVersion="OCPP-2.0.1" runsSimTemplate=false states=[{state:"Unavailable",evseId:1}]
     assertStateEstablished(·, ·, "Unavailable", "the EVSE was taken out of service")

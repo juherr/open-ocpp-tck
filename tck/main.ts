@@ -91,6 +91,7 @@ import {
   selectShard,
   type Shard,
 } from "./shard";
+import { loadTemplateOnce, runLoadedTemplate } from "./template-once";
 import { readTrace } from "./trace";
 import {
   DEFAULT_SIM_IMAGE,
@@ -681,9 +682,21 @@ async function runScenario<D>(
   /** Set only when drive() reported an operation the CSMS cannot do. */
   let unsupported: string | undefined;
   try {
+    // BEFORE connect, and not tidier after the boot gate: the pinned image
+    // auto-starts an enabled connect-triggered template the moment the station
+    // is Available -- at load, if it is loaded then -- and re-arms it on every
+    // reconnect, so a Reset(Hard) ran TC_013 twice. Loading it disabled while
+    // the station is still Unavailable is what makes the explicit start below
+    // the only one. See tck/template-once.ts, and tests/template-once.ts for
+    // the row that pins this placement.
+    const scenarioId =
+      spec.runsSimTemplate !== false
+        ? await loadTemplateOnce(sim, connector, spec.templateId)
+        : undefined;
+
     await sim.send({ command: "connect" });
     // Post-boot stdin method, made event-driven: a fixed bootWaitSecs sleep
-    // alone can let run_scenario_template fire while the CP is still
+    // alone can let the template start fire while the CP is still
     // booting -- either the scenario's opening traffic is dropped by the
     // boot gate or the command lands before the CLI is ready at all. Wait
     // for the actual BootNotification.conf line (bounded,
@@ -796,11 +809,12 @@ async function runScenario<D>(
     // keeping the wait would spend 20s proving that a scenario nobody started
     // did not start, and say so in a WARN whose whole job is to report the
     // opposite situation.
-    if (spec.runsSimTemplate !== false) {
-      await sim.send({
-        command: "run_scenario_template",
-        params: { connector, templateId: spec.templateId },
-      });
+    if (scenarioId !== undefined) {
+      // The instance loaded before connect, started here and only here. A
+      // refusal is thrown rather than logged: `run_scenario` answering
+      // "already running" would mean the auto-start walker fired after all,
+      // which is the double run this sequence exists to prevent.
+      await runLoadedTemplate(sim, connector, scenarioId);
 
       try {
         await sim.waitForLine(/"event":"scenario_started"/, 20_000);
@@ -1320,8 +1334,16 @@ async function runOneForSweep<D>(
       skipped: run.rec.skipped,
     };
   } catch (err) {
+    // The stack when it carries the message, the message ahead of it when it
+    // does not: a timeout thrown from inside a timer rendered as a bare
+    // `Error` and a line number on the CI runtime, which is a location and
+    // not a reason.
     const message =
-      err instanceof Error ? (err.stack ?? err.message) : String(err);
+      err instanceof Error
+        ? err.stack && err.stack.includes(err.message)
+          ? err.stack
+          : `${err.message}\n${err.stack ?? ""}`
+        : String(err);
     process.stderr.write(
       `[runner] ERROR: ${spec.templateId} on ${cpId} threw before completing: ${message}\n`,
     );

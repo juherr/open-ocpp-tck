@@ -484,6 +484,7 @@ function fakeSim(wait: "answers" | "times-out"): SimProcess {
     argv: "docker run (guard)",
     lines: [],
     send: async () => {},
+    call: async () => undefined,
     waitForLine: async (pattern: RegExp) => {
       if (wait === "answers") return "Sent: [2,\"1\",\"StatusNotification\",{}]";
       throw new Error(`timed out after 15000ms waiting for /${pattern.source}/`);

@@ -25,7 +25,7 @@ services:
   # rebuild, and a conformance run that cannot say which bytes it tested is
   # not a conformance run. Same discipline as DEFAULT_SIM_IMAGE in tck/sim.ts.
   steve:
-    image: ghcr.io/juherr/steve:steve-3.14.0@sha256:aa56949a639328a11461a3e448d40549b521f232ee0fdeef22389ddff3c9901f
+    image: ghcr.io/juherr/steve:steve-3.14.1@sha256:c3fbfcc3f220dc63c13c4accbab7a90757984c1902af2c9e4233bedcc3675400
     container_name: steve${TCK_SUFFIX:-}
     restart: unless-stopped
     depends_on:

@@ -38,6 +38,16 @@
  * rewrapped fixture below is a different string and the same certificate, and
  * it passes.
  *
+ * THE FIFTH IS THE STATION'S OWN REQUEST READ AS THE CASE'S. TC_J_01 is
+ * "Clock-aligned Meter Values", and the one member that says so is
+ * `sampledValue.context`; the pinned image defaults it to `Sample.Periodic`,
+ * which is TC_J_02's reading, and Part 3 makes the member optional with that
+ * same default. So `assertSampledContext` must go red on `Sample.Periodic`, red
+ * on a sample that carries no context at all, and red when only the FIRST of
+ * three requests names the clock -- the shape a stimulus that set the context
+ * once would produce -- and green only when every sample of every request
+ * does.
+ *
  * WHY IT IS A GUARD AND NOT A SWEEP, `tests/get-configuration-filter.ts`'s
  * reason exactly. Every payload below is one no CSMS in this repository sends:
  * both bundled drivers build these requests from the driver contract, so the
@@ -61,6 +71,7 @@ import {
   assertCertificateInstallRequested,
   assertChangeAvailabilityScope,
   assertChargingProfilesRequested,
+  assertSampledContext,
   profileIdOf,
 } from "../tck/specs/core-201";
 
@@ -453,6 +464,100 @@ check(
 check(
   idFromLine("[2026-09-06T00:00:00Z] [INFO] [ws] not a frame at all") === -1,
   "a line that is not a frame yields something other than the sentinel.",
+);
+
+// ---------------------------------------------------------------------------
+// 5. MeterValues -- the case's context, on every sample of every request.
+// ---------------------------------------------------------------------------
+
+/** One 2.0.1 MeterValues request; `contexts` is one entry per sampledValue,
+ *  `undefined` meaning the member is omitted. */
+const meterValues = (id: string, contexts: ReadonlyArray<string | undefined>) =>
+  sent([
+    2,
+    id,
+    "MeterValues",
+    {
+      evseId: 1,
+      meterValue: [
+        {
+          timestamp: "2026-09-06T00:00:00Z",
+          sampledValue: contexts.map((context, i) => ({
+            value: i,
+            measurand: "Energy.Active.Import.Register",
+            ...(context === undefined ? {} : { context }),
+          })),
+        },
+      ],
+    },
+  ]);
+
+const clockAligned = (lines: string[]) => (rec: AssertRecorder) =>
+  assertSampledContext(rec, parseLog(lines.join("\n")), "MeterValues", "Sample.Clock", "ctx");
+
+row(
+  "three readings all carrying Sample.Clock",
+  "PASS",
+  clockAligned([
+    meterValues("m1", ["Sample.Clock"]),
+    meterValues("m2", ["Sample.Clock", "Sample.Clock"]),
+    meterValues("m3", ["Sample.Clock"]),
+  ]),
+  "The request the case asks for must pass.",
+);
+
+row(
+  "three readings carrying Sample.Periodic",
+  "FAIL",
+  clockAligned([
+    meterValues("m1", ["Sample.Periodic"]),
+    meterValues("m2", ["Sample.Periodic"]),
+    meterValues("m3", ["Sample.Periodic"]),
+  ]),
+  "Sample.Periodic is the pinned image's default and TC_J_02's reading; a check " +
+    "that passes it lets TC_J_01 go green without its identifying condition.",
+);
+
+row(
+  "a reading whose sampledValue carries no context member",
+  "FAIL",
+  clockAligned([meterValues("m1", [undefined])]),
+  "Part 3 defaults an absent context to Sample.Periodic, so absence IS the " +
+    "wrong reading, and reading it as 'nothing to check' is absence read as a value.",
+);
+
+row(
+  "the clock named on the first request only",
+  "FAIL",
+  clockAligned([
+    meterValues("m1", ["Sample.Clock"]),
+    meterValues("m2", ["Sample.Periodic"]),
+    meterValues("m3", ["Sample.Clock"]),
+  ]),
+  "A first-only read would pass a stimulus that set the context on one of three " +
+    "readings; the check has to range over every request the station sent.",
+);
+
+row(
+  "a request whose second sample is periodic",
+  "FAIL",
+  clockAligned([meterValues("m1", ["Sample.Clock", "Sample.Periodic"])]),
+  "Every sample, not every request: one reading can carry several measurands.",
+);
+
+row(
+  "no MeterValues on the wire at all",
+  "FAIL",
+  clockAligned([sent([2, "h", "Heartbeat", {}])]),
+  "Nothing to read is not a pass.",
+);
+
+row(
+  "a MeterValues request that carries no sample",
+  "FAIL",
+  clockAligned([meterValues("m1", [])]),
+  "A request with an empty sampledValue has no context to be right about; " +
+    "'no sample contradicted the case' is not the case holding.",
 );
 
 if (failures.length > 0) {
