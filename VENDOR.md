@@ -654,15 +654,15 @@ did not include; the next row taken is where the larger number appears.
 
 | CitrineOS | digest | validated | `all` (44), parallel pass | `authorize` (3) |
 |---|---|---|---|---|
-| `v2.0.0-beta4` — **current pin**, `CITRINE_VARIANT=v2` | `sha256:e33badb9…` | 2026-09-13 | **OCPP 1.6 half only**: 35 PASS, 5 PARTIAL, 7 N/A, **0 FAIL and 0 EXPECTED FAIL** — the four beta3 declarations all PASS outright; three lanes, one stack. The OCPP 2.0.1 half is NOT in this row: see the paragraph below the table | in the sweep: 3 PASS (`tc023-3` answers `Blocked`) |
+| `v2.0.0-beta4` — **current pin**, `CITRINE_VARIANT=v2` | `sha256:e33badb9…` | 2026-09-13 | **All 96 registered scenarios, CI, two shards on fresh stacks** (run 34773560624): 84 PASS, 5 PARTIAL, 7 N/A, **0 FAIL and 0 EXPECTED FAIL** — the four beta3 declarations all PASS outright. Shard 2 needed no isolated retry; shard 1 took 22 (all PASS isolated) under 3 redelivery loops. The CI run before it collapsed on both shards (10 loops each), and so did the developer machine twice — the paragraph below the table says why that is not the pin | in the sweep: 3 PASS (`tc023-3` answers `Blocked`) |
 | `v2.0.0-beta3` — superseded pin, `CITRINE_VARIANT=v2` | `sha256:ddd8e987…` | 2026-09-05 | 38 PASS, 5 PARTIAL, 7 N/A, 4 EXPECTED FAIL — **0 flakes**, all four confirmed isolated; the 54-scenario sweep, `authorize` included | in the sweep: 2 PASS, 1 EXPECTED FAIL (`tc023-3`) |
 | `v2.0.0-beta1` — superseded pin, `CITRINE_VARIANT=v2` | `sha256:58800f45…` | 2026-08-11 | 34 PASS, 7 N/A, 3 FAIL — two lane flakes PASS on isolated retry, `tc044-2` confirmed | 2 PASS, 1 FAIL (`tc023-3`) |
 | `v1.9.1` — `CITRINE_VARIANT=v1` | `sha256:4f879151…` | 2026-08-11 | 16 PASS, 13 N/A, 15 FAIL — **all 15 confirmed on isolated retry, no flakes** | 2 PASS, 1 FAIL (`tc023-3`) |
 | `v2.0.0-beta1` — same pin, GraphQL transport | `sha256:58800f45…` | 2026-08-12 | 37 PASS, 7 N/A, **0 FAIL, and no flakes** — the parallel pass needed no isolated retry at all | 2 PASS, 1 FAIL (`tc023-3`) |
 
-THE beta4 ROW IS HALF A SWEEP, and the half it lacks was not skipped but
-could not be measured on the machine that took it. The 96-scenario sweep
-collapsed at its first all-2.0.1 boot burst — three stations sending
+THE beta4 ROW IS A CI MEASUREMENT, and the developer-machine half of the
+story is why. Locally, the 96-scenario sweep collapsed at its first
+all-2.0.1 boot burst — three stations sending
 `BootNotification` within 7 ms — on the seed open-ocpp-tck#119 describes:
 the Sequelize pool (five connections, the default on both pins) is exhausted,
 the 2.0.1 `StatusNotification` handlers wait 60 s for a connection and stay
@@ -676,11 +676,16 @@ against the `v2.0.0-beta3` image with its own environment block, collapsed
 at the same burst with the same two `Reset` loops. The seed is the CSMS's,
 the amplifier is this host (`postgis/postgis` runs under amd64 emulation on
 an Apple Silicon Docker Desktop, and the DB is what the pool is waiting on),
-and neither is the pin. The 2.0.1 measurement for this digest is therefore
-the pull request's CI `e2e` jobs, two shards on two fresh stacks on amd64
-runners, where the same seed has produced two collapses and many clean runs
-against beta3; read the artifact size and the loop count before the
-verdicts, per #119, and re-run a collapsed shard for a second sample.
+and neither is the pin. So the row above is CI's: two shards on two fresh
+stacks on amd64 runners. Its FIRST sample collapsed on both shards — 10
+loops each, 67 MB and 53 MB artifacts, three and six rows "confirmed" by an
+isolated retry that ran against a CSMS which had stopped answering — and the
+same day `main`'s own run of the beta3 merge collapsed its shard 1 with a
+70 MB artifact, which is the seed at the rate it currently runs (3 shard
+failures in the 26 beta3 shard runs before it). The second sample is the row.
+Read the artifact size and the loop count before the verdicts, per #119, and
+re-run a collapsed shard for a second sample; the 1.6 half was also measured
+locally before the burst — 35 PASS, 5 PARTIAL, 7 N/A, 0 FAIL — and agrees.
 
 One row, two runs: the second was taken from `down -v` and **agreed exactly in
 shape** — 34/7/3 in the parallel pass, two of the three failures reclassified as

@@ -8,25 +8,25 @@ assertion gets tested.
 
 It reports the answer rather than flattering it.
 
-**Measured 2026-09-13 against the pinned image, OCPP 1.6: 35 `PASS`,
-5 `PARTIAL`, 7 `NOT APPLICABLE`, 0 `FAIL` out of the 47 scenarios.** The
-number to read is the last one. Through `v2.0.0-beta3` this page opened with
-"1 `FAIL`" and then "4 `FAIL`", every one a finding against CitrineOS that
-[`expected.ts`](expected.ts) declared rather than the scope table hid — and
-on `v2.0.0-beta4` all four came back `UNEXPECTED PASS` and left that table
+**Measured 2026-09-13 against the pinned image, all 96 scenarios: 84 `PASS`,
+5 `PARTIAL`, 7 `NOT APPLICABLE`, 0 `FAIL`.** The number to read is the last
+one. Through `v2.0.0-beta3` this page opened with "1 `FAIL`" and then
+"4 `FAIL`", every one a finding against CitrineOS that
+[`expected.ts`](expected.ts) declared rather than the scope table hid — and on
+`v2.0.0-beta4` all four came back `UNEXPECTED PASS` and left that table
 empty. Both findings are marked fixed in the gap table below, with the
 upstream change that fixed each.
 
-The 49 OCPP 2.0.1 scenarios were measured on earlier pins in three passes —
-four `PASS` on 2026-08-19, `TC_B_21` on 2026-08-20 once its fixture existed,
-`TC_B_06` / `TC_B_09` on 2026-08-21 — and the rows registered since have run
-in CI against beta3. On beta4 they have **not** been measured on a developer
-machine, and `VENDOR.md`'s validation history says why: the sweep collapses
-at its first all-2.0.1 boot burst on the seed
-[#119](https://github.com/juherr/open-ocpp-tck/issues/119) describes, the
-`v2.0.0-beta3` image collapses identically on the same host, and the
-measurement that stands is the CI `e2e` job. See [OCPP 2.0.1](#ocpp-201)
-below.
+That measurement is CI's — two shards on two fresh stacks — and it is the
+second sample, not the first. The first collapsed on both shards, and the
+developer machine collapsed twice before it, all at the same place: the first
+boot burst where three stations come up in OCPP 2.0.1 together, on the seed
+[#119](https://github.com/juherr/open-ocpp-tck/issues/119) describes. The
+`v2.0.0-beta3` image collapses identically on the same host, and `main`'s own
+beta3 run collapsed a shard the same day, so it is the CSMS's seed at the rate
+it currently runs rather than the pin. `VENDOR.md`'s validation history has
+the row, the control and the rule for reading an artifact: size and loop count
+first, verdicts second.
 
 The parallel pass is sensitive to what else the host is doing: on a
 workstation carrying an unrelated build, later runs of the same commit

@@ -65,7 +65,7 @@ different surfaces, and each answers a question the other cannot:
 | Driver | Transport | What it answers | Result |
 |---|---|---|---|
 | [`drivers/steve`](drivers/steve/README.md) | HTML manager UI + WebAPI + MariaDB | *Has the harness lost a capability?* SteVe is the CSMS the scenarios were originally written against, so a scope row that had to be demoted would mean the core dropped something. | 47 `DRIVABLE`, and the 26 OCPP 2.0.1 scenarios `NOT_APPLICABLE` |
-| [`drivers/citrineos`](drivers/citrineos/README.md) | JSON REST API + GraphQL | *Is the contract actually CSMS-neutral?* [CitrineOS](https://github.com/citrineos/citrineos-core) (LF Energy / S44) had no part in writing the scenarios and has a smaller OCPP 1.6 surface. | 35 `PASS`, 5 `PARTIAL`, 0 `FAIL`, 7 `NOT APPLICABLE` over the OCPP 1.6 scenarios; the 49 OCPP 2.0.1 ones are measured by CI |
+| [`drivers/citrineos`](drivers/citrineos/README.md) | JSON REST API + GraphQL | *Is the contract actually CSMS-neutral?* [CitrineOS](https://github.com/citrineos/citrineos-core) (LF Energy / S44) had no part in writing the scenarios and has a smaller OCPP 1.6 surface. | 35 `PASS`, 5 `PARTIAL`, 0 `FAIL`, 7 `NOT APPLICABLE` over the OCPP 1.6 scenarios; 49 `PASS` over the OCPP 2.0.1 ones |
 
 An abstraction with one implementation is neutral by assertion, so the second
 driver is what turns that into a measurement — and the result is the useful
