@@ -253,8 +253,10 @@ replace — it would read as sixteen reviewed findings while being one stale
 snapshot. On v1 every failure stays a failure; whoever puts the line back under
 a sweep gets the honest list from the run.
 
-`tc023-3` fails identically on both lines, which is the useful control: it is a
-property of the `Authorize` handler, not of either release.
+`tc023-3` failed identically on both lines through `v2.0.0-beta3`, which was
+the useful control: a property of the `Authorize` handler rather than of
+either release. On the pinned `v2.0.0-beta4` it answers `Blocked`
+(citrineos-core#907); on v1.9.1 it still answers `Invalid`.
 
 **Use v2.** v1 support exists so that recommendation is measured rather than
 asserted.
