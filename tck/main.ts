@@ -1,6 +1,6 @@
 #!/usr/bin/env bun
 /**
- * Derived from shiv3/ocpp-cp-simulator scripts/steve-verify/runner/main.ts @ 604054adb0d7d7129a26a5f1ad2d5fdc290d1ca1 (Apache-2.0). Modified: the STEVE_DRIVER=api|ui selection is replaced by a CSMS driver loaded through ./driver-registry; a per-driver scope table (./scope) is consulted BEFORE any container starts and yields the NOT APPLICABLE verdict; UnsupportedOperationError (./driver) thrown out of drive() degrades to NOT APPLICABLE with a stderr WARNING; the PARTIAL verdict and the `skipped` summary column were added; the exit code is non-zero only for FAIL/ERROR; parallel lanes derive from the resolved station list instead of the fixed CERTCP1..3 trio; the SteVe capability probe is dropped; a scenario's declared OCPP 2.0.1 Reusable States (./states-201) are planned and established between the boot gate and the scenario template.
+ * Derived from shiv3/ocpp-cp-simulator scripts/steve-verify/runner/main.ts @ 604054adb0d7d7129a26a5f1ad2d5fdc290d1ca1 (Apache-2.0). Modified: the STEVE_DRIVER=api|ui selection is replaced by a CSMS driver loaded through ./driver-registry; a per-driver scope table (./scope) is consulted BEFORE any container starts and yields the NOT APPLICABLE verdict; UnsupportedOperationError (./driver) thrown out of drive() degrades to NOT APPLICABLE with a stderr WARNING; the PARTIAL verdict and the `skipped` summary column were added; the exit code is non-zero only for FAIL/ERROR; parallel lanes derive from the resolved station list instead of the fixed CERTCP1..3 trio; the SteVe capability probe is dropped; a scenario's declared OCPP 2.0.1 Reusable States (./states-201) are planned and established between the boot gate and the scenario template; after the boot gate's settle, a scenario's first CSMS dispatch is held until every CALL the station sent at boot has been answered (./boot-quiet).
  *
  * main.ts -- TypeScript OCPP conformance runner CLI.
  *
@@ -91,6 +91,7 @@ import {
   selectShard,
   type Shard,
 } from "./shard";
+import { settleBoot } from "./boot-quiet";
 import { loadTemplateOnce, runLoadedTemplate } from "./template-once";
 import { readTrace } from "./trace";
 import {
@@ -226,6 +227,40 @@ async function preflight(cpIds: readonly string[]): Promise<void> {
  */
 const CSMS_READY_TIMEOUT_MS = 150_000;
 const CSMS_READY_INTERVAL_MS = 5_000;
+
+/**
+ * How long the boot quiet gate (./boot-quiet) holds a scenario's first CSMS
+ * dispatch for the station's boot-time CALLs to be answered, when they are
+ * not.
+ *
+ * THREE NUMBERS UNDER IT, ALL THE PINNED CSMS'S. 20 s is the TTL on the
+ * CSMS's in-progress entry for a station's CALL: past it, a dispatch is no
+ * longer refused, so any budget above 20 s ends the 1 ms retry loop that #119
+ * measured. 60 s is its database pool's acquire timeout, i.e. how long the
+ * stall that leaves those CALLs unanswered lasts: a budget above it lets the
+ * pool drain before the first dispatch arrives, instead of landing the
+ * dispatch on a CSMS still queueing for a connection. 30 s is the margin the
+ * boot gate above already allows on BootNotification.conf. In the healthy
+ * case the answers arrive ~300 ms after the CALLs, inside `bootWaitSecs`, and
+ * the gate returns without waiting -- the budget is spent only on a station
+ * whose CALLs the CSMS has stopped answering, which is the stall itself.
+ */
+const BOOT_QUIET_TIMEOUT_MS = 90_000;
+/** How long every CALL still open must have been outstanding before the quiet
+ *  gate gives up on it: the CSMS's 20 s in-progress TTL, plus a margin for the
+ *  gate seeing the CALL a beat after the CSMS did. Without it the budget is
+ *  measured from the first wait alone, and a Heartbeat the station sends at
+ *  t=89s is dispatched over at t=90s with nineteen seconds of entry left. */
+const BOOT_QUIET_STALE_MS = 25_000;
+/** The quiet gate's terminal bound. Each new unanswered CALL can extend the
+ *  gate by BOOT_QUIET_STALE_MS, and nothing enforces that a station sends
+ *  them less often than that -- so the budget plus one 60 s heartbeat
+ *  interval, past which the gate answers `unsettled` if a CALL is still
+ *  inside the window and the scenario is aborted rather than dispatched. */
+const BOOT_QUIET_CAP_MS = 150_000;
+/** The boot gate's own budget on BootNotification.conf, unchanged from the
+ *  fork: a soft 30 s, warn and go on. */
+const BOOT_GATE_TIMEOUT_MS = 30_000;
 
 /** The real clock. `unref()` on the deadline timer is load-bearing: without it
  *  a 150s timer left behind by a probe that answered in 20ms keeps the process
@@ -698,41 +733,68 @@ async function runScenario<D>(
     // Post-boot stdin method, made event-driven: a fixed bootWaitSecs sleep
     // alone can let the template start fire while the CP is still
     // booting -- either the scenario's opening traffic is dropped by the
-    // boot gate or the command lands before the CLI is ready at all. Wait
-    // for the actual BootNotification.conf line (bounded,
-    // warn-and-continue on timeout like every other soft wait here), THEN
-    // apply the spec's bootWaitSecs settle on top, preserving each spec's
-    // tuned timing.
-    try {
-      // Upstream matched `"status":"Accepted","currentTime"` -- SteVe's key
-      // order. JSON object key order carries no meaning, and a CSMS serialises
-      // the same payload as {currentTime, interval, status}, so the wait
-      // always timed out: 30s burned per scenario, and the event-driven gate
-      // silently degraded back into the fixed sleep it exists to replace.
-      // Match both keys without constraining their order.
-      //
-      // REJECTED, and it will be re-proposed because the assertions below now
-      // read trace records and this is the last frame pattern left in this
-      // file: gate on the trace instead. It cannot work. This is a LIVE wait on
-      // a stream that is still arriving, and the trace is a file the CONTAINER
-      // appends to -- serving this wait from it means polling a file for a
-      // record that may never come, i.e. reimplementing waitForLine's timeout
-      // around a worse source. The frames this gate waits on are stdout's,
-      // which we are already reading line by line. Nothing about the coupling
-      // issue #44 is about applies here either: no member order is pinned,
-      // which is exactly what the lookaheads above are for.
-      await sim.waitForLine(
-        /Received: \[3,(?=[^\]]*"status":"Accepted")(?=[^\]]*"currentTime")/,
-        30_000,
-      );
-    } catch (err) {
-      process.stderr.write(
-        `[runner] WARN: did not see BootNotification.conf within 30s -- continuing anyway (${
-          err instanceof Error ? err.message : String(err)
-        })\n`,
+    // boot gate or the command lands before the CLI is ready at all. So:
+    // the actual BootNotification.conf line (bounded, warn-and-continue on
+    // timeout like every other soft wait here), THEN the spec's bootWaitSecs
+    // settle on top, preserving each spec's tuned timing, THEN the quiet
+    // gate -- and that order is settleBoot's to keep, not this file's: the
+    // station's boot-time StatusNotifications go out 1-4 ms after the conf,
+    // so a quiet gate asked before the settle reads an empty set and opens
+    // onto the window it exists to close. tests/boot-quiet.ts holds the order
+    // through the injected settle; what stays here is that the call precedes
+    // every source of CSMS traffic below -- the Reusable States, the template,
+    // drive() -- which is where the boot gate has always stood.
+    //
+    // The seed (#119, #138): three stations booting in 2.0.1 at once stall
+    // the CSMS's StatusNotification handlers for a minute, a dispatch into
+    // that minute is re-queued every millisecond, and 5 of 8 CI shard runs on
+    // the beta4 pin collapsed there. The condition is the CSMS's own -- see
+    // the module header -- and it holds for any OCPP-J peer.
+    //
+    // SOFT, like the boot gate: the budget spent, the CSMS's own TTL has
+    // cleared the entries and the dispatch is at least not a loop, so warn and
+    // go on. The WARN is an instrument, not decoration: it counts the stalls
+    // that did not become loops, which is the number #138 has no other way to
+    // read. Silent when nothing waited, so a healthy sweep's log is unchanged.
+    const quiet = await settleBoot(sim, {
+      bootGateMs: BOOT_GATE_TIMEOUT_MS,
+      bootWaitMs: bootWaitSecs * 1000,
+      quietTimeoutMs: BOOT_QUIET_TIMEOUT_MS,
+      staleAfterMs: BOOT_QUIET_STALE_MS,
+      hardCapMs: BOOT_QUIET_CAP_MS,
+      sleep,
+      onBootGateTimeout: (err) =>
+        process.stderr.write(
+          `[runner] WARN: did not see BootNotification.conf within ${BOOT_GATE_TIMEOUT_MS / 1000}s -- continuing anyway (${
+            err instanceof Error ? err.message : String(err)
+          })\n`,
+        ),
+    });
+    // ABORT, NOT WARN: the cap was reached with a CALL still inside the TTL
+    // window, so the one dispatch this gate exists to hold would land on a
+    // live entry. A throw here is an ERROR row -- the scenario never got an
+    // answer -- and the finally below stops the simulator, which is the
+    // cleanup an unbounded wait would have held up.
+    if (quiet.kind === "unsettled") {
+      throw new Error(
+        `${spec.templateId}: ${options.cpId} kept sending CALLs the CSMS did not answer ` +
+          `for ${quiet.waitedMs}ms (${quiet.calls
+            .map((call) => `${call.action} ${call.uniqueId}`)
+            .join(", ")}); refusing to dispatch over a call still in progress`,
       );
     }
-    await sleep(bootWaitSecs * 1000);
+    if (quiet.kind === "outstanding") {
+      process.stderr.write(
+        `[runner] WARN: boot quiet: ${quiet.calls.length} CALL(s) ${options.cpId} sent ` +
+          `are still unanswered after ${quiet.waitedMs}ms (${quiet.calls
+            .map((call) => `${call.action} ${call.uniqueId}`)
+            .join(", ")}) -- dispatching anyway\n`,
+      );
+    } else if (quiet.waitedMs > 0) {
+      process.stderr.write(
+        `[runner] boot quiet: waited ${quiet.waitedMs}ms for ${options.cpId}'s boot-time CALLs to be answered\n`,
+      );
+    }
 
     // THE REUSABLE STATES, HERE AND NOWHERE ELSE. After the boot gate, because
     // every fixture needs a station the CSMS has accepted; before the template

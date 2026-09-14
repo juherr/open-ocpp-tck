@@ -1,5 +1,5 @@
 /**
- * Derived from shiv3/ocpp-cp-simulator scripts/steve-verify/runner/sim.ts @ 604054adb0d7d7129a26a5f1ad2d5fdc290d1ca1 (Apache-2.0). Modified: the hardcoded docker argv is now built from SimConfig; the `-v <repoRoot>:/app -w /app` bind mount and `repoRoot` are gone (the published image ships the CLI sources); the image is pinned by digest; `--network` left the default path; outgoing WS Basic auth and an optional cpId-in-path WS URL were added; every trace of the command redacts the password; the line pump, the waiter list, `send` and an id-correlated `call()` live in `attachSimStreams` over a `SimIo` so a guard can drive them without a process, waitForLine is a predicate wait applied to a RegExp, and stdout's EOF rejects every pending wait with the exit code instead of leaving it to its timeout. stop(), container cleanup and signal handlers are byte-for-byte upstream.
+ * Derived from shiv3/ocpp-cp-simulator scripts/steve-verify/runner/sim.ts @ 604054adb0d7d7129a26a5f1ad2d5fdc290d1ca1 (Apache-2.0). Modified: the hardcoded docker argv is now built from SimConfig; the `-v <repoRoot>:/app -w /app` bind mount and `repoRoot` are gone (the published image ships the CLI sources); the image is pinned by digest; `--network` left the default path; outgoing WS Basic auth and an optional cpId-in-path WS URL were added; every trace of the command redacts the password; the line pump, the waiter list, `send` and an id-correlated `call()` live in `attachSimStreams` over a `SimIo` so a guard can drive them without a process, waitForLine is a predicate wait applied to a RegExp and takes a `fromIndex` past which the existing lines are scanned, and stdout's EOF rejects every pending wait with the exit code instead of leaving it to its timeout. stop(), container cleanup and signal handlers are byte-for-byte upstream.
  *
  * sim.ts -- docker-spawned simulator process: launches the ocpp-cp-simulator
  * CLI in JSON Lines mode inside a container (port of lib.sh's sim_start),
@@ -213,8 +213,13 @@ export interface SimProcess {
      */
     call(command: string, params?: Record<string, unknown>, timeoutMs?: number): Promise<unknown>;
     /** Resolves with the first line (existing or future) matching `pattern`,
-     *  or rejects after `timeoutMs` -- every wait in this module is bounded. */
-    waitForLine(pattern: RegExp, timeoutMs: number): Promise<string>;
+     *  or rejects after `timeoutMs` -- every wait in this module is bounded.
+     *  `fromIndex` (default 0) skips the existing lines before it: a caller
+     *  that has already READ `lines` up to some length and found nothing it
+     *  wanted waits from there, so a line it already rejected cannot resolve
+     *  the wait again -- see tck/boot-quiet.ts for the loop that made this
+     *  necessary. Future lines always qualify. */
+    waitForLine(pattern: RegExp, timeoutMs: number, fromIndex?: number): Promise<string>;
     /** Closes stdin (lets the CLI exit on its own EOF handler), then
      *  docker-stop/rm the container unconditionally and reap the local
      *  process. Idempotent, never throws. */
@@ -316,7 +321,7 @@ export interface SimStreams {
     readonly stderrLines: readonly string[];
     send(command: Record<string, unknown>): Promise<void>;
     call(command: string, params?: Record<string, unknown>, timeoutMs?: number): Promise<unknown>;
-    waitForLine(pattern: RegExp, timeoutMs: number): Promise<string>;
+    waitForLine(pattern: RegExp, timeoutMs: number, fromIndex?: number): Promise<string>;
     /** Settles once both output streams have been read to their end. */
     readonly drained: Promise<void>;
 }

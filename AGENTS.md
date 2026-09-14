@@ -24,7 +24,7 @@ error.
 ## The gate
 
 `bun run verify` is every check CI runs before it starts a container —
-typecheck, committed declarations, three driver scope checks, nineteen in-process
+typecheck, committed declarations, three driver scope checks, twenty in-process
 guards and seventeen shell guards — with one exit code, and every step runs even
 after one fails, where CI enumerates them and stops at the first.
 
@@ -65,6 +65,7 @@ bun tests/state-plan-201.ts
 bun tests/certificate-material.ts
 bun tests/request-shape-201.ts
 bun tests/template-once.ts
+bun tests/boot-quiet.ts
 bun tests/sim-exit-rejects-waits.ts
 bash tests/cert201-declares-its-version.sh
 bash tests/cert201-scope-rows.sh       # both read tck/specs/ASSERT-INVENTORY.txt,
@@ -137,7 +138,7 @@ There is no unit-test framework and no `*.test.ts`. `tests/` holds offline
 guards, each with a header stating the property it protects. `bun run test`
 chains them — note `bun test` is Bun's own runner and finds nothing here.
 
-Shell is the default, and the nineteen TypeScript ones are TypeScript because
+Shell is the default, and the twenty TypeScript ones are TypeScript because
 what they assert is unreachable through the CLI. `driver-env-scope.ts`: a
 driver's declarations follow the env they are *resolved* with, where the CLI
 can only ever pass `process.env`. `capability-parity.ts`: the same reason and
@@ -313,6 +314,50 @@ than a rule -- the load has to precede `connect`, because an enabled instance
 on an Available station starts at load, and moving the call after the boot
 gate reads as tidier and reintroduces the double run. The model is the
 guard's one assumption, and the next pin move is when to re-read it.
+
+`boot-quiet.ts`: the one whose subject is a WINDOW. The runner's boot gate
+opens on `BootNotification.conf` and settles; the station's boot-time
+`StatusNotification`s go out milliseconds later, and the pinned CSMS refuses
+every CSMS-initiated Call -- re-queued each millisecond, no backoff -- while
+one of them is still in progress. Three stations booting in 2.0.1 at once stall
+those handlers for the pool's 60 s acquire timeout, so a dispatch 4 s after
+the boot lands inside the stall, and 5 of 8 CI shard runs on the beta4 pin
+collapsed there (#119, #138). The in-progress entry is set when the station's
+CALL arrives and cleared when the CSMS sends its CALLRESULT or CALLERROR, so
+"every CALL the station sent has been answered" is the CSMS's own precondition,
+and it is readable off the simulator's stdout. Reaching the branch from the CLI
+means a CSMS that answers the boot and stalls the rest, which no bundled CSMS
+can be asked for -- CI produces it on 60 % of beta4 shard runs and never when
+wanted -- so `awaitBootQuiet` takes `lines` and `waitForLine` as its seam and
+the guard scripts the station's stdout. Its control row is the healthy boot,
+which must cost nothing; its odd row is a RACE, an answer landing between the
+gate's read and its wait, which the real pump serves from the lines already
+read and a tidier implementation would not -- and the row beside it is its
+converse: a line the wake pattern matches and the parser rejects has to be
+passed over ONCE, because a wait served from the lines already read would
+resolve on it every pass for the whole budget, which is the tight loop this
+module exists to prevent, inside the module -- and that rule is the PUMP's,
+so one row drives the real `attachSimStreams` rather than the fake: the fake
+models `fromIndex`, and a model is only worth what holds it to the thing.
+Placement is a row of its own: asked before the settle the gate reads an
+empty set and opens, so `settleBoot` owns conf-then-settle-then-gate with the
+settle injected, and the guard makes the CALLs land inside it. What stays in
+`runScenario` is one call, ahead of every source of CSMS traffic, where the
+boot gate has always stood. And the budget is not the rule the runner relies
+on: the CSMS's in-progress entry is per CALL and its clock starts when the
+CALL arrives, so a Heartbeat the station sends at t=89s is not one the gate
+may give up on at t=90s -- every open CALL is aged on its own clock past the
+TTL window before the gate answers `outstanding`, and the row that holds it
+has its control in the row where a CALL open since the start is given up on
+at the budget and not a moment later. That ageing is what makes a TERMINAL
+bound necessary, since nothing makes a station send unanswered CALLs less
+often than the window: at the cap the gate answers, and reached with a CALL
+still inside the window the answer is `unsettled`, on which the runner aborts
+the scenario rather than dispatch over a live entry -- the row that drives
+fresh CALLs for ever, and its control where a window that fits under the cap
+is aged out as before. The fake ENDS the run on a runaway, because a gate
+that never terminates is a hang and not a red row, and the rejection or throw
+it could raise instead is exactly what such a gate would spin on.
 
 `sim-exit-rejects-waits.ts`: the one whose subject is a process that is GONE.
 `startSim`'s first call is a `status` probe with a 120-second budget, because
