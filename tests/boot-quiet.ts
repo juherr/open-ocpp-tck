@@ -26,7 +26,21 @@
  *      uniqueId count for nothing: neither as an outstanding CALL nor as an
  *      answer;
  *   7. a response that lands between the gate's read of the lines and its
- *      wait is not missed: the wait is served from the lines already read.
+ *      wait is not missed: the wait is served from the lines already read;
+ *   8. a line that MATCHES the wake pattern and parses to nothing -- a
+ *      `Received: [3,"<id>"]` with no payload -- is passed over once, not
+ *      served again on every pass. The wake pattern is looser than the
+ *      parser and the pump serves a wait from the lines it already has, so a
+ *      wait that started from 0 would resolve from that line for the whole
+ *      budget: the tight loop this module exists to prevent, in the module;
+ *   9. a uniqueId carrying a `"` or a `\` is waited on as the line spells it,
+ *      JSON-encoded, because `parseLogLine` decodes what the wire carries;
+ *  10. `settleBoot` asks the quiet gate AFTER the settle: the boot-time CALLs
+ *      that land during the settle are what it waits on, and a gate moved
+ *      ahead of the settle reads an empty set and opens. This is the
+ *      placement row, the one the runner's comment used to hold alone;
+ *  11. `settleBoot`'s boot gate is soft: a conf that never comes is reported
+ *      through the callback, and the settle and the quiet gate still run.
  *
  * WHY. The pinned CitrineOS refuses to dispatch a CSMS-initiated Call while
  * any Call of the station's own is still in progress, and re-queues it every
@@ -54,7 +68,7 @@
  * Offline: no container, no CSMS, no file, no real clock.
  */
 
-import { awaitBootQuiet } from "../tck/boot-quiet";
+import { awaitBootQuiet, settleBoot } from "../tck/boot-quiet";
 
 let failures = 0;
 
@@ -72,16 +86,22 @@ function pass(what: string): void {
 // ---------------------------------------------------------------------------
 
 const T = "2026-09-12T19:16:54.000Z";
+// The id is JSON-encoded as the wire carries it (row 9 is the one where that
+// differs from the raw string).
+const J = (id: string): string => JSON.stringify(id);
 const sent = (id: string, action: string, payload = "{}"): string =>
-  `[${T}] [INFO] [WebSocket] Sent: [2,"${id}","${action}",${payload}]`;
+  `[${T}] [INFO] [WebSocket] Sent: [2,${J(id)},"${action}",${payload}]`;
 const received = (id: string, action: string, payload = "{}"): string =>
-  `[${T}] [INFO] [WebSocket] Received: [2,"${id}","${action}",${payload}]`;
+  `[${T}] [INFO] [WebSocket] Received: [2,${J(id)},"${action}",${payload}]`;
 const result = (id: string, payload = "{}"): string =>
-  `[${T}] [INFO] [WebSocket] Received: [3,"${id}",${payload}]`;
+  `[${T}] [INFO] [WebSocket] Received: [3,${J(id)},${payload}]`;
 const error = (id: string): string =>
-  `[${T}] [INFO] [WebSocket] Received: [4,"${id}","InternalError","Call failed",{}]`;
+  `[${T}] [INFO] [WebSocket] Received: [4,${J(id)},"InternalError","Call failed",{}]`;
 const ownResult = (id: string, payload = "{}"): string =>
-  `[${T}] [INFO] [WebSocket] Sent: [3,"${id}",${payload}]`;
+  `[${T}] [INFO] [WebSocket] Sent: [3,${J(id)},${payload}]`;
+/** Matches the wake pattern, parses to nothing: a CALLRESULT with no payload. */
+const malformedResult = (id: string): string =>
+  `[${T}] [INFO] [WebSocket] Received: [3,${J(id)}]`;
 
 const BOOT = "1814e4d9-3135-4dc8-b305-52a305f293a7";
 const SN0 = "b85ccf23-bb56-4aca-bc20-0309f8a000e8";
@@ -139,7 +159,12 @@ class FakeStation {
     return this.backing;
   }
 
-  waitForLine(pattern: RegExp, timeoutMs: number): Promise<string> {
+  /** The station's stdout, from the station's side: a line arriving. */
+  emit(...lines: string[]): void {
+    this.backing.push(...lines);
+  }
+
+  waitForLine(pattern: RegExp, timeoutMs: number, fromIndex = 0): Promise<string> {
     const wait = { pattern, timeoutMs };
     this.waits.push(wait);
     // A gate whose wait resolves from a line it already read spins here
@@ -148,7 +173,9 @@ class FakeStation {
     if (this.waits.length > RUNAWAY_WAITS) {
       return Promise.reject(new Error(`runaway: ${this.waits.length} waits armed`));
     }
-    const existing = this.backing.find((line) => pattern.test(line));
+    // The real pump's rule, fromIndex included: existing lines from there
+    // on, then future ones.
+    const existing = this.backing.find((line, i) => i >= fromIndex && pattern.test(line));
     if (existing !== undefined) return Promise.resolve(existing);
     const turn = this.script(wait, this.waits.length);
     if (turn === "silence") {
@@ -358,6 +385,147 @@ const NEVER: Script = () => "silence";
     fail(
       "a response that landed before the wait was armed is not waited for again",
       `got ${JSON.stringify(quiet)}, ${station.waits.length} wait(s)`,
+    );
+  }
+}
+
+// ---------------------------------------------------------------------------
+// 8. A matching-but-unparseable line is passed over once, not served forever.
+// ---------------------------------------------------------------------------
+
+{
+  const clock = new FakeClock();
+  // The malformed line is already there when the gate is asked; the station
+  // then stays silent. A gate waiting from 0 is woken by that line on every
+  // pass and never reaches the script -- the fake's runaway cap is what
+  // turns that into a red row instead of a hang.
+  const station = new FakeStation([...booted(), result(SN0), malformedResult(SN1)], clock, NEVER);
+  const quiet = await awaitBootQuiet(station, BUDGET_MS, clock);
+  const named =
+    quiet.kind === "outstanding" ? quiet.calls.map((c) => `${c.action}(${c.uniqueId})`) : [];
+  if (
+    quiet.kind === "outstanding" &&
+    quiet.waitedMs === BUDGET_MS &&
+    station.waits.length === 1 &&
+    JSON.stringify(named) === JSON.stringify([`StatusNotification(${SN1})`])
+  ) {
+    pass("a line that matches the wake pattern and parses to nothing is passed over, not re-served");
+  } else {
+    fail(
+      "a line that matches the wake pattern and parses to nothing is passed over, not re-served",
+      `got ${JSON.stringify(quiet)}, ${station.waits.length} wait(s)`,
+    );
+  }
+}
+
+// ---------------------------------------------------------------------------
+// 9. A uniqueId with a `"` or a `\` is waited on as the wire spells it.
+// ---------------------------------------------------------------------------
+
+{
+  const rows: Array<[string, string]> = [
+    ["a double quote", 'id"with"quotes'],
+    ["a backslash", "id\\with\\backslashes"],
+  ];
+  for (const [what, id] of rows) {
+    const clock = new FakeClock();
+    const station = new FakeStation(
+      [...booted(), result(SN0), result(SN1), sent(id, "Heartbeat")],
+      clock,
+      () => ({ lines: [result(id)], ms: 10 }),
+    );
+    const quiet = await awaitBootQuiet(station, BUDGET_MS, clock);
+    const wait = station.waits[0];
+    if (quiet.kind === "quiet" && station.waits.length === 1 && wait?.pattern.test(result(id))) {
+      pass(`a uniqueId carrying ${what} is waited on JSON-encoded, as the line carries it`);
+    } else {
+      fail(
+        `a uniqueId carrying ${what} is waited on JSON-encoded, as the line carries it`,
+        `got ${JSON.stringify(quiet)}, waits: ${station.waits.map((w) => w.pattern.source).join(" | ")}`,
+      );
+    }
+  }
+}
+
+// ---------------------------------------------------------------------------
+// 10. settleBoot asks the gate AFTER the settle -- the placement row.
+// ---------------------------------------------------------------------------
+
+{
+  const clock = new FakeClock();
+  // The conf is there; the StatusNotifications are NOT -- they land during
+  // the settle, as on the wire (1-4 ms after the conf, i.e. after the boot
+  // gate has returned and before any settle is over). A gate asked before the
+  // settle sees Boot answered and nothing else, and opens.
+  const station = new FakeStation(booted().slice(0, 2), clock, NEVER);
+  const slept: number[] = [];
+  const quiet = await settleBoot(station, {
+    bootGateMs: 30_000,
+    bootWaitMs: 4_000,
+    quietTimeoutMs: BUDGET_MS,
+    clock,
+    sleep: async (ms) => {
+      slept.push(ms);
+      clock.advance(ms);
+      station.emit(...booted().slice(2));
+    },
+    onBootGateTimeout: () => fail("settleBoot asks the gate after the settle", "the boot gate timed out on a conf that was there"),
+  });
+  const named =
+    quiet.kind === "outstanding" ? quiet.calls.map((c) => `${c.action}(${c.uniqueId})`) : [];
+  if (
+    quiet.kind === "outstanding" &&
+    JSON.stringify(slept) === "[4000]" &&
+    JSON.stringify(named) === JSON.stringify([`StatusNotification(${SN0})`, `StatusNotification(${SN1})`])
+  ) {
+    pass("settleBoot asks the gate after the settle: the CALLs that land during it are what it waits on");
+  } else {
+    fail(
+      "settleBoot asks the gate after the settle: the CALLs that land during it are what it waits on",
+      `got ${JSON.stringify(quiet)}, slept ${JSON.stringify(slept)}`,
+    );
+  }
+}
+
+// ---------------------------------------------------------------------------
+// 11. settleBoot's boot gate is soft.
+// ---------------------------------------------------------------------------
+
+{
+  const clock = new FakeClock();
+  // BootNotification sent, never answered: the boot gate's wait is the first
+  // one armed and the script keeps the station silent for it.
+  const station = new FakeStation([sent(BOOT, "BootNotification")], clock, NEVER);
+  let reported: unknown;
+  const slept: number[] = [];
+  const quiet = await settleBoot(station, {
+    bootGateMs: 30_000,
+    bootWaitMs: 4_000,
+    quietTimeoutMs: BUDGET_MS,
+    clock,
+    sleep: async (ms) => {
+      slept.push(ms);
+      clock.advance(ms);
+    },
+    onBootGateTimeout: (err) => {
+      reported = err;
+    },
+  });
+  const bootGate = station.waits[0];
+  const named =
+    quiet.kind === "outstanding" ? quiet.calls.map((c) => `${c.action}(${c.uniqueId})`) : [];
+  if (
+    reported instanceof Error &&
+    bootGate?.timeoutMs === 30_000 &&
+    JSON.stringify(slept) === "[4000]" &&
+    quiet.kind === "outstanding" &&
+    JSON.stringify(named) === JSON.stringify([`BootNotification(${BOOT})`])
+  ) {
+    pass("settleBoot's boot gate is soft: reported through the callback, then the settle and the gate still run");
+  } else {
+    fail(
+      "settleBoot's boot gate is soft: reported through the callback, then the settle and the gate still run",
+      `reported=${String(reported)}, waits=${station.waits.map((w) => w.timeoutMs).join(",")}, slept=${JSON.stringify(slept)}, got ${JSON.stringify(quiet)}`,
     );
   }
 }

@@ -332,9 +332,15 @@ wanted -- so `awaitBootQuiet` takes `lines` and `waitForLine` as its seam and
 the guard scripts the station's stdout. Its control row is the healthy boot,
 which must cost nothing; its odd row is a RACE, an answer landing between the
 gate's read and its wait, which the real pump serves from the lines already
-read and a tidier implementation would not. What it cannot pin is placement:
-asked before the settle the gate reads an empty set and opens, and that is a
-fact about timing in `runScenario`, held by a comment there rather than here.
+read and a tidier implementation would not -- and the row beside it is its
+converse: a line the wake pattern matches and the parser rejects has to be
+passed over ONCE, because a wait served from the lines already read would
+resolve on it every pass for the whole budget, which is the tight loop this
+module exists to prevent, inside the module. Placement is a row of its own:
+asked before the settle the gate reads an empty set and opens, so `settleBoot`
+owns conf-then-settle-then-gate with the settle injected, and the guard makes
+the CALLs land inside it. What stays in `runScenario` is one call, ahead of
+every source of CSMS traffic, where the boot gate has always stood.
 
 `sim-exit-rejects-waits.ts`: the one whose subject is a process that is GONE.
 `startSim`'s first call is a `status` probe with a 120-second budget, because

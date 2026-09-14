@@ -36,9 +36,10 @@
  *
  * AFTER THE SETTLE, NOT BEFORE. Asked right after BootNotification.conf the
  * gate can read an empty set -- the StatusNotifications have not been sent yet
- * -- and open. main.ts asks it after `bootWaitSecs`, and tests/boot-quiet.ts
- * cannot pin that placement (it is a fact about timing in the runner), so this
- * paragraph is the note a reviewer proposing the tidier order should meet.
+ * -- and open. That order is `settleBoot`'s, below: it owns the conf wait, the
+ * settle and the gate, takes the settle as an injected `sleep`, and
+ * tests/boot-quiet.ts makes the CALLs land inside it, so the tidier-looking
+ * order goes red there rather than surviving as a comment in the runner.
  *
  * The seam is `SimProcess.lines` and `SimProcess.waitForLine`, the same half
  * the boot gate reads, so the guard can hand it a station whose stdout it
@@ -51,7 +52,7 @@ import { type Frame } from "./ocpp";
 /** The half of {@link import("./sim").SimProcess} this needs. */
 export interface SimWire {
     readonly lines: readonly string[];
-    waitForLine(pattern: RegExp, timeoutMs: number): Promise<string>;
+    waitForLine(pattern: RegExp, timeoutMs: number, fromIndex?: number): Promise<string>;
 }
 /** A CALL the station sent that has no CALLRESULT or CALLERROR after it. */
 export interface OutstandingCall {
@@ -90,3 +91,47 @@ export declare function outstandingCalls(frames: readonly Frame[]): OutstandingC
  * pins that this relies on it.
  */
 export declare function awaitBootQuiet(sim: SimWire, timeoutMs: number, clock?: QuietClock): Promise<BootQuiet>;
+/** What {@link settleBoot} needs beyond the station. */
+export interface BootSettleOptions {
+    /** How long to wait for BootNotification.conf before going on without it. */
+    bootGateMs: number;
+    /** The scenario's settle after the conf, `bootWaitSecs` in milliseconds. */
+    bootWaitMs: number;
+    /** The quiet gate's budget -- see the runner's constant for the numbers. */
+    quietTimeoutMs: number;
+    /** The wait itself, injected so the guard can make lines land DURING it. */
+    sleep: (ms: number) => Promise<void>;
+    /** Called with the error when the boot gate gives up; the runner warns. */
+    onBootGateTimeout: (err: unknown) => void;
+    clock?: QuietClock;
+}
+/**
+ * BootNotification.conf, then the settle, THEN the quiet gate -- the runner's
+ * whole post-`connect` boot, in the one order that works.
+ *
+ * Upstream matched `"status":"Accepted","currentTime"` -- SteVe's key order.
+ * JSON object key order carries no meaning, and a CSMS serialises the same
+ * payload as {currentTime, interval, status}, so the wait always timed out:
+ * 30s burned per scenario, and the event-driven gate silently degraded back
+ * into the fixed sleep it exists to replace. Both keys, any order.
+ *
+ * REJECTED, and it will be re-proposed because the assertions read trace
+ * records and this is the last frame pattern left outside the parser: gate
+ * on the trace instead. It cannot work. This is a LIVE wait on a stream that
+ * is still arriving, and the trace is a file the CONTAINER appends to --
+ * serving this wait from it means polling a file for a record that may never
+ * come, i.e. reimplementing waitForLine's timeout around a worse source. The
+ * frames this gate waits on are stdout's, which we are already reading line
+ * by line. Nothing about the coupling issue #44 is about applies here either:
+ * no member order is pinned, which is exactly what the lookaheads are for.
+ *
+ * THE ORDER IS THE PROPERTY, and it is why this function exists as a seam
+ * rather than as three lines in the runner. The station's boot-time
+ * StatusNotifications go out 1-4 ms after the conf: a quiet gate asked as the
+ * conf lands reads an empty set and opens onto the window it exists to close,
+ * and every row of tests/boot-quiet.ts stays green while it does, because
+ * they exercise the gate and not its placement. So the settle is injected,
+ * the guard makes the CALLs land inside it, and a gate moved ahead of the
+ * settle -- the tidier-looking order -- goes red there.
+ */
+export declare function settleBoot(sim: SimWire, options: BootSettleOptions): Promise<BootQuiet>;

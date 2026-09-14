@@ -91,7 +91,7 @@ import {
   selectShard,
   type Shard,
 } from "./shard";
-import { awaitBootQuiet } from "./boot-quiet";
+import { settleBoot } from "./boot-quiet";
 import { loadTemplateOnce, runLoadedTemplate } from "./template-once";
 import { readTrace } from "./trace";
 import {
@@ -246,6 +246,9 @@ const CSMS_READY_INTERVAL_MS = 5_000;
  * whose CALLs the CSMS has stopped answering, which is the stall itself.
  */
 const BOOT_QUIET_TIMEOUT_MS = 90_000;
+/** The boot gate's own budget on BootNotification.conf, unchanged from the
+ *  fork: a soft 30 s, warn and go on. */
+const BOOT_GATE_TIMEOUT_MS = 30_000;
 
 /** The real clock. `unref()` on the deadline timer is load-bearing: without it
  *  a 150s timer left behind by a probe that answered in 20ms keeps the process
@@ -718,58 +721,41 @@ async function runScenario<D>(
     // Post-boot stdin method, made event-driven: a fixed bootWaitSecs sleep
     // alone can let the template start fire while the CP is still
     // booting -- either the scenario's opening traffic is dropped by the
-    // boot gate or the command lands before the CLI is ready at all. Wait
-    // for the actual BootNotification.conf line (bounded,
-    // warn-and-continue on timeout like every other soft wait here), THEN
-    // apply the spec's bootWaitSecs settle on top, preserving each spec's
-    // tuned timing.
-    try {
-      // Upstream matched `"status":"Accepted","currentTime"` -- SteVe's key
-      // order. JSON object key order carries no meaning, and a CSMS serialises
-      // the same payload as {currentTime, interval, status}, so the wait
-      // always timed out: 30s burned per scenario, and the event-driven gate
-      // silently degraded back into the fixed sleep it exists to replace.
-      // Match both keys without constraining their order.
-      //
-      // REJECTED, and it will be re-proposed because the assertions below now
-      // read trace records and this is the last frame pattern left in this
-      // file: gate on the trace instead. It cannot work. This is a LIVE wait on
-      // a stream that is still arriving, and the trace is a file the CONTAINER
-      // appends to -- serving this wait from it means polling a file for a
-      // record that may never come, i.e. reimplementing waitForLine's timeout
-      // around a worse source. The frames this gate waits on are stdout's,
-      // which we are already reading line by line. Nothing about the coupling
-      // issue #44 is about applies here either: no member order is pinned,
-      // which is exactly what the lookaheads above are for.
-      await sim.waitForLine(
-        /Received: \[3,(?=[^\]]*"status":"Accepted")(?=[^\]]*"currentTime")/,
-        30_000,
-      );
-    } catch (err) {
-      process.stderr.write(
-        `[runner] WARN: did not see BootNotification.conf within 30s -- continuing anyway (${
-          err instanceof Error ? err.message : String(err)
-        })\n`,
-      );
-    }
-    await sleep(bootWaitSecs * 1000);
-
-    // AFTER THE SETTLE, NOT BEFORE, and not folded into the wait above: the
-    // station's boot-time StatusNotifications go out 1-4 ms after
-    // BootNotification.conf, so a gate asked the moment that line lands reads
-    // an empty set and opens onto the window it exists to close. The seed
-    // (#119, #138): three stations booting in 2.0.1 at once stall the CSMS's
-    // StatusNotification handlers for a minute, a dispatch into that minute
-    // is re-queued every millisecond, and 5 of 8 CI shard runs on the beta4
-    // pin collapsed there. The condition is the CSMS's own -- see the module
-    // header -- and it holds for any OCPP-J peer.
+    // boot gate or the command lands before the CLI is ready at all. So:
+    // the actual BootNotification.conf line (bounded, warn-and-continue on
+    // timeout like every other soft wait here), THEN the spec's bootWaitSecs
+    // settle on top, preserving each spec's tuned timing, THEN the quiet
+    // gate -- and that order is settleBoot's to keep, not this file's: the
+    // station's boot-time StatusNotifications go out 1-4 ms after the conf,
+    // so a quiet gate asked before the settle reads an empty set and opens
+    // onto the window it exists to close. tests/boot-quiet.ts holds the order
+    // through the injected settle; what stays here is that the call precedes
+    // every source of CSMS traffic below -- the Reusable States, the template,
+    // drive() -- which is where the boot gate has always stood.
+    //
+    // The seed (#119, #138): three stations booting in 2.0.1 at once stall
+    // the CSMS's StatusNotification handlers for a minute, a dispatch into
+    // that minute is re-queued every millisecond, and 5 of 8 CI shard runs on
+    // the beta4 pin collapsed there. The condition is the CSMS's own -- see
+    // the module header -- and it holds for any OCPP-J peer.
     //
     // SOFT, like the boot gate: the budget spent, the CSMS's own TTL has
     // cleared the entries and the dispatch is at least not a loop, so warn and
     // go on. The WARN is an instrument, not decoration: it counts the stalls
     // that did not become loops, which is the number #138 has no other way to
     // read. Silent when nothing waited, so a healthy sweep's log is unchanged.
-    const quiet = await awaitBootQuiet(sim, BOOT_QUIET_TIMEOUT_MS);
+    const quiet = await settleBoot(sim, {
+      bootGateMs: BOOT_GATE_TIMEOUT_MS,
+      bootWaitMs: bootWaitSecs * 1000,
+      quietTimeoutMs: BOOT_QUIET_TIMEOUT_MS,
+      sleep,
+      onBootGateTimeout: (err) =>
+        process.stderr.write(
+          `[runner] WARN: did not see BootNotification.conf within ${BOOT_GATE_TIMEOUT_MS / 1000}s -- continuing anyway (${
+            err instanceof Error ? err.message : String(err)
+          })\n`,
+        ),
+    });
     if (quiet.kind === "outstanding") {
       process.stderr.write(
         `[runner] WARN: boot quiet: ${quiet.calls.length} CALL(s) ${options.cpId} sent ` +

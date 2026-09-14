@@ -29,11 +29,19 @@ Released as `0.3.0`. The documented install ref already points at that tag, so
   so the dispatch is at least not a loop — and that line is the count of stalls
   that did not become loops, which #138 had no other way to read
 - `tests/boot-quiet.ts`, the twentieth in-process guard, holding the gate to
-  seven claims: a healthy boot costs nothing, the wait is armed on the
-  outstanding uniqueIds, a CALLERROR is an answer, a CALL sent during the wait
-  is waited on from the same budget, a received CALL and a stranger's response
-  count for nothing, and an answer landing between the read and the wait is
-  served from the lines already read
+  eleven claims: a healthy boot costs nothing, the wait is armed on the
+  outstanding uniqueIds as the wire spells them, a CALLERROR is an answer, a
+  CALL sent during the wait is waited on from the same budget, a received CALL
+  and a stranger's response count for nothing, an answer landing between the
+  read and the wait is served from the lines already read, a line the wake
+  pattern matches and the parser rejects is passed over once rather than
+  re-served for the whole budget, and `settleBoot` — conf, settle, gate, with
+  the settle injected — asks the gate after the settle and keeps the boot gate
+  soft
+- `SimProcess.waitForLine` takes an optional `fromIndex`, past which the
+  existing lines are scanned; future lines always qualify. A caller that has
+  read the lines up to some length and found nothing waits from there, so a
+  line it already rejected cannot resolve the wait again
 - `tests/citrineos-v1-override.sh`, the seventeenth shell guard: the v1.9.1
   compose override renders the v1.9.1 image with every configuration variable
   that image reads, and the base file carries none of them. It exists because
