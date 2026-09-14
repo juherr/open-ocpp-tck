@@ -12,6 +12,15 @@ Released as `0.3.0`. The documented install ref already points at that tag, so
 
 ### Added
 
+- `tests/citrineos-v1-override.sh`, the seventeenth shell guard: the v1.9.1
+  compose override renders the v1.9.1 image with every configuration variable
+  that image reads, and the base file carries none of them. It exists because
+  the beta4 pin replaced the base file's environment block, the override
+  inherited the replacement by compose's merge rules, and `check:driver:
+  citrineos-v1` — which never opens a compose file — would have stayed green
+  over a v1.9.1 stack looking for Postgres on localhost. It reads the MERGED
+  configuration, the way a reader would by hand, and needs the compose CLI
+  plugin but no daemon
 - `tests/request-shape-201.ts`, the seventeenth in-process guard: what an OCPP
   2.0.1 request assertion *accepts*. Three ways a payload that is not the case's
   can be read as though it were and leave the row GREEN — an absent member read

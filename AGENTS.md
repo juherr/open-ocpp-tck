@@ -25,7 +25,7 @@ error.
 
 `bun run verify` is every check CI runs before it starts a container —
 typecheck, committed declarations, three driver scope checks, nineteen in-process
-guards and sixteen shell guards — with one exit code, and every step runs even
+guards and seventeen shell guards — with one exit code, and every step runs even
 after one fails, where CI enumerates them and stops at the first.
 
 There is a third copy of that list — `bun run test`, the guards without the
@@ -46,6 +46,7 @@ bun run typecheck
 bun run check:driver:steve
 bun run check:driver:citrineos
 bun run check:driver:citrineos-v1     # the same driver's other release line
+bash tests/citrineos-v1-override.sh   # and the compose override that line boots from
 bun tests/driver-env-scope.ts
 bun tests/capability-parity.ts
 bun tests/expected-failure-standing.ts

@@ -74,6 +74,13 @@ jobs:
       - name: CitrineOS driver agrees with the core on the v1 line
         run: bun run check:driver:citrineos-v1
 
+      # The v1 line's other half, which check-driver never opens: the compose
+      # override that selects the v1.9.1 image has to carry the configuration
+      # that image reads, since the base file stopped carrying it at beta4.
+      # Renders the merged configuration; no daemon, no container.
+      - name: The v1 compose override configures v1.9.1
+        run: bash tests/citrineos-v1-override.sh
+
       # In-process, because the CLI can only ever pass process.env: that a
       # driver's declarations follow the env they are RESOLVED with, not the
       # one that happened to exist at import, is unreachable from a shell.
