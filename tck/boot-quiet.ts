@@ -33,8 +33,12 @@
  * StatusNotifications never answered, the Reset received exactly 20.000 s
  * after them. A budget past 20 s therefore ends the retry loop; past 60 s it
  * lets the pool drain before the first dispatch, which is what the runner's
- * constant is set to. In the healthy case the answers are already in `lines`
- * when the gate is asked, and it costs nothing.
+ * constant is set to. And the budget is not the whole rule: a CALL the station
+ * sends late in it -- a Heartbeat at t=89s -- has an entry the CSMS set at
+ * t=89s, so the gate gives up on a CALL only once THAT CALL has been open for
+ * `staleAfterMs`, the TTL plus a margin, whatever the budget says. In the
+ * healthy case the answers are already in `lines` when the gate is asked, and
+ * it costs nothing.
  *
  * AFTER THE SETTLE, NOT BEFORE. Asked right after BootNotification.conf the
  * gate can read an empty set -- the StatusNotifications have not been sent yet
@@ -115,23 +119,52 @@ function responsePattern(uniqueIds: readonly string[]): RegExp {
   return new RegExp(`Received: \\[[34],(?:${ids})`);
 }
 
+/** What {@link awaitBootQuiet} needs beyond the station. */
+export interface QuietOptions {
+  /** The budget: how long the gate waits for the CALLs it found at the start
+   *  before giving up on them. */
+  timeoutMs: number;
+  /** How long an unanswered CALL has to have been outstanding before the gate
+   *  may give up on IT -- the CSMS's in-progress TTL plus a margin. Applies
+   *  to every CALL, including one the station sends late in the budget: the
+   *  budget alone is measured from the first wait, and a Heartbeat at t=89s
+   *  returned at t=90s is one second old, with the entry that refuses a
+   *  dispatch still nineteen seconds from expiring. */
+  staleAfterMs: number;
+  clock?: QuietClock;
+}
+
 /**
  * Resolves `quiet` once every CALL the station has sent is answered, or
- * `outstanding` -- naming what is still open -- once `timeoutMs` is spent.
+ * `outstanding` -- naming what is still open -- once the budget is spent AND
+ * every open CALL has been outstanding for `staleAfterMs`.
  *
  * Each pass re-reads the whole of `lines`, so a CALL the station sends while
- * the gate waits (a Heartbeat) is waited on in turn, from the same budget. The
- * wait is armed on the outstanding uniqueIds and nothing else, and it is
+ * the gate waits (a Heartbeat) is waited on in turn -- and AGED in turn: a
+ * CALL first seen at t is not given up on before t + staleAfterMs, whatever
+ * the budget says, because the property the runner relies on is that the
+ * CSMS's in-progress entry for every open CALL has expired by the time it
+ * dispatches, and that entry's clock starts when the CALL arrives, not when
+ * the gate does. The age is measured from the gate's first sight of the CALL,
+ * which is after the station sent it, so it under-reads the CSMS's and is
+ * conservative. Termination: every extension needs the station to emit a NEW
+ * CALL the CSMS does not answer, and a station idling after its boot emits
+ * one per heartbeat interval -- the extension is one `staleAfterMs`, once.
+ *
+ * The wait is armed on the outstanding uniqueIds and nothing else, and it is
  * served from the lines already read when the answer landed between the read
  * and the wait -- `waitFor` scans existing lines first, and tests/boot-quiet.ts
  * pins that this relies on it.
  */
 export async function awaitBootQuiet(
   sim: SimWire,
-  timeoutMs: number,
-  clock: QuietClock = { now: () => Date.now() },
+  options: QuietOptions,
 ): Promise<BootQuiet> {
+  const { timeoutMs, staleAfterMs } = options;
+  const clock = options.clock ?? { now: () => Date.now() };
   const started = clock.now();
+  /** When the gate first saw each open CALL; the deadline is theirs too. */
+  const firstSeen = new Map<string, number>();
   // `waitedMs` is the time spent WAITING, and 0 when no wait was armed: the
   // parse of a few hundred lines takes a millisecond on a real clock, and a
   // gate that reported it would print "waited 1ms" on every healthy boot --
@@ -149,26 +182,37 @@ export async function awaitBootQuiet(
     // answer.
     const read = sim.lines;
     const open = outstandingCalls(parseLines(read));
-    const waitedMs = armed ? clock.now() - started : 0;
+    const now = clock.now();
+    const waitedMs = armed ? now - started : 0;
     if (open.length === 0) return { kind: "quiet", waitedMs };
-    const remaining = timeoutMs - waitedMs;
-    if (remaining <= 0) return { kind: "outstanding", waitedMs, calls: open };
+    let deadline = started + timeoutMs;
+    for (const call of open) {
+      const seen = firstSeen.get(call.uniqueId) ?? now;
+      firstSeen.set(call.uniqueId, seen);
+      deadline = Math.max(deadline, seen + staleAfterMs);
+    }
+    if (now >= deadline) return { kind: "outstanding", waitedMs, calls: open };
     try {
       armed = true;
       await sim.waitForLine(
         responsePattern(open.map((call) => call.uniqueId)),
-        remaining,
+        deadline - now,
         read.length,
       );
     } catch {
-      // The budget, or a simulator that exited under the wait. Either way the
-      // answer is what is still open now; the runner's next step is what
-      // throws on a station that is gone.
-      return {
-        kind: "outstanding",
-        waitedMs: clock.now() - started,
-        calls: outstandingCalls(parseLines(sim.lines)),
-      };
+      // The wait's own deadline, or the station gone under it. The pump's
+      // timer never fires early, so a rejection BEFORE the deadline is the
+      // second: the station is gone, nothing more will land, and the runner's
+      // next step is what throws on it -- so answer now with what is open.
+      // A rejection AT the deadline goes round once more: a CALL that landed
+      // during the wait may have moved it.
+      if (clock.now() < deadline) {
+        return {
+          kind: "outstanding",
+          waitedMs: clock.now() - started,
+          calls: outstandingCalls(parseLines(sim.lines)),
+        };
+      }
     }
   }
 }
@@ -179,8 +223,11 @@ export interface BootSettleOptions {
   bootGateMs: number;
   /** The scenario's settle after the conf, `bootWaitSecs` in milliseconds. */
   bootWaitMs: number;
-  /** The quiet gate's budget -- see the runner's constant for the numbers. */
+  /** The quiet gate's budget -- see the runner's constants for the numbers. */
   quietTimeoutMs: number;
+  /** How long every open CALL must have been outstanding before the quiet
+   *  gate gives up on it -- see {@link QuietOptions.staleAfterMs}. */
+  staleAfterMs: number;
   /** The wait itself, injected so the guard can make lines land DURING it. */
   sleep: (ms: number) => Promise<void>;
   /** Called with the error when the boot gate gives up; the runner warns. */
@@ -230,5 +277,9 @@ export async function settleBoot(
     options.onBootGateTimeout(err);
   }
   await options.sleep(options.bootWaitMs);
-  return awaitBootQuiet(sim, options.quietTimeoutMs, options.clock);
+  return awaitBootQuiet(sim, {
+    timeoutMs: options.quietTimeoutMs,
+    staleAfterMs: options.staleAfterMs,
+    clock: options.clock,
+  });
 }

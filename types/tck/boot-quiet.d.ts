@@ -31,8 +31,12 @@
  * StatusNotifications never answered, the Reset received exactly 20.000 s
  * after them. A budget past 20 s therefore ends the retry loop; past 60 s it
  * lets the pool drain before the first dispatch, which is what the runner's
- * constant is set to. In the healthy case the answers are already in `lines`
- * when the gate is asked, and it costs nothing.
+ * constant is set to. And the budget is not the whole rule: a CALL the station
+ * sends late in it -- a Heartbeat at t=89s -- has an entry the CSMS set at
+ * t=89s, so the gate gives up on a CALL only once THAT CALL has been open for
+ * `staleAfterMs`, the TTL plus a margin, whatever the budget says. In the
+ * healthy case the answers are already in `lines` when the gate is asked, and
+ * it costs nothing.
  *
  * AFTER THE SETTLE, NOT BEFORE. Asked right after BootNotification.conf the
  * gate can read an empty set -- the StatusNotifications have not been sent yet
@@ -79,26 +83,54 @@ export interface QuietClock {
  * truncated; here every unanswered CALL is what the gate is waiting on.
  */
 export declare function outstandingCalls(frames: readonly Frame[]): OutstandingCall[];
+/** What {@link awaitBootQuiet} needs beyond the station. */
+export interface QuietOptions {
+    /** The budget: how long the gate waits for the CALLs it found at the start
+     *  before giving up on them. */
+    timeoutMs: number;
+    /** How long an unanswered CALL has to have been outstanding before the gate
+     *  may give up on IT -- the CSMS's in-progress TTL plus a margin. Applies
+     *  to every CALL, including one the station sends late in the budget: the
+     *  budget alone is measured from the first wait, and a Heartbeat at t=89s
+     *  returned at t=90s is one second old, with the entry that refuses a
+     *  dispatch still nineteen seconds from expiring. */
+    staleAfterMs: number;
+    clock?: QuietClock;
+}
 /**
  * Resolves `quiet` once every CALL the station has sent is answered, or
- * `outstanding` -- naming what is still open -- once `timeoutMs` is spent.
+ * `outstanding` -- naming what is still open -- once the budget is spent AND
+ * every open CALL has been outstanding for `staleAfterMs`.
  *
  * Each pass re-reads the whole of `lines`, so a CALL the station sends while
- * the gate waits (a Heartbeat) is waited on in turn, from the same budget. The
- * wait is armed on the outstanding uniqueIds and nothing else, and it is
+ * the gate waits (a Heartbeat) is waited on in turn -- and AGED in turn: a
+ * CALL first seen at t is not given up on before t + staleAfterMs, whatever
+ * the budget says, because the property the runner relies on is that the
+ * CSMS's in-progress entry for every open CALL has expired by the time it
+ * dispatches, and that entry's clock starts when the CALL arrives, not when
+ * the gate does. The age is measured from the gate's first sight of the CALL,
+ * which is after the station sent it, so it under-reads the CSMS's and is
+ * conservative. Termination: every extension needs the station to emit a NEW
+ * CALL the CSMS does not answer, and a station idling after its boot emits
+ * one per heartbeat interval -- the extension is one `staleAfterMs`, once.
+ *
+ * The wait is armed on the outstanding uniqueIds and nothing else, and it is
  * served from the lines already read when the answer landed between the read
  * and the wait -- `waitFor` scans existing lines first, and tests/boot-quiet.ts
  * pins that this relies on it.
  */
-export declare function awaitBootQuiet(sim: SimWire, timeoutMs: number, clock?: QuietClock): Promise<BootQuiet>;
+export declare function awaitBootQuiet(sim: SimWire, options: QuietOptions): Promise<BootQuiet>;
 /** What {@link settleBoot} needs beyond the station. */
 export interface BootSettleOptions {
     /** How long to wait for BootNotification.conf before going on without it. */
     bootGateMs: number;
     /** The scenario's settle after the conf, `bootWaitSecs` in milliseconds. */
     bootWaitMs: number;
-    /** The quiet gate's budget -- see the runner's constant for the numbers. */
+    /** The quiet gate's budget -- see the runner's constants for the numbers. */
     quietTimeoutMs: number;
+    /** How long every open CALL must have been outstanding before the quiet
+     *  gate gives up on it -- see {@link QuietOptions.staleAfterMs}. */
+    staleAfterMs: number;
     /** The wait itself, injected so the guard can make lines land DURING it. */
     sleep: (ms: number) => Promise<void>;
     /** Called with the error when the boot gate gives up; the runner warns. */

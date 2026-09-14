@@ -246,6 +246,12 @@ const CSMS_READY_INTERVAL_MS = 5_000;
  * whose CALLs the CSMS has stopped answering, which is the stall itself.
  */
 const BOOT_QUIET_TIMEOUT_MS = 90_000;
+/** How long every CALL still open must have been outstanding before the quiet
+ *  gate gives up on it: the CSMS's 20 s in-progress TTL, plus a margin for the
+ *  gate seeing the CALL a beat after the CSMS did. Without it the budget is
+ *  measured from the first wait alone, and a Heartbeat the station sends at
+ *  t=89s is dispatched over at t=90s with nineteen seconds of entry left. */
+const BOOT_QUIET_STALE_MS = 25_000;
 /** The boot gate's own budget on BootNotification.conf, unchanged from the
  *  fork: a soft 30 s, warn and go on. */
 const BOOT_GATE_TIMEOUT_MS = 30_000;
@@ -748,6 +754,7 @@ async function runScenario<D>(
       bootGateMs: BOOT_GATE_TIMEOUT_MS,
       bootWaitMs: bootWaitSecs * 1000,
       quietTimeoutMs: BOOT_QUIET_TIMEOUT_MS,
+      staleAfterMs: BOOT_QUIET_STALE_MS,
       sleep,
       onBootGateTimeout: (err) =>
         process.stderr.write(

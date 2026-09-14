@@ -40,7 +40,23 @@
  *      ahead of the settle reads an empty set and opens. This is the
  *      placement row, the one the runner's comment used to hold alone;
  *  11. `settleBoot`'s boot gate is soft: a conf that never comes is reported
- *      through the callback, and the settle and the quiet gate still run.
+ *      through the callback, and the settle and the quiet gate still run;
+ *  12. a CALL the station sends LATE in the budget is aged on its own clock:
+ *      the gate does not give up on it until it has been open `staleAfterMs`,
+ *      so a Heartbeat at t=89s holds the gate past t=90s. The budget alone is
+ *      measured from the first wait, and the CSMS's in-progress entry for
+ *      that CALL is measured from the CALL -- the property the runner relies
+ *      on is about the entry, and it is the entry's clock that has to run
+ *      out. Its control is row 3: a CALL open since the start is given up on
+ *      at the budget, not a moment later;
+ *  13. the REAL pump honours `fromIndex`: `attachSimStreams`'s `waitForLine`
+ *      ignores a matching line buffered before it and resolves on a matching
+ *      line that arrives after. Row 8 holds the gate to the fake's model of
+ *      that rule; this row holds the model to the pump, so a pump that went
+ *      back to scanning from 0 goes red here and not only in a sweep;
+ *  14. a wait the pump rejects BEFORE its deadline -- the station gone, on
+ *      the real pump -- ends the gate at once with what is open, where a
+ *      rejection at the deadline goes round once more.
  *
  * WHY. The pinned CitrineOS refuses to dispatch a CSMS-initiated Call while
  * any Call of the station's own is still in progress, and re-queues it every
@@ -69,6 +85,7 @@
  */
 
 import { awaitBootQuiet, settleBoot } from "../tck/boot-quiet";
+import { attachSimStreams } from "../tck/sim";
 
 let failures = 0;
 
@@ -186,7 +203,7 @@ class FakeStation {
     }
     this.clock.advance(turn.ms);
     this.backing.push(...turn.lines);
-    const landed = this.backing.find((line) => pattern.test(line));
+    const landed = this.backing.find((line, i) => i >= fromIndex && pattern.test(line));
     if (landed !== undefined) return Promise.resolve(landed);
     // The script emitted lines the wait was not about; the real pump keeps
     // waiting, and this fake has nothing further scripted -- so the budget.
@@ -198,6 +215,7 @@ class FakeStation {
 }
 
 const BUDGET_MS = 90_000;
+const STALE_MS = 25_000;
 const RUNAWAY_WAITS = 8;
 const NEVER: Script = () => "silence";
 
@@ -215,7 +233,7 @@ const NEVER: Script = () => "silence";
     }
   })();
   const station = new FakeStation([...booted(), result(SN1), result(SN0)], clock, NEVER);
-  const quiet = await awaitBootQuiet(station, BUDGET_MS, clock);
+  const quiet = await awaitBootQuiet(station, { timeoutMs: BUDGET_MS, staleAfterMs: STALE_MS, clock });
   if (quiet.kind === "quiet" && quiet.waitedMs === 0 && station.waits.length === 0) {
     pass("a boot whose CALLs are all answered is quiet at once, with no wait armed");
   } else {
@@ -236,7 +254,7 @@ const NEVER: Script = () => "silence";
     lines: [result(SN1)],
     ms: 300,
   }));
-  const quiet = await awaitBootQuiet(station, BUDGET_MS, clock);
+  const quiet = await awaitBootQuiet(station, { timeoutMs: BUDGET_MS, staleAfterMs: STALE_MS, clock });
   const wait = station.waits[0];
   const namesTheId =
     wait !== undefined && wait.pattern.test(result(SN1)) && !wait.pattern.test(result(SN0)) &&
@@ -258,7 +276,7 @@ const NEVER: Script = () => "silence";
 {
   const clock = new FakeClock();
   const station = new FakeStation(booted(), clock, NEVER);
-  const quiet = await awaitBootQuiet(station, BUDGET_MS, clock);
+  const quiet = await awaitBootQuiet(station, { timeoutMs: BUDGET_MS, staleAfterMs: STALE_MS, clock });
   const named =
     quiet.kind === "outstanding" ? quiet.calls.map((c) => `${c.action}(${c.uniqueId})`) : [];
   const expected = [`StatusNotification(${SN0})`, `StatusNotification(${SN1})`];
@@ -286,11 +304,14 @@ const NEVER: Script = () => "silence";
     lines: [error(SN1)],
     ms: 50,
   }));
-  const quiet = await awaitBootQuiet(station, BUDGET_MS, clock);
-  if (quiet.kind === "quiet" && station.waits.length === 1) {
-    pass("a CALLERROR answers the CALL it names");
+  const quiet = await awaitBootQuiet(station, { timeoutMs: BUDGET_MS, staleAfterMs: STALE_MS, clock });
+  // `waitedMs === 50`: woken BY the CALLERROR, not found on a re-read after
+  // sitting out the budget -- a wake pattern that only knows `[3,` reaches
+  // quiet too, ninety seconds late.
+  if (quiet.kind === "quiet" && quiet.waitedMs === 50 && station.waits.length === 1) {
+    pass("a CALLERROR answers the CALL it names, and wakes the wait");
   } else {
-    fail("a CALLERROR answers the CALL it names", `got ${JSON.stringify(quiet)}, ${station.waits.length} wait(s)`);
+    fail("a CALLERROR answers the CALL it names, and wakes the wait", `got ${JSON.stringify(quiet)}, ${station.waits.length} wait(s)`);
   }
 }
 
@@ -305,7 +326,7 @@ const NEVER: Script = () => "silence";
       ? { lines: [result(SN1), sent(HB, "Heartbeat")], ms: 1_000 }
       : { lines: [result(HB)], ms: 200 },
   );
-  const quiet = await awaitBootQuiet(station, BUDGET_MS, clock);
+  const quiet = await awaitBootQuiet(station, { timeoutMs: BUDGET_MS, staleAfterMs: STALE_MS, clock });
   const [first, second] = station.waits;
   const secondNamesHb = second !== undefined && second.pattern.test(result(HB));
   const oneBudget =
@@ -342,7 +363,7 @@ const NEVER: Script = () => "silence";
     clock,
     NEVER,
   );
-  const quiet = await awaitBootQuiet(station, BUDGET_MS, clock);
+  const quiet = await awaitBootQuiet(station, { timeoutMs: BUDGET_MS, staleAfterMs: STALE_MS, clock });
   const named =
     quiet.kind === "outstanding" ? quiet.calls.map((c) => `${c.action}(${c.uniqueId})`) : [];
   if (quiet.kind === "outstanding" && JSON.stringify(named) === JSON.stringify([`StatusNotification(${SN1})`])) {
@@ -378,7 +399,7 @@ const NEVER: Script = () => "silence";
     }
   }
   const station = new RacyStation([...booted(), result(SN0)], clock, NEVER);
-  const quiet = await awaitBootQuiet(station, BUDGET_MS, clock);
+  const quiet = await awaitBootQuiet(station, { timeoutMs: BUDGET_MS, staleAfterMs: STALE_MS, clock });
   if (quiet.kind === "quiet" && quiet.waitedMs === 0 && station.waits.length === 1) {
     pass("a response that landed before the wait was armed is not waited for again");
   } else {
@@ -400,7 +421,7 @@ const NEVER: Script = () => "silence";
   // pass and never reaches the script -- the fake's runaway cap is what
   // turns that into a red row instead of a hang.
   const station = new FakeStation([...booted(), result(SN0), malformedResult(SN1)], clock, NEVER);
-  const quiet = await awaitBootQuiet(station, BUDGET_MS, clock);
+  const quiet = await awaitBootQuiet(station, { timeoutMs: BUDGET_MS, staleAfterMs: STALE_MS, clock });
   const named =
     quiet.kind === "outstanding" ? quiet.calls.map((c) => `${c.action}(${c.uniqueId})`) : [];
   if (
@@ -434,7 +455,7 @@ const NEVER: Script = () => "silence";
       clock,
       () => ({ lines: [result(id)], ms: 10 }),
     );
-    const quiet = await awaitBootQuiet(station, BUDGET_MS, clock);
+    const quiet = await awaitBootQuiet(station, { timeoutMs: BUDGET_MS, staleAfterMs: STALE_MS, clock });
     const wait = station.waits[0];
     if (quiet.kind === "quiet" && station.waits.length === 1 && wait?.pattern.test(result(id))) {
       pass(`a uniqueId carrying ${what} is waited on JSON-encoded, as the line carries it`);
@@ -463,6 +484,7 @@ const NEVER: Script = () => "silence";
     bootGateMs: 30_000,
     bootWaitMs: 4_000,
     quietTimeoutMs: BUDGET_MS,
+    staleAfterMs: STALE_MS,
     clock,
     sleep: async (ms) => {
       slept.push(ms);
@@ -502,6 +524,7 @@ const NEVER: Script = () => "silence";
     bootGateMs: 30_000,
     bootWaitMs: 4_000,
     quietTimeoutMs: BUDGET_MS,
+    staleAfterMs: STALE_MS,
     clock,
     sleep: async (ms) => {
       slept.push(ms);
@@ -526,6 +549,132 @@ const NEVER: Script = () => "silence";
     fail(
       "settleBoot's boot gate is soft: reported through the callback, then the settle and the gate still run",
       `reported=${String(reported)}, waits=${station.waits.map((w) => w.timeoutMs).join(",")}, slept=${JSON.stringify(slept)}, got ${JSON.stringify(quiet)}`,
+    );
+  }
+}
+
+// ---------------------------------------------------------------------------
+// 12. A CALL sent late in the budget is aged on its own clock.
+// ---------------------------------------------------------------------------
+
+{
+  const clock = new FakeClock();
+  // SN1 open from the start; at t=89s the station sends a Heartbeat nobody
+  // answers. The gate first sees it at t=90s, when the budget's wait times
+  // out, and may not give up on it before t=115s.
+  const station = new FakeStation([...booted(), result(SN0)], clock, (_wait, turn) =>
+    turn === 1 ? { lines: [sent(HB, "Heartbeat")], ms: 89_000 } : "silence",
+  );
+  const quiet = await awaitBootQuiet(station, { timeoutMs: BUDGET_MS, staleAfterMs: STALE_MS, clock });
+  const named =
+    quiet.kind === "outstanding" ? quiet.calls.map((c) => `${c.action}(${c.uniqueId})`) : [];
+  const timeouts = station.waits.map((w) => w.timeoutMs);
+  if (
+    quiet.kind === "outstanding" &&
+    quiet.waitedMs === BUDGET_MS + STALE_MS &&
+    JSON.stringify(timeouts) === JSON.stringify([BUDGET_MS, STALE_MS]) &&
+    JSON.stringify(named) === JSON.stringify([`StatusNotification(${SN1})`, `Heartbeat(${HB})`])
+  ) {
+    pass("a CALL sent late in the budget holds the gate until it has aged staleAfterMs");
+  } else {
+    fail(
+      "a CALL sent late in the budget holds the gate until it has aged staleAfterMs",
+      `got ${JSON.stringify(quiet)}, waits ${JSON.stringify(timeouts)}`,
+    );
+  }
+}
+
+// ---------------------------------------------------------------------------
+// 13. The real pump honours fromIndex.
+// ---------------------------------------------------------------------------
+
+{
+  const encoder = new TextEncoder();
+  let controller!: ReadableStreamDefaultController<Uint8Array>;
+  const stdout = new ReadableStream<Uint8Array>({
+    start(c) {
+      controller = c;
+    },
+  });
+  const streams = attachSimStreams({
+    container: "simts-guard-boot-quiet",
+    stdout,
+    stderr: new ReadableStream<Uint8Array>({ start: (c) => c.close() }),
+    exited: new Promise<number | null>(() => {}),
+    write: async () => {},
+  });
+  const before = `${malformedResult(SN1)}\n`;
+  controller.enqueue(encoder.encode(before));
+  // Let the pump read the buffered line, then wait from PAST it: a scan from
+  // 0 resolves at once on that line; a scan from 1 must wait.
+  await new Promise((r) => setTimeout(r, 20));
+  const pattern = /Received: \[[34],"90839755-d3b5-4db1-89bf-7612eca82965"/;
+  const from0 = streams.waitForLine(pattern, 500, 0);
+  const from1 = streams.waitForLine(pattern, 2_000, 1);
+  const first = await from0.then(
+    (line) => ({ resolved: line }),
+    (err) => ({ rejected: String(err) }),
+  );
+  let settledEarly = false;
+  const settledFlag = from1.then(() => (settledEarly = true), () => (settledEarly = true));
+  await new Promise((r) => setTimeout(r, 50));
+  const heldPastBuffered = !settledEarly;
+  controller.enqueue(encoder.encode(`${result(SN1)}\n`));
+  const second = await Promise.race([
+    from1.then((line) => ({ resolved: line })),
+    new Promise<{ rejected: string }>((r) => setTimeout(() => r({ rejected: "not resolved by the future line" }), 1_000)),
+  ]);
+  await settledFlag.catch(() => {});
+  controller.close();
+  await streams.drained;
+  if (
+    "resolved" in first && first.resolved === malformedResult(SN1) &&
+    heldPastBuffered &&
+    "resolved" in second && second.resolved === result(SN1)
+  ) {
+    pass("attachSimStreams.waitForLine ignores a match buffered before fromIndex and resolves on one after");
+  } else {
+    fail(
+      "attachSimStreams.waitForLine ignores a match buffered before fromIndex and resolves on one after",
+      `from 0: ${JSON.stringify(first)}; held past the buffered line: ${heldPastBuffered}; from 1: ${JSON.stringify(second)}`,
+    );
+  }
+}
+
+// ---------------------------------------------------------------------------
+// 14. A rejection before the deadline is the station gone: answer at once.
+// ---------------------------------------------------------------------------
+
+{
+  const clock = new FakeClock();
+  // A station whose wait rejects without the clock moving -- what the pump
+  // does once stdout has closed. The gate must not go round until t=90s on
+  // a wait that can never be served.
+  class GoneStation extends FakeStation {
+    override waitForLine(pattern: RegExp, timeoutMs: number): Promise<string> {
+      this.waits.push({ pattern, timeoutMs });
+      // A gate that goes round on this rejection spins with the clock still:
+      // let it out past the deadline after a few turns, so it fails on the
+      // wait count rather than hanging.
+      if (this.waits.length >= RUNAWAY_WAITS) clock.advance(BUDGET_MS + STALE_MS);
+      return Promise.reject(new Error("simulator container simts-gone exited (exit code 137) before /…/"));
+    }
+  }
+  const station = new GoneStation([...booted(), result(SN0)], clock, NEVER);
+  const quiet = await awaitBootQuiet(station, { timeoutMs: BUDGET_MS, staleAfterMs: STALE_MS, clock });
+  const named =
+    quiet.kind === "outstanding" ? quiet.calls.map((c) => `${c.action}(${c.uniqueId})`) : [];
+  if (
+    quiet.kind === "outstanding" &&
+    quiet.waitedMs === 0 &&
+    station.waits.length === 1 &&
+    JSON.stringify(named) === JSON.stringify([`StatusNotification(${SN1})`])
+  ) {
+    pass("a wait rejected before its deadline ends the gate at once with what is open");
+  } else {
+    fail(
+      "a wait rejected before its deadline ends the gate at once with what is open",
+      `got ${JSON.stringify(quiet)}, ${station.waits.length} wait(s)`,
     );
   }
 }

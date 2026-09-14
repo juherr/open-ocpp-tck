@@ -336,11 +336,20 @@ read and a tidier implementation would not -- and the row beside it is its
 converse: a line the wake pattern matches and the parser rejects has to be
 passed over ONCE, because a wait served from the lines already read would
 resolve on it every pass for the whole budget, which is the tight loop this
-module exists to prevent, inside the module. Placement is a row of its own:
-asked before the settle the gate reads an empty set and opens, so `settleBoot`
-owns conf-then-settle-then-gate with the settle injected, and the guard makes
-the CALLs land inside it. What stays in `runScenario` is one call, ahead of
-every source of CSMS traffic, where the boot gate has always stood.
+module exists to prevent, inside the module -- and that rule is the PUMP's,
+so one row drives the real `attachSimStreams` rather than the fake: the fake
+models `fromIndex`, and a model is only worth what holds it to the thing.
+Placement is a row of its own: asked before the settle the gate reads an
+empty set and opens, so `settleBoot` owns conf-then-settle-then-gate with the
+settle injected, and the guard makes the CALLs land inside it. What stays in
+`runScenario` is one call, ahead of every source of CSMS traffic, where the
+boot gate has always stood. And the budget is not the rule the runner relies
+on: the CSMS's in-progress entry is per CALL and its clock starts when the
+CALL arrives, so a Heartbeat the station sends at t=89s is not one the gate
+may give up on at t=90s -- every open CALL is aged on its own clock past the
+TTL window before the gate answers `outstanding`, and the row that holds it
+has its control in the row where a CALL open since the start is given up on
+at the budget and not a moment later.
 
 `sim-exit-rejects-waits.ts`: the one whose subject is a process that is GONE.
 `startSim`'s first call is a `status` probe with a 120-second budget, because
