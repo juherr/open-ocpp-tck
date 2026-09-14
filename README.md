@@ -111,8 +111,8 @@ bunx ocpp-tck driver selftest    # seconds: can the driver answer the contract?
 bunx ocpp-tck run-all --group core
 ```
 
-`run-all` is the whole suite: all 83 scenarios, one command. It did not use to
-be — the `authorize` group (TC_023) sat outside `all`, so "no failures, 44
+`run-all` is the whole suite: every registered scenario, one command. It did
+not use to be — the `authorize` group (TC_023) sat outside `all`, so "no failures, 44
 scenarios" read like a clean sweep while skipping exactly the three scenarios
 that prove the fixtures took. Working in a clone, `bun run e2e` is that sweep
 with a retry pass, and `bun run e2e:smoke` runs the handful that exercise
