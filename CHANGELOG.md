@@ -12,6 +12,15 @@ Released as `0.3.0`. The documented install ref already points at that tag, so
 
 ### Added
 
+- `tests/citrineos-v1-override.sh`, the seventeenth shell guard: the v1.9.1
+  compose override renders the v1.9.1 image with every configuration variable
+  that image reads, and the base file carries none of them. It exists because
+  the beta4 pin replaced the base file's environment block, the override
+  inherited the replacement by compose's merge rules, and `check:driver:
+  citrineos-v1` — which never opens a compose file — would have stayed green
+  over a v1.9.1 stack looking for Postgres on localhost. It reads the MERGED
+  configuration, the way a reader would by hand, and needs the compose CLI
+  plugin but no daemon
 - `tests/request-shape-201.ts`, the seventeenth in-process guard: what an OCPP
   2.0.1 request assertion *accepts*. Three ways a payload that is not the case's
   can be read as though it were and leave the row GREEN — an absent member read
@@ -426,6 +435,30 @@ Released as `0.3.0`. The documented install ref already points at that tag, so
 
 ### Changed
 
+- **The CitrineOS stack pin moved from `v2.0.0-beta3` to `v2.0.0-beta4`** —
+  `ghcr.io/citrineos/citrineos-server@sha256:e33badb9…`, resolved 2026-09-13.
+  Four findings this driver declared closed at once: the three `TC_044` rows,
+  red because every OCPP 1.6 `FirmwareStatusNotification` drew a `NotSupported`
+  CALLERROR (citrineos-core#890 adds the handler), and `TC_023.3`, red because
+  a stored `Blocked` idTag answered `Invalid` (citrineos-core#907 maps the
+  stored status). All four came back `UNEXPECTED PASS` on the new digest and
+  `drivers/citrineos/expected.ts` is empty (its two exported reason strings,
+  `BLOCKED_UNREACHABLE` and `FIRMWARE_STATUS_NOT_HANDLED`, leave the driver's
+  declarations with it) — the CitrineOS lane now reports
+  **0 `EXPECTED FAIL`**, and the gap table marks the two rows fixed along with
+  the failed-audit-insert crash (citrineos-core#846). The compose file's
+  environment block is re-derived from upstream's at this tag, because the
+  configuration surface was replaced: the `docker` app-env and every
+  `BOOTSTRAP_CITRINEOS_*` variable are gone, config is `CITRINEOS_<PATH>` over
+  the schema defaults, and the websocket servers are read from a JSON file
+  relative to the fileAccess root. Upstream's two certificate-authority
+  opt-ins (Hubject test PKI, Let's Encrypt staging) are deliberately left off,
+  and `compose.v1.yaml` now carries the old block itself, since the v1.9.1
+  image still reads it.
+  No driver code change: the message API's `/ocpp/<version>/<module>/<action>`
+  shape and its 18 OCPP 1.6 routes survived the `core → ocpp` restructure, and
+  no migration touches a table the provisioner seeds. `VENDOR.md`'s validation
+  history has the row.
 - **The SteVe stack pin moved from `steve-3.14.0` to `steve-3.14.1`** —
   `ghcr.io/juherr/steve@sha256:c3fbfcc3…`, resolved 2026-09-12. A security
   release (steve-community/steve#2102: `StopTransaction` validates its `idTag`,

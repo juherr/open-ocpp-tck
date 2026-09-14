@@ -136,22 +136,19 @@ function expiryOf(expiry: FixtureExpiry): string | null {
 }
 
 /**
- * Why CERT023-BLK is provisioned anyway, and what it does NOT achieve.
+ * What CERT023-BLK's row says about the CSMS, and why it once said more.
  *
- * AuthorizeRequestOcpp16Handler reaches its status mapper only through the
- * `status === Accepted` branch; a stored `Blocked` matches neither that branch
- * nor the null-status one, so the response keeps its default `Invalid`. The
- * only route to a real `Blocked` is an IAuthorizer returning it, and the
- * shipped container registers `authorizers: asValue([])`
- * (apps/ocpp-server/src/container.ts) with no configuration that changes it.
- *
- * The row is still written, for two reasons: it is the closest honest
- * expression of the fixture, and it means the scenario fails on the CSMS's
- * mapping rather than on a tag that was never there -- which is the finding
- * worth reporting upstream. scope.ts carries the same citation.
+ * From v2.0.0-beta4 AuthorizeRequestOcpp16Handler maps a stored non-Accepted
+ * status straight through AuthorizationMapper.toIdTagInfoStatus
+ * (citrineos-core#907), so a row stored `Blocked` answers `Blocked`. Through
+ * beta3 the handler reached its mapper only through the `status === Accepted`
+ * branch and the response kept its default `Invalid`; the row was written
+ * anyway, so that TC_023.3 failed on the CSMS's mapping rather than on a tag
+ * that was never there -- which was the finding worth reporting, and is now
+ * history in README.md's gap table.
  */
 const BLOCKED_TAG_CAVEAT =
-  "stored status Blocked; CitrineOS's 1.6 Authorize handler maps it to Invalid";
+  "stored status Blocked; answered Blocked from v2.0.0-beta4, Invalid before";
 
 /**
  * The idToken the 2.0.1 scenarios authorize with, and the one fixture here

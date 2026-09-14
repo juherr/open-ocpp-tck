@@ -65,18 +65,21 @@ different surfaces, and each answers a question the other cannot:
 | Driver | Transport | What it answers | Result |
 |---|---|---|---|
 | [`drivers/steve`](drivers/steve/README.md) | HTML manager UI + WebAPI + MariaDB | *Has the harness lost a capability?* SteVe is the CSMS the scenarios were originally written against, so a scope row that had to be demoted would mean the core dropped something. | 47 `DRIVABLE`, and the 26 OCPP 2.0.1 scenarios `NOT_APPLICABLE` |
-| [`drivers/citrineos`](drivers/citrineos/README.md) | JSON REST API + GraphQL | *Is the contract actually CSMS-neutral?* [CitrineOS](https://github.com/citrineos/citrineos-core) (LF Energy / S44) had no part in writing the scenarios and has a smaller OCPP 1.6 surface. | 31 `PASS`, 5 `PARTIAL`, 4 `FAIL`, 7 `NOT APPLICABLE` over the OCPP 1.6 scenarios; 7 OCPP 2.0.1 ones `PASS` and 19 not yet swept |
+| [`drivers/citrineos`](drivers/citrineos/README.md) | JSON REST API + GraphQL | *Is the contract actually CSMS-neutral?* [CitrineOS](https://github.com/citrineos/citrineos-core) (LF Energy / S44) had no part in writing the scenarios and has a smaller OCPP 1.6 surface. | 35 `PASS`, 5 `PARTIAL`, 0 `FAIL`, 7 `NOT APPLICABLE` over the OCPP 1.6 scenarios; 49 `PASS` over the OCPP 2.0.1 ones |
 
 An abstraction with one implementation is neutral by assertion, so the second
 driver is what turns that into a measurement — and the result is the useful
-part: 31 scenarios pass unmodified against a CSMS that had no part in writing
-them, 7 report a capability it does not have for OCPP 1.6, 5 are PARTIAL
-because an OCA obligation exists that no scenario here exercises, and 4 stay
-red because they found something. That two drivers this different need no
-change to a single scenario is the claim the pair exists to support.
+part: 35 scenarios pass unmodified against a CSMS that had no part in writing
+them, 7 report a capability it does not have for OCPP 1.6, and 5 are PARTIAL
+because an OCA obligation exists that no scenario here exercises. That two
+drivers this different need no change to a single scenario is the claim the
+pair exists to support.
 
-All 4 red ones are declared expected failures, so that sweep still exits 0 —
-and would stop doing so the day one of them passes.
+Four of those 35 were red for a milestone, declared as expected failures
+because they had found something — and when the CitrineOS pin moved to a
+release that fixed both findings, all four failed the sweep as `UNEXPECTED
+PASS` until their declarations were deleted. That is the mechanism working
+in the direction it exists for.
 
 The 5 `PARTIAL` are worth reading rather than skipping. They are not a
 CitrineOS result at all: they are the same on every driver, because the gap is
@@ -108,8 +111,8 @@ bunx ocpp-tck driver selftest    # seconds: can the driver answer the contract?
 bunx ocpp-tck run-all --group core
 ```
 
-`run-all` is the whole suite: all 83 scenarios, one command. It did not use to
-be — the `authorize` group (TC_023) sat outside `all`, so "no failures, 44
+`run-all` is the whole suite: every registered scenario, one command. It did
+not use to be — the `authorize` group (TC_023) sat outside `all`, so "no failures, 44
 scenarios" read like a clean sweep while skipping exactly the three scenarios
 that prove the fixtures took. Working in a clone, `bun run e2e` is that sweep
 with a retry pass, and `bun run e2e:smoke` runs the handful that exercise

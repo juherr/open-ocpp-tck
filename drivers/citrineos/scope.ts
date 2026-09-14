@@ -25,7 +25,6 @@
  * stopped measuring.
  */
 import type { ScopeEntry, ScopeTable } from "../../tck/scope";
-import { BLOCKED_UNREACHABLE, FIRMWARE_STATUS_NOT_HANDLED } from "./expected";
 import {
   CERT_201_SCENARIOS,
   NO_LOCAL_LIST,
@@ -106,18 +105,17 @@ const V2_SCOPE = {
       "expiry only inside its Accepted branch -- a row stored as Expired would " +
       "answer Invalid.",
   ),
-  // DRIVABLE AND CURRENTLY RED. The row stays DRIVABLE because demoting it
-  // would hide a finding (see tck/scope.ts); the red itself is declared in
-  // expected.ts, which is what lets CI report the other 46 scenarios without
-  // muting the job. The mechanism is stated there and imported here so the two
-  // cannot drift.
+  // DRIVEN GREEN FROM v2.0.0-beta4, and red before it: the 1.6 Authorize
+  // handler reached its status mapper only through its Accepted branch, so
+  // the stored Blocked this driver provisions answered Invalid -- a finding
+  // against CitrineOS, declared in expected.ts for a milestone rather than
+  // demoted here (tck/scope.ts forbids that). citrineos-core#907 maps a
+  // stored non-Accepted status directly, the row came back UNEXPECTED PASS on
+  // the new digest, and the declaration left with it.
   "cert16-tc023-3-authorize-blocked": d(
-    `${BLOCKED_UNREACHABLE} Expressible and driven: the driver sends the ` +
-      "Authorize request the scenario asks for and reads the answer back. " +
-      "What comes " +
-      "back is Invalid where OCPP 1.6 requires Blocked, which is a finding " +
-      "against CitrineOS rather than a gap in this driver -- declared in " +
-      "expected.ts.",
+    "Driven green: the fixture is stored with status Blocked and the answer " +
+      "is Blocked. Expressible and driven on beta3 too, where the answer " +
+      "was Invalid; see expected.ts for the history.",
   ),
 
   // --- RemoteTrigger -------------------------------------------------------
@@ -174,33 +172,32 @@ const V2_SCOPE = {
   ),
 
   // --- FirmwareManagement --------------------------------------------------
-  // ALL THREE ROWS ARE RED, AND THAT IS THE POINT. The mechanism sentence is
-  // FIRMWARE_STATUS_NOT_HANDLED in expected.ts, where all three
-  // expected-failure rows also live -- these scenarios are DRIVABLE and fail,
-  // which is a finding about CitrineOS, not a reason to demote a scope row.
-  //
-  // They used to be green: the scenarios asserted only the statuses the CHARGE
-  // POINT sent, never the CSMS's answer, so every CALLERROR passed unnoticed.
-  // That was a gap in the SCENARIOS, not evidence about CitrineOS. Closing it
-  // (issue #11, assertAllAnswered) turned a documented blind spot into a
-  // measured finding: every other check in all three still passes, and the
-  // single failure in each is the CALLERROR.
+  // ALL THREE ROWS WERE RED FOR A MILESTONE, and the history is worth the
+  // lines because it is the suite's clearest case of a blind spot becoming a
+  // measurement. The scenarios once asserted only the statuses the CHARGE
+  // POINT sent, never the CSMS's answer, so the NotSupported CALLERROR
+  // CitrineOS returned to every 1.6 FirmwareStatusNotification passed
+  // unnoticed -- a gap in the SCENARIOS. Closing it (issue #11,
+  // assertAllAnswered) turned that into a finding declared in expected.ts:
+  // every other check in all three passed and the single failure in each was
+  // the CALLERROR. citrineos-core#890 added the handler; from v2.0.0-beta4
+  // each answer is the .conf OCA TC_044 requires, the three rows came back
+  // UNEXPECTED PASS, and the declarations left with them.
   "cert16-tc044-1-firmware-update": d(
-    `${FIRMWARE_STATUS_NOT_HANDLED} Drivable, and RED on that obligation ` +
-      "alone: the full Downloading -> Downloaded -> Installing -> Installed " +
-      "train is asserted and passes. It also used to flake " +
-      "in the parallel pass of every recorded run, on a timing property of the " +
-      "SCENARIO rather than a CitrineOS limitation: retrieveDate was +90s " +
-      "against a 115s hold, leaving ~25s for the status train. The spec now " +
-      "asks for +15s, so the train has the whole window; see " +
-      "tck/specs/firmware.ts.",
+    "Driven green, every FirmwareStatusNotification.req answered: the full " +
+      "Downloading -> Downloaded -> Installing -> Installed train is asserted " +
+      "and passes. It also used to flake in the parallel pass of every " +
+      "recorded run, on a timing property of the SCENARIO rather than a " +
+      "CitrineOS limitation: retrieveDate was +90s against a 115s hold, " +
+      "leaving ~25s for the status train. The spec now asks for +15s, so the " +
+      "train has the whole window; see tck/specs/firmware.ts.",
   ),
   "cert16-tc044-2-firmware-download-failed": d(
-    `${FIRMWARE_STATUS_NOT_HANDLED} Drivable, and RED on that obligation ` +
-      "alone -- the Downloading -> DownloadFailed train and both never-reached " +
-      "negatives still pass. It was also the FLAKIEST scenario here on the " +
-      "thinnest timing margin of all: retrieveDate was +90s against a 110s " +
-      "hold, leaving ~20s. The spec now asks for +15s. " +
+    "Driven green, both FirmwareStatusNotification.req answered -- the " +
+      "Downloading -> DownloadFailed train and both never-reached negatives " +
+      "pass. It was also the FLAKIEST scenario here on the thinnest timing " +
+      "margin of all: retrieveDate was +90s against a 110s hold, leaving " +
+      "~20s. The spec now asks for +15s. " +
       "THE 1006 THIS ROW USED TO CALL UNEXPLAINED HAS AN ANSWER, AND IT IS " +
       "NOT THE CHARGE POINT: the CitrineOS process died on an unhandled " +
       "promise rejection -- SequelizeForeignKeyConstraintError on " +
@@ -216,22 +213,20 @@ const V2_SCOPE = {
       "on a row Postgres has not inserted yet -- so every CALL persisted " +
       "after its own response violated that key. The old suspicion had the " +
       "right shape and the wrong direction: it is not that the request was " +
-      "never persisted, it is that it was persisted second. The pinned image " +
-      "is v2.0.0-beta3, which carries the fix, so this 1006 is history on the " +
-      "digest this driver runs against -- and the crash it rode is not: a " +
-      "failed audit insert still escapes, because citrineos-core#846 sits on " +
-      "`next` only. Tracking that port to `main` is what is owed here, not a " +
-      "new issue.",
+      "never persisted, it is that it was persisted second. Both halves are " +
+      "history on the pinned digest: beta3 carried the trigger fix, and " +
+      "beta4 carries citrineos-core#846, which stops a failed audit insert " +
+      "from escaping as an unhandled rejection at all.",
   ),
   "cert16-tc044-3-firmware-install-failed": d(
-    `${FIRMWARE_STATUS_NOT_HANDLED} The cleanest demonstration of what issue ` +
-      "#11 was about: " +
-      "10 of its 11 checks pass -- every status in the Downloading -> " +
-      "Downloaded -> Installing -> InstallationFailed train, both ordering " +
-      "checks, the Installed-never-reached negative, and the Boot/Status " +
-      "notification answers -- and the single failure is that all four " +
-      "FirmwareStatusNotification.req drew a NotSupported CALLERROR. Nothing " +
-      "about the scenario changed except that it now looks at the answer.",
+    "Driven green, all four FirmwareStatusNotification.req answered. The " +
+      "cleanest demonstration of what issue #11 was about: on beta3, 10 of " +
+      "its 11 checks passed -- every status in the Downloading -> Downloaded " +
+      "-> Installing -> InstallationFailed train, both ordering checks, the " +
+      "Installed-never-reached negative, and the Boot/Status notification " +
+      "answers -- and the single failure was that all four drew a " +
+      "NotSupported CALLERROR. Nothing about the scenario changed except " +
+      "that it looks at the answer, and now the answer is the .conf.",
   ),
   "cert16-tc045-1-get-diagnostics": d(
     "Driven green. Unlike UpdateFirmware, GetDiagnostics does have a 1.6 " +

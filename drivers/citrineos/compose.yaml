@@ -4,7 +4,7 @@
 # The CitrineOS environment: what `ocpp-tck run-all` needs on the other end of
 # the wire when CSMS_DRIVER=./drivers/citrineos/index.ts. Not a production
 # deployment -- the message API is unauthenticated here (CitrineOS's shipped
-# `docker` app-env selects LocalBypassAuthProvider), and the credentials below
+# defaults select the local-bypass auth provider), and the credentials below
 # are the driver's documented defaults, in the clear, on purpose.
 #
 # Every name in this file is load-bearing, because the driver's defaults
@@ -14,11 +14,11 @@
 #   service name citrine                         -> the DNS name in CITRINE_WS_URL=ws://citrine:8081/
 #   graphql-engine's published port 8090         -> CITRINE_GRAPHQL_URL=http://localhost:8090
 #
-# Two service names are load-bearing for CITRINEOS rather than for the driver,
-# and cannot be renamed at all: the shipped config hardcodes the database host
-# through BOOTSTRAP_CITRINEOS_DATABASE_HOST (set below) and the broker as
-# `amqp://guest:guest@amqp-broker:5672` (apps/ocpp-server/src/config/envs/docker.ts,
-# util.messageBroker.amqp.url), which no environment variable overrides.
+# Two service names are load-bearing for CITRINEOS rather than for the driver:
+# the database host and the broker URL are handed to the server through
+# CITRINEOS_DATABASE_HOST and CITRINEOS_MESSAGEBROKER_AMQP_URL below, so
+# renaming `ocpp-db` or `amqp-broker` means moving both the service and the
+# value in the same edit.
 #
 # The project name is pinned here rather than inherited from the directory, so
 # that `docker compose -f drivers/citrineos/compose.yaml up` produces the same
@@ -35,13 +35,14 @@
 # mid-sweep against.
 name: citrineos${TCK_SUFFIX:-}
 
-# Derived from citrineos-core's own docker-compose.yml @ v2.0.0-beta1
-# (Apache-2.0). Modified: the operator UI and the OCPI server are dropped;
-# minio is dropped because BOOTSTRAP_CITRINEOS_FILE_ACCESS_TYPE=local means
-# nothing reaches S3; every volume is dropped; images are pinned by digest;
-# only the HTTP API and GraphQL ports are published, on loopback. The Hasura
-# sidecar is KEPT -- upstream starts it ungated, and it is how this driver
-# reads and seeds (see records.ts).
+# Derived from citrineos-core's own docker-compose.yml @ v2.0.0-beta4
+# (Apache-2.0). Modified: the operator UI, the OCPI server and the mock MSP
+# are dropped; minio is dropped because fileAccess.type defaults to `local`,
+# so nothing reaches S3; every volume is dropped; images are pinned by digest;
+# only the HTTP API and GraphQL ports are published, on loopback; the two
+# certificate-authority integrations upstream opts into are left off (see the
+# environment block). The Hasura sidecar is KEPT -- upstream starts it ungated,
+# and it is how this driver reads and seeds (see records.ts).
 services:
   # Images are pinned by digest, not tag: `latest` is republished on every
   # build, and a conformance run that cannot say which bytes it tested is not a
@@ -50,26 +51,29 @@ services:
   #
   # A v2 prerelease rather than the v1.9.1 stable, deliberately: the OCPP 1.6
   # GetLocalListVersion and SendLocalList message endpoints exist only from the
-  # v2 line (packages/core/src/modules/EVDriver/src/module/1.6/MessageApi.ts),
-  # and six scenarios need them. See drivers/citrineos/README.md for the v1.9.1
-  # variant and what it costs.
+  # v2 line (packages/ocpp/src/apis/ocpp/1.6/ev-driver.ts at this tag), and six
+  # scenarios need them. See drivers/citrineos/README.md for the v1.9.1 variant
+  # and what it costs.
   #
-  # beta3 rather than beta1, and that is a bug fix we were measuring:
-  # citrineos-core#830 splits the message-correlation trigger that ran entirely
-  # BEFORE INSERT, whose CALL branch back-filled `requestMessageId = NEW.id` on
-  # a row Postgres had not inserted yet. The resulting
-  # OCPPMessages_requestMessageId_fkey violation escaped as an unhandled
-  # rejection and killed the dispatcher. See README.md's gap table.
+  # beta4 rather than beta3, and it is four findings closing rather than a
+  # tidy-up: citrineos-core#890 answers an OCPP 1.6 FirmwareStatusNotification
+  # with the .conf OCA TC_044 requires instead of a NotSupported CALLERROR,
+  # citrineos-core#907 maps a stored `Blocked` idTag to `Blocked` on Authorize
+  # instead of `Invalid` (TC_023.3), and citrineos-core#846 stops a failed
+  # message-audit insert from killing the process. Every one of those was a
+  # declared expected failure or a gap-table row; see README.md's gap table for
+  # what remains. beta3 before it was citrineos-core#830, the correlation
+  # trigger whose foreign-key violation killed the dispatcher mid-sweep.
   #
   # Re-pin with:
   #   T=$(curl -sS "https://ghcr.io/token?scope=repository:citrineos/citrineos-server:pull&service=ghcr.io" \
   #        | sed -n 's/.*"token":"\([^"]*\)".*/\1/p')
   #   curl -sSI -H "Authorization: Bearer $T" \
   #     -H "Accept: application/vnd.oci.image.index.v1+json" \
-  #     https://ghcr.io/v2/citrineos/citrineos-server/manifests/v2.0.0-beta3 \
+  #     https://ghcr.io/v2/citrineos/citrineos-server/manifests/v2.0.0-beta4 \
   #     | grep -i docker-content-digest
   citrine:
-    image: ghcr.io/citrineos/citrineos-server:v2.0.0-beta3@sha256:ddd8e98791b4f75523cf6a2aa3fd7cc35bd15bfb019d1461200e2c2e65462fd5
+    image: ghcr.io/citrineos/citrineos-server:v2.0.0-beta4@sha256:e33badb992d7b7fd28a8d1ac0d0ee6f10817f34f2647db168603424102eeb7c2
     container_name: citrine${TCK_SUFFIX:-}
     restart: unless-stopped
     depends_on:
@@ -78,17 +82,39 @@ services:
       amqp-broker:
         condition: service_healthy
     environment:
+      # Which process this container runs: router + every module + the APIs.
       APP_NAME: "all"
-      APP_ENV: "docker"
+      # Read by entrypoint.sh before the config loader exists.
       DB_STRATEGY: "migrate"
-      BOOTSTRAP_CITRINEOS_DATABASE_HOST: "ocpp-db"
-      BOOTSTRAP_CITRINEOS_CONFIG_FILENAME: "config.json"
-      # Local disk, not S3. This is why there is no minio service here: with
-      # `local` the file-access layer never builds an S3 client, so the two
-      # upstream containers (minio, minio-init) have nothing to serve.
-      BOOTSTRAP_CITRINEOS_FILE_ACCESS_TYPE: "local"
-      BOOTSTRAP_CITRINEOS_FILE_ACCESS_LOCAL_DEFAULT_FILE_PATH: "/data"
-      CONFIG_CITRINEOS_WIPE_FILE_ON_START: "false"
+      # Everything else is a SystemConfig override, CITRINEOS_<PATH> over the
+      # schema in packages/types/src/config/types.ts -- one underscore per
+      # level, a camelCase field stays one segment, values JSON-parsed. The
+      # schema defaults are the local-dev values, so only what differs inside
+      # a container is listed. From beta4; the `docker` app-env and the
+      # BOOTSTRAP_CITRINEOS_* names this replaced no longer exist.
+      CITRINEOS_HOST: "0.0.0.0"
+      CITRINEOS_DATABASE_HOST: "ocpp-db"
+      CITRINEOS_MESSAGEBROKER_AMQP_URL: "amqp://guest:guest@amqp-broker:5672"
+      # The fileAccess root, and the one value here that is not optional: the
+      # websocket servers (8081 plaintext, 8082 basic-auth, 8443/8444 TLS) are
+      # read from websocket-servers.json RELATIVE TO IT, so a root that does
+      # not hold that file is a server with an HTTP API and no OCPP listener.
+      # It is spelled from the repository root because that is the working
+      # directory entrypoint.sh runs `node` from in the image. Local disk, not
+      # S3, is the default, which is why there is no minio service here.
+      CITRINEOS_FILEACCESS_LOCAL_DEFAULTFILEPATH: "apps/ocpp-server/src/assets"
+      # The Swagger logo is the one path read straight from the working
+      # directory rather than through fileAccess, so it needs the full prefix.
+      CITRINEOS_SWAGGER_LOGOPATH: "apps/ocpp-server/src/assets/logo.png"
+      # NOT set, on purpose: CITRINEOS_INTEGRATIONS_V2GCA and
+      # CITRINEOS_INTEGRATIONS_CHARGINGSTATIONCA. Upstream's compose turns both
+      # on, which points the server at Hubject's test PKI and Let's Encrypt
+      # staging. Nothing here asks the CSMS to sign a certificate -- the
+      # scenarios send InstallCertificate, whose handler never touches the CA
+      # service -- and a conformance stack should not reach the internet on
+      # its own. auth.localBypass defaults to true, so the message API stays
+      # unauthenticated without being asked to; that is what the header means
+      # by "the shipped defaults".
     ports:
       # Published because the driver runs on the HOST (it reaches Postgres via
       # `docker exec`), so its CITRINE_API_URL is http://localhost:8080 while

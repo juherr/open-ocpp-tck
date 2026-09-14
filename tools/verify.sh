@@ -46,6 +46,10 @@ run "driver scope: citrineos" bun run check:driver:citrineos
 # environment, so checking only the default line would leave half of what this
 # driver claims unverified -- and the v1 table is the derived one.
 run "driver scope: citrineos (v1)" bun run check:driver:citrineos-v1
+# And the v1 line's OTHER half, which check-driver never opens: the compose
+# override that selects the v1.9.1 image has to carry the configuration that
+# image reads, since the base file stopped carrying it at v2.0.0-beta4.
+run "the v1 compose override configures v1.9.1" bash tests/citrineos-v1-override.sh
 run "driver scope follows the env" bun tests/driver-env-scope.ts
 # And beside it, because it is the other half of the same reading: that guard
 # holds a declaration to the env it was resolved with, this one holds it to the

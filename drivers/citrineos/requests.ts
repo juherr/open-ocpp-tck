@@ -16,8 +16,9 @@
  *
  *  - THE MODULE PREFIX IS NOT DERIVABLE FROM THE ACTION. RemoteStart/Stop and
  *    UnlockConnector live under `evdriver` rather than `transactions`;
- *    GetDiagnostics lives under `reporting`. There is no rule, only a table
- *    (apps/ocpp-server/src/config/envs/docker.ts), so it is spelled out here.
+ *    GetDiagnostics lives under `reporting`. There is no rule, only the
+ *    `eventGroup` each route table declares
+ *    (packages/ocpp/src/apis/ocpp/{1.6,2}/*.ts), so it is spelled out here.
  *  - REFS ARE NOT WIRE VALUES. A TransactionRef is this driver's own row key
  *    and has to be resolved to the OCPP integer transactionId; a
  *    ChargingProfileRef expands to the whole inline profile. See

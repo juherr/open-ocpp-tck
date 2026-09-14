@@ -87,10 +87,11 @@ import {
  * What the 1.6 message API does not route, for the declared variant --
  * confirmed against both running images: the v2 line's /docs/json advertises
  * 18 `/ocpp/1.6/` paths and v1.9.1's advertises 16, with `reserveNow` and
- * `cancelReservation` absent from both. Measured on v2.0.0-beta1 and carried
- * to the v2.0.0-beta3 pin on a file identity rather than a re-run: all four
- * of the modules' own `src/module/1.6/MessageApi.ts` are byte-identical
- * between the two tags.
+ * `cancelReservation` absent from both. Measured on v2.0.0-beta1, carried to
+ * beta3 on a file identity, and re-counted on the running v2.0.0-beta4
+ * container rather than carried again: the route tables moved to
+ * `packages/ocpp/src/apis/ocpp/1.6/*.ts` under that pin, and the same 18
+ * actions are what they register.
  *
  * Declared by subtraction from the contract's own list rather than by
  * enumerating the supported ones, so that an operation added to the contract
