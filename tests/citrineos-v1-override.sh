@@ -32,6 +32,15 @@
 # taken from the environment block the base file carried through beta3 --
 # apps/ocpp-server/src/config/envs/docker.ts at that tag is where the names
 # come from -- and the v1.9.1 pin does not move, so the table does not either.
+#
+# WHAT PART 1 DOES NOT CLAIM: that the digest in compose.v1.yaml is the right
+# bytes for v1.9.1. The digest is read off that file, so a wrong one there is
+# consistently wrong here and this guard stays green -- deliberately, since
+# spelling the digest a second time in a guard is the duplication
+# tests/documented-install-ref.sh's header argues against, and the registry
+# answers that question outright: `docker compose up` refuses a digest that
+# does not resolve. What is claimed is that the merge selected the override's
+# FULL reference, tag and digest, byte for byte.
 set -euo pipefail
 
 cd "$(dirname "$0")/.." || exit 1
@@ -86,14 +95,23 @@ fi
 
 fail=0
 
-# 1. The image is the v1.9.1 pin, tag and digest both.
+# 1. The image is the v1.9.1 pin, tag and digest both. The digest is read off
+#    the override's own `image:` line rather than spelled here -- the same rule
+#    tests/documented-install-ref.sh follows -- so the check is that the MERGE
+#    selected the override's full reference byte for byte, and that reference
+#    names a v1.9.1 tag with a sha256 digest.
 image=$(printf '%s\n' "$merged" | sed -n 's/^image=//p')
-case "$image" in
-  ghcr.io/citrineos/citrineos-server:v1.9.1@sha256:*) ;;
+declared=$(sed -n 's/^    image: \(ghcr\.io\/citrineos\/citrineos-server:[^ ]*\)$/\1/p' "$override")
+case "$declared" in
+  ghcr.io/citrineos/citrineos-server:v1.9.1@sha256:????????????????????????????????????????????????????????????????) ;;
   *)
-    echo "FAIL: the merged \`citrine\` image is '$image', not the v1.9.1 pin by tag and digest." >&2
+    echo "FAIL: $override declares '$declared', not a v1.9.1 tag pinned by a full sha256 digest." >&2
     fail=1 ;;
 esac
+if [ "$image" != "$declared" ]; then
+  echo "FAIL: the merged \`citrine\` image is '$image'; $override declares '$declared'." >&2
+  fail=1
+fi
 
 # 2. Every legacy variable, with its value, in the merged environment.
 for kv in "${legacy[@]}"; do
