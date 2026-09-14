@@ -95,6 +95,13 @@ services:
       CITRINEOS_HOST: "0.0.0.0"
       CITRINEOS_DATABASE_HOST: "ocpp-db"
       CITRINEOS_MESSAGEBROKER_AMQP_URL: "amqp://guest:guest@amqp-broker:5672"
+      # CONTROL FOR #138, NOT A DEFAULT -- this branch is never merged. The
+      # schema leaves `database.pool` unset, so the vendor default is
+      # Sequelize's 5, which three stations booting in 2.0.1 at once exhaust
+      # for the 60 s acquire timeout. Raising it removes the seed; if the loop
+      # count CI prints goes to zero here, the diagnosis in #138 is confirmed
+      # and the number becomes a deployment note, never a default of ours.
+      CITRINEOS_DATABASE_POOL_MAX: "20"
       # The fileAccess root, and the one value here that is not optional: the
       # websocket servers (8081 plaintext, 8082 basic-auth, 8443/8444 TLS) are
       # read from websocket-servers.json RELATIVE TO IT, so a root that does
