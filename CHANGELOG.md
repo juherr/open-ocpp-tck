@@ -12,6 +12,28 @@ Released as `0.3.0`. The documented install ref already points at that tag, so
 
 ### Added
 
+- **The runner holds a scenario's first CSMS dispatch until every CALL the
+  station sent at boot has been answered** (`tck/boot-quiet.ts`, asked after the
+  boot gate's settle). The pinned CitrineOS refuses a CSMS-initiated Call while
+  any Call of the station's own is in progress and re-queues it every
+  millisecond; three stations booting in 2.0.1 at once stall its
+  `StatusNotification` handlers for the pool's 60 s acquire timeout, and a
+  dispatch 4 s after the boot landed in that window — 5 of 8 CI shard runs on
+  the beta4 pin collapsed there (#119, #138). The in-progress entry is cleared
+  when the CSMS sends its CALLRESULT or CALLERROR, so the condition is the
+  CSMS's own, and it holds for any OCPP-J peer. Budget 90 s, spent only on a
+  station the CSMS has stopped answering; a healthy boot's answers are already
+  on stdout inside the settle and the gate returns at once. When it does wait
+  out its budget the runner prints `WARN: boot quiet: … still unanswered` and
+  dispatches anyway — after 90 s the CSMS's own 20 s TTL has cleared the entries,
+  so the dispatch is at least not a loop — and that line is the count of stalls
+  that did not become loops, which #138 had no other way to read
+- `tests/boot-quiet.ts`, the twentieth in-process guard, holding the gate to
+  seven claims: a healthy boot costs nothing, the wait is armed on the
+  outstanding uniqueIds, a CALLERROR is an answer, a CALL sent during the wait
+  is waited on from the same budget, a received CALL and a stranger's response
+  count for nothing, and an answer landing between the read and the wait is
+  served from the lines already read
 - `tests/citrineos-v1-override.sh`, the seventeenth shell guard: the v1.9.1
   compose override renders the v1.9.1 image with every configuration variable
   that image reads, and the base file carries none of them. It exists because

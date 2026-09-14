@@ -131,6 +131,10 @@ run "a 2.0.1 request assertion refuses the shape it is not about" bun tests/requ
 # inside the pinned simulator -- a connect-triggered template re-arms on every
 # reconnect -- and the failure is a second run a sweep reports as a CSMS finding.
 run "a scenario template runs exactly once across a reconnect" bun tests/template-once.ts
+# In-process because reaching it means a CSMS that answers the boot and then
+# stalls the StatusNotifications -- CI produces that on 60 % of beta4 shard runs
+# and never when wanted -- so the gate takes the station's stdout as its seam.
+run "the boot gate holds the first dispatch until the station's boot-time CALLs are answered" bun tests/boot-quiet.ts
 # In-process because the rule lives in the pump startSim builds over its spawn
 # result, and reaching it from the CLI means a docker daemon and an image chosen
 # to fail -- so the pump takes its streams, and the guard closes them itself.
