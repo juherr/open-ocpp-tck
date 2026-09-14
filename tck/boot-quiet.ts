@@ -118,14 +118,21 @@ export async function awaitBootQuiet(
   clock: QuietClock = { now: () => Date.now() },
 ): Promise<BootQuiet> {
   const started = clock.now();
+  // `waitedMs` is the time spent WAITING, and 0 when no wait was armed: the
+  // parse of a few hundred lines takes a millisecond on a real clock, and a
+  // gate that reported it would print "waited 1ms" on every healthy boot --
+  // it did, on the first CI run -- which is noise where the line is meant to
+  // be a signal.
+  let armed = false;
   for (;;) {
     const open = outstandingCalls(parseLines(sim.lines));
-    const waitedMs = clock.now() - started;
+    const waitedMs = armed ? clock.now() - started : 0;
     if (open.length === 0) return { kind: "quiet", waitedMs };
     const remaining = timeoutMs - waitedMs;
     if (remaining <= 0) return { kind: "outstanding", waitedMs, calls: open };
     const ids = open.map((call) => escapeRegExp(call.uniqueId)).join("|");
     try {
+      armed = true;
       await sim.waitForLine(new RegExp(`Received: \\[[34],"(?:${ids})"`), remaining);
     } catch {
       // The budget, or a simulator that exited under the wait. Either way the

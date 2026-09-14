@@ -179,7 +179,14 @@ const NEVER: Script = () => "silence";
 // ---------------------------------------------------------------------------
 
 {
-  const clock = new FakeClock();
+  // A clock that ticks on every read, as the real one does across a parse:
+  // "no time spent" has to mean no WAIT, not a clock that stood still.
+  const clock = new (class extends FakeClock {
+    override now(): number {
+      this.advance(1);
+      return super.now();
+    }
+  })();
   const station = new FakeStation([...booted(), result(SN1), result(SN0)], clock, NEVER);
   const quiet = await awaitBootQuiet(station, BUDGET_MS, clock);
   if (quiet.kind === "quiet" && quiet.waitedMs === 0 && station.waits.length === 0) {
