@@ -349,7 +349,15 @@ CALL arrives, so a Heartbeat the station sends at t=89s is not one the gate
 may give up on at t=90s -- every open CALL is aged on its own clock past the
 TTL window before the gate answers `outstanding`, and the row that holds it
 has its control in the row where a CALL open since the start is given up on
-at the budget and not a moment later.
+at the budget and not a moment later. That ageing is what makes a TERMINAL
+bound necessary, since nothing makes a station send unanswered CALLs less
+often than the window: at the cap the gate answers, and reached with a CALL
+still inside the window the answer is `unsettled`, on which the runner aborts
+the scenario rather than dispatch over a live entry -- the row that drives
+fresh CALLs for ever, and its control where a window that fits under the cap
+is aged out as before. The fake ENDS the run on a runaway, because a gate
+that never terminates is a hang and not a red row, and the rejection or throw
+it could raise instead is exactly what such a gate would spin on.
 
 `sim-exit-rejects-waits.ts`: the one whose subject is a process that is GONE.
 `startSim`'s first call is a `status` probe with a 120-second budget, because

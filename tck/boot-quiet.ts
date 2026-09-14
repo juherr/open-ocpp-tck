@@ -71,7 +71,14 @@ export interface OutstandingCall {
 
 export type BootQuiet =
   | { kind: "quiet"; waitedMs: number }
-  | { kind: "outstanding"; waitedMs: number; calls: OutstandingCall[] };
+  /** Nothing more is coming: every open CALL has been open past the TTL
+   *  window, so a dispatch over it is at least not refused. */
+  | { kind: "outstanding"; waitedMs: number; calls: OutstandingCall[] }
+  /** The hard cap, reached with a CALL still YOUNGER than the TTL window --
+   *  the station kept sending CALLs the CSMS did not answer. A dispatch now
+   *  would land on a live entry, so the runner must not make one; this is
+   *  the outcome that aborts the scenario. */
+  | { kind: "unsettled"; waitedMs: number; calls: OutstandingCall[] };
 
 /** A clock the gate can be handed, so the guard owns time. */
 export interface QuietClock {
@@ -131,6 +138,11 @@ export interface QuietOptions {
    *  returned at t=90s is one second old, with the entry that refuses a
    *  dispatch still nineteen seconds from expiring. */
   staleAfterMs: number;
+  /** The terminal bound, from the first wait. Every new unanswered CALL can
+   *  extend the deadline by `staleAfterMs`, so without this a station that
+   *  keeps sending CALLs the CSMS does not answer holds the gate -- and the
+   *  scenario's cleanup behind it -- for ever. At least `timeoutMs`. */
+  hardCapMs: number;
   clock?: QuietClock;
 }
 
@@ -147,9 +159,15 @@ export interface QuietOptions {
  * dispatches, and that entry's clock starts when the CALL arrives, not when
  * the gate does. The age is measured from the gate's first sight of the CALL,
  * which is after the station sent it, so it under-reads the CSMS's and is
- * conservative. Termination: every extension needs the station to emit a NEW
- * CALL the CSMS does not answer, and a station idling after its boot emits
- * one per heartbeat interval -- the extension is one `staleAfterMs`, once.
+ * conservative. Every extension needs the station to emit a NEW CALL the CSMS
+ * does not answer, and a station idling after its boot emits one per
+ * heartbeat interval -- but nothing here enforces that, so the extensions are
+ * bounded by `hardCapMs`, and the cap is where the two safe answers part:
+ * reached with every open CALL past the window it is `outstanding`, the same
+ * answer the deadline gives; reached with a CALL still inside it, it is
+ * `unsettled`, because the one thing this gate may not do is dispatch over a
+ * live entry, and the runner's answer to that is to abort the scenario and
+ * let cleanup run.
  *
  * The wait is armed on the outstanding uniqueIds and nothing else, and it is
  * served from the lines already read when the answer landed between the read
@@ -163,6 +181,7 @@ export async function awaitBootQuiet(
   const { timeoutMs, staleAfterMs } = options;
   const clock = options.clock ?? { now: () => Date.now() };
   const started = clock.now();
+  const cap = started + Math.max(options.hardCapMs, timeoutMs);
   /** When the gate first saw each open CALL; the deadline is theirs too. */
   const firstSeen = new Map<string, number>();
   // `waitedMs` is the time spent WAITING, and 0 when no wait was armed: the
@@ -192,11 +211,14 @@ export async function awaitBootQuiet(
       deadline = Math.max(deadline, seen + staleAfterMs);
     }
     if (now >= deadline) return { kind: "outstanding", waitedMs, calls: open };
+    // At the cap with the deadline still ahead: a CALL is younger than the
+    // window, and waiting for it is what the cap forbids.
+    if (now >= cap) return { kind: "unsettled", waitedMs, calls: open };
     try {
       armed = true;
       await sim.waitForLine(
         responsePattern(open.map((call) => call.uniqueId)),
-        deadline - now,
+        Math.min(deadline, cap) - now,
         read.length,
       );
     } catch {
@@ -206,7 +228,7 @@ export async function awaitBootQuiet(
       // next step is what throws on it -- so answer now with what is open.
       // A rejection AT the deadline goes round once more: a CALL that landed
       // during the wait may have moved it.
-      if (clock.now() < deadline) {
+      if (clock.now() < Math.min(deadline, cap)) {
         return {
           kind: "outstanding",
           waitedMs: clock.now() - started,
@@ -228,6 +250,8 @@ export interface BootSettleOptions {
   /** How long every open CALL must have been outstanding before the quiet
    *  gate gives up on it -- see {@link QuietOptions.staleAfterMs}. */
   staleAfterMs: number;
+  /** The quiet gate's terminal bound -- see {@link QuietOptions.hardCapMs}. */
+  hardCapMs: number;
   /** The wait itself, injected so the guard can make lines land DURING it. */
   sleep: (ms: number) => Promise<void>;
   /** Called with the error when the boot gate gives up; the runner warns. */
@@ -280,6 +304,7 @@ export async function settleBoot(
   return awaitBootQuiet(sim, {
     timeoutMs: options.quietTimeoutMs,
     staleAfterMs: options.staleAfterMs,
+    hardCapMs: options.hardCapMs,
     clock: options.clock,
   });
 }

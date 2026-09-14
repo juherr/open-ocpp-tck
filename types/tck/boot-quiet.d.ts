@@ -66,8 +66,20 @@ export interface OutstandingCall {
 export type BootQuiet = {
     kind: "quiet";
     waitedMs: number;
-} | {
+}
+/** Nothing more is coming: every open CALL has been open past the TTL
+ *  window, so a dispatch over it is at least not refused. */
+ | {
     kind: "outstanding";
+    waitedMs: number;
+    calls: OutstandingCall[];
+}
+/** The hard cap, reached with a CALL still YOUNGER than the TTL window --
+ *  the station kept sending CALLs the CSMS did not answer. A dispatch now
+ *  would land on a live entry, so the runner must not make one; this is
+ *  the outcome that aborts the scenario. */
+ | {
+    kind: "unsettled";
     waitedMs: number;
     calls: OutstandingCall[];
 };
@@ -95,6 +107,11 @@ export interface QuietOptions {
      *  returned at t=90s is one second old, with the entry that refuses a
      *  dispatch still nineteen seconds from expiring. */
     staleAfterMs: number;
+    /** The terminal bound, from the first wait. Every new unanswered CALL can
+     *  extend the deadline by `staleAfterMs`, so without this a station that
+     *  keeps sending CALLs the CSMS does not answer holds the gate -- and the
+     *  scenario's cleanup behind it -- for ever. At least `timeoutMs`. */
+    hardCapMs: number;
     clock?: QuietClock;
 }
 /**
@@ -110,9 +127,15 @@ export interface QuietOptions {
  * dispatches, and that entry's clock starts when the CALL arrives, not when
  * the gate does. The age is measured from the gate's first sight of the CALL,
  * which is after the station sent it, so it under-reads the CSMS's and is
- * conservative. Termination: every extension needs the station to emit a NEW
- * CALL the CSMS does not answer, and a station idling after its boot emits
- * one per heartbeat interval -- the extension is one `staleAfterMs`, once.
+ * conservative. Every extension needs the station to emit a NEW CALL the CSMS
+ * does not answer, and a station idling after its boot emits one per
+ * heartbeat interval -- but nothing here enforces that, so the extensions are
+ * bounded by `hardCapMs`, and the cap is where the two safe answers part:
+ * reached with every open CALL past the window it is `outstanding`, the same
+ * answer the deadline gives; reached with a CALL still inside it, it is
+ * `unsettled`, because the one thing this gate may not do is dispatch over a
+ * live entry, and the runner's answer to that is to abort the scenario and
+ * let cleanup run.
  *
  * The wait is armed on the outstanding uniqueIds and nothing else, and it is
  * served from the lines already read when the answer landed between the read
@@ -131,6 +154,8 @@ export interface BootSettleOptions {
     /** How long every open CALL must have been outstanding before the quiet
      *  gate gives up on it -- see {@link QuietOptions.staleAfterMs}. */
     staleAfterMs: number;
+    /** The quiet gate's terminal bound -- see {@link QuietOptions.hardCapMs}. */
+    hardCapMs: number;
     /** The wait itself, injected so the guard can make lines land DURING it. */
     sleep: (ms: number) => Promise<void>;
     /** Called with the error when the boot gate gives up; the runner warns. */

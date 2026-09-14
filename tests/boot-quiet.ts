@@ -56,7 +56,19 @@
  *      back to scanning from 0 goes red here and not only in a sweep;
  *  14. a wait the pump rejects BEFORE its deadline -- the station gone, on
  *      the real pump -- ends the gate at once with what is open, where a
- *      rejection at the deadline goes round once more.
+ *      rejection at the deadline goes round once more;
+ *  15. the gate has a TERMINAL bound. Each new unanswered CALL extends the
+ *      deadline by `staleAfterMs`, and nothing makes a station send them less
+ *      often than that: a station that does holds the gate -- and the
+ *      scenario's cleanup behind it -- for ever. At `hardCapMs` the gate
+ *      answers, and reached with a CALL still inside the window the answer
+ *      is `unsettled`, never `outstanding`: the runner aborts on it rather
+ *      than dispatch over a live entry;
+ *  16. the cap does not shorten a deadline that fits under it: a late CALL
+ *      whose window ends before the cap is aged out and reported
+ *      `outstanding`, the same as row 12. Rows 15 and 16 are each other's
+ *      control -- one holds that the cap binds, the other that it binds
+ *      nothing it need not.
  *
  * WHY. The pinned CitrineOS refuses to dispatch a CSMS-initiated Call while
  * any Call of the station's own is still in progress, and re-queues it every
@@ -184,11 +196,15 @@ class FakeStation {
   waitForLine(pattern: RegExp, timeoutMs: number, fromIndex = 0): Promise<string> {
     const wait = { pattern, timeoutMs };
     this.waits.push(wait);
-    // A gate whose wait resolves from a line it already read spins here
-    // forever, on the real pump as on this fake -- a hang, not a red row. Cap
-    // it, so that mutation is reported as one.
+    // A gate whose wait resolves from a line it already read, or whose
+    // deadline keeps moving, spins here forever -- on the real pump as on
+    // this fake, and a hang is not a red row. So the fake ENDS the run: a
+    // rejection would be caught by the gate and spun on, a throw likewise,
+    // and the property under test is precisely that the gate terminates.
     if (this.waits.length > RUNAWAY_WAITS) {
-      return Promise.reject(new Error(`runaway: ${this.waits.length} waits armed`));
+      fail("the gate terminates", `runaway: ${this.waits.length} waits armed on /${pattern.source}/`);
+      process.stderr.write(`\n${failures} failure(s)\n`);
+      process.exit(1);
     }
     // The real pump's rule, fromIndex included: existing lines from there
     // on, then future ones.
@@ -216,6 +232,7 @@ class FakeStation {
 
 const BUDGET_MS = 90_000;
 const STALE_MS = 25_000;
+const CAP_MS = 150_000;
 const RUNAWAY_WAITS = 8;
 const NEVER: Script = () => "silence";
 
@@ -233,7 +250,7 @@ const NEVER: Script = () => "silence";
     }
   })();
   const station = new FakeStation([...booted(), result(SN1), result(SN0)], clock, NEVER);
-  const quiet = await awaitBootQuiet(station, { timeoutMs: BUDGET_MS, staleAfterMs: STALE_MS, clock });
+  const quiet = await awaitBootQuiet(station, { timeoutMs: BUDGET_MS, staleAfterMs: STALE_MS, hardCapMs: CAP_MS, clock });
   if (quiet.kind === "quiet" && quiet.waitedMs === 0 && station.waits.length === 0) {
     pass("a boot whose CALLs are all answered is quiet at once, with no wait armed");
   } else {
@@ -254,7 +271,7 @@ const NEVER: Script = () => "silence";
     lines: [result(SN1)],
     ms: 300,
   }));
-  const quiet = await awaitBootQuiet(station, { timeoutMs: BUDGET_MS, staleAfterMs: STALE_MS, clock });
+  const quiet = await awaitBootQuiet(station, { timeoutMs: BUDGET_MS, staleAfterMs: STALE_MS, hardCapMs: CAP_MS, clock });
   const wait = station.waits[0];
   const namesTheId =
     wait !== undefined && wait.pattern.test(result(SN1)) && !wait.pattern.test(result(SN0)) &&
@@ -276,7 +293,7 @@ const NEVER: Script = () => "silence";
 {
   const clock = new FakeClock();
   const station = new FakeStation(booted(), clock, NEVER);
-  const quiet = await awaitBootQuiet(station, { timeoutMs: BUDGET_MS, staleAfterMs: STALE_MS, clock });
+  const quiet = await awaitBootQuiet(station, { timeoutMs: BUDGET_MS, staleAfterMs: STALE_MS, hardCapMs: CAP_MS, clock });
   const named =
     quiet.kind === "outstanding" ? quiet.calls.map((c) => `${c.action}(${c.uniqueId})`) : [];
   const expected = [`StatusNotification(${SN0})`, `StatusNotification(${SN1})`];
@@ -304,7 +321,7 @@ const NEVER: Script = () => "silence";
     lines: [error(SN1)],
     ms: 50,
   }));
-  const quiet = await awaitBootQuiet(station, { timeoutMs: BUDGET_MS, staleAfterMs: STALE_MS, clock });
+  const quiet = await awaitBootQuiet(station, { timeoutMs: BUDGET_MS, staleAfterMs: STALE_MS, hardCapMs: CAP_MS, clock });
   // `waitedMs === 50`: woken BY the CALLERROR, not found on a re-read after
   // sitting out the budget -- a wake pattern that only knows `[3,` reaches
   // quiet too, ninety seconds late.
@@ -326,7 +343,7 @@ const NEVER: Script = () => "silence";
       ? { lines: [result(SN1), sent(HB, "Heartbeat")], ms: 1_000 }
       : { lines: [result(HB)], ms: 200 },
   );
-  const quiet = await awaitBootQuiet(station, { timeoutMs: BUDGET_MS, staleAfterMs: STALE_MS, clock });
+  const quiet = await awaitBootQuiet(station, { timeoutMs: BUDGET_MS, staleAfterMs: STALE_MS, hardCapMs: CAP_MS, clock });
   const [first, second] = station.waits;
   const secondNamesHb = second !== undefined && second.pattern.test(result(HB));
   const oneBudget =
@@ -363,7 +380,7 @@ const NEVER: Script = () => "silence";
     clock,
     NEVER,
   );
-  const quiet = await awaitBootQuiet(station, { timeoutMs: BUDGET_MS, staleAfterMs: STALE_MS, clock });
+  const quiet = await awaitBootQuiet(station, { timeoutMs: BUDGET_MS, staleAfterMs: STALE_MS, hardCapMs: CAP_MS, clock });
   const named =
     quiet.kind === "outstanding" ? quiet.calls.map((c) => `${c.action}(${c.uniqueId})`) : [];
   if (quiet.kind === "outstanding" && JSON.stringify(named) === JSON.stringify([`StatusNotification(${SN1})`])) {
@@ -399,7 +416,7 @@ const NEVER: Script = () => "silence";
     }
   }
   const station = new RacyStation([...booted(), result(SN0)], clock, NEVER);
-  const quiet = await awaitBootQuiet(station, { timeoutMs: BUDGET_MS, staleAfterMs: STALE_MS, clock });
+  const quiet = await awaitBootQuiet(station, { timeoutMs: BUDGET_MS, staleAfterMs: STALE_MS, hardCapMs: CAP_MS, clock });
   if (quiet.kind === "quiet" && quiet.waitedMs === 0 && station.waits.length === 1) {
     pass("a response that landed before the wait was armed is not waited for again");
   } else {
@@ -421,7 +438,7 @@ const NEVER: Script = () => "silence";
   // pass and never reaches the script -- the fake's runaway cap is what
   // turns that into a red row instead of a hang.
   const station = new FakeStation([...booted(), result(SN0), malformedResult(SN1)], clock, NEVER);
-  const quiet = await awaitBootQuiet(station, { timeoutMs: BUDGET_MS, staleAfterMs: STALE_MS, clock });
+  const quiet = await awaitBootQuiet(station, { timeoutMs: BUDGET_MS, staleAfterMs: STALE_MS, hardCapMs: CAP_MS, clock });
   const named =
     quiet.kind === "outstanding" ? quiet.calls.map((c) => `${c.action}(${c.uniqueId})`) : [];
   if (
@@ -455,7 +472,7 @@ const NEVER: Script = () => "silence";
       clock,
       () => ({ lines: [result(id)], ms: 10 }),
     );
-    const quiet = await awaitBootQuiet(station, { timeoutMs: BUDGET_MS, staleAfterMs: STALE_MS, clock });
+    const quiet = await awaitBootQuiet(station, { timeoutMs: BUDGET_MS, staleAfterMs: STALE_MS, hardCapMs: CAP_MS, clock });
     const wait = station.waits[0];
     if (quiet.kind === "quiet" && station.waits.length === 1 && wait?.pattern.test(result(id))) {
       pass(`a uniqueId carrying ${what} is waited on JSON-encoded, as the line carries it`);
@@ -485,6 +502,7 @@ const NEVER: Script = () => "silence";
     bootWaitMs: 4_000,
     quietTimeoutMs: BUDGET_MS,
     staleAfterMs: STALE_MS,
+    hardCapMs: CAP_MS,
     clock,
     sleep: async (ms) => {
       slept.push(ms);
@@ -525,6 +543,7 @@ const NEVER: Script = () => "silence";
     bootWaitMs: 4_000,
     quietTimeoutMs: BUDGET_MS,
     staleAfterMs: STALE_MS,
+    hardCapMs: CAP_MS,
     clock,
     sleep: async (ms) => {
       slept.push(ms);
@@ -565,7 +584,7 @@ const NEVER: Script = () => "silence";
   const station = new FakeStation([...booted(), result(SN0)], clock, (_wait, turn) =>
     turn === 1 ? { lines: [sent(HB, "Heartbeat")], ms: 89_000 } : "silence",
   );
-  const quiet = await awaitBootQuiet(station, { timeoutMs: BUDGET_MS, staleAfterMs: STALE_MS, clock });
+  const quiet = await awaitBootQuiet(station, { timeoutMs: BUDGET_MS, staleAfterMs: STALE_MS, hardCapMs: CAP_MS, clock });
   const named =
     quiet.kind === "outstanding" ? quiet.calls.map((c) => `${c.action}(${c.uniqueId})`) : [];
   const timeouts = station.waits.map((w) => w.timeoutMs);
@@ -661,7 +680,7 @@ const NEVER: Script = () => "silence";
     }
   }
   const station = new GoneStation([...booted(), result(SN0)], clock, NEVER);
-  const quiet = await awaitBootQuiet(station, { timeoutMs: BUDGET_MS, staleAfterMs: STALE_MS, clock });
+  const quiet = await awaitBootQuiet(station, { timeoutMs: BUDGET_MS, staleAfterMs: STALE_MS, hardCapMs: CAP_MS, clock });
   const named =
     quiet.kind === "outstanding" ? quiet.calls.map((c) => `${c.action}(${c.uniqueId})`) : [];
   if (
@@ -675,6 +694,73 @@ const NEVER: Script = () => "silence";
     fail(
       "a wait rejected before its deadline ends the gate at once with what is open",
       `got ${JSON.stringify(quiet)}, ${station.waits.length} wait(s)`,
+    );
+  }
+}
+
+// ---------------------------------------------------------------------------
+// 15. The terminal bound: fresh unanswered CALLs for ever end at the cap,
+//     as `unsettled`.
+// ---------------------------------------------------------------------------
+
+{
+  const clock = new FakeClock();
+  // Every wait the gate arms, the station answers with a NEW unanswered
+  // CALL ten seconds in -- always inside the window, so the deadline never
+  // arrives. A gate without a cap arms waits until the fake's runaway cap
+  // stops it; a gate that dispatches at the cap answers `outstanding`.
+  let n = 0;
+  const station = new FakeStation([...booted(), result(SN0)], clock, () => ({
+    lines: [sent(`fresh-${++n}`, "Heartbeat")],
+    ms: 10_000,
+  }));
+  const quiet = await awaitBootQuiet(station, { timeoutMs: BUDGET_MS, staleAfterMs: STALE_MS, hardCapMs: CAP_MS, clock });
+  const youngest = quiet.kind === "unsettled" ? quiet.calls[quiet.calls.length - 1]?.action : undefined;
+  if (
+    quiet.kind === "unsettled" &&
+    quiet.waitedMs === CAP_MS &&
+    youngest === "Heartbeat" &&
+    station.waits.length < RUNAWAY_WAITS
+  ) {
+    pass("fresh unanswered CALLs for ever end the gate at the cap, as unsettled");
+  } else {
+    fail(
+      "fresh unanswered CALLs for ever end the gate at the cap, as unsettled",
+      `got ${JSON.stringify(quiet).slice(0, 200)}, ${station.waits.length} wait(s)`,
+    );
+  }
+}
+
+// ---------------------------------------------------------------------------
+// 16. The cap binds nothing that fits under it.
+// ---------------------------------------------------------------------------
+
+{
+  const clock = new FakeClock();
+  // Two late CALLs: one at t=80s (first seen at t=90s, when the budget's
+  // wait times out; window to t=115s), one at t=110s (first seen at t=115s;
+  // window to t=140s). The last window ends under the 150s cap, so the gate
+  // ages it out and answers `outstanding` at t=140s -- not `unsettled` at
+  // the cap, and not before the window.
+  const station = new FakeStation([...booted(), result(SN0)], clock, (_wait, turn) =>
+    turn === 1
+      ? { lines: [sent(HB, "Heartbeat")], ms: 80_000 }
+      : turn === 2
+        ? { lines: [sent(RESET, "Heartbeat")], ms: 20_000 }
+        : "silence",
+  );
+  const quiet = await awaitBootQuiet(station, { timeoutMs: BUDGET_MS, staleAfterMs: STALE_MS, hardCapMs: CAP_MS, clock });
+  const timeouts = station.waits.map((w) => w.timeoutMs);
+  if (
+    quiet.kind === "outstanding" &&
+    quiet.waitedMs === 140_000 &&
+    JSON.stringify(timeouts) === JSON.stringify([BUDGET_MS, STALE_MS, STALE_MS])
+  ) {
+    pass("a late CALL whose window ends under the cap is aged out and reported outstanding");
+  } else {
+    fail(
+      "a late CALL whose window ends under the cap is aged out and reported outstanding",
+      `got ${JSON.stringify(quiet).slice(0, 200)}, waits ${JSON.stringify(timeouts)}`,
     );
   }
 }

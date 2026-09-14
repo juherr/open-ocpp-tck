@@ -252,6 +252,12 @@ const BOOT_QUIET_TIMEOUT_MS = 90_000;
  *  measured from the first wait alone, and a Heartbeat the station sends at
  *  t=89s is dispatched over at t=90s with nineteen seconds of entry left. */
 const BOOT_QUIET_STALE_MS = 25_000;
+/** The quiet gate's terminal bound. Each new unanswered CALL can extend the
+ *  gate by BOOT_QUIET_STALE_MS, and nothing enforces that a station sends
+ *  them less often than that -- so the budget plus one 60 s heartbeat
+ *  interval, past which the gate answers `unsettled` if a CALL is still
+ *  inside the window and the scenario is aborted rather than dispatched. */
+const BOOT_QUIET_CAP_MS = 150_000;
 /** The boot gate's own budget on BootNotification.conf, unchanged from the
  *  fork: a soft 30 s, warn and go on. */
 const BOOT_GATE_TIMEOUT_MS = 30_000;
@@ -755,6 +761,7 @@ async function runScenario<D>(
       bootWaitMs: bootWaitSecs * 1000,
       quietTimeoutMs: BOOT_QUIET_TIMEOUT_MS,
       staleAfterMs: BOOT_QUIET_STALE_MS,
+      hardCapMs: BOOT_QUIET_CAP_MS,
       sleep,
       onBootGateTimeout: (err) =>
         process.stderr.write(
@@ -763,6 +770,19 @@ async function runScenario<D>(
           })\n`,
         ),
     });
+    // ABORT, NOT WARN: the cap was reached with a CALL still inside the TTL
+    // window, so the one dispatch this gate exists to hold would land on a
+    // live entry. A throw here is an ERROR row -- the scenario never got an
+    // answer -- and the finally below stops the simulator, which is the
+    // cleanup an unbounded wait would have held up.
+    if (quiet.kind === "unsettled") {
+      throw new Error(
+        `${spec.templateId}: ${options.cpId} kept sending CALLs the CSMS did not answer ` +
+          `for ${quiet.waitedMs}ms (${quiet.calls
+            .map((call) => `${call.action} ${call.uniqueId}`)
+            .join(", ")}); refusing to dispatch over a call still in progress`,
+      );
+    }
     if (quiet.kind === "outstanding") {
       process.stderr.write(
         `[runner] WARN: boot quiet: ${quiet.calls.length} CALL(s) ${options.cpId} sent ` +
