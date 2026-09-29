@@ -529,6 +529,19 @@ the v2 line, and six scenarios need them. Pinning by digest is what makes
 depending on a moving tag safe — the alternative is `v1.9.1`, whose cost is
 spelled out in `drivers/citrineos/README.md`.
 
+NOT THE CERTIFIED BUILD, and not one that could sit in this table beside it.
+The OCA certificate `OCA.0201.0053.CSMS` is for CitrineOS **1.5.1**. That image
+is published as `ghcr.io/citrineos/citrineos-server:1.5.1`, spelled without the
+`v` the registry's tags carry only from `v1.7.1` on, at
+`sha256:ccc25704b6f769b8bceae8d4c02bf056f4a24b9985ea5c5313daca03e217e906`. It
+is amd64 only and was built 2025-01-28 from the `v1.5.1` tag, whose release
+notes name it as the certified release. It is not pinned here, because nothing
+in this driver can talk to it. It routes no OCPP 1.6 and builds its message
+paths without a version segment. Its schema predates `Connectors` and
+`EvseTypes`, and its stack serves Directus where this driver reads and seeds
+through Hasura. `OCA-201-SELECTION.md` says what that costs the "CitrineOS is
+certified" argument.
+
 WHY beta4 RATHER THAN beta3: four findings this suite carried closed at once,
 and the configuration surface the compose file is written against was
 replaced. citrineos-core#890 registers the 1.6 `FirmwareStatusNotification`
