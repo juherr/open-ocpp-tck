@@ -69,6 +69,52 @@ function decisiveVerdict(verdict: Verdict, retryVerdict?: Verdict): Verdict {
 }
 
 /**
+ * What an isolated retry says about the parallel failure it re-ran -- as the
+ * list, for the same reason {@link VERDICTS} is one: `results/summary.md`
+ * renders it into the retry cell, and `tools/flake-report.ts` has to recognise
+ * it there.
+ */
+export const RETRY_ADJUDICATIONS = ["flake", "confirmed", "inconclusive"] as const;
+
+export type RetryAdjudication = (typeof RETRY_ADJUDICATIONS)[number];
+
+/**
+ * Adjudicate an isolated retry, and say which verdict to record for it.
+ *
+ * The verdict alone used to decide: a failing retry was "confirmed -- fails
+ * isolated too, not a parallel-lane artifact". That reading needs the CSMS to
+ * have been there. On a collapsed shard the retry runs against a CSMS that no
+ * longer answers: its BootNotification goes unaccepted, the boot gate warns and
+ * continues, and every check that needed the CSMS fails -- a verdict about the
+ * CSMS's absence, not about the case (#141). So a failing retry whose boot gate
+ * did not open is INCONCLUSIVE.
+ *
+ * RECORDED AS ERROR, NOT AS A STANDING OF ITS OWN. ERROR already means the
+ * scenario never got an answer out of the CSMS, which is exactly this, and
+ * {@link standingOf}'s table then decides it without a new row: undeclared it
+ * is an unexpected failure, declared it is `declared-but-errored` -- the entry
+ * is probably still good, and the lost CSMS is the new thing. Both end the
+ * build, which is the point: a run that lost its CSMS is not a passing run. A
+ * fourth standing was the alternative, and it had to be defined to behave like
+ * `declared-but-errored` anyway, through one more input to every consumer.
+ *
+ * A NON-FAILING retry is a flake whatever the gate did: a pass after a late
+ * boot is still a pass. `bootGateOpened` undefined is a run that threw before
+ * reaching the gate -- a container that never started -- and keeps the reading
+ * it had; that is not this rule's to reclassify.
+ */
+export function adjudicateRetry(
+  verdict: Verdict,
+  bootGateOpened: boolean | undefined,
+): { verdict: Verdict; adjudication: RetryAdjudication } {
+  if (!isFailure(verdict)) return { verdict, adjudication: "flake" };
+  if (bootGateOpened === false) {
+    return { verdict: "ERROR", adjudication: "inconclusive" };
+  }
+  return { verdict, adjudication: "confirmed" };
+}
+
+/**
  * Did this scenario really fail -- after the isolated retry has had its say?
  *
  * ONE definition, deliberately, because there are several consumers: the exit
