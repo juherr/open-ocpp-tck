@@ -406,13 +406,17 @@ interface RunOptions {
    */
   attempt?: string;
   /**
-   * What the run saw of the CSMS before its checks, written as it happens so
-   * a caller can read it even when the run THROWS -- which a run against a CSMS
-   * that stopped answering often does, and which a field on the returned
-   * {@link ScenarioRun} would lose. `bootGateOpened` stays unset until the
-   * gate is reached. {@link adjudicateRetry} is its reader.
+   * Whether the CSMS accepted the BootNotification, written as soon as the
+   * boot gate answers so a caller can read it even when the run THROWS --
+   * which a run against a CSMS that stopped answering often does, and which a
+   * field on the returned {@link ScenarioRun} would lose. Stays unset when the
+   * run never reached the gate. The isolated retry is its reader.
    */
-  witness?: { bootGateOpened?: boolean };
+  witness?: BootWitness;
+}
+
+interface BootWitness {
+  bootGateOpened?: boolean;
 }
 
 /** 0 FAIL + >=1 SKIPPED is PARTIAL; anything with a FAIL is FAIL. */
@@ -766,7 +770,6 @@ async function runScenario<D>(
     // go on. The WARN is an instrument, not decoration: it counts the stalls
     // that did not become loops, which is the number #138 has no other way to
     // read. Silent when nothing waited, so a healthy sweep's log is unchanged.
-    const witness = options.witness ?? {};
     const quiet = await settleBoot(sim, {
       bootGateMs: BOOT_GATE_TIMEOUT_MS,
       bootWaitMs: bootWaitSecs * 1000,
@@ -774,19 +777,14 @@ async function runScenario<D>(
       staleAfterMs: BOOT_QUIET_STALE_MS,
       hardCapMs: BOOT_QUIET_CAP_MS,
       sleep,
-      onBootGateTimeout: (err) => {
-        witness.bootGateOpened = false;
+      onBootGateTimeout: (err) =>
         process.stderr.write(
           `[runner] WARN: did not see BootNotification.conf within ${BOOT_GATE_TIMEOUT_MS / 1000}s -- continuing anyway (${
             err instanceof Error ? err.message : String(err)
           })\n`,
-        );
-      },
+        ),
     });
-    // The closed half is written by the callback itself, so it survives the
-    // quiet gate throwing; the open half is the absence of that call, and is
-    // written before the `unsettled` abort below can throw.
-    witness.bootGateOpened ??= true;
+    if (options.witness) options.witness.bootGateOpened = quiet.bootAccepted;
     // ABORT, NOT WARN: the cap was reached with a CALL still inside the TTL
     // window, so the one dispatch this gate exists to hold would land on a
     // live entry. A throw here is an ERROR row -- the scenario never got an
@@ -1225,9 +1223,6 @@ interface RetryOutcome {
   failed: number | null;
   skipped: number | null;
   errorMessage?: string;
-  /** Whether the CSMS accepted the station's BootNotification within the boot
-   *  gate; unset when the run never reached the gate. See RunOptions.witness. */
-  bootGateOpened?: boolean;
 }
 
 /** An isolated retry, with what it says about the parallel failure. */
@@ -1385,6 +1380,7 @@ async function runOneForSweep<D>(
   spec: ScenarioSpec<D>,
   cpId: string,
   attempt?: string,
+  witness?: BootWitness,
 ): Promise<ScenarioOutcome> {
   // What every branch below shares, stated once. `expected` is read BEFORE the
   // run and carried even by the branches that never start a container: a
@@ -1408,7 +1404,6 @@ async function runOneForSweep<D>(
     return { ...common, verdict: "NOT APPLICABLE", reason: scope.reason };
   }
 
-  const witness: { bootGateOpened?: boolean } = {};
   try {
     const run = await runScenario(spec, { cpId, attempt, witness });
     if (run.kind === "not-applicable") {
@@ -1416,7 +1411,6 @@ async function runOneForSweep<D>(
     }
     return {
       ...common,
-      bootGateOpened: witness.bootGateOpened,
       verdict: verdictForRecorder(run.rec),
       checks: run.rec.total,
       failed: run.rec.failed,
@@ -1436,14 +1430,16 @@ async function runOneForSweep<D>(
     process.stderr.write(
       `[runner] ERROR: ${spec.templateId} on ${cpId} threw before completing: ${message}\n`,
     );
-    return {
-      ...common,
-      bootGateOpened: witness.bootGateOpened,
-      verdict: "ERROR",
-      errorMessage: message,
-    };
+    return { ...common, verdict: "ERROR", errorMessage: message };
   }
 }
+
+/** How the retry loop's result line names each adjudication. */
+const RETRY_RESULT: Record<RetryAdjudication, string> = {
+  flake: "FLAKE (parallel-only false negative, isolated non-failure)",
+  confirmed: "CONFIRMED (fails isolated too, not a parallel-lane artifact)",
+  inconclusive: "INCONCLUSIVE, recorded as ERROR, which still fails the sweep",
+};
 
 /**
  * --retry-failed-isolated: re-runs every FAIL/ERROR outcome from a
@@ -1504,34 +1500,31 @@ async function retryFailedOutcomesIsolated(
     process.stderr.write(
       `[runner] isolated retry: ${outcome.templateId} on ${outcome.cpId} (parallel verdict was ${outcome.verdict})\n`,
     );
-    const retryOutcome = await runOneForSweep(spec, outcome.cpId, ".retry");
+    const witness: BootWitness = {};
+    const retryOutcome = await runOneForSweep(spec, outcome.cpId, ".retry", witness);
     const { verdict, adjudication } = adjudicateRetry(
       retryOutcome.verdict,
-      retryOutcome.bootGateOpened,
+      witness.bootGateOpened,
     );
     const lostCsms =
-      `the CSMS did not accept this retry's BootNotification within ` +
-      `${BOOT_GATE_TIMEOUT_MS / 1000}s, so its ${retryOutcome.verdict} measures ` +
-      "the CSMS's absence, not the case";
+      adjudication === "inconclusive"
+        ? `the CSMS did not accept this retry's BootNotification within ` +
+          `${BOOT_GATE_TIMEOUT_MS / 1000}s, so its ${retryOutcome.verdict} measures ` +
+          "the CSMS's absence, not the case"
+        : undefined;
     outcome.isolatedRetry = {
       verdict,
       adjudication,
       checks: retryOutcome.checks,
       failed: retryOutcome.failed,
       skipped: retryOutcome.skipped,
-      bootGateOpened: retryOutcome.bootGateOpened,
       errorMessage:
-        adjudication === "inconclusive"
-          ? [lostCsms, retryOutcome.errorMessage].filter(Boolean).join("\n")
-          : retryOutcome.errorMessage,
-    };
-    const detail: Record<RetryAdjudication, string> = {
-      flake: "FLAKE (parallel-only false negative, isolated non-failure)",
-      confirmed: "CONFIRMED (fails isolated too, not a parallel-lane artifact)",
-      inconclusive: `INCONCLUSIVE (${lostCsms}; recorded as ERROR, which still fails the sweep)`,
+        [lostCsms, retryOutcome.errorMessage].filter(Boolean).join("\n") ||
+        undefined,
     };
     process.stderr.write(
-      `[runner] isolated retry result: ${outcome.templateId} ${verdict} -- ${detail[adjudication]}\n`,
+      `[runner] isolated retry result: ${outcome.templateId} ${verdict} -- ` +
+        `${RETRY_RESULT[adjudication]}${lostCsms ? ` (${lostCsms})` : ""}\n`,
     );
   }
 }
@@ -1672,13 +1665,12 @@ async function writeSummary(
     );
   }
   if (anyRetried) {
-    const flakeCount = parts.flakes.length;
     const adjudicated = (adjudication: RetryAdjudication): number =>
       outcomes.filter((o) => o.isolatedRetry?.adjudication === adjudication)
         .length;
     notes.push(
       "",
-      `--retry-failed-isolated: ${flakeCount} flake(s) (parallel FAIL/ERROR, isolated non-failure), ` +
+      `--retry-failed-isolated: ${adjudicated("flake")} flake(s) (parallel FAIL/ERROR, isolated non-failure), ` +
         `${adjudicated("confirmed")} confirmed failure(s) (fails isolated too), ` +
         `${adjudicated("inconclusive")} inconclusive (the CSMS did not accept the ` +
         "retry's BootNotification, so the retry says nothing about the case; " +
