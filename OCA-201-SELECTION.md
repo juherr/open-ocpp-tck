@@ -396,9 +396,40 @@ outcomes of that shape is in `tck/standing.ts` and `tck/scope.ts`, and the
 question is whether "never assessed on this profile" is one of them or genuinely
 new.
 
-The build-level version of the same argument — that we pin neither the certified
-1.5.1 nor any release — is its own issue, and the two sharpen each other rather
-than overlap.
+### And none of the 147 is run against the attested build
+
+The same argument has a build-level half, and it is weaker still. The
+certificate names **OCPP software version 1.5.1**. CitrineOS's own `v1.5.1`
+release notes say it was that release, together with Operator UI 0.2.0, that
+was certified. No CitrineOS release since has claimed a certification. This
+repository runs something else: `drivers/citrineos/compose.yaml` pins the v2
+line, and the `CITRINE_VARIANT=v1` override pins `v1.9.1`.
+
+It does not run 1.5.1 because 1.5.1 is not a third release line of the product
+this driver speaks. It is an earlier generation. Read at the `v1.5.1` tag:
+
+- It serves **no OCPP 1.6 at all**. There is no 1.6 route, and the websocket
+  servers negotiate `ocpp2.0.1` only. So the whole 1.6 half would be not
+  applicable.
+- Its message API has **no version segment**: `/ocpp/<module>/<action>`, where
+  the driver builds `/ocpp/<version>/<module>/<action>`.
+- Its data model is **neither of the two the driver knows**. There are no
+  `Connectors`, `EvseTypes` or `StopTransactions` tables, and an authorization
+  is split across `IdTokens` and `IdTokenInfos`.
+- Its stack ships **Directus rather than Hasura**. The driver's records and
+  fixtures go through Hasura only, and the metadata that would describe 1.5.1's
+  schema to it would be ours rather than the vendor's.
+
+So for every case, attested profile or not, the certificate is a **prior about
+how CitrineOS reads Core and Advanced Security**, and not an attestation of the
+bytes under test. A red on the pinned build is evidence to weigh, and does not
+by default say the fault is in our scenario. A green on the pinned build is, in
+the same way, evidence that the build answers and not that anyone assessed the
+answer. Running the attested build is a separate piece of work, with its
+measured cost:
+[#142](https://github.com/juherr/open-ocpp-tck/issues/142). The measurements
+behind the four points above are in
+[#58](https://github.com/juherr/open-ocpp-tck/issues/58).
 
 ## `M` only, not `M` plus the conditionals a CSMS declares
 

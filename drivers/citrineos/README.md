@@ -145,6 +145,18 @@ v2 line, and six scenarios need them. Pinning by digest is what makes a
 prerelease safe to depend on — `:latest` currently resolves to the same bytes,
 and will not for long.
 
+**Not the certified build.** CitrineOS's OCPP 2.0.1 certificate,
+`OCA.0201.0053.CSMS` (Core and Advanced Security), is for software version
+**1.5.1**. Neither this pin nor the `v1.9.1` variant below is that build, and
+1.5.1 cannot be a third variant for less than a second driver. It speaks no
+OCPP 1.6, its message paths carry no version segment, its schema has no
+`Connectors` table, and its stack has no Hasura. So "CitrineOS is certified"
+is a prior about the product and not a statement about the bytes this suite
+runs. [`OCA-201-SELECTION.md`](../../OCA-201-SELECTION.md#and-none-of-the-147-is-run-against-the-attested-build)
+states what that removes from the argument, and
+[#58](https://github.com/juherr/open-ocpp-tck/issues/58) carries the
+measurements.
+
 **`beta4` rather than the `beta3` this pinned until 2026-09-13**, because
 four findings this driver declared closed at once and the configuration
 surface the compose file speaks was replaced:

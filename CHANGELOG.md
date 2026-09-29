@@ -476,6 +476,15 @@ Released as `0.3.0`. The documented install ref already points at that tag, so
 
 ### Changed
 
+- **The documentation now says that no pinned CitrineOS build is the
+  certified one** ([#58]). The OCA certificate `OCA.0201.0053.CSMS` covers
+  CitrineOS 1.5.1, and that is a generation this driver cannot speak: it has
+  no OCPP 1.6 routes, its message paths have no version segment, its schema
+  lacks `Connectors`, and it runs Directus instead of Hasura. So "CitrineOS is
+  certified" is now worded in `OCA-201-SELECTION.md`, the driver README and
+  `VENDOR.md` as a prior about the product, not an attestation of the bytes
+  under test. A red on the pinned build no longer defaults to a finding about
+  our scenario
 - **The CitrineOS stack pin moved from `v2.0.0-beta3` to `v2.0.0-beta4`** —
   `ghcr.io/citrineos/citrineos-server@sha256:e33badb9…`, resolved 2026-09-13.
   Four findings this driver declared closed at once: the three `TC_044` rows,
@@ -886,6 +895,7 @@ releases from 141 commits would mean writing detail nobody measured.
 [#34]: https://github.com/juherr/open-ocpp-tck/issues/34
 [#55]: https://github.com/juherr/open-ocpp-tck/pull/55
 [#56]: https://github.com/juherr/open-ocpp-tck/issues/56
+[#58]: https://github.com/juherr/open-ocpp-tck/issues/58
 [#64]: https://github.com/juherr/open-ocpp-tck/pull/64
 [#65]: https://github.com/juherr/open-ocpp-tck/pull/65
 [#67]: https://github.com/juherr/open-ocpp-tck/pull/67
