@@ -87,6 +87,9 @@ jobs:
       - name: Driver scope follows the environment
         run: bun tests/driver-env-scope.ts
 
+      - name: Scenario protocol selection and simulator compatibility
+        run: bun tests/scenario-version.ts
+
       # The other half of that reading, and in-process for the same reason plus
       # one of its own: what it compares a declaration against is the parts
       # `create(env)` returns, which the CLI reaches only by starting a sweep.

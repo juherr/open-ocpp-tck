@@ -35,6 +35,7 @@ import { waitForCondition } from "../wait";
 
 export const tc0421GetLocalListVersionNotSupportedSpec: ScenarioSpec<void> = {
   templateId: "cert16-tc042-1-get-local-list-version-not-supported",
+  ocppVersion: "OCPP-1.6J",
   description:
     "TC_042.1 GetLocalListVersion -> listVersion -1 (local list disabled).",
   connector: 1,
@@ -75,6 +76,7 @@ export const tc0421GetLocalListVersionNotSupportedSpec: ScenarioSpec<void> = {
 
 export const tc0422GetLocalListVersionEmptySpec: ScenarioSpec<void> = {
   templateId: "cert16-tc042-2-get-local-list-version-empty",
+  ocppVersion: "OCPP-1.6J",
   description:
     "TC_042.2 GetLocalListVersion -> listVersion 0 (local list enabled, empty).",
   connector: 1,
@@ -119,6 +121,7 @@ export const tc0422GetLocalListVersionEmptySpec: ScenarioSpec<void> = {
 
 export const tc0431SendLocalListNotSupportedSpec: ScenarioSpec<void> = {
   templateId: "cert16-tc043-1-send-local-list-not-supported",
+  ocppVersion: "OCPP-1.6J",
   description: "TC_043.1 SendLocalList -> NotSupported (local list disabled).",
   connector: 1,
   bootWaitSecs: 4,
@@ -154,6 +157,7 @@ export const tc0431SendLocalListNotSupportedSpec: ScenarioSpec<void> = {
 
 export const tc0433SendLocalListFailedSpec: ScenarioSpec<void> = {
   templateId: "cert16-tc043-3-send-local-list-failed",
+  ocppVersion: "OCPP-1.6J",
   description: "TC_043.3 SendLocalList -> Failed (pre-armed override).",
   connector: 1,
   bootWaitSecs: 4,
@@ -189,6 +193,7 @@ export const tc0433SendLocalListFailedSpec: ScenarioSpec<void> = {
 
 export const tc0434SendLocalListFullSpec: ScenarioSpec<void> = {
   templateId: "cert16-tc043-4-send-local-list-full",
+  ocppVersion: "OCPP-1.6J",
   description: "TC_043.4 SendLocalList(Full) -> Accepted.",
   connector: 1,
   bootWaitSecs: 4,
@@ -234,6 +239,7 @@ export const tc0434SendLocalListFullSpec: ScenarioSpec<void> = {
 
 export const tc0435SendLocalListDifferentialSpec: ScenarioSpec<void> = {
   templateId: "cert16-tc043-5-send-local-list-differential",
+  ocppVersion: "OCPP-1.6J",
   description: "TC_043.5 SendLocalList Full then Differential, both Accepted.",
   connector: 1,
   bootWaitSecs: 4,
@@ -306,6 +312,7 @@ export const tc0435SendLocalListDifferentialSpec: ScenarioSpec<void> = {
 
 export const reservationBasicSpec: ScenarioSpec<void> = {
   templateId: "cert16-reservation-basic",
+  ocppVersion: "OCPP-1.6J",
   description:
     "TC_046 Reservation (Basic): ReserveNow accepted; reserved idTag arrival starts a tx (hardcoded CERT-RES01), charges, stops.",
   connector: 1,
@@ -392,6 +399,7 @@ export const reservationBasicSpec: ScenarioSpec<void> = {
 
 export const tc0481ReserveNowFaultedSpec: ScenarioSpec<void> = {
   templateId: "cert16-tc048-1-reserve-now-faulted",
+  ocppVersion: "OCPP-1.6J",
   description:
     "TC_048.1 ReserveNow -> Faulted (connector forced Faulted); resets to Available afterward.",
   connector: 1,
@@ -450,6 +458,7 @@ export const tc0481ReserveNowFaultedSpec: ScenarioSpec<void> = {
 
 export const tc0482ReserveNowOccupiedSpec: ScenarioSpec<void> = {
   templateId: "cert16-tc048-2-reserve-now-occupied",
+  ocppVersion: "OCPP-1.6J",
   description:
     "TC_048.2 ReserveNow -> Occupied (connector plugged in); plugs out and resets to Available afterward.",
   connector: 1,
@@ -501,6 +510,7 @@ export const tc0482ReserveNowOccupiedSpec: ScenarioSpec<void> = {
 
 export const tc0483ReserveNowUnavailableSpec: ScenarioSpec<void> = {
   templateId: "cert16-tc048-3-reserve-now-unavailable",
+  ocppVersion: "OCPP-1.6J",
   description:
     "TC_048.3 ReserveNow -> Unavailable (connector forced Unavailable); resets to Available afterward.",
   connector: 1,
@@ -552,6 +562,7 @@ export const tc0483ReserveNowUnavailableSpec: ScenarioSpec<void> = {
 
 export const tc0484ReserveNowRejectedSpec: ScenarioSpec<void> = {
   templateId: "cert16-tc048-4-reserve-now-rejected",
+  ocppVersion: "OCPP-1.6J",
   description:
     "TC_048.4 ReserveNow -> Rejected (CP configured to not accept reservations).",
   connector: 1,
@@ -593,6 +604,7 @@ interface CancelReservationDriveState {
 export const tc051CancelReservationSpec: ScenarioSpec<CancelReservationDriveState> =
   {
     templateId: "cert16-tc051-cancel-reservation",
+    ocppVersion: "OCPP-1.6J",
     description:
       "TC_051 Cancel Reservation: ReserveNow then CancelReservation for the reservation it just created, both Accepted.",
     connector: 1,
@@ -694,6 +706,7 @@ export const tc051CancelReservationSpec: ScenarioSpec<CancelReservationDriveStat
 
 export const tc052CancelReservationRejectedSpec: ScenarioSpec<void> = {
   templateId: "cert16-tc052-cancel-reservation-rejected",
+  ocppVersion: "OCPP-1.6J",
   description: "TC_052 CancelReservation(reservationId=99999) -> Rejected.",
   connector: 1,
   bootWaitSecs: 4,

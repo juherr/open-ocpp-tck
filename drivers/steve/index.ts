@@ -65,6 +65,7 @@ import { STEVE_SCOPE } from "./scope";
 export const csmsDriver: CsmsDriverModule = {
   id: "steve",
   displayName: "SteVe",
+  protocols: ["OCPP-1.6J"],
   scope: STEVE_SCOPE,
   capabilities: {
     ...STEVE_CAPABILITIES,

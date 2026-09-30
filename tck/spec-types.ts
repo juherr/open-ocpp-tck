@@ -8,13 +8,16 @@
 
 import type { AssertRecorder } from "./assert";
 import type { Frame } from "./ocpp";
-import type { SimOcppVersion, SimProcess } from "./sim";
+import type { SimProcess } from "./sim";
 import type { FixtureLog, StateInvocation } from "./states-201";
 import type {
   CsmsOperations16,
   CsmsOperations201,
   CsmsRecords,
 } from "./driver";
+
+/** Protocol variants the TCK currently compiles and executes. */
+export type ScenarioOcppVersion = "OCPP-1.6J" | "OCPP-2.0.1";
 
 export interface DriveContext {
   cpId: string;
@@ -73,24 +76,11 @@ export interface ScenarioSpec<D = void> {
   templateId: string;
   description?: string;
   /**
-   * The OCPP version this scenario is written for, when it is written for one.
-   *
-   * ABSENT MEANS "whatever the environment resolves", which is what keeps the
-   * 47 scenarios that predate this field running exactly what they have always
-   * run. Declared, it WINS over `SIM_OCPP_VERSION`: the version is a property
-   * of the scenario -- see SimConfig.ocppVersion, which said so before anything
-   * could express it -- and an operator's export is not an opinion about which
-   * protocol a certification case is about.
-   *
-   * The alternative, leaving the environment in charge, was measured and is
-   * why this exists: a scenario driven on the version it was NOT written for
-   * goes six checks out of seven green
-   * ({@link https://github.com/juherr/open-ocpp-tck/issues/57#issuecomment-5315202272 §C}),
-   * so the one thing a green sweep cannot tell you is that it ran the wrong
-   * protocol. `SIM_EXTRA_ARGS` remains the escape hatch and still wins, by the
-   * structural rule in buildDockerArgs rather than by anything here.
+   * The protocol variant this scenario is written for. It is always explicit:
+   * runtime configuration follows this declaration, while an explicit
+   * SIM_OCPP_VERSION can only confirm that it agrees.
    */
-  ocppVersion?: SimOcppVersion;
+  ocppVersion: ScenarioOcppVersion;
   /** Connector the scenario runs on: the one its template is started on, and
    *  the one threaded into `drive()` and `assert()`. Default 1. A scenario
    *  with no template still has one -- it is what a CSMS operation addresses. */

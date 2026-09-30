@@ -24,7 +24,7 @@ error.
 ## The gate
 
 `bun run verify` is every check CI runs before it starts a container —
-typecheck, committed declarations, three driver scope checks, twenty in-process
+typecheck, committed declarations, three driver scope checks, twenty-one in-process
 guards and nineteen shell guards — with one exit code, and every step runs even
 after one fails, where CI enumerates them and stops at the first.
 
@@ -48,6 +48,7 @@ bun run check:driver:citrineos
 bun run check:driver:citrineos-v1     # the same driver's other release line
 bash tests/citrineos-v1-override.sh   # and the compose override that line boots from
 bun tests/driver-env-scope.ts
+bun tests/scenario-version.ts
 bun tests/capability-parity.ts
 bun tests/expected-failure-standing.ts
 bun tests/assert-answered.ts
@@ -139,7 +140,7 @@ There is no unit-test framework and no `*.test.ts`. `tests/` holds offline
 guards, each with a header stating the property it protects. `bun run test`
 chains them — note `bun test` is Bun's own runner and finds nothing here.
 
-Shell is the default, and the twenty TypeScript ones are TypeScript because
+Shell is the default, and the twenty-one TypeScript ones are TypeScript because
 what they assert is unreachable through the CLI. `driver-env-scope.ts`: a
 driver's declarations follow the env they are *resolved* with, where the CLI
 can only ever pass `process.env`. `capability-parity.ts`: the same reason and

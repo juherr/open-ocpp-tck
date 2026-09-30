@@ -3,6 +3,7 @@
 /** TCK-specific driver lifecycle and assertion record contracts. */
 import type { ExpectedFailureTable } from "./expected";
 import type { ScopeTable } from "./scope";
+import type { ScenarioOcppVersion } from "./spec-types";
 import type {
   CsmsCapabilities,
   CsmsEnv,
@@ -81,6 +82,7 @@ export interface CsmsDriverModule {
   readonly id: string;
   readonly displayName: string;
   readonly scope?: EnvDependent<ScopeTable>;
+  readonly protocols?: EnvDependent<readonly ScenarioOcppVersion[]>;
   readonly capabilities?: EnvDependent<CsmsTckCapabilities>;
   readonly expectedFailures?: EnvDependent<ExpectedFailureTable>;
   create(env: CsmsEnv): Promise<CsmsDriverParts> | CsmsDriverParts;
@@ -90,6 +92,14 @@ export interface CsmsDriverModule {
 
 export function driverScope(module: CsmsDriverModule, env: CsmsEnv): ScopeTable | undefined {
   const value = module.scope;
+  return typeof value === "function" ? value(env) : value;
+}
+
+export function driverProtocols(
+  module: CsmsDriverModule,
+  env: CsmsEnv,
+): readonly ScenarioOcppVersion[] | undefined {
+  const value = module.protocols;
   return typeof value === "function" ? value(env) : value;
 }
 

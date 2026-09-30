@@ -219,6 +219,7 @@ export function assertConfigurationKeyListed(
 
 export const tc001ColdBootSpec: ScenarioSpec<void> = {
   templateId: "cert16-tc001-cold-boot",
+  ocppVersion: "OCPP-1.6J",
   description:
     "TC_001 Cold Boot: CP core drives StatusNotification(Available) on boot (no scripted node), then idles.",
   connector: 1,
@@ -287,6 +288,7 @@ export const tc001ColdBootSpec: ScenarioSpec<void> = {
 
 export const tc003ChargingPluginFirstSpec: ScenarioSpec<void> = {
   templateId: "cert16-tc003-charging-plugin-first",
+  ocppVersion: "OCPP-1.6J",
   description:
     "TC_003 Charging Session (Plug-In First): plug in, idTag CERT003, charge, stop, plug out.",
   connector: 1,
@@ -359,6 +361,7 @@ export const tc003ChargingPluginFirstSpec: ScenarioSpec<void> = {
 
 export const tc004ChargingIdFirstSpec: ScenarioSpec<void> = {
   templateId: "cert16-tc004-charging-id-first",
+  ocppVersion: "OCPP-1.6J",
   description:
     "TC_004 Charging Session (Identification First): idTag CERT004 before plug-in, charge, stop.",
   connector: 1,
@@ -423,6 +426,7 @@ export const tc004ChargingIdFirstSpec: ScenarioSpec<void> = {
 
 export const tc005EvSideDisconnectSpec: ScenarioSpec<void> = {
   templateId: "cert16-tc005-ev-side-disconnect",
+  ocppVersion: "OCPP-1.6J",
   description:
     "TC_005 EV Side Disconnected: mid-charge EV-side plugout, StopTransaction reason EVDisconnected.",
   connector: 1,
@@ -472,6 +476,7 @@ export const tc005EvSideDisconnectSpec: ScenarioSpec<void> = {
 
 export const tc013HardResetSpec: ScenarioSpec<void> = {
   templateId: "cert16-tc013-hard-reset",
+  ocppVersion: "OCPP-1.6J",
   description:
     "TC_013 Hard Reset: CSMS Reset(Hard) mid-charge; CP stops the tx (HardReset) and reboots (WS disconnect+reconnect).",
   connector: 1,
@@ -562,6 +567,7 @@ export const tc013HardResetSpec: ScenarioSpec<void> = {
 
 export const tc014SoftResetSpec: ScenarioSpec<void> = {
   templateId: "cert16-tc014-soft-reset",
+  ocppVersion: "OCPP-1.6J",
   description:
     "TC_014 Soft Reset: CSMS Reset(Soft) mid-charge; CP stops the tx (SoftReset) and reboots on the SAME socket.",
   connector: 1,
@@ -627,6 +633,7 @@ export const tc014SoftResetSpec: ScenarioSpec<void> = {
 
 export const tc017UnlockOccupiedSpec: ScenarioSpec<void> = {
   templateId: "cert16-tc017-unlock-occupied",
+  ocppVersion: "OCPP-1.6J",
   description:
     "TC_017 Unlock Connector (Occupied, Succeeds): CSMS UnlockConnector while charging -> Unlocked; session completes normally.",
   connector: 1,
@@ -689,6 +696,7 @@ export const tc017UnlockOccupiedSpec: ScenarioSpec<void> = {
 
 export const tc018UnlockFailureSpec: ScenarioSpec<void> = {
   templateId: "cert16-tc018-unlock-failure",
+  ocppVersion: "OCPP-1.6J",
   description:
     "TC_018 Unlock Connector (Failure): CSMS UnlockConnector while charging -> UnlockFailed; session STILL completes normally.",
   connector: 1,
@@ -749,6 +757,7 @@ export const tc018UnlockFailureSpec: ScenarioSpec<void> = {
 
 export const tc019GetConfigurationAllSpec: ScenarioSpec<void> = {
   templateId: "cert16-tc019-get-configuration-all",
+  ocppVersion: "OCPP-1.6J",
   description:
     "TC_019_1 GetConfiguration(no filter) returns every supported key.",
   connector: 1,
@@ -795,6 +804,7 @@ export const tc019GetConfigurationAllSpec: ScenarioSpec<void> = {
 
 export const tc019GetConfigurationKeySpec: ScenarioSpec<void> = {
   templateId: "cert16-tc019-get-configuration-key",
+  ocppVersion: "OCPP-1.6J",
   description:
     "TC_019_2 GetConfiguration(HeartbeatInterval) returns just that key.",
   connector: 1,
@@ -830,6 +840,7 @@ export const tc019GetConfigurationKeySpec: ScenarioSpec<void> = {
 
 export const tc021ChangeConfigurationSpec: ScenarioSpec<void> = {
   templateId: "cert16-tc021-change-configuration",
+  ocppVersion: "OCPP-1.6J",
   description:
     "TC_021 ChangeConfiguration(MeterValueSampleInterval=10) accepted and applied.",
   connector: 1,
@@ -899,6 +910,7 @@ export const tc021ChangeConfigurationSpec: ScenarioSpec<void> = {
 
 export const tc024LockFailureSpec: ScenarioSpec<void> = {
   templateId: "cert16-tc024-lock-failure",
+  ocppVersion: "OCPP-1.6J",
   description:
     "TC_024 Lock Failure: plug in -> Faulted/ConnectorLockFailure, no transaction started, then plug out.",
   connector: 1,
@@ -943,6 +955,7 @@ export const tc024LockFailureSpec: ScenarioSpec<void> = {
 
 export const tc031UnlockUnknownConnectorSpec: ScenarioSpec<void> = {
   templateId: "cert16-tc031-unlock-unknown-connector",
+  ocppVersion: "OCPP-1.6J",
   description:
     "TC_031 UnlockConnector(connectorId=99) -> NotSupported (unknown connector).",
   connector: 1,
@@ -979,6 +992,7 @@ export const tc031UnlockUnknownConnectorSpec: ScenarioSpec<void> = {
 
 export const tc061ClearCacheSpec: ScenarioSpec<void> = {
   templateId: "cert16-tc061-clear-cache",
+  ocppVersion: "OCPP-1.6J",
   description: "TC_061 ClearCache accepted.",
   connector: 1,
   bootWaitSecs: 4,
@@ -1009,6 +1023,7 @@ export const tc061ClearCacheSpec: ScenarioSpec<void> = {
 
 export const tc064DataTransferSpec: ScenarioSpec<void> = {
   templateId: "cert16-tc064-data-transfer",
+  ocppVersion: "OCPP-1.6J",
   description:
     "TC_064 DataTransfer: CP sends DataTransfer.req unprompted; the CSMS response status is its own policy (not asserted exactly).",
   connector: 1,

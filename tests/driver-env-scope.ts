@@ -39,6 +39,7 @@ import {
   CSMS_OPERATION_201_ACTIONS,
   driverCapabilities,
   driverExpectedFailures,
+  driverProtocols,
   driverScope,
   type CsmsDriverModule,
   type CsmsEnv,
@@ -152,6 +153,8 @@ const V2_ENV: CsmsEnv = { CITRINE_VARIANT: "v2" };
 // ambient env to be v2, and would read green in a v1 shell.
 const v1Scope = driverScope(citrineos, V1_ENV);
 const v2Scope = driverScope(citrineos, V2_ENV);
+check(driverProtocols(citrineos, V1_ENV)?.join(",") === "OCPP-1.6J", "CitrineOS v1 must declare OCPP 1.6 only.");
+check(driverProtocols(citrineos, V2_ENV)?.join(",") === "OCPP-1.6J,OCPP-2.0.1", "CitrineOS v2 must declare OCPP 1.6 and 2.0.1.");
 
 for (const id of V1_LOCAL_LIST_SCENARIOS) {
   check(
@@ -245,6 +248,10 @@ try {
 check(
   driverScope(steve, {}) === STEVE_SCOPE,
   "the single-release bundled driver's plain table no longer resolves to itself.",
+);
+check(
+  driverProtocols(steve, {})?.join(",") === "OCPP-1.6J",
+  "SteVe must declare OCPP 1.6 support only.",
 );
 check(
   driverCapabilities(steve, {})?.reservations === true,

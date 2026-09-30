@@ -114,6 +114,7 @@ function assertCompositeSchedulePeriodLimit(
 
 export const tc010RemoteStartSpec: ScenarioSpec<void> = {
   templateId: "cert16-tc010-remote-start",
+  ocppVersion: "OCPP-1.6J",
   description:
     "TC_010 Remote Start Transaction: CSMS RemoteStartTransaction accepted, drives a session; drive() stops it afterward.",
   connector: 1,
@@ -216,6 +217,7 @@ export const tc010RemoteStartSpec: ScenarioSpec<void> = {
 
 export const tc011RemoteStartStopSpec: ScenarioSpec<void> = {
   templateId: "cert16-tc011-remote-start-stop",
+  ocppVersion: "OCPP-1.6J",
   description:
     "TC_011 Remote Start + Remote Stop Transaction: both CSMS ops accepted, session completes.",
   connector: 1,
@@ -302,6 +304,7 @@ export const tc011RemoteStartStopSpec: ScenarioSpec<void> = {
 
 export const tc012RemoteStopSpec: ScenarioSpec<void> = {
   templateId: "cert16-tc012-remote-stop",
+  ocppVersion: "OCPP-1.6J",
   description:
     "TC_012 Remote Stop Transaction: self-driven session, CSMS RemoteStopTransaction accepted.",
   connector: 1,
@@ -377,6 +380,7 @@ interface RemoteStartRejectedDriveState {
 export const tc026RemoteStartRejectedSpec: ScenarioSpec<RemoteStartRejectedDriveState> =
   {
     templateId: "cert16-tc026-remote-start-rejected",
+    ocppVersion: "OCPP-1.6J",
     description:
       "TC_026 Remote Start — Rejected: CSMS RemoteStartTransaction must be Rejected, no transaction created.",
     connector: 1,
@@ -451,6 +455,7 @@ interface RemoteStopRejectedDriveState {
 export const tc028RemoteStopRejectedSpec: ScenarioSpec<RemoteStopRejectedDriveState> =
   {
     templateId: "cert16-tc028-remote-stop-rejected",
+    ocppVersion: "OCPP-1.6J",
     description:
       "TC_028 Remote Stop — Rejected: CSMS RemoteStopTransaction rejected mid-charge; CP stops locally afterward.",
     connector: 1,
@@ -522,6 +527,7 @@ export const tc028RemoteStopRejectedSpec: ScenarioSpec<RemoteStopRejectedDriveSt
 
 export const tc054TriggerMessageSpec: ScenarioSpec<void> = {
   templateId: "cert16-tc054-trigger-message",
+  ocppVersion: "OCPP-1.6J",
   description:
     "TC_054 Trigger Message: TriggerMessage(Heartbeat) accepted, CP sends the requested Heartbeat.",
   connector: 1,
@@ -583,6 +589,7 @@ export const tc054TriggerMessageSpec: ScenarioSpec<void> = {
 
 export const tc055TriggerMessageRejectedSpec: ScenarioSpec<void> = {
   templateId: "cert16-tc055-trigger-message-rejected",
+  ocppVersion: "OCPP-1.6J",
   description:
     "TC_055 Trigger Message — Rejected: pre-armed override, CP sends nothing.",
   connector: 1,
@@ -637,6 +644,7 @@ interface TxDefaultProfileDriveState {
 export const tc056SmartChargingTxDefaultSpec: ScenarioSpec<TxDefaultProfileDriveState> =
   {
     templateId: "cert16-tc056-central-smart-charging-txdefault",
+    ocppVersion: "OCPP-1.6J",
     description:
       "TC_056 Central Smart Charging (TxDefaultProfile): applied by the CP; session completes.",
     connector: 1,
@@ -723,6 +731,7 @@ interface TxProfileDriveState {
 export const tc057SmartChargingTxProfileSpec: ScenarioSpec<TxProfileDriveState> =
   {
     templateId: "cert16-tc057-central-smart-charging-txprofile",
+    ocppVersion: "OCPP-1.6J",
     description:
       "TC_057 Central Smart Charging (TxProfile): applied by the CP to the running transaction; session completes.",
     connector: 1,
@@ -813,6 +822,7 @@ interface RemoteStartWithProfileDriveState {
 export const tc059RemoteStartWithProfileSpec: ScenarioSpec<RemoteStartWithProfileDriveState> =
   {
     templateId: "cert16-tc059-remote-start-with-profile",
+    ocppVersion: "OCPP-1.6J",
     description:
       "TC_059 Remote Start with Charging Profile: accepted, but the attached TxProfile is NOT applied (Core CP).",
     connector: 1,
@@ -905,6 +915,7 @@ export const tc059RemoteStartWithProfileSpec: ScenarioSpec<RemoteStartWithProfil
 
 export const tc066GetCompositeScheduleSpec: ScenarioSpec<void> = {
   templateId: "cert16-tc066-get-composite-schedule",
+  ocppVersion: "OCPP-1.6J",
   description:
     "TC_066 Get Composite Schedule: SetChargingProfile then GetCompositeSchedule, both accepted, schedule reflects the profile.",
   connector: 1,
@@ -990,6 +1001,7 @@ export const tc066GetCompositeScheduleSpec: ScenarioSpec<void> = {
 
 export const tc067ClearChargingProfileSpec: ScenarioSpec<void> = {
   templateId: "cert16-tc067-clear-charging-profile",
+  ocppVersion: "OCPP-1.6J",
   description:
     "TC_067 Clear Charging Profile: SetChargingProfile then ClearChargingProfile, both accepted.",
   connector: 1,

@@ -23,6 +23,7 @@
  */
 
 import { basename, dirname } from "node:path";
+import type { ScenarioOcppVersion } from "./spec-types";
 
 const STOP_GRACE_MS = 10_000;
 
@@ -261,7 +262,7 @@ export function namesFlag(extraArgs: readonly string[], flag: string): boolean {
  * Refusing here says the wrong word back to them, with the accepted list.
  */
 function resolveOcppVersion(raw: string | undefined): SimOcppVersion {
-  if (!raw) return DEFAULT_SIM_OCPP_VERSION;
+  if (raw === undefined) return DEFAULT_SIM_OCPP_VERSION;
   const known = SIM_OCPP_VERSIONS.find((version) => version === raw);
   if (known) return known;
   throw new Error(
@@ -289,6 +290,35 @@ export function defaultSimConfig(
     ocppVersion: resolveOcppVersion(env.SIM_OCPP_VERSION),
     extraArgs: splitArgs(env.SIM_EXTRA_ARGS),
   };
+}
+
+/** Resolve simulator settings for one scenario, treating an explicit
+ *  SIM_OCPP_VERSION as a compatibility assertion rather than an override. */
+export function simConfigForScenario(
+  templateId: string,
+  ocppVersion: ScenarioOcppVersion,
+  env: NodeJS.ProcessEnv = process.env,
+): SimConfig {
+  const config = defaultSimConfig(env);
+  if (env.SIM_OCPP_VERSION !== undefined && config.ocppVersion !== ocppVersion) {
+    throw new Error(
+      `SIM_OCPP_VERSION=${config.ocppVersion} conflicts with scenario protocol ${ocppVersion} for '${templateId}'.`,
+    );
+  }
+  for (let index = 0; index < config.extraArgs.length; index++) {
+    const token = config.extraArgs[index]!;
+    if (token !== "--ocpp-version" && !token.startsWith("--ocpp-version=")) continue;
+    const extraVersion = token.includes("=")
+      ? token.slice(token.indexOf("=") + 1)
+      : config.extraArgs[index + 1];
+    if (extraVersion !== ocppVersion) {
+      throw new Error(
+        `SIM_EXTRA_ARGS --ocpp-version=${extraVersion ?? "(missing)"} conflicts with scenario protocol ${ocppVersion} for '${templateId}'.`,
+      );
+    }
+    if (token === "--ocpp-version") index++;
+  }
+  return { ...config, ocppVersion };
 }
 
 /**

@@ -135,7 +135,6 @@ const GROUP_ORDER: readonly string[] = [
   "remotetrigger-smartcharging",
   "firmware",
   "authorize",
-  "core-201",
 ];
 
 /** `AUTHLIST_RESERVATION_SPECS` -> `authlist-reservation`, the name main.ts's
@@ -144,6 +143,7 @@ const GROUP_ORDER: readonly string[] = [
  *  still yields a group -- under a different name, which is a visible line in
  *  the artifact's diff rather than a group that vanished. */
 function groupNameOf(exportName: string): string {
+  if (exportName === "CORE_201_SPECS") return "core";
   return exportName.replace(/_SPECS$/, "").toLowerCase().replace(/_/g, "-");
 }
 

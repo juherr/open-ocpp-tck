@@ -21,6 +21,7 @@
  * therefore overridden back to `bun src/cli/main.ts`, which runs the very
  * same embedded sources in true JSON Lines mode.
  */
+import type { ScenarioOcppVersion } from "./spec-types";
 /**
  * Default simulator image, PINNED BY DIGEST (repo convention: never
  * `latest`, never a bare tag). This is the multi-arch index digest of
@@ -147,6 +148,9 @@ export interface SimConfig {
  *  certification case's own version. See the refusal in main.ts. */
 export declare function namesFlag(extraArgs: readonly string[], flag: string): boolean;
 export declare function defaultSimConfig(env?: NodeJS.ProcessEnv): SimConfig;
+/** Resolve simulator settings for one scenario, treating an explicit
+ *  SIM_OCPP_VERSION as a compatibility assertion rather than an override. */
+export declare function simConfigForScenario(templateId: string, ocppVersion: ScenarioOcppVersion, env?: NodeJS.ProcessEnv): SimConfig;
 /**
  * Whether a run should ask its container for a wire trace at all --
  * `SIM_TRACE=0` is the one thing that says no.

@@ -120,6 +120,9 @@ import {
 export const csmsDriver: CsmsDriverModule = {
   id: "citrineos",
   displayName: "CitrineOS",
+  protocols: (env) => speaksOcpp201(resolveVariant(env))
+    ? ["OCPP-1.6J", "OCPP-2.0.1"]
+    : ["OCPP-1.6J"],
   scope: (env) => citrineosScope(resolveVariant(env)),
   capabilities: (env) => {
     const config = defaultCitrineConfig(env);
