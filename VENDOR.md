@@ -701,11 +701,23 @@ did not include; the next row taken is where the larger number appears.
 
 | CitrineOS | digest | validated | `all` (44), parallel pass | `authorize` (3) |
 |---|---|---|---|---|
-| `v2.0.0-beta4` — **current pin**, `CITRINE_VARIANT=v2` | `sha256:e33badb9…` | 2026-09-13 | **All 96 registered scenarios, CI, two shards on fresh stacks** (run 34773560624): 84 PASS, 5 PARTIAL, 7 N/A, **0 FAIL and 0 EXPECTED FAIL** — the four beta3 declarations all PASS outright. Shard 2 needed no isolated retry; shard 1 took 22 (all PASS isolated) under 3 redelivery loops. The CI run before it collapsed on both shards (10 loops each), and so did the developer machine twice — the paragraph below the table says why that is not the pin | in the sweep: 3 PASS (`tc023-3` answers `Blocked`) |
+| `v2.0.0` — **current pin**, `CITRINE_VARIANT=v2` | `sha256:c57849f2…` | 2026-09-30 | **All 96 registered scenarios, CI, two samples of two shards on fresh stacks** (runs 36689267963 and 36690738965), both **84 PASS, 5 PARTIAL, 7 N/A, 0 FAIL and 0 EXPECTED FAIL**. **No redelivery loop in any of the four shard logs**: 64 + 52 and 70 + 52 dispatch envelopes, each logged once, the same count as the CSMS-to-station CALLs in the wire traces. The first sample needed no isolated retry. The second one's shard 1 took 3 (`tcg04`, `tcg06`, `tcg08`, all PASS isolated) after two 2.0.1 boot bursts left the boot `StatusNotification`s unanswered for 90 s — 25 pool acquire timeouts in a 9.5 MB log, the #119 seed, which the GA no longer turns into a loop | in the sweep: 3 PASS, both samples |
+| `v2.0.0-beta4` — superseded pin, `CITRINE_VARIANT=v2` | `sha256:e33badb9…` | 2026-09-13 | **All 96 registered scenarios, CI, two shards on fresh stacks** (run 34773560624): 84 PASS, 5 PARTIAL, 7 N/A, **0 FAIL and 0 EXPECTED FAIL** — the four beta3 declarations all PASS outright. Shard 2 needed no isolated retry; shard 1 took 22 (all PASS isolated) under 3 redelivery loops. The CI run before it collapsed on both shards (10 loops each), and so did the developer machine twice — the paragraph below the table says why that is not the pin | in the sweep: 3 PASS (`tc023-3` answers `Blocked`) |
 | `v2.0.0-beta3` — superseded pin, `CITRINE_VARIANT=v2` | `sha256:ddd8e987…` | 2026-09-05 | 38 PASS, 5 PARTIAL, 7 N/A, 4 EXPECTED FAIL — **0 flakes**, all four confirmed isolated; the 54-scenario sweep, `authorize` included | in the sweep: 2 PASS, 1 EXPECTED FAIL (`tc023-3`) |
 | `v2.0.0-beta1` — superseded pin, `CITRINE_VARIANT=v2` | `sha256:58800f45…` | 2026-08-11 | 34 PASS, 7 N/A, 3 FAIL — two lane flakes PASS on isolated retry, `tc044-2` confirmed | 2 PASS, 1 FAIL (`tc023-3`) |
 | `v1.9.1` — `CITRINE_VARIANT=v1` | `sha256:4f879151…` | 2026-08-11 | 16 PASS, 13 N/A, 15 FAIL — **all 15 confirmed on isolated retry, no flakes** | 2 PASS, 1 FAIL (`tc023-3`) |
 | `v2.0.0-beta1` — same pin, GraphQL transport | `sha256:58800f45…` | 2026-08-12 | 37 PASS, 7 N/A, **0 FAIL, and no flakes** — the parallel pass needed no isolated retry at all | 2 PASS, 1 FAIL (`tc023-3`) |
+
+THE v2.0.0 ROW IS TWO CI SAMPLES, and read size and loops first: 72 974,
+66 987, 78 861 and 66 661 log lines, against the 0.8 to 15 million lines of
+the beta4 artifacts. The difference is citrineos-core#1030: a Call refused
+because the station has one in progress is now requeued with a capped backoff
+and dropped after `maxCallLengthSeconds`, where beta4 requeued it every
+millisecond for ever. The seed is unchanged — the pool is still the vendor's
+default and still exhausts at a 2.0.1 boot burst, which is what the second
+sample's `WARN: boot quiet` lines are — but nothing accumulates behind it, so
+the CSMS recovers and the scenarios after the burst pass in the parallel pass.
+A local GA stack agreed on the six scenarios run against it sequentially.
 
 THE beta4 ROW IS A CI MEASUREMENT, and the developer-machine half of the
 story is why. Locally, the 96-scenario sweep collapsed at its first

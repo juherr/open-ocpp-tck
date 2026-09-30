@@ -118,8 +118,8 @@ export declare function schemaOf(fields: readonly IntrospectedField[]): CitrineS
  * Both the scope table and the runtime escape have to state this, and they are
  * the two halves a reader compares: a scope row saying one thing and an
  * UnsupportedOperationError saying another is the drift this module exists to
- * prevent. Verified in the sources at v1.9.1, v2.0.0-beta1 and main, and
- * against both running containers.
+ * prevent. Verified in the sources at v1.9.1, v2.0.0-beta1 and v2.0.0, and
+ * against the running v1.9.1, v2.0.0-beta1 and v2.0.0 containers.
  */
 export declare const NO_RESERVATIONS: string;
 /** Same, for the local auth list pair, which v1.9.1 alone lacks. */

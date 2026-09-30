@@ -495,7 +495,11 @@ Released as `0.3.0`. The documented install ref already points at that tag, so
   both lack the name column. The image is slim (citrineos-core#1064), so the
   compose file's fileAccess and Swagger paths are now absolute under `dist/`.
   `tests/citrineos-device-model-fixture.ts` models the GA schema and holds
-  the four new claims, each with a mutation.
+  the four new claims, each with a mutation. Two CI samples of the full sweep
+  both gave 84 `PASS`, 5 `PARTIAL`, 7 `NOT APPLICABLE` and 0 `FAIL`, with no
+  redelivery loop in any shard. The GA bounds redelivery
+  (citrineos-core#1030), so the #119 pool seed no longer accumulates;
+  `VENDOR.md`'s validation history has the row.
 - **The documentation now says that no pinned CitrineOS build is the
   certified one** ([#58]). The OCA certificate `OCA.0201.0053.CSMS` covers
   CitrineOS 1.5.1, and that is a generation this driver cannot speak: it has

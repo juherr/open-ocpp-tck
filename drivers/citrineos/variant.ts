@@ -180,14 +180,14 @@ export function schemaOf(
  * Both the scope table and the runtime escape have to state this, and they are
  * the two halves a reader compares: a scope row saying one thing and an
  * UnsupportedOperationError saying another is the drift this module exists to
- * prevent. Verified in the sources at v1.9.1, v2.0.0-beta1 and main, and
- * against both running containers.
+ * prevent. Verified in the sources at v1.9.1, v2.0.0-beta1 and v2.0.0, and
+ * against the running v1.9.1, v2.0.0-beta1 and v2.0.0 containers.
  */
 export const NO_RESERVATIONS =
   "CitrineOS routes no OCPP 1.6 endpoint for ReserveNow or CancelReservation: " +
   "the 1.6 schemas and the Reservations table exist, but no @AsMessageEndpoint " +
   "binds either action to OCPPVersion.OCPP1_6 and no 1.6 response handler " +
-  "exists (verified at v1.9.1, v2.0.0-beta1 and main), so the path answers 404.";
+  "exists (verified at v1.9.1, v2.0.0-beta1 and v2.0.0), so the path answers 404.";
 
 /** Same, for the local auth list pair, which v1.9.1 alone lacks. */
 export const NO_LOCAL_LIST =

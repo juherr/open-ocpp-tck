@@ -33,6 +33,16 @@
  * 307,584 dispatch envelopes: essentially every dispatch was a redelivery.
  * Upstream citrineos/citrineos#223.
  *
+ * THAT IS BETA4, and the GA bounds it. From v2.0.0 the receiver requeues the
+ * refused message with a capped backoff and DROPS it once it is older than
+ * `maxCallLengthSeconds` (citrineos-core#1030), logging `Dropping <action> for
+ * <station> after N retries`. Two CI samples of the GA found no loop in four
+ * shard logs, and every envelope logged exactly once. The reader stays: a
+ * bounded burst is still logged once per retry, about twenty times over a
+ * 20 s window by the backoff's arithmetic, so it would cross the threshold
+ * and be reported -- and a Call that waited out the whole window is a lead
+ * worth printing, even if it is no longer a collapse in the making.
+ *
  * WHY THE ENVELOPE LINE AND NOT THE CORRELATION ID ALONE. Both identify a loop;
  * the envelope also carries the action and the station, which is what turns a
  * count into a lead. Every loop observed so far starts on a request to a station
