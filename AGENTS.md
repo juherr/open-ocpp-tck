@@ -25,7 +25,7 @@ error.
 
 `bun run verify` is every check CI runs before it starts a container —
 typecheck, committed declarations, three driver scope checks, twenty in-process
-guards and eighteen shell guards — with one exit code, and every step runs even
+guards and nineteen shell guards — with one exit code, and every step runs even
 after one fails, where CI enumerates them and stops at the first.
 
 There is a third copy of that list — `bun run test`, the guards without the
@@ -67,6 +67,7 @@ bun tests/request-shape-201.ts
 bun tests/template-once.ts
 bun tests/boot-quiet.ts
 bun tests/sim-exit-rejects-waits.ts
+bash tests/csms-driver-boundary.sh  # module boundary, exports + consumer example
 bash tests/cert201-declares-its-version.sh
 bash tests/cert201-scope-rows.sh       # both read tck/specs/ASSERT-INVENTORY.txt,
                                        # so a NEW scenario reaches them only once
@@ -412,7 +413,7 @@ weaker than its comment, and only the mutation nobody had to run said so.
 Stopping at the obvious ones is not rigour, it is luck: the guard ships, and
 its header is now a false claim about what the build checks.
 
-## Twelve boundaries the guards enforce
+## Thirteen boundaries the guards enforce
 
 - **The gate is one list.** `tools/verify.sh` and the workflow's `check` job
   must run the same commands in the same order, minus the CI-only setup the
@@ -443,6 +444,11 @@ its header is now a false claim about what the build checks.
   drivers to scan are derived from `drivers/*`; the names each one owns are a
   table in the guard, and a driver missing from it is reported rather than
   skipped. (`tests/generic-core.sh`)
+- **The reusable CSMS library depends on no TCK adapter.** Its imports point
+  only within `packages/csms-driver`; the TCK adapts it from above, and the
+  declaration build includes the module. A standalone consumer example also
+  exercises the package export without constructing a scenario.
+  (`tests/csms-driver-boundary.sh`, `examples/csms-driver-smoke.ts`)
 - **Every OCA obligation has a check, and every answered-check has an
   obligation.** `tck/specs/OCA-OBLIGATIONS.txt` is the table; adding an
   `assertAllAnswered` without a row, or a row without the check, fails.

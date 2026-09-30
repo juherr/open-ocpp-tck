@@ -221,6 +221,9 @@ jobs:
       - name: Core names no CSMS
         run: bash tests/generic-core.sh
 
+      - name: CSMS library boundary and consumer example
+        run: bash tests/csms-driver-boundary.sh
+
       # The e2e job's red-row trigger, held to what it claims from this job --
       # which is the point of it having become a file. As a `grep` in that
       # job's YAML it was reachable only by running a sweep and reading the log.

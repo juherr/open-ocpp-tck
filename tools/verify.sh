@@ -140,6 +140,7 @@ run "the boot gate holds the first dispatch until the station's boot-time CALLs 
 # to fail -- so the pump takes its streams, and the guard closes them itself.
 run "a simulator that exited rejects its pending waits" bun tests/sim-exit-rejects-waits.ts
 run "core is CSMS-neutral" bash tests/generic-core.sh
+run "CSMS library boundary and consumer example" bash tests/csms-driver-boundary.sh
 # The one reading in this repository that lives in the workflow rather than in
 # a file the gate can run -- so it is a file now, and this is what runs it.
 run "a red row is red whatever its namespace" bash tests/summary-red-rows.sh

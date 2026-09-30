@@ -269,6 +269,15 @@ in the shipped declarations; `node` (node10) ignores `exports` entirely and
 cannot resolve this package at all. Both are stated here rather than papered
 over with a shim that would need keeping in sync.
 
+## Reusable CSMS library
+
+The CSMS-neutral OCPP operation contracts and bundled operation factories are
+also available from `open-ocpp-tck/csms-driver`. This module can be used without
+loading the TCK runner; the existing `open-ocpp-tck/driver` entry point remains
+the API for TCK-specific scope, lifecycle hooks and assertion records. See
+[`packages/csms-driver/README.md`](packages/csms-driver/README.md) and its
+standalone example.
+
 ## Provenance
 
 `tck/` descends from [`shiv3/ocpp-cp-simulator`][sim] (Apache-2.0). The runner

@@ -49,4 +49,48 @@
  * client and nothing conditional in the transport.
  */
 import { type CsmsDriverModule } from "../../tck/driver";
+/**
+ * What the 1.6 message API does not route, for the declared variant --
+ * confirmed against both running images: the v2 line's /docs/json advertises
+ * 18 `/ocpp/1.6/` paths and v1.9.1's advertises 16, with `reserveNow` and
+ * `cancelReservation` absent from both. Measured on v2.0.0-beta1, carried to
+ * beta3 on a file identity, and re-counted on the running v2.0.0-beta4
+ * container rather than carried again: the route tables moved to
+ * `packages/ocpp/src/apis/ocpp/1.6/*.ts` under that pin, and the same 18
+ * actions are what they register. At v2.0.0 the route tables register the
+ * same 18 again, and the running container's /docs/json advertises them
+ * (2026-09-30).
+ *
+ * Declared by subtraction from the contract's own list rather than by
+ * enumerating the supported ones, so that an operation added to the contract
+ * lands here as supported-and-unimplemented -- which `requests.ts`'s
+ * `assertNever` turns into a compile error -- instead of being silently
+ * dropped from the declaration and never noticed.
+ *
+ * A function of the environment, not a module-scope constant: which line this
+ * driver is pointed at decides the answer, and `scope` and `capabilities` are
+ * read by check-driver and by the pre-flight without ever calling create() --
+ * which is what lets both run with no credentials and no server.
+ * CITRINE_VARIANT is a declaration, not a credential, so reading it here keeps
+ * that promise. The runner hands the same env to create(), so the table and
+ * the requests cannot describe different servers.
+ */
+/**
+ * The 2.0.1 half, and it shares the api client rather than getting one of its
+ * own: the message API is one HTTP surface with a version segment in the path,
+ * so a second client would be a second copy of the timeout, the confirmation
+ * parsing and the `success: false` rule for no gain.
+ *
+ * No `records`, which is the difference from the function above: nothing in
+ * the 2.0.1 vocabulary carries an opaque ref to resolve, so there is no
+ * database round-trip to hand it.
+ *
+ * It does take the `variant`, which the 1.6 half also takes and this half once
+ * did not -- requests.ts's header says why that reversed. The short version:
+ * the declaration is now built by subtracting an unrouted table, and the
+ * refusal has to come from the same table or the two are free to disagree.
+ * On the v1 line this is reached through nothing at all -- `create` omits the
+ * part, so the runner substitutes its throwing stub and the scenario lands NOT
+ * APPLICABLE.
+ */
 export declare const csmsDriver: CsmsDriverModule;
