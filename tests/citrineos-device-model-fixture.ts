@@ -84,7 +84,10 @@
  *     pointed at the image `compose.yaml` pins was told to switch lines.
  *     `stationId`'s TYPE is the other half: Int on the GA, String on v1.9.1.
  *     A prerelease is refused BY NAME, because `CITRINE_VARIANT=v2` follows
- *     the pin and no declaration makes that schema drivable.
+ *     the pin and no declaration makes that schema drivable. And a shape none
+ *     of the three has -- a `stationId` of another scalar, or none -- is
+ *     refused as unknown on either declaration, rather than read as whichever
+ *     line a fallback picks: that would pass verify and fail every scenario.
  * 12. NO STATION-SCOPED WRITE NAMES A COLUMN THE GA DROPPED. `Evses` and
  *     `Connectors` lost `ocppConnectionName` and keep the integer station key
  *     alone; Hasura's insert type refuses the field before Postgres sees it,
@@ -186,7 +189,7 @@ type Row = Record<string, unknown>;
 class FakeCitrine {
   /** Which schema `Transactions` introspects as, and which columns the
    *  station-scoped inserts accept. Part 11 and 12. */
-  constructor(readonly schema: CitrineSchema = "v2") {}
+  constructor(readonly schema: FakeSchema = "v2") {}
 
   readonly evseTypes: Row[] = [];
   readonly variables: Row[] = [];
@@ -577,6 +580,15 @@ class FakeCitrine {
  *  - v2-prerelease is beta1..beta4: both columns, `stationId` an integer.
  *  - v1 is v1.9.1: no name column, `stationId` a STRING holding the name.
  */
+/**
+ * The shapes the fake can answer as: the three `schemaOf` names, and two it
+ * must NOT name -- a `stationId` of a scalar no line has, and no `stationId`
+ * at all. Those two are what `verify`'s fourth branch is for: a CSMS this
+ * driver was never read against, which must be refused rather than read as
+ * whichever line a fallback happens to pick.
+ */
+type FakeSchema = CitrineSchema | "stationId-uuid" | "no-stationId";
+
 /** The station-scoped inserts, by the table the GA dropped the name from. */
 const GA_DROPPED_NAME_ON: Record<string, string | undefined> = {
   SeedEvse: "Evses",
@@ -585,7 +597,7 @@ const GA_DROPPED_NAME_ON: Record<string, string | undefined> = {
 const INT = { kind: "SCALAR", name: "Int", ofType: null };
 const STRING = { kind: "SCALAR", name: "String", ofType: null };
 const nonNull = (type: Row) => ({ kind: "NON_NULL", name: null, ofType: type });
-const TRANSACTIONS_FIELDS: Record<CitrineSchema, Row[]> = {
+const TRANSACTIONS_FIELDS: Record<FakeSchema, Row[]> = {
   v2: [
     { name: "id", type: nonNull(INT) },
     { name: "stationId", type: INT },
@@ -599,6 +611,11 @@ const TRANSACTIONS_FIELDS: Record<CitrineSchema, Row[]> = {
     { name: "id", type: nonNull(INT) },
     { name: "stationId", type: nonNull(STRING) },
   ],
+  "stationId-uuid": [
+    { name: "id", type: nonNull(INT) },
+    { name: "stationId", type: { kind: "SCALAR", name: "uuid", ofType: null } },
+  ],
+  "no-stationId": [{ name: "id", type: nonNull(INT) }],
 };
 
 function json(value: unknown): Response {
@@ -1129,7 +1146,7 @@ const TARGETS = statusTargets(CONNECTORS);
  *  is a mismatch sentence rather than a missing row. */
 async function schemaProblems(
   cfg: typeof CFG,
-  schema: CitrineSchema,
+  schema: FakeSchema,
 ): Promise<string[]> {
   const problems = await provisionerOn(new FakeCitrine(schema), cfg).verify();
   return problems.filter((problem) => problem.startsWith("schema mismatch"));
@@ -1142,7 +1159,7 @@ async function schemaProblems(
  */
 const SCHEMA_ROWS: {
   declared: typeof CFG;
-  server: CitrineSchema;
+  server: FakeSchema;
   refusal: string | undefined;
   why: string;
 }[] = [
@@ -1181,6 +1198,28 @@ const SCHEMA_ROWS: {
     server: "v1",
     refusal: "CITRINE_VARIANT=v1",
     why: "stationId is a string on v1.9.1, and every v2 read would miss",
+  },
+  // The fourth branch, on both lines: a shape none of the three has must be
+  // refused as unknown. A fallback that read it as the DECLARED line would
+  // pass verify and fail every scenario instead, which is the silent,
+  // expensive symptom verifySchema exists to turn into one sentence.
+  {
+    declared: CFG,
+    server: "stationId-uuid",
+    refusal: "matches no CitrineOS line",
+    why: "a stationId of a scalar no line has is not the GA's Int",
+  },
+  {
+    declared: V1_CFG,
+    server: "stationId-uuid",
+    refusal: "matches no CitrineOS line",
+    why: "nor v1.9.1's String",
+  },
+  {
+    declared: CFG,
+    server: "no-stationId",
+    refusal: "matches no CitrineOS line",
+    why: "a Transactions with no station column at all is no line's",
   },
 ];
 

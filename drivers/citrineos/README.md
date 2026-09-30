@@ -609,7 +609,7 @@ a `reason` that cannot name the limitation is `CONDITIONAL`, not
 | Gap | Effect | Source |
 |---|---|---|
 | **No OCPP 1.6 reservation endpoints.** No 1.6 route table lists `ReserveNow` or `CancelReservation` — the 2.x one does. The 1.6 schemas exist, the `Reservations` table exists — nothing routes them, and no 1.6 response handler exists either. | 7 scenarios `NOT APPLICABLE`; the driver omits `records.reservations` entirely. | `packages/ocpp/src/apis/ocpp/1.6/ev-driver.ts` against `…/2/ev-driver.ts`. Verified at `v1.9.1`, `v2.0.0-beta1`, `v2.0.0-beta4`, `v2.0.0`. |
-| **Local auth list is v2-only.** `EVDriverOcpp16Api` gained `sendLocalList` / `getLocalListVersion` in the v2 line. | 6 scenarios, drivable only on the pinned prerelease. | `packages/ocpp/src/apis/ocpp/1.6/ev-driver.ts` (`SendLocalListEndpoint`, `GetLocalListVersion`) |
+| **Local auth list is v2-only.** `EVDriverOcpp16Api` gained `sendLocalList` / `getLocalListVersion` in the v2 line. | 6 scenarios, drivable on the v2 line — the pinned `v2.0.0` — and `NOT APPLICABLE` on v1.9.1. | `packages/ocpp/src/apis/ocpp/1.6/ev-driver.ts` (`SendLocalListEndpoint`, `GetLocalListVersion`) |
 | **No charging-profile registry.** `ChargingProfiles` has no `description` or `name` column, and nothing to look one up by. | `refByDescription` resolves from this driver's own catalogue instead. Not a scenario cost: OCPP 1.6 carries the profile inline. | `packages/dal/src/db/drizzle/schema/charging-profile.ts`, and [`profiles.ts`](profiles.ts) |
 | **[FIXED at the pinned digest] `Blocked` was unreachable from the 1.6 `Authorize` path.** Through beta3 the handler reached its status mapper only through the `status === Accepted` branch, so a stored `Blocked` fell through to the default `Invalid`; the only route to a real `Blocked` was an `IAuthorizer`, and the container registers `authorizers: asValue([])` with no setting that changes it. | **TC_023.3 failed**, deterministically, 3 runs out of 3, and was declared in [`expected.ts`](expected.ts) for a milestone rather than demoted. On beta4 it came back `UNEXPECTED PASS` — the answer is `Blocked` — and the declaration was deleted, which is the exit that table is built for. | [citrineos-core#907][pr907] maps a stored non-Accepted status straight through `AuthorizationMapper.toIdTagInfoStatus`; `packages/ocpp/src/handlers/requests/1.6/authorize-request-ocpp-16-handler.ts`. |
 | **No REST data API at all.** Through beta3 `/data/*` carried 22 routes, none touching `Authorizations`; [citrineos-core#849][pr849] drops the surface, and `/docs/json` on the pinned image advertises zero `/data/` paths. | `driver provision` writes fixtures through GraphQL, which is now the only data path there is — the Hasura sidecar is the vendor's, not a convenience. | [`provision.ts`](provision.ts) |
@@ -672,7 +672,7 @@ SmartCharging, Diagnostics"* is the ticket for the reservation gap. It is
 **closed**, answered with *"the intention is to fully implement OCPP 1.6J, but
 … it is lower in priority"* — and the rest of its list (local list, smart
 charging, diagnostics, clear cache) did ship, while reservations did not: they
-are still unrouted at `v2.0.0-beta4`. The `Blocked` mapping and the missing
+are still unrouted at `v2.0.0`. The `Blocked` mapping and the missing
 `FirmwareStatusNotification` handler never had a ticket; both were fixed in
 the beta4 line ([#907][pr907], [#890][pr890]).
 
