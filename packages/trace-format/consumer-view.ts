@@ -77,7 +77,17 @@ export function consumerView(records: readonly TraceRecord[]): ConsumerView {
       messageType: record.messageType,
       messageId: record.messageId,
     };
-    if (record.messageType === "CALL") entry.action = record.action;
+    // A CALL's own action, and a response's own action WHEN IT HAS ONE. The
+    // correlation pass below overwrites the second with the CALL's, so this
+    // line only survives for an orphan -- which is exactly what the rules
+    // say: "an orphan response has no effective action unless its record
+    // carries one explicitly" (conformance/README.md).
+    //
+    // The reference consumer sets this for CALLs only, so an orphan carrying
+    // an explicit action loses it there. No fixture has that shape, so the
+    // corpus cannot tell the two apart -- see SPEC-FEEDBACK.md finding 6 for
+    // why the prose is followed here rather than the implementation.
+    entry.action = record.action;
     return entry;
   });
 

@@ -49,6 +49,10 @@
  * Offline: builds objects, calls functions.
  */
 
+import { mkdtempSync, rmSync, writeFileSync } from "node:fs";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
+
 import {
   consumerView,
   crossRecordDiagnostics,
@@ -60,6 +64,9 @@ import {
   type DiagnosticCode,
   type TraceRecord,
 } from "../packages/trace-format";
+// Its own entry, not the barrel: conformance.ts reads directories, and the
+// barrel stays free of `node:fs` for the browser consumer.
+import { checkFixture } from "../packages/trace-format/conformance";
 
 let failures = 0;
 const fail = (what: string, detail: string): void => {
@@ -167,6 +174,12 @@ const offSchema: Array<{ name: string; value: unknown; code: DiagnosticCode }> =
   // The offset is `time-hour ":" time-minute` in the grammar, so it has the
   // same ranges the clock does. The shape alone admits +99:99.
   { name: "an offset hour past 23", value: tweak(CALL, { timestamp: "2024-01-15T10:00:00+99:00" }), code: "bad-timestamp" },
+  // RFC 3339 §5.7 inserts a leap second at 23:59:60 UTC and nowhere else, so
+  // the offset decides whether second 60 names that instant. `second <= 60`
+  // shipped here once and accepted all three of these.
+  { name: "second 60 in the middle of the day", value: tweak(CALL, { timestamp: "2024-01-15T10:00:60Z" }), code: "bad-timestamp" },
+  { name: "second 60 at 23:59 LOCAL but not UTC", value: tweak(CALL, { timestamp: "2024-12-31T23:59:60+01:00" }), code: "bad-timestamp" },
+  { name: "second 61", value: tweak(CALL, { timestamp: "2024-12-31T23:59:61Z" }), code: "bad-timestamp" },
   { name: "an offset minute past 59", value: tweak(CALL, { timestamp: "2024-01-15T10:00:00-00:99" }), code: "bad-timestamp" },
 
   // The schema's two conditionals.
@@ -216,6 +229,20 @@ for (const { name, value, code } of offSchema) {
         `index ${index} is missing with no diagnostic -- got ${codesOf(diagnostics)}`,
       );
     }
+  }
+}
+
+// A REAL leap second must still validate, in every spelling of the instant, or
+// the three rows above would be satisfied by a validator that rejects second
+// 60 outright. Measured against the specification's own ajv at the pinned ref
+// -- see tools/trace-format-schema-cases.json, which runs these through both.
+for (const ts of [
+  "2024-12-31T23:59:60Z",
+  "2025-01-01T00:59:60+01:00",
+  "2024-12-31T22:59:60-01:00",
+]) {
+  if (validateRecord(tweak(CALL, { timestamp: ts }), 0).record === undefined) {
+    fail("a leap second at 23:59 UTC validates", `${ts} was refused`);
   }
 }
 
@@ -407,6 +434,34 @@ const recordsOf = (values: readonly unknown[]): TraceRecord[] => {
   }
 }
 
+// AN ORPHAN KEEPS AN ACTION IT CARRIES ITSELF. The rules: "an orphan response
+// has no effective action unless its record carries one explicitly". No
+// fixture in the corpus has that shape and the reference consumer copies
+// `action` for CALLs only, so this row is the only thing holding the
+// derivation to the prose -- see SPEC-FEEDBACK.md finding 6.
+{
+  const orphan = tweak(RESULT, { action: "BootNotification" });
+  const view = consumerView(recordsOf([orphan]));
+  if (view.orphanResponses.length !== 1) {
+    fail("the orphan fixture is an orphan", JSON.stringify(view.orphanResponses));
+  }
+  if (view.records[0]?.action !== "BootNotification") {
+    fail(
+      "an orphan keeps the action its record carries",
+      `expected BootNotification, got ${JSON.stringify(view.records[0]?.action)}`,
+    );
+  }
+  // ...and one that carries none still has none, or the row above would pass
+  // for a derivation that invented an action from nowhere.
+  const bare = consumerView(recordsOf([RESULT]));
+  if (bare.records[0]?.action !== undefined) {
+    fail(
+      "an orphan with no action of its own has none",
+      JSON.stringify(bare.records[0]),
+    );
+  }
+}
+
 // The one producer rule that needs the whole trace: a response that carries
 // its own action must agree with the call it answers.
 {
@@ -418,6 +473,47 @@ const recordsOf = (values: readonly unknown[]): TraceRecord[] => {
   const agreeing = recordsOf([CALL, tweak(RESULT, { action: "Heartbeat" })]);
   if (crossRecordDiagnostics(agreeing, consumerView(agreeing)).length !== 0) {
     fail("a response action that agrees is silent", "a diagnostic was raised");
+  }
+}
+
+// The fixture comparison is STRUCTURAL, and JSON member order is not part of a
+// structure. `JSON.stringify` on both sides was the first shape and compared a
+// rendering, so a harmless reordering of an `expected.json` failed a
+// conformant reader. This goes through `checkFixture` itself rather than the
+// comparison it uses, because the wiring is the half that can regress.
+{
+  const dir = mkdtempSync(join(tmpdir(), "tck-fixture-"));
+  try {
+    const records = recordsOf([CALL, RESULT]);
+    const view = consumerView(records);
+    writeFileSync(join(dir, "trace.jsonl"), `${JSON.stringify(CALL)}\n${JSON.stringify(RESULT)}\n`);
+
+    // Every member of every object, emitted back-to-front.
+    const reorder = (value: unknown): unknown =>
+      Array.isArray(value)
+        ? value.map(reorder)
+        : value && typeof value === "object"
+          ? Object.fromEntries(
+              Object.entries(value as Record<string, unknown>)
+                .reverse()
+                .map(([k, v]) => [k, reorder(v)]),
+            )
+          : value;
+    const shuffled = reorder(JSON.parse(JSON.stringify(view)));
+    if (JSON.stringify(shuffled) === JSON.stringify(view)) {
+      fail("the reorder fixture actually reorders", "the renderings match");
+    }
+    writeFileSync(join(dir, "expected.json"), JSON.stringify(shuffled, null, 2));
+
+    const result = checkFixture(dir, "reordered");
+    if (!result.ok) {
+      fail(
+        "a reordered expected.json is the same expected.json",
+        `checkFixture is order-sensitive: ${result.problems.join("; ")}`,
+      );
+    }
+  } finally {
+    rmSync(dir, { recursive: true, force: true });
   }
 }
 

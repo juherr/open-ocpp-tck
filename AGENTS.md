@@ -395,6 +395,16 @@ single-upstream by construction — so only `tools/trace-conformance.sh` can say
 that, and it needs the network. Run it after changing `validate.ts` or
 `consumer-view.ts`; a green `bun run verify` does not cover them.
 
+That script does two things, and only the second compares anything against the
+document. Its fixture pass proves the reader reproduces every `expected.json`;
+its differential pass runs a table of invalid and boundary records through both
+the reader and the specification's own ajv, and requires identical verdicts.
+The fixture pass alone cannot catch a validator that is too LAX, because every
+fixture is conformant — which is how `second <= 60` shipped and stayed green
+under a comment claiming the comparison was being made. Add a row to
+`tools/trace-format-schema-cases.json` for every schema rule the transcription
+grows.
+
 Two guards build a fixture instead of reading the tree, and they are the two
 that test the scripts under `tools/` which *write*.
 `tests/repin-refusals.sh` exercises `tools/repin-vendored.sh` in a throwaway

@@ -19,10 +19,15 @@
  * guard; the cost of the dependency is paid by every consumer forever.
  *
  * THE PRICE, STATED: a transcription can drift from the schema it transcribes,
- * and nothing in this repository would notice, because the schema is not
- * vendored here. `tools/trace-conformance.sh` is the answer -- it runs this
- * validator over the specification's own fixtures, which is the only check
- * that compares this file against the document it claims to implement.
+ * and nothing offline would notice, because the schema is not vendored here.
+ * `tools/trace-conformance.sh` is the answer, and it took two shapes to get
+ * right. Running this validator over the specification's FIXTURES is not
+ * enough: they are all conformant, so they exercise the accept direction only
+ * and a too-lax transcription reproduces every one of them. It did --
+ * `2024-01-15T10:00:60Z` was accepted here and rejected by the reference,
+ * with the corpus green. So the script now also runs a table of invalid and
+ * boundary records through BOTH this file and the specification's own
+ * ajv + `trace-v1.schema.json`, and requires the verdicts to match.
  *
  * WHERE THE `raw` RULES COME FROM: `conformance/README.md`'s producer rules,
  * transcribed from `checkRawFidelity` in the reference consumer, member for
@@ -71,7 +76,7 @@ const REQUIRED = [
  * below, and nothing beyond what the format actually says.
  */
 const RFC3339 =
-  /^(\d{4})-(\d{2})-(\d{2})[Tt](\d{2}):(\d{2}):(\d{2})(\.\d+)?([Zz]|[+-](\d{2}):(\d{2}))$/;
+  /^(\d{4})-(\d{2})-(\d{2})[Tt](\d{2}):(\d{2}):(\d{2})(\.\d+)?([Zz]|([+-])(\d{2}):(\d{2}))$/;
 
 const DAYS_IN_MONTH = [31, 28, 31, 30, 31, 30, 31, 31, 30, 31, 30, 31];
 
@@ -97,11 +102,32 @@ function isRfc3339DateTime(value: string): boolean {
   // The offset has ranges too -- `time-numoffset` is `time-hour ":" time-minute`
   // in the grammar, so `+99:99` is not a date-time however well it matches the
   // shape. Both groups are absent for a `Z` suffix, hence the presence checks.
-  if (match[9] !== undefined && Number(match[9]) > 23) return false;
-  if (match[10] !== undefined && Number(match[10]) > 59) return false;
+  if (match[10] !== undefined && Number(match[10]) > 23) return false;
+  if (match[11] !== undefined && Number(match[11]) > 59) return false;
 
-  // 60 is a leap second, which RFC 3339 admits.
-  return second <= 60;
+  if (second < 60) return true;
+  if (second > 60) return false;
+
+  // SECOND 60 IS A LEAP SECOND, AND RFC 3339 admits it only where one can
+  // occur: §5.7 inserts leap seconds at 23:59:60 UTC, so the offset decides
+  // whether this timestamp names that instant. `2024-12-31T23:59:60Z` and
+  // `2025-01-01T00:59:60+01:00` are the same instant and both valid;
+  // `2024-01-15T10:00:60Z` is not a time.
+  //
+  // Measured against the reference rather than reasoned about: the
+  // specification validates with `ajv-formats`, and all three of those cases
+  // were run through it at the pinned ref before this was written. The first
+  // shape of this function returned `second <= 60` unconditionally, which
+  // accepted the mid-day one and broke the contract this file opens with --
+  // a record comes back if and only if it satisfies the schema.
+  const offsetMinutes =
+    match[9] === undefined
+      ? 0
+      : (match[9] === "-" ? -1 : 1) *
+        (Number(match[10]) * 60 + Number(match[11]));
+  const utcMinuteOfDay =
+    (((hour * 60 + minute - offsetMinutes) % 1440) + 1440) % 1440;
+  return utcMinuteOfDay === 23 * 60 + 59;
 }
 
 /**

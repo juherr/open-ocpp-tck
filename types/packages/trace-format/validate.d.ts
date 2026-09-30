@@ -19,10 +19,15 @@
  * guard; the cost of the dependency is paid by every consumer forever.
  *
  * THE PRICE, STATED: a transcription can drift from the schema it transcribes,
- * and nothing in this repository would notice, because the schema is not
- * vendored here. `tools/trace-conformance.sh` is the answer -- it runs this
- * validator over the specification's own fixtures, which is the only check
- * that compares this file against the document it claims to implement.
+ * and nothing offline would notice, because the schema is not vendored here.
+ * `tools/trace-conformance.sh` is the answer, and it took two shapes to get
+ * right. Running this validator over the specification's FIXTURES is not
+ * enough: they are all conformant, so they exercise the accept direction only
+ * and a too-lax transcription reproduces every one of them. It did --
+ * `2024-01-15T10:00:60Z` was accepted here and rejected by the reference,
+ * with the corpus green. So the script now also runs a table of invalid and
+ * boundary records through BOTH this file and the specification's own
+ * ajv + `trace-v1.schema.json`, and requires the verdicts to match.
  *
  * WHERE THE `raw` RULES COME FROM: `conformance/README.md`'s producer rules,
  * transcribed from `checkRawFidelity` in the reference consumer, member for

@@ -6,6 +6,14 @@ on:
   pull_request:
   workflow_dispatch:
 
+# Read-only, for both jobs. Neither pushes anything -- the checkout steps
+# already drop the token with `persist-credentials: false` -- so the only
+# scope either needs is the one that fetches the code. Declared here rather
+# than per job so a third job starts locked down instead of inheriting the
+# repository default.
+permissions:
+  contents: read
+
 concurrency:
   group: ci-${{ github.ref }}
   cancel-in-progress: true

@@ -74,4 +74,46 @@ if [ "$head_sha" != "$spec_ref" ] && [ "$head_sha" != unknown ]; then
 fi
 echo
 
-exec bun "$repo/tools/trace-conformance.ts" "$work/spec/fixtures" ${archive:+"$archive"}
+# ---------------------------------------------------------------------------
+# The differential: our transcription against the document's own validator.
+#
+# THE FIXTURES CANNOT DO THIS. Every one of them is conformant, so they
+# exercise the ACCEPT direction only -- a transcription that is too lax
+# reproduces all 16 and is still wrong. That is measured, not feared: this
+# check was added after `2024-01-15T10:00:60Z` was found accepted here and
+# rejected by ajv, with the corpus green and this script claiming to have
+# compared the two.
+#
+# So every case in tools/trace-format-schema-cases.json goes through BOTH
+# validators and the verdicts must match. `npm ci` is the price: the
+# specification's ajv and ajv-formats are what decides, rather than a copy
+# of them pinned here.
+echo "== the schema, against our transcription of it"
+if ! (cd "$work/spec" && npm ci --silent --no-audit --no-fund >/dev/null 2>&1); then
+  echo "FAIL: could not install the specification's dev dependencies -- the" >&2
+  echo "      differential needs its ajv, and skipping it silently is how this" >&2
+  echo "      script came to claim a comparison it was not making." >&2
+  exit 1
+fi
+
+(cd "$work/spec" && node "$repo/tools/trace-format-ajv-verdicts.mjs" \
+  "$work/spec/schema/trace-v1.schema.json" \
+  "$repo/tools/trace-format-schema-cases.json") > "$work/ajv.txt"
+bun "$repo/tools/trace-format-our-verdicts.ts" \
+  "$repo/tools/trace-format-schema-cases.json" > "$work/ours.txt"
+
+if diff -u "$work/ajv.txt" "$work/ours.txt" > "$work/delta.txt"; then
+  echo "ok   $(wc -l < "$work/ajv.txt" | tr -d ' ') cases, every verdict identical to ajv + the pinned schema"
+  echo
+else
+  echo "FAIL: this transcription and the pinned schema disagree." >&2
+  echo "      (- is ajv on the schema, + is packages/trace-format/validate.ts)" >&2
+  sed -n '3,$p' "$work/delta.txt" | grep -E '^[-+]' >&2
+  echo >&2
+  differential_failed=1
+fi
+
+exec_status=0
+bun "$repo/tools/trace-conformance.ts" "$work/spec/fixtures" ${archive:+"$archive"} || exec_status=$?
+if [ -n "${differential_failed-}" ]; then exit 1; fi
+exit "$exec_status"

@@ -17,11 +17,16 @@
  * WHAT IT GIVES UP, stated because it is a real trade. `validate.mjs`
  * validates with ajv, so it checks the fixtures against the schema FILE; this
  * checks them against `validate.ts`, a transcription of it. A rule dropped
- * from the transcription would be a rule this check stops enforcing, silently.
- * The mitigation is that a dropped rule almost always shows up as a consumer
- * view that no longer matches `expected.json` -- and where it would not, the
- * corpus should grow a fixture, which is a better place for the rule to live
- * than in a validator only the specification runs.
+ * from the transcription would be a rule this check stops enforcing.
+ *
+ * That gap is NOT closed by the fixtures, and an earlier draft of this comment
+ * claimed it mostly was -- on the reasoning that a dropped rule would surface
+ * as a consumer view no longer matching `expected.json`. It does not: every
+ * fixture is conformant, so a validator that accepts too much reproduces all
+ * of them. What closes it is the differential in
+ * `tools/trace-conformance.sh`, which runs invalid and boundary records
+ * through this reader and through the specification's ajv and requires the
+ * two to agree. Keep that table growing with the transcription.
  *
  * NO POLICY HERE EITHER: a fixture fails when the reader disagrees with
  * `expected.json`, or when a CONFORMANT record produced a diagnostic. The
@@ -71,14 +76,45 @@ export function formatDiagnostics(
 }
 
 /**
- * Structural equality through JSON.
+ * Structural equality, and structural is the load-bearing word.
  *
- * `expected.json` came out of a parser, so a member a derivation leaves
- * `undefined` is simply absent there -- while `Object.keys` counts it present
- * on an object literal. Normalising both sides is what makes "reproduce it
- * exactly" mean the same thing on each.
+ * TWO THINGS HAVE TO BE TRUE AT ONCE. A member a derivation leaves `undefined`
+ * is simply ABSENT in `expected.json`, because that file came out of a parser
+ * -- while `Object.keys` counts it present on an object literal, so the two
+ * must be compared as if the undefined one were not there. And JSON member
+ * ORDER is not semantic, so a harmless reordering of `expected.json` must not
+ * fail a conformant reader.
+ *
+ * `JSON.stringify` on both sides satisfies the first and breaks the second: it
+ * preserves insertion order, so it compares a rendering rather than a
+ * structure. This walks instead.
  */
-const normalise = (value: unknown): string => JSON.stringify(value);
+function deepEqual(a: unknown, b: unknown): boolean {
+  if (Object.is(a, b)) return true;
+  if (typeof a !== "object" || typeof b !== "object") return false;
+  if (a === null || b === null) return false;
+  if (Array.isArray(a) !== Array.isArray(b)) return false;
+  if (Array.isArray(a) && Array.isArray(b)) {
+    return (
+      a.length === b.length && a.every((item, i) => deepEqual(item, b[i]))
+    );
+  }
+  // `undefined` members are absent as far as this comparison goes, on either
+  // side, which is what lets a derived view meet a parsed one.
+  const defined = (o: object): string[] =>
+    Object.keys(o).filter((k) => (o as Record<string, unknown>)[k] !== undefined);
+  const ka = defined(a);
+  const kb = defined(b);
+  if (ka.length !== kb.length) return false;
+  return ka.every(
+    (k) =>
+      Object.hasOwn(b, k) &&
+      deepEqual(
+        (a as Record<string, unknown>)[k],
+        (b as Record<string, unknown>)[k],
+      ),
+  );
+}
 
 /** Checks one `trace.jsonl` + `expected.json` pair. */
 export function checkFixture(dir: string, name: string): FixtureResult {
@@ -115,7 +151,7 @@ export function checkFixture(dir: string, name: string): FixtureResult {
   if (all.length > 0) {
     problems.push(`this reader is stricter than the format: ${formatDiagnostics(all)}`);
   }
-  if (normalise(view) !== normalise(expected)) {
+  if (!deepEqual(view, expected)) {
     problems.push("the derived consumer view does not match expected.json");
   }
 

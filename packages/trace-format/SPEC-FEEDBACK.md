@@ -160,7 +160,35 @@ ambiguous, not that either behaviour is wrong.
 two id-less records in an exchange so the corpus can fail an implementation
 that chose the other reading. No fixture exercises it today.
 
-## 5. Smaller notes
+## 6. The reference loses an orphan's explicit `action`
+
+**The rule today.** `conformance/README.md` is explicit: "The effective
+`action` of a correlated response is its CALL's `action`; an orphan response
+has no effective action **unless its record carries one explicitly**."
+
+**The problem.** `buildConsumerView` in `conformance/validate.mjs` sets
+`entry.action` for `messageType === 'CALL'` only, then overwrites it on
+correlation. An orphan response that carries its own `action` therefore comes
+out of the reference with none — contradicting the sentence above.
+
+The view table one section down reads "the effective action: explicit for a
+CALL, derived by correlation for a response. Absent when underivable", which
+looks like a second reading. It is not, on inspection: an action the record
+states explicitly is not *underivable*. The prose is the specific rule and the
+table is a summary of it, so this is an implementation bug rather than an
+ambiguity — which is why this library follows the prose and its own guard pins
+it.
+
+**Why no one has noticed.** None of the 16 fixtures has an orphan response
+carrying an `action`. `orphan-response` has one orphan and it carries none, so
+the corpus cannot separate the two behaviours, and a conformant reader that
+follows the prose still reproduces all 16 `expected.json` files — measured.
+
+**Suggested shape.** Fix `buildConsumerView` to seed `entry.action` from the
+record whatever its type, and add a fixture whose orphan carries an explicit
+action so the corpus can fail either reading.
+
+## 7. Smaller notes
 
 - **`conformance/validate.mjs` is a second implementation of the rules.** It
   compiles the schema with ajv and open-codes `buildConsumerView`, so the

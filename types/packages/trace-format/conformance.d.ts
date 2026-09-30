@@ -17,11 +17,16 @@
  * WHAT IT GIVES UP, stated because it is a real trade. `validate.mjs`
  * validates with ajv, so it checks the fixtures against the schema FILE; this
  * checks them against `validate.ts`, a transcription of it. A rule dropped
- * from the transcription would be a rule this check stops enforcing, silently.
- * The mitigation is that a dropped rule almost always shows up as a consumer
- * view that no longer matches `expected.json` -- and where it would not, the
- * corpus should grow a fixture, which is a better place for the rule to live
- * than in a validator only the specification runs.
+ * from the transcription would be a rule this check stops enforcing.
+ *
+ * That gap is NOT closed by the fixtures, and an earlier draft of this comment
+ * claimed it mostly was -- on the reasoning that a dropped rule would surface
+ * as a consumer view no longer matching `expected.json`. It does not: every
+ * fixture is conformant, so a validator that accepts too much reproduces all
+ * of them. What closes it is the differential in
+ * `tools/trace-conformance.sh`, which runs invalid and boundary records
+ * through this reader and through the specification's ajv and requires the
+ * two to agree. Keep that table growing with the transcription.
  *
  * NO POLICY HERE EITHER: a fixture fails when the reader disagrees with
  * `expected.json`, or when a CONFORMANT record produced a diagnostic. The

@@ -78,9 +78,16 @@ that contradicts the members beside it — comes back *with* the record. So:
 
 The schema is not vendored here, so a transcription can drift from the document
 it transcribes and nothing offline would notice. `tools/trace-conformance.sh`
-is the answer: it runs this reader over the specification's own fixtures and
-compares the derived view to each `expected.json`. That is the only check that
-compares this code against the thing it claims to implement — run it after any
-change to `validate.ts` or `consumer-view.ts`.
+is the answer, in two passes:
+
+- **the fixtures** — derive the consumer view for each and compare it to
+  `expected.json`;
+- **the differential** — run a table of invalid and boundary records through
+  this reader *and* through the specification's own ajv, and require the
+  verdicts to match.
+
+The second pass exists because the first cannot fail a validator that accepts
+too much: every fixture is conformant. Run both after any change to
+`validate.ts` or `consumer-view.ts`.
 
 `tests/trace-format.ts` guards the rules offline, one mutation per claim.
