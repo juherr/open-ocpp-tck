@@ -1,3 +1,4 @@
+import { type ScenarioTags } from "../scenario-tags";
 import type { ScenarioOcppVersion, ScenarioSpec } from "../spec-types";
 type AssertionInstruction = {
     kind: "sent";
@@ -85,6 +86,18 @@ export interface GherkinPilotPlan {
     readonly assertions: readonly AssertionInstruction[];
     readonly drive: readonly DriveInstruction[];
 }
+/**
+ * The `@key:value` line both compilers read: every key known and given once,
+ * except `@tag`, the one that repeats -- a scenario may be about several
+ * things -- and whose values go through the same vocabulary a TypeScript spec
+ * uses. Every refusal names the file.
+ */
+export declare function readFeatureTags(featureTags: readonly {
+    name: string;
+}[], uri: string): {
+    values: Map<string, string>;
+    tags: ScenarioTags;
+};
 export declare function compileFeaturePlanText(source: string, uri?: string): GherkinPilotPlan;
 export declare function compileFeatureText(source: string, uri?: string): ScenarioSpec<void>;
 export declare function loadPilotPlans(): GherkinPilotPlan[];

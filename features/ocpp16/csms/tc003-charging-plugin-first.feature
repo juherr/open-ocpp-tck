@@ -1,4 +1,4 @@
-@sut:csms @id:cert16-tc003-charging-plugin-first @ocpp:1.6 @template:cert16-tc003-charging-plugin-first @connector:1 @bootWaitSecs:4 @holdSecs:45
+@sut:csms @id:cert16-tc003-charging-plugin-first @ocpp:1.6 @template:cert16-tc003-charging-plugin-first @connector:1 @bootWaitSecs:4 @holdSecs:45 @tag:transaction
 Feature: TC_003 Charging Session, plug-in first
 
   Scenario: The charge point starts and closes a charging transaction

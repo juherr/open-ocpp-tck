@@ -1,4 +1,4 @@
-@sut:csms @id:cert16-tc001-cold-boot @ocpp:1.6 @template:cert16-tc001-cold-boot @connector:1 @bootWaitSecs:4 @holdSecs:20
+@sut:csms @id:cert16-tc001-cold-boot @ocpp:1.6 @template:cert16-tc001-cold-boot @connector:1 @bootWaitSecs:4 @holdSecs:20 @tag:provisioning
 Feature: TC_001 Cold Boot
 
   Scenario: The charge point reports its initial state and idles

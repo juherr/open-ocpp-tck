@@ -160,21 +160,83 @@ is a module specifier — a relative path, an absolute one, or a package name.
 Adding a driver is purely additive, so it never conflicts with an upstream
 re-sync, and your driver can live in a completely different repository.
 
-## Scenario protocol versions
+## Selecting scenarios
+
+Three filters, each reading its own fact about a scenario, and any of them
+given together intersect:
+
+- `--version 1.6|2.0.1` — the **protocol** the scenario declares.
+- `--group <name>` — the **historical** grouping, upstream's array membership
+  mirrored as it is. It is not a taxonomy: `core` holds every OCPP 2.0.1 case,
+  and `remotetrigger-smartcharging` welds two domains together.
+- `--tag <name>` — what the scenario is **about**, from the table below. A
+  scenario carries one tag or several.
+
+```sh
+ocpp-tck run-all --tag smart-charging                  # smart charging, without remote trigger
+ocpp-tck run-all --version 2.0.1 --tag smart-charging  # ... in OCPP 2.0.1 only
+ocpp-tck list-scenarios --tag transaction              # transactions, across every group
+ocpp-tck list-scenarios --group remotetrigger-smartcharging --tag smart-charging
+```
+
+An unknown tag is refused with the list of supported ones, and `--tag` is
+given at most once. Which system is under test is a separate axis still to
+come (#3); today every scenario tests a CSMS.
+
+### Scenario protocol versions
 
 Every scenario declares its executable OCPP protocol. `ocpp-tck run` selects the full suite; `--version 1.6` selects the OCPP-1.6J scenarios and `--version 2.0.1` selects OCPP 2.0.1. With no version filter, both are included. Group and version filters intersect; for example, `--group core --version 2.0.1` lists or runs the Core 2.0.1 scenarios. `core` contains Core cases for both protocols, and there is no separate `core-201` group.
 
 `SIM_OCPP_VERSION`, when explicitly set, must match every selected scenario. Leave it unset to let each scenario configure the simulator. `SIM_EXTRA_ARGS --ocpp-version` may only repeat the selected scenario's declared version. For deliberate cross-version diagnostics such as the experiment in #57, set `SIM_FORCE_OCPP_VERSION` to a simulator-supported protocol; this explicitly runs scenarios against that protocol. If also set, `SIM_OCPP_VERSION` and `SIM_EXTRA_ARGS --ocpp-version` must agree with the forced protocol.
 
+### Scenario tags
+
+Tags name the function a scenario exercises — one it drives, one it has
+established against the CSMS as its precondition, or one its verdict reads —
+not one that is incidental to it: TC_003 checks that every Authorize is
+answered, a transport obligation, so it is `transaction` and not
+`authorization`. The names follow OCPP 2.0.1's functional blocks, with
+TriggerMessage kept apart as OCPP 1.6's Remote Trigger profile.
+
+`--tag transaction` is every scenario that **needs** a transaction — the set to
+run when a driver's transaction records are suspect. That includes a scenario
+whose precondition has the CSMS accept one before the case starts: TC_K_29 is
+about charging profiles and is `transaction` as well.
+
+| Tag | Covers |
+|---|---|
+| `provisioning` | booting, resetting and configuring the station |
+| `authorization` | the CSMS's decision about an idToken, and the authorization cache |
+| `local-auth-list` | the station's local authorization list |
+| `transaction` | a charging transaction the scenario starts, stops, refuses, reads back or presupposes |
+| `remote-control` | RemoteStart/StopTransaction, UnlockConnector |
+| `remote-trigger` | TriggerMessage |
+| `availability` | operative state and status of a connector, an EVSE or the station |
+| `reservation` | ReserveNow, CancelReservation |
+| `metering` | meter values reported outside a transaction |
+| `smart-charging` | charging profiles and composite schedules |
+| `firmware` | UpdateFirmware, GetDiagnostics |
+| `certificates` | InstallCertificate, GetInstalledCertificateIds |
+| `data-transfer` | DataTransfer |
+
+A TypeScript spec declares `tags: ["smart-charging", "transaction"]`; a
+`.feature` declares `@tag:smart-charging @tag:transaction` on its tag line.
+Both go through the same closed vocabulary (`tck/scenario-tags.ts`), and a
+missing, unknown or repeated tag is refused — at build time for a spec, at
+compile time for a feature. `list-scenarios` prints each scenario's tags, and
+`check-driver` names any tag the driver drives no scenario of. Tags are
+selection metadata: like groups, they are absent from the pinned
+`ASSERT-INVENTORY.txt` and `DRIVE-TRACE.txt`.
+
 ## Commands
 
 | Command | Needs | What it does |
 |---|---|---|
-| `ocpp-tck run [--version 1.6\|2.0.1] [--group N]` | docker + CSMS | A full suite sweep, optionally filtered |
-| `ocpp-tck run <template-id> [--version 1.6\|2.0.1]` | docker + CSMS | One scenario, optionally checked against its declared version |
-| `ocpp-tck run-all [--group N] [--version 1.6\|2.0.1] [--parallel]` | docker + CSMS | A sweep; group and version filters intersect |
+| `ocpp-tck run [--version 1.6\|2.0.1] [--group N] [--tag T]` | docker + CSMS | A full suite sweep, optionally filtered |
+| `ocpp-tck run <template-id> [--version 1.6\|2.0.1] [--tag T]` | docker + CSMS | One scenario, optionally checked against its declared version and tags |
+| `ocpp-tck run-all [--group N] [--version 1.6\|2.0.1] [--tag T] [--parallel]` | docker + CSMS | A sweep; group, version and tag filters intersect |
 | `ocpp-tck check-driver [--driver SPEC]` | nothing | Offline conformance of a driver against this core |
-| `ocpp-tck list-scenarios [--group N] [--version 1.6\|2.0.1] [--json]` | nothing | The 96 registered scenarios, optionally filtered |
+| `ocpp-tck list-scenarios [--group N] [--version 1.6\|2.0.1] [--tag T] [--json]` | nothing | The 96 registered scenarios with their group and tags, optionally filtered |
 | `ocpp-tck print-sim-image` | nothing | The pinned simulator image digest |
 | `ocpp-tck driver selftest [--with-writes]` | CSMS | Every `CsmsRecords` method once, in seconds: does this driver answer the contract? `--with-writes` adds the `prepareStation` hook |
 | `ocpp-tck driver <verb>` | driver-defined | A bootstrap verb your driver contributes |

@@ -15,7 +15,9 @@ import {
   assertResponseStatus,
   UNEXERCISED_PREFIX,
 } from "../assert";
+import type { ScenarioTags } from "../scenario-tags";
 import type { AssertContext, DriveContext, ScenarioOcppVersion, ScenarioSpec } from "../spec-types";
+import { readFeatureTags } from "./compiler";
 import type { StateInvocation } from "../states-201";
 import { assertStateEstablished } from "../states-201";
 import { sleep } from "../util";
@@ -69,15 +71,10 @@ function metadata(document: GherkinDocument, uri: string) {
   if (!feature || feature.children.length !== 1 || !feature.children[0]?.scenario) {
     throw new Error(`${uri}: expected exactly one Feature and one Scenario`);
   }
-  const tags = new Map<string, string>();
-  for (const tag of [...feature.tags, ...feature.children[0].scenario.tags]) {
-    const match = /^@([A-Za-z][A-Za-z0-9]*):([^\s]+)$/.exec(tag.name);
-    if (!match) throw new Error(`${uri}: invalid tag ${tag.name}`);
-    const [, key, value] = match;
-    if (!["id", "sut", "ocpp", "template", "connector", "bootWaitSecs", "holdSecs"].includes(key)) throw new Error(`${uri}: unknown tag @${key}`);
-    if (tags.has(key)) throw new Error(`${uri}: duplicate tag @${key}`);
-    tags.set(key, value);
-  }
+  const { values: tags, tags: scenarioTags } = readFeatureTags(
+    [...feature.tags, ...feature.children[0].scenario.tags],
+    uri,
+  );
   if (tags.get("sut") !== "csms") throw new Error(`${uri}: unsupported SUT`);
   if (tags.get("ocpp") !== "2.0.1") throw new Error(`${uri}: unsupported OCPP version`);
   const id = tags.get("id");
@@ -89,7 +86,7 @@ function metadata(document: GherkinDocument, uri: string) {
   };
   const connector = positive("connector");
   if (connector !== 1) throw new Error(`${uri}: this pilot compiler supports only @connector:1`);
-  return { scenario: feature.children[0].scenario, id, ocppVersion: "OCPP-2.0.1" as const, connector, bootWaitSecs: positive("bootWaitSecs"), holdSecs: positive("holdSecs") };
+  return { scenario: feature.children[0].scenario, id, ocppVersion: "OCPP-2.0.1" as const, tags: scenarioTags, connector, bootWaitSecs: positive("bootWaitSecs"), holdSecs: positive("holdSecs") };
 }
 
 function compileSteps(steps: readonly Step[], uri: string) {
@@ -129,11 +126,12 @@ function compileSteps(steps: readonly Step[], uri: string) {
   return { states, drive, assertions };
 }
 
-function makeSpec(plan: Omit<Gherkin201Plan, "spec">, description: string): ScenarioSpec<void> {
+function makeSpec(plan: Omit<Gherkin201Plan, "spec">, description: string, tags: ScenarioTags): ScenarioSpec<void> {
   return {
     templateId: plan.templateId,
     description,
     ocppVersion: plan.ocppVersion,
+    tags,
     runsSimTemplate: false,
     connector: plan.connector,
     bootWaitSecs: plan.bootWaitSecs,
@@ -167,7 +165,7 @@ export function compile201FeatureText(source: string, uri = "<feature>"): Gherki
   const meta = metadata(parsed, uri);
   const steps = compileSteps(meta.scenario.steps, uri);
   const plan = { templateId: meta.id, ocppVersion: meta.ocppVersion, connector: meta.connector, bootWaitSecs: meta.bootWaitSecs, holdSecs: meta.holdSecs, ...steps };
-  return { ...plan, spec: makeSpec(plan, `${parsed.feature?.name ?? ""}: ${meta.scenario.name}`) };
+  return { ...plan, spec: makeSpec(plan, `${parsed.feature?.name ?? ""}: ${meta.scenario.name}`, meta.tags) };
 }
 
 export function load201PilotPlan(): Gherkin201Plan {

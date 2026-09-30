@@ -141,6 +141,7 @@ the drivers are native here, and the name now says so.
 | `tck/standing.ts` | `local-native` | `—` | `—` | `—` | `—` |
 | `tck/shard.ts` | `local-native` | `—` | `—` | `—` | `—` |
 | `tck/scenario-selection.ts` | `local-native` | `—` | `—` | `—` | `—` |
+| `tck/scenario-tags.ts` | `local-native` | `—` | `—` | `—` | `—` |
 | `tck/certificate-material.ts` | `local-native` | `—` | `—` | `—` | `—` |
 | `tck/readiness.ts` | `local-native` | `—` | `—` | `—` | `—` |
 | `tck/op-warn.ts` | `local-native` | `—` | `—` | `—` | `—` |

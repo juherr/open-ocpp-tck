@@ -1,5 +1,5 @@
 /**
- * Derived from shiv3/ocpp-cp-simulator scripts/steve-verify/runner/spec-types.ts @ 604054adb0d7d7129a26a5f1ad2d5fdc290d1ca1 (Apache-2.0). Modified: the drive/assert context carries the CSMS-neutral CsmsOperations16 / CsmsRecords contract instead of the upstream harness's CSMS-specific ops and transaction types; ScenarioSpec.states declares the OCPP 2.0.1 Reusable States a case takes as its precondition and AssertContext.fixtures reports what they did.
+ * Derived from shiv3/ocpp-cp-simulator scripts/steve-verify/runner/spec-types.ts @ 604054adb0d7d7129a26a5f1ad2d5fdc290d1ca1 (Apache-2.0). Modified: the drive/assert context carries the CSMS-neutral CsmsOperations16 / CsmsRecords contract instead of the upstream harness's CSMS-specific ops and transaction types; ScenarioSpec.states declares the OCPP 2.0.1 Reusable States a case takes as its precondition and AssertContext.fixtures reports what they did; ScenarioSpec.tags declares the functional tags `--tag` selects on.
  *
  * spec-types.ts -- the shape a scenario spec (port of specs/<id>.spec.sh)
  * takes in the TypeScript runner. Task 1 wires two specs directly in
@@ -9,6 +9,7 @@ import type { AssertRecorder } from "./assert";
 import type { Frame } from "./ocpp";
 import type { SimProcess } from "./sim";
 import type { FixtureLog, StateInvocation } from "./states-201";
+import type { ScenarioTags } from "./scenario-tags";
 import type { CsmsOperations16, CsmsOperations201, CsmsRecords } from "./driver";
 /** Protocol variants the TCK currently compiles and executes. */
 export type ScenarioOcppVersion = "OCPP-1.6J" | "OCPP-2.0.1";
@@ -72,6 +73,17 @@ export interface ScenarioSpec<D = void> {
      * SIM_OCPP_VERSION can only confirm that it agrees.
      */
     ocppVersion: ScenarioOcppVersion;
+    /**
+     * What this scenario is about, from the closed vocabulary in
+     * tck/scenario-tags.ts -- the axis `--tag` selects on, beside `--group` and
+     * `--version`. At least one, and the rule for choosing is written there: a
+     * tag names a function the scenario exercises, not one it passes through.
+     *
+     * Selection metadata, not what the scenario measures: like its group, it is
+     * absent from both pinned artifacts, and `tests/scenario-tags.ts` is what
+     * holds it instead.
+     */
+    tags: ScenarioTags;
     /** Connector the scenario runs on: the one its template is started on, and
      *  the one threaded into `drive()` and `assert()`. Default 1. A scenario
      *  with no template still has one -- it is what a CSMS operation addresses. */

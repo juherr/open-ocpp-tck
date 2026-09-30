@@ -35,6 +35,7 @@
  *    rows for every registered scenario. This is checked by `scopeCoverage`.
  */
 
+import { SCENARIO_TAGS, type ScenarioTag } from "./scenario-tags";
 import type { ScenarioOcppVersion } from "./spec-types";
 
 export type ScopeStatus = "DRIVABLE" | "CONDITIONAL" | "NOT_APPLICABLE";
@@ -133,4 +134,55 @@ export function scopeCoverage(
     missing: [...required].filter((id) => !rows.has(id)).sort(),
     stale: [...rows].filter((id) => !registered.has(id)).sort(),
   };
+}
+
+/**
+ * A driver's scope, counted per tag: what `check-driver` reports so that a
+ * driver excluding a whole domain is named as such rather than left for a
+ * reader to add up. A scenario counts under every tag it carries, so the
+ * counts do not sum to the registry. Its status is the one the runner would
+ * apply -- a protocol the driver does not declare is NOT_APPLICABLE with no
+ * row -- and a scenario with no status at all is left out: `scopeCoverage`
+ * already reports it as missing. Keys in vocabulary order, and only tags
+ * some scenario carries, so two runs diff cleanly.
+ */
+export function scopeByTag(
+  table: ScopeTable,
+  registeredScenarios: readonly {
+    templateId: string;
+    ocppVersion: ScenarioOcppVersion;
+    tags: readonly ScenarioTag[];
+  }[],
+  protocols?: readonly ScenarioOcppVersion[],
+): Partial<Record<ScenarioTag, Record<ScopeStatus, number>>> {
+  const counts = new Map<ScenarioTag, Record<ScopeStatus, number>>();
+  for (const scenario of registeredScenarios) {
+    const entry = scopeEntryForScenario(
+      table,
+      scenario.templateId,
+      scenario.ocppVersion,
+      protocols,
+    );
+    if (!entry) continue;
+    for (const tag of scenario.tags) {
+      const count = counts.get(tag) ?? { DRIVABLE: 0, CONDITIONAL: 0, NOT_APPLICABLE: 0 };
+      count[entry.status] += 1;
+      counts.set(tag, count);
+    }
+  }
+  return Object.fromEntries(
+    SCENARIO_TAGS.filter((tag) => counts.has(tag)).map((tag) => [tag, counts.get(tag)!]),
+  );
+}
+
+/** The tags a driver drives nothing of: every scenario carrying one is
+ *  NOT_APPLICABLE. What `check-driver` names, because a whole domain the
+ *  driver excludes is news where a count of it is arithmetic. */
+export function tagsDrivenNone(
+  byTag: Partial<Record<ScenarioTag, Record<ScopeStatus, number>>>,
+): ScenarioTag[] {
+  return SCENARIO_TAGS.filter((tag) => {
+    const count = byTag[tag];
+    return count !== undefined && count.DRIVABLE + count.CONDITIONAL === 0;
+  });
 }
