@@ -170,11 +170,11 @@ Every scenario declares its executable OCPP protocol. `ocpp-tck run` selects the
 
 | Command | Needs | What it does |
 |---|---|---|
-| `ocpp-tck run [--version 1.6|2.0.1] [--group N]` | docker + CSMS | A full suite sweep, optionally filtered |
-| `ocpp-tck run <template-id> [--version 1.6|2.0.1]` | docker + CSMS | One scenario, optionally checked against its declared version |
-| `ocpp-tck run-all [--group N] [--version 1.6|2.0.1] [--parallel]` | docker + CSMS | A sweep; group and version filters intersect |
+| `ocpp-tck run [--version 1.6\|2.0.1] [--group N]` | docker + CSMS | A full suite sweep, optionally filtered |
+| `ocpp-tck run <template-id> [--version 1.6\|2.0.1]` | docker + CSMS | One scenario, optionally checked against its declared version |
+| `ocpp-tck run-all [--group N] [--version 1.6\|2.0.1] [--parallel]` | docker + CSMS | A sweep; group and version filters intersect |
 | `ocpp-tck check-driver [--driver SPEC]` | nothing | Offline conformance of a driver against this core |
-| `ocpp-tck list-scenarios [--group N] [--version 1.6|2.0.1] [--json]` | nothing | The 96 registered scenarios, optionally filtered |
+| `ocpp-tck list-scenarios [--group N] [--version 1.6\|2.0.1] [--json]` | nothing | The 96 registered scenarios, optionally filtered |
 | `ocpp-tck print-sim-image` | nothing | The pinned simulator image digest |
 | `ocpp-tck driver selftest [--with-writes]` | CSMS | Every `CsmsRecords` method once, in seconds: does this driver answer the contract? `--with-writes` adds the `prepareStation` hook |
 | `ocpp-tck driver <verb>` | driver-defined | A bootstrap verb your driver contributes |
