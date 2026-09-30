@@ -20,29 +20,14 @@
  * declared on the spec (or the `.feature`), never derived from its file, its
  * template id, its group, its OCA case prefix or its protocol.
  *
- * Extending the vocabulary is adding a member here with its one-line meaning,
- * a row to README.md's tag table, and at least one scenario that carries it:
+ * Extending the vocabulary is adding a member here, a row to README.md's tag
+ * table, and at least one scenario that carries it:
  * `tests/scenario-tags.ts` refuses a tag nothing carries.
  */
-/** Every tag, in the order help and reports list them, with what it means. */
-export declare const SCENARIO_TAG_MEANINGS: {
-    readonly provisioning: "booting, resetting and configuring the station (BootNotification, Reset, GetConfiguration, ChangeConfiguration, GetVariables, SetVariables, SetNetworkProfile)";
-    readonly authorization: "the CSMS's decision about an idToken, or the authorization cache (Authorize outcome, ClearCache)";
-    readonly "local-auth-list": "the station's local authorization list (GetLocalListVersion, SendLocalList)";
-    readonly transaction: "a charging transaction's start, stop, refusal or absence, as the frames or the CSMS's transaction record show it";
-    readonly "remote-control": "the CSMS controlling a session or a connector (RemoteStartTransaction, RemoteStopTransaction, UnlockConnector)";
-    readonly "remote-trigger": "the CSMS asking the station to send a message (TriggerMessage)";
-    readonly availability: "operative state and status of a connector, an EVSE or the station (ChangeAvailability, StatusNotification)";
-    readonly reservation: "reserving a connector (ReserveNow, CancelReservation)";
-    readonly metering: "meter values reported outside a transaction (MeterValues)";
-    readonly "smart-charging": "charging profiles and composite schedules (SetChargingProfile, GetChargingProfiles, ClearChargingProfile, GetCompositeSchedule)";
-    readonly firmware: "firmware and diagnostics management (UpdateFirmware, GetDiagnostics)";
-    readonly certificates: "certificate management (InstallCertificate, GetInstalledCertificateIds)";
-    readonly "data-transfer": "vendor-specific data exchange (DataTransfer)";
-};
-export type ScenarioTag = keyof typeof SCENARIO_TAG_MEANINGS;
-/** The vocabulary, in declaration order. */
-export declare const SCENARIO_TAGS: readonly ScenarioTag[];
+/** Every tag, in the order help and reports list them. What each one covers
+ *  is README.md's tag table, which `tests/scenario-tags.ts` holds to this list. */
+export declare const SCENARIO_TAGS: readonly ["provisioning", "authorization", "local-auth-list", "transaction", "remote-control", "remote-trigger", "availability", "reservation", "metering", "smart-charging", "firmware", "certificates", "data-transfer"];
+export type ScenarioTag = (typeof SCENARIO_TAGS)[number];
 /** What a spec declares: at least one tag, so a filter never misses it. */
 export type ScenarioTags = readonly [ScenarioTag, ...ScenarioTag[]];
 export declare function isScenarioTag(value: string): value is ScenarioTag;
@@ -50,5 +35,5 @@ export declare function isScenarioTag(value: string): value is ScenarioTag;
 export declare function parseScenarioTag(value: string): ScenarioTag;
 /** Validate a whole declaration -- at least one tag, each known, none twice.
  *  What a `.feature` compiles through; a TypeScript spec gets the first two
- *  from its type, and `tests/scenario-tags.ts` checks all three at runtime. */
+ *  from its type, and `tests/scenario-tags.ts` runs every spec through here. */
 export declare function parseScenarioTags(values: readonly string[]): ScenarioTags;

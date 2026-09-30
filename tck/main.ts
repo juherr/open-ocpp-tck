@@ -65,6 +65,7 @@ import {
 } from "./expected";
 import {
   scopeByTag,
+  tagsDrivenNone,
   scopeCoverage,
   scopeEntryForScenario,
   templateIdsWithStatus,
@@ -128,9 +129,12 @@ import {
 } from "./specs/index";
 import type { ScenarioOcppVersion, ScenarioSpec } from "./spec-types";
 import {
+  describeSelection,
   filterScenariosByTag,
   filterScenariosByVersion,
   parseScenarioVersionFilter,
+  selectScenarios,
+  type ScenarioSelection,
   type ScenarioVersionFilter,
 } from "./scenario-selection";
 import { parseScenarioTag, SCENARIO_TAGS, type ScenarioTag } from "./scenario-tags";
@@ -1628,8 +1632,7 @@ async function runGroupSweep(
   parallel: boolean,
   retryFailedIsolated: boolean,
   shard?: Shard,
-  version?: ScenarioVersionFilter,
-  tag?: ScenarioTag,
+  selection: ScenarioSelection = {},
 ): Promise<number> {
   const selected = GROUPS[groupName];
   if (!selected) {
@@ -1639,7 +1642,7 @@ async function runGroupSweep(
     return 1;
   }
 
-  const versioned = filterScenariosByTag(filterScenariosByVersion(selected, version), tag);
+  const versioned = selectScenarios(selected, selection);
   try {
     for (const spec of versioned) simConfigForScenario(spec.templateId, spec.ocppVersion);
   } catch (error) {
@@ -1654,8 +1657,7 @@ async function runGroupSweep(
   if (specs.length === 0) {
     process.stderr.write(
       `[runner] ${shardNote ?? "the selection"} is empty: group '${groupName}' ` +
-        `has ${versioned.length} scenario(s) for version ${version ?? "all"}` +
-        `${tag === undefined ? "" : ` and tag ${tag}`}. Nothing to run, and an empty sweep ` +
+        `has ${versioned.length} scenario(s) for ${describeSelection(selection)}. Nothing to run, and an empty sweep ` +
         `is not a passing one.\n`,
     );
     return 1;
@@ -2096,7 +2098,7 @@ function listScenarios(argv: string[]): number {
     const ids = new Set(GROUPS[group].map((s) => s.templateId));
     rows = rows.filter((r) => ids.has(r.templateId));
   }
-  rows = filterScenariosByTag(filterScenariosByVersion(rows, version), tag);
+  rows = selectScenarios(rows, { version, tag });
   const outputRows = rows.map(({ templateId, group, tags }) => ({ templateId, group, tags }));
   process.stdout.write(
     asJson
@@ -2383,9 +2385,7 @@ async function checkDriver(argv: string[]): Promise<number> {
   );
   process.stderr.write(`  protocols: ${summary.protocols.join(", ")}\n`);
   // Silence when none: only a domain the driver drives NOTHING of is news.
-  const excludedTags = Object.entries(summary.scopeByTag ?? {})
-    .filter(([, count]) => count.DRIVABLE + count.CONDITIONAL === 0)
-    .map(([tag]) => tag);
+  const excludedTags = summary.scopeByTag ? tagsDrivenNone(summary.scopeByTag) : [];
   if (excludedTags.length > 0) {
     process.stderr.write(`  drives no scenario tagged: ${excludedTags.join(", ")}\n`);
   }
@@ -2624,8 +2624,7 @@ export async function cli(argv: string[]): Promise<number> {
       args.parallel,
       args.retryFailedIsolated,
       args.shard,
-      args.version,
-      args.tag,
+      { version: args.version, tag: args.tag },
     );
   }
 

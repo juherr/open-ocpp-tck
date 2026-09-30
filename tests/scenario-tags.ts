@@ -22,23 +22,25 @@
  *     group, transactions across groups, the Gherkin Authorize scenarios by
  *     function. An unknown tag, and a second `--tag`, are refused.
  *  5. `scopeByTag` counts a driver's scope per tag, including the protocol
- *     opt-out, which is how `check-driver` names a domain a driver excludes.
+ *     opt-out, and `tagsDrivenNone` reads off it the domains a driver
+ *     excludes -- the line `check-driver` prints.
  *  6. The README's tag table lists exactly the vocabulary.
  *
  * In-process rather than shell for the reason `tests/scenario-version.ts`
  * is: the spec objects and `scopeByTag` are unreachable through the CLI, and
  * the CLI half is cheaper through the exported `cli()` than a process per row.
+ * `captureCli` is that guard's, copied: each guard here stands alone.
  */
 import assert from "node:assert/strict";
 import { readFileSync } from "node:fs";
 import {
   SCENARIO_TAGS,
-  isScenarioTag,
   parseScenarioTag,
+  parseScenarioTags,
   type ScenarioTag,
 } from "../tck/scenario-tags";
 import { filterScenariosByTag } from "../tck/scenario-selection";
-import { scopeByTag } from "../tck/scope";
+import { scopeByTag, tagsDrivenNone } from "../tck/scope";
 import { cli } from "../tck/main";
 import { CORE_SPECS } from "../tck/specs/core";
 import { CORE_201_SPECS } from "../tck/specs/core-201";
@@ -70,6 +72,7 @@ async function listJson(...args: string[]): Promise<Row[]> {
 }
 
 const ids = (rows: readonly { templateId: string }[]) => rows.map((row) => row.templateId).sort();
+const idSet = (rows: readonly { templateId: string }[]) => new Set(rows.map((row) => row.templateId));
 
 // --- 1. every registered scenario carries valid, distinct tags -------------
 
@@ -83,24 +86,20 @@ const specs = [
   ...AUTHORIZE_SPECS,
 ];
 assert.deepEqual(ids(registry), ids(specs), "list-scenarios lists every exported spec");
+// The rule a `.feature` compiles through: at least one, each known, none twice.
 for (const spec of specs) {
-  const tags: readonly unknown[] = spec.tags;
-  assert.ok(Array.isArray(tags) && tags.length > 0, `${spec.templateId} declares no tag`);
-  for (const tag of tags) {
-    assert.ok(typeof tag === "string" && isScenarioTag(tag), `${spec.templateId}: unknown tag ${String(tag)}`);
-  }
-  assert.equal(new Set(tags).size, tags.length, `${spec.templateId} repeats a tag`);
+  assert.doesNotThrow(() => parseScenarioTags(spec.tags), `${spec.templateId}: ${JSON.stringify(spec.tags)}`);
 }
+const specById = new Map(specs.map((spec) => [spec.templateId, spec]));
 for (const row of registry) {
-  const spec = specs.find((candidate) => candidate.templateId === row.templateId);
-  assert.deepEqual(row.tags, spec?.tags, `${row.templateId}: list-scenarios reports the declared tags`);
+  assert.deepEqual(row.tags, specById.get(row.templateId)?.tags, `${row.templateId}: list-scenarios reports the declared tags`);
 }
 
 // --- 2. no dead vocabulary --------------------------------------------------
 
 for (const tag of SCENARIO_TAGS) {
   assert.ok(
-    specs.some((spec) => (spec.tags as readonly string[]).includes(tag)),
+    specs.some((spec) => spec.tags.includes(tag)),
     `no registered scenario carries '${tag}'`,
   );
 }
@@ -130,36 +129,38 @@ assert.deepEqual(ids(filterScenariosByTag(stubs, undefined)), ids(stubs), "no ta
 const remoteTriggerGroup = await listJson("--group", "remotetrigger-smartcharging");
 const smartCharging = await listJson("--tag", "smart-charging");
 const triggers = ["cert16-tc054-trigger-message", "cert16-tc055-trigger-message-rejected"];
-assert.ok(triggers.every((id) => ids(remoteTriggerGroup).includes(id)), "the historical group still mixes both domains");
-assert.ok(triggers.every((id) => !ids(smartCharging).includes(id)), "--tag smart-charging leaves remote trigger out");
+const remoteTriggerGroupIds = idSet(remoteTriggerGroup);
+const smartChargingIds = idSet(smartCharging);
+assert.ok(triggers.every((id) => remoteTriggerGroupIds.has(id)), "the historical group still mixes both domains");
+assert.ok(triggers.every((id) => !smartChargingIds.has(id)), "--tag smart-charging leaves remote trigger out");
 assert.ok(smartCharging.every((row) => row.tags.includes("smart-charging")));
-assert.ok(ids(smartCharging).includes("cert16-tc056-central-smart-charging-txdefault"));
-assert.ok(ids(smartCharging).includes("cert201-tck01-set-tx-default-profile"));
+assert.ok(smartChargingIds.has("cert16-tc056-central-smart-charging-txdefault"));
+assert.ok(smartChargingIds.has("cert201-tck01-set-tx-default-profile"));
 
 const transactions = await listJson("--tag", "transaction");
 assert.ok(new Set(transactions.map((row) => row.group)).size >= 3, "--tag transaction spans groups");
 
-const authorization = await listJson("--tag", "authorization");
+const authorizationIds = idSet(await listJson("--tag", "authorization"));
 for (const id of [
   "cert16-tc023-1-authorize-invalid",
   "cert16-tc023-2-authorize-expired",
   "cert16-tc023-3-authorize-blocked",
 ]) {
-  assert.ok(ids(authorization).includes(id), `--tag authorization finds the Gherkin-compiled ${id}`);
+  assert.ok(authorizationIds.has(id), `--tag authorization finds the Gherkin-compiled ${id}`);
 }
 
 const smartCharging201 = await listJson("--version", "2.0.1", "--tag", "smart-charging");
 assert.ok(smartCharging201.length > 0);
 assert.deepEqual(
   ids(smartCharging201),
-  ids(smartCharging).filter((id) => CORE_201_SPECS.some((spec) => spec.templateId === id)),
+  ids(smartCharging).filter((id) => specById.get(id)?.ocppVersion === "OCPP-2.0.1"),
   "--version and --tag intersect",
 );
 
 const groupAndTag = await listJson("--group", "remotetrigger-smartcharging", "--tag", "smart-charging");
 assert.deepEqual(
   ids(groupAndTag),
-  ids(remoteTriggerGroup).filter((id) => ids(smartCharging).includes(id)),
+  ids(remoteTriggerGroup).filter((id) => smartChargingIds.has(id)),
   "--group and --tag intersect",
 );
 assert.ok(groupAndTag.length > 0 && groupAndTag.length < remoteTriggerGroup.length);
@@ -216,9 +217,17 @@ assert.deepEqual(byTag, {
   // No row, and still counted: the driver's protocols exclude it.
   certificates: { DRIVABLE: 0, CONDITIONAL: 0, NOT_APPLICABLE: 1 },
 });
-assert.deepEqual(Object.keys(byTag), ["smart-charging", "transaction", "firmware", "certificates"].sort(
-  (x, y) => SCENARIO_TAGS.indexOf(x as ScenarioTag) - SCENARIO_TAGS.indexOf(y as ScenarioTag),
-), "vocabulary order, so two runs diff cleanly");
+assert.deepEqual(
+  Object.keys(byTag),
+  ["transaction", "smart-charging", "firmware", "certificates"],
+  "vocabulary order, so two runs diff cleanly",
+);
+assert.deepEqual(tagsDrivenNone(byTag), ["firmware", "certificates"], "a domain driven by nothing is named");
+assert.deepEqual(
+  tagsDrivenNone({ transaction: { DRIVABLE: 0, CONDITIONAL: 1, NOT_APPLICABLE: 3 } }),
+  [],
+  "one CONDITIONAL scenario is not an excluded domain",
+);
 
 // --- 6. the README table ----------------------------------------------------
 

@@ -113,24 +113,7 @@ function parseDocument(source: string, uri: string): GherkinDocument {
 function parseTags(document: GherkinDocument, scenario: GherkinScenario, uri: string): ScenarioMetadata {
   const feature = document.feature;
   if (!feature) throw new Error(`${uri}: expected one Feature`);
-  const values = new Map<string, string>();
-  const scenarioTags: string[] = [];
-  for (const tag of [...feature.tags, ...scenario.tags]) {
-    const match = /^@([A-Za-z][A-Za-z0-9]*):([^\s]+)$/.exec(tag.name);
-    if (!match) throw new Error(`${uri}: invalid tag ${tag.name}`);
-    const [, key, value] = match;
-    // The one key that repeats: a scenario may be about several things.
-    if (key === "tag") {
-      scenarioTags.push(value);
-      continue;
-    }
-    if (!["id", "sut", "ocpp", "template", "connector", "bootWaitSecs", "holdSecs"].includes(key)) {
-      throw new Error(`${uri}: unknown tag @${key}`);
-    }
-    if (values.has(key)) throw new Error(`${uri}: duplicate tag @${key}`);
-    values.set(key, value);
-  }
-  const tags = featureScenarioTags(scenarioTags, uri);
+  const { values, tags } = readFeatureTags([...feature.tags, ...scenario.tags], uri);
   if (values.get("ocpp") !== "1.6") {
     throw new Error(`${uri}: unsupported OCPP version ${values.get("ocpp") ?? "(missing)"}`);
   }
@@ -148,11 +131,34 @@ function parseTags(document: GherkinDocument, scenario: GherkinScenario, uri: st
   return { id, sut: "csms", template, ocppVersion: "OCPP-1.6J", connector, bootWaitSecs, holdSecs, description: "", tags };
 }
 
-/** `@tag:<name>` values, through the same vocabulary a TypeScript spec uses;
- *  the error names the file, as every other refusal here does. */
-export function featureScenarioTags(values: readonly string[], uri: string): ScenarioTags {
+/**
+ * The `@key:value` line both compilers read: every key known and given once,
+ * except `@tag`, the one that repeats -- a scenario may be about several
+ * things -- and whose values go through the same vocabulary a TypeScript spec
+ * uses. Every refusal names the file.
+ */
+export function readFeatureTags(
+  featureTags: readonly { name: string }[],
+  uri: string,
+): { values: Map<string, string>; tags: ScenarioTags } {
+  const values = new Map<string, string>();
+  const scenarioTags: string[] = [];
+  for (const tag of featureTags) {
+    const match = /^@([A-Za-z][A-Za-z0-9]*):([^\s]+)$/.exec(tag.name);
+    if (!match) throw new Error(`${uri}: invalid tag ${tag.name}`);
+    const [, key, value] = match;
+    if (key === "tag") {
+      scenarioTags.push(value);
+      continue;
+    }
+    if (!["id", "sut", "ocpp", "template", "connector", "bootWaitSecs", "holdSecs"].includes(key)) {
+      throw new Error(`${uri}: unknown tag @${key}`);
+    }
+    if (values.has(key)) throw new Error(`${uri}: duplicate tag @${key}`);
+    values.set(key, value);
+  }
   try {
-    return parseScenarioTags(values);
+    return { values, tags: parseScenarioTags(scenarioTags) };
   } catch (error) {
     throw new Error(`${uri}: ${error instanceof Error ? error.message : String(error)}`);
   }

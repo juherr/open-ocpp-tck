@@ -35,3 +35,23 @@ export function filterScenariosByTag<
   if (tag === undefined) return [...scenarios];
   return scenarios.filter((scenario) => scenario.tags.includes(tag));
 }
+
+/** The filters that intersect with a group; each reads its own declaration. */
+export interface ScenarioSelection {
+  readonly version?: ScenarioVersionFilter;
+  readonly tag?: ScenarioTag;
+}
+
+/** Every filter in `selection`, intersected -- the one way a sweep or a list
+ *  narrows its group, so a new axis is added here and nowhere else. */
+export function selectScenarios<
+  T extends { readonly ocppVersion: string; readonly tags: readonly string[] },
+>(scenarios: readonly T[], selection: ScenarioSelection): T[] {
+  return filterScenariosByTag(filterScenariosByVersion(scenarios, selection.version), selection.tag);
+}
+
+/** The selection as the refusal of an empty sweep spells it. */
+export function describeSelection(selection: ScenarioSelection): string {
+  return `version ${selection.version ?? "all"}` +
+    (selection.tag === undefined ? "" : ` and tag ${selection.tag}`);
+}

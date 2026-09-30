@@ -79,3 +79,7 @@ export declare function scopeByTag(table: ScopeTable, registeredScenarios: reado
     ocppVersion: ScenarioOcppVersion;
     tags: readonly ScenarioTag[];
 }[], protocols?: readonly ScenarioOcppVersion[]): Partial<Record<ScenarioTag, Record<ScopeStatus, number>>>;
+/** The tags a driver drives nothing of: every scenario carrying one is
+ *  NOT_APPLICABLE. What `check-driver` names, because a whole domain the
+ *  driver excludes is news where a count of it is arithmetic. */
+export declare function tagsDrivenNone(byTag: Partial<Record<ScenarioTag, Record<ScopeStatus, number>>>): ScenarioTag[];

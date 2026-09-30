@@ -174,3 +174,15 @@ export function scopeByTag(
     SCENARIO_TAGS.filter((tag) => counts.has(tag)).map((tag) => [tag, counts.get(tag)!]),
   );
 }
+
+/** The tags a driver drives nothing of: every scenario carrying one is
+ *  NOT_APPLICABLE. What `check-driver` names, because a whole domain the
+ *  driver excludes is news where a count of it is arithmetic. */
+export function tagsDrivenNone(
+  byTag: Partial<Record<ScenarioTag, Record<ScopeStatus, number>>>,
+): ScenarioTag[] {
+  return SCENARIO_TAGS.filter((tag) => {
+    const count = byTag[tag];
+    return count !== undefined && count.DRIVABLE + count.CONDITIONAL === 0;
+  });
+}
