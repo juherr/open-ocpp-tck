@@ -476,6 +476,26 @@ Released as `0.3.0`. The documented install ref already points at that tag, so
 
 ### Changed
 
+- **The CitrineOS stack pin moved from `v2.0.0-beta4` to the `v2.0.0` GA, and
+  the driver was ported to its schema** ([#143]) —
+  `ghcr.io/citrineos/citrineos-server@sha256:c57849f2…`, resolved 2026-09-30.
+  `CITRINE_VARIANT=v2` now means the GA schema, and **a v2 prerelease is no
+  longer drivable**: `driver verify` refuses beta1..beta4 by name instead of
+  telling the operator to switch to `v1`. Pin an ocpp-tck ref from before
+  this change to keep sweeping a prerelease. The GA drops
+  `ocppConnectionName` from every table that carries the integer station key
+  (citrineos-core#1058). The driver now reaches `Transactions`, `Connectors`
+  and `VariableAttributes` through a `ChargingStation` relationship it creates
+  itself. `LocalListVersions` and `SendLocalLists` keep the column, and the
+  `Evses` and `Connectors` fixture inserts no longer write it.
+  `Transactions` is partitioned on `createdAt` (citrineos-core#909), so
+  `StopTransactions` is joined on `(id, createdAt)` through a column mapping
+  copied from upstream's own Hasura metadata. The schema check now reads
+  `stationId`'s type as well as the name column, because v1.9.1 and the GA
+  both lack the name column. The image is slim (citrineos-core#1064), so the
+  compose file's fileAccess and Swagger paths are now absolute under `dist/`.
+  `tests/citrineos-device-model-fixture.ts` models the GA schema and holds
+  the four new claims, each with a mutation.
 - **The documentation now says that no pinned CitrineOS build is the
   certified one** ([#58]). The OCA certificate `OCA.0201.0053.CSMS` covers
   CitrineOS 1.5.1, and that is a generation this driver cannot speak: it has
@@ -935,4 +955,5 @@ releases from 141 commits would mean writing detail nobody measured.
 [#114]: https://github.com/juherr/open-ocpp-tck/issues/114
 [#119]: https://github.com/juherr/open-ocpp-tck/issues/119
 [#127]: https://github.com/juherr/open-ocpp-tck/issues/127
+[#143]: https://github.com/juherr/open-ocpp-tck/issues/143
 [citrineos/citrineos#223]: https://github.com/citrineos/citrineos/issues/223

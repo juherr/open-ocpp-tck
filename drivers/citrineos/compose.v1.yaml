@@ -13,8 +13,9 @@
 #
 # CITRINE_VARIANT=v1 is NOT optional with this file. The driver declares the
 # variant rather than detecting it (drivers/citrineos/variant.ts explains why),
-# and v1.9.1 names the OCPP connection column `stationId` where v2 names it
-# `ocppConnectionName`. Forgetting it is caught immediately and by name:
+# and v1.9.1 keys a station by a string `stationId` holding the OCPP name,
+# where v2 keys it by an integer one. Forgetting it is caught immediately and
+# by name:
 # `ocpp-tck driver verify` compares the declaration against the running
 # schema before it looks at a single fixture.
 #

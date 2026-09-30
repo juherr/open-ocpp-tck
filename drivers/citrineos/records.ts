@@ -28,9 +28,9 @@
  * WHAT IT COSTS, stated because the earlier `docker exec psql` transport was
  * chosen partly to avoid it: another pinned image and another published port
  * (compose.yaml), and no insulation from the schema -- Hasura derives its
- * field names from column names, so the v1.9.1 -> v2 rename of the OCPP
- * connection column (variant.ts) breaks these queries exactly as it broke the
- * SQL. It is a different syntax for the same coupling.
+ * field names from column names, so each move of the OCPP connection name
+ * (variant.ts) breaks these queries exactly as it broke the SQL. It is a
+ * different syntax for the same coupling.
  *
  * WHAT IT BUYS: this driver no longer shells into a container, so it can be
  * pointed at a CitrineOS nobody on this host owns -- and a query costs an HTTP
@@ -40,6 +40,7 @@ import {
   type CsmsChargingProfileRecords,
   type CsmsDeviceModelRecords,
   type CsmsRecords,
+  type FetchLike,
 } from "../../tck/driver";
 import { waitForCondition } from "../../tck/wait";
 import type { CitrineConfig } from "./config";
@@ -49,7 +50,13 @@ import {
   componentInstance,
 } from "./device-model";
 import { CitrineGraphQL } from "./graphql-client";
-import { speaksOcpp201, stationColumn } from "./variant";
+import {
+  localListScoped,
+  speaksOcpp201,
+  stationScoped,
+  type CitrineVariant,
+  type Where,
+} from "./variant";
 import { refByDescription } from "./profiles";
 
 /**
@@ -109,31 +116,36 @@ export class CitrineRecords
   private readonly tenant: number;
 
   /**
-   * The column holding the OCPP connection name for the declared variant --
-   * `ocppConnectionName` on v2, `stationId` on v1.9.1. See variant.ts for why
-   * this is declared rather than detected, and for the trap that makes
-   * `stationId`'s mere presence useless as a discriminator.
-   *
-   * It is interpolated into the GraphQL document rather than passed as a
-   * variable because GraphQL has no way to parameterise a field name -- the
-   * same reason the SQL interpolated it into a WHERE clause. The value comes
-   * from variant.ts's closed union, never from input.
+   * The declared line, which decides how a table is scoped to a station --
+   * variant.ts's `stationScoped` and `localListScoped`. See variant.ts for why
+   * it is declared rather than detected, and for why the GA needs two
+   * spellings where the older lines needed one.
    */
-  private readonly station: string;
+  private readonly variant: CitrineVariant;
 
-  constructor(cfg: CitrineConfig) {
-    this.gql = new CitrineGraphQL(cfg);
+  /** `fetchImpl` is the {@link FetchLike} seam
+   *  `tests/citrineos-device-model-fixture.ts` reads the `where` of every
+   *  reader through; the CLI never passes it. */
+  constructor(cfg: CitrineConfig, fetchImpl?: FetchLike) {
+    this.gql = new CitrineGraphQL(cfg, fetchImpl);
     this.tenant = cfg.tenantId;
-    this.station = stationColumn(cfg.variant);
+    this.variant = cfg.variant;
     // After the field initialisers, which is when `deviceModelReader` exists:
     // class fields are initialised in declaration order before the constructor
     // body runs.
     if (speaksOcpp201(cfg.variant)) this.deviceModel = this.deviceModelReader;
   }
 
-  /** `where` on a station's transactions, spelled once. */
-  private stationFilter(cpId: string): Record<string, unknown> {
-    return { [this.station]: { _eq: cpId }, tenantId: { _eq: this.tenant } };
+  /** `where` on a station's rows in `Transactions`, `Connectors` or
+   *  `VariableAttributes`, spelled once. */
+  private stationFilter(cpId: string): Where {
+    return { ...stationScoped(this.variant, cpId), tenantId: { _eq: this.tenant } };
+  }
+
+  /** The same for `LocalListVersions` and `SendLocalLists`, which the GA left
+   *  keyed by name. */
+  private localListFilter(cpId: string): Where {
+    return { ...localListScoped(this.variant, cpId), tenantId: { _eq: this.tenant } };
   }
 
   private async newestTransaction(
@@ -246,12 +258,13 @@ export class CitrineRecords
    */
   async prepareStation(cpId: string): Promise<void> {
     const station = this.stationFilter(cpId);
+    const localList = this.localListFilter(cpId);
     const now = new Date().toISOString();
 
-    // The station predicate comes from stationFilter for all three tables, so
-    // the variant-dependent column name is interpolated in exactly one place
-    // in this file. Only the `where` TYPES differ, which GraphQL requires
-    // spelled per table.
+    // Two station predicates for three tables, because the GA split them:
+    // `Transactions` lost the name column and is reached through its station,
+    // the local-list tables kept it. Both come from variant.ts, so the
+    // variant-dependent spelling lives there and not in this file.
     const open = await this.gql.query<{
       Transactions: { id: number; endTime: string | null; stoppedReason: string | null }[];
       LocalListVersions: { id: number }[];
@@ -264,8 +277,8 @@ export class CitrineRecords
        }`,
       {
         open: { ...station, isActive: { _eq: true } },
-        versions: station,
-        sends: station,
+        versions: localList,
+        sends: localList,
       },
     );
 

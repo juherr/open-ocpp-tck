@@ -35,7 +35,7 @@
 # mid-sweep against.
 name: citrineos${TCK_SUFFIX:-}
 
-# Derived from citrineos-core's own docker-compose.yml @ v2.0.0-beta4
+# Derived from citrineos-core's own docker-compose.yml @ v2.0.0
 # (Apache-2.0). Modified: the operator UI, the OCPI server and the mock MSP
 # are dropped; minio is dropped because fileAccess.type defaults to `local`,
 # so nothing reaches S3; every volume is dropped; images are pinned by digest;
@@ -49,14 +49,22 @@ services:
   # conformance run. Same discipline as DEFAULT_SIM_IMAGE in tck/sim.ts and as
   # drivers/steve/compose.yaml.
   #
-  # A v2 prerelease rather than the v1.9.1 stable, deliberately: the OCPP 1.6
+  # The v2 line rather than the v1.9.1 stable, deliberately: the OCPP 1.6
   # GetLocalListVersion and SendLocalList message endpoints exist only from the
   # v2 line (packages/ocpp/src/apis/ocpp/1.6/ev-driver.ts at this tag), and six
   # scenarios need them. See drivers/citrineos/README.md for the v1.9.1 variant
   # and what it costs.
   #
-  # beta4 rather than beta3, and it is four findings closing rather than a
-  # tidy-up: citrineos-core#890 answers an OCPP 1.6 FirmwareStatusNotification
+  # The v2.0.0 GA rather than beta4, and it is a driver port rather than a
+  # digest swap: the GA drops `ocppConnectionName` from every table carrying
+  # the integer station key and partitions `Transactions`, so the driver reads
+  # stations through a relationship and joins StopTransactions on the
+  # partition key (variant.ts, graphql-client.ts). `CITRINE_VARIANT=v2` means
+  # this schema, and `driver verify` refuses a prerelease by name. The image
+  # is also slim from the GA -- see the two fileAccess paths below.
+  #
+  # beta4 before it was four findings closing rather than a tidy-up:
+  # citrineos-core#890 answers an OCPP 1.6 FirmwareStatusNotification
   # with the .conf OCA TC_044 requires instead of a NotSupported CALLERROR,
   # citrineos-core#907 maps a stored `Blocked` idTag to `Blocked` on Authorize
   # instead of `Invalid` (TC_023.3), and citrineos-core#846 stops a failed
@@ -70,10 +78,10 @@ services:
   #        | sed -n 's/.*"token":"\([^"]*\)".*/\1/p')
   #   curl -sSI -H "Authorization: Bearer $T" \
   #     -H "Accept: application/vnd.oci.image.index.v1+json" \
-  #     https://ghcr.io/v2/citrineos/citrineos-server/manifests/v2.0.0-beta4 \
+  #     https://ghcr.io/v2/citrineos/citrineos-server/manifests/v2.0.0 \
   #     | grep -i docker-content-digest
   citrine:
-    image: ghcr.io/citrineos/citrineos-server:v2.0.0-beta4@sha256:e33badb992d7b7fd28a8d1ac0d0ee6f10817f34f2647db168603424102eeb7c2
+    image: ghcr.io/citrineos/citrineos-server:v2.0.0@sha256:c57849f27223b93a574b5cb12dd2c11878d8d5936aa4640d7f3f1d2ee8681f81
     container_name: citrine${TCK_SUFFIX:-}
     restart: unless-stopped
     depends_on:
@@ -99,13 +107,16 @@ services:
       # websocket servers (8081 plaintext, 8082 basic-auth, 8443/8444 TLS) are
       # read from websocket-servers.json RELATIVE TO IT, so a root that does
       # not hold that file is a server with an HTTP API and no OCPP listener.
-      # It is spelled from the repository root because that is the working
-      # directory entrypoint.sh runs `node` from in the image. Local disk, not
-      # S3, is the default, which is why there is no minio service here.
-      CITRINEOS_FILEACCESS_LOCAL_DEFAULTFILEPATH: "apps/ocpp-server/src/assets"
-      # The Swagger logo is the one path read straight from the working
-      # directory rather than through fileAccess, so it needs the full prefix.
-      CITRINEOS_SWAGGER_LOGOPATH: "apps/ocpp-server/src/assets/logo.png"
+      # ABSOLUTE, and under `dist/`, from the GA: the image is built with
+      # `pnpm deploy --prod`, so it ships the compiled app without `src/`, and
+      # its WORKDIR moved from the repository root to apps/ocpp-server. The
+      # relative `apps/ocpp-server/src/assets` beta4 took resolves to nothing
+      # there. Both values are upstream's own compose at the tag. Local disk,
+      # not S3, is the default, which is why there is no minio service here.
+      CITRINEOS_FILEACCESS_LOCAL_DEFAULTFILEPATH: "/usr/local/apps/citrineos/apps/ocpp-server/dist/assets"
+      # The Swagger logo is the one path read straight from the filesystem
+      # rather than through fileAccess, so it is spelled in full.
+      CITRINEOS_SWAGGER_LOGOPATH: "/usr/local/apps/citrineos/apps/ocpp-server/dist/assets/logo.png"
       # NOT set, on purpose: CITRINEOS_INTEGRATIONS_V2GCA and
       # CITRINEOS_INTEGRATIONS_CHARGINGSTATIONCA. Upstream's compose turns both
       # on, which points the server at Hubject's test PKI and Let's Encrypt
@@ -116,8 +127,8 @@ services:
       # unauthenticated without being asked to; that is what the header means
       # by "the shipped defaults".
     ports:
-      # Published because the driver runs on the HOST (it reaches Postgres via
-      # `docker exec`), so its CITRINE_API_URL is http://localhost:8080 while
+      # Published because the driver runs on the HOST, so its CITRINE_API_URL
+      # is http://localhost:8080 while
       # the simulator container, on citrineos-internal, uses ws://citrine:8081/ .
       # That asymmetry is why CITRINE_API_URL and CITRINE_WS_URL are separate
       # settings.

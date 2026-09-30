@@ -5,15 +5,19 @@
  * THE WINDOW THIS CLOSES. The runner's boot gate opens on BootNotification.conf
  * and settles for `bootWaitSecs`; the station's boot-time StatusNotifications
  * go out 1-4 ms after that conf, and a healthy CSMS answers them in ~300 ms.
- * The pinned CitrineOS refuses to dispatch a CSMS-initiated Call while ANY
- * Call of the station's own is still in progress -- `sendCall` throws a retry
- * on `existsAnyInNamespace(Transactions + station)` -- and its broker receiver
- * re-queues the refused Call every ~1 ms, with no backoff, until the entry
- * clears (citrineos/citrineos#223; the mechanism is written up in #119). Three
- * stations booting in 2.0.1 at once exhaust its Postgres pool for the pool's
- * 60 s acquire timeout, the StatusNotification handlers sit in that queue, and
- * a dispatch 4 s after the boot lands inside the window: on `v2.0.0-beta4`, 5
- * of 8 CI shard runs collapsed there (#138).
+ * CitrineOS refuses to dispatch a CSMS-initiated Call while ANY Call of the
+ * station's own is still in progress -- `sendCall` throws a retry on
+ * `existsAnyInNamespace(Transactions + station)` -- and through
+ * `v2.0.0-beta4` its broker receiver re-queued the refused Call every ~1 ms,
+ * with no backoff, until the entry cleared (citrineos/citrineos#223; the
+ * mechanism is written up in #119). Three stations booting in 2.0.1 at once
+ * exhaust its Postgres pool for the pool's 60 s acquire timeout, the
+ * StatusNotification handlers sit in that queue, and a dispatch 4 s after the
+ * boot lands inside the window: on `v2.0.0-beta4`, 5 of 8 CI shard runs
+ * collapsed there (#138). From `v2.0.0` the receiver backs off and DROPS the
+ * Call once it is older than `maxCallLengthSeconds` (citrineos-core#1030),
+ * which bounds the loop and still never delivers the Call -- so the window is
+ * as much this gate's business as it was.
  *
  * THE CONDITION IS THE CSMS'S OWN, NOT A HEURISTIC. The in-progress entry is
  * set when the station's CALL arrives (`_onCall`, `setIfNotExist`) and removed

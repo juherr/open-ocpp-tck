@@ -62,7 +62,12 @@ import {
   type StatusTarget,
 } from "./device-model";
 import { CitrineGraphQL } from "./graphql-client";
-import { NO_OCPP_201_ON_V1, speaksOcpp201, stationColumn } from "./variant";
+import {
+  NO_OCPP_201_ON_V1,
+  schemaOf,
+  speaksOcpp201,
+  type IntrospectedField,
+} from "./variant";
 
 /**
  * Tags that must exist and authorize normally.
@@ -257,10 +262,9 @@ export class CitrineProvisioner {
    * pointed at. THE SAME PREDICATE THE CAPABILITY USES, and for a reason that
    * is not symmetry.
    *
-   * The v1.9.1 line has no `ocppConnectionName`: it never got the rename
-   * migration, and its `Connector.stationId` is a STRING holding the OCPP
-   * name. Every write below spells `ocppConnectionName` literally -- correctly
-   * for v2, and as a field the v1 schema does not expose -- so an ungated
+   * The v1.9.1 line keys a station by a STRING `stationId` holding the OCPP
+   * name. Every write below keys its rows by the station's INTEGER id -- the
+   * v2 shape, which the v1 schema does not have -- so an ungated
    * `ensureStationTopology` fails on every scenario of a line where eighteen
    * of them are still drivable. Nothing offline sees it: the scope check is
    * static, and no CI lane sweeps v1.
@@ -444,17 +448,17 @@ export class CitrineProvisioner {
    * Does the running server's schema match the variant we were told to expect?
    *
    * variant.ts declares rather than detects, so that the scope table stays
-   * readable offline -- which leaves exactly one way for the declaration to be
-   * wrong: pointing a `v2` driver at a `v1.9.1` server, or the reverse. The
-   * symptom without this check is silent and expensive: every record read
-   * filters on a field the schema does not have, so the data API rejects the
-   * query and a dozen scenarios report the CSMS as empty. One query converts
-   * that into a sentence.
+   * readable offline -- which leaves two ways for the declaration to be wrong:
+   * pointing a `v2` driver at a `v1.9.1` server or the reverse, and pointing
+   * it at a v2 PRERELEASE, whose schema is neither. The symptom without this
+   * check is silent and expensive: every record read filters on a field the
+   * schema does not have, so the data API rejects the query and a dozen
+   * scenarios report the CSMS as empty. One query converts that into a
+   * sentence.
    *
-   * The discriminator is `ocppConnectionName`, never `stationId`: `stationId`
-   * exists on `Transactions` in BOTH lines -- `character varying` holding the
-   * OCPP name on v1.9.1, an `integer` foreign key on v2 -- so its presence
-   * proves nothing. Both facts were read off running containers.
+   * The discriminator is variant.ts's `schemaOf`, which needs both
+   * `ocppConnectionName`'s presence and `stationId`'s TYPE: `stationId` exists
+   * in all three shapes, and the name column is absent from two of them.
    *
    * Asked of the GraphQL schema rather than of `information_schema`, which
    * Hasura does not expose: the generated type mirrors the table's columns, so
@@ -463,8 +467,12 @@ export class CitrineProvisioner {
    */
   private async verifySchema(): Promise<string[]> {
     const data = await this.gql.query<{
-      __type: { fields: { name: string }[] } | null;
-    }>(`{ __type(name: "Transactions") { fields { name } } }`);
+      __type: { fields: IntrospectedField[] } | null;
+    }>(
+      `{ __type(name: "Transactions") {
+           fields { name type { kind name ofType { kind name ofType { kind name } } } }
+         } }`,
+    );
     if (data.__type === null) {
       return [
         "schema mismatch: the data API exposes no `Transactions` type. " +
@@ -472,17 +480,33 @@ export class CitrineProvisioner {
           "CITRINE_GRAPHQL_URL points at this server's graphql-engine.",
       ];
     }
-    const present = data.__type.fields.some(
-      (field) => field.name === "ocppConnectionName",
-    );
-    const expected = this.cfg.variant === "v2";
-    if (present === expected) return [];
-    return [
-      `schema mismatch: CITRINE_VARIANT=${this.cfg.variant} expects ` +
-        `Transactions."${stationColumn(this.cfg.variant)}", but the server ` +
-        `${present ? "has" : "does not have"} ocppConnectionName. ` +
-        `Set CITRINE_VARIANT=${present ? "v2" : "v1"} for this server.`,
-    ];
+    const found = schemaOf(data.__type.fields);
+    if (found === this.cfg.variant) return [];
+    const declared = `CITRINE_VARIANT=${this.cfg.variant}`;
+    switch (found) {
+      case "v2-prerelease":
+        return [
+          `schema mismatch: ${declared}, but the server is a v2 prerelease ` +
+            "(beta1..beta4): its Transactions still carries " +
+            "ocppConnectionName, which the v2.0.0 GA dropped. This driver " +
+            "speaks the GA schema; move the server to the image " +
+            "drivers/citrineos/compose.yaml pins, or pin an ocpp-tck ref " +
+            "from before the GA port.",
+        ];
+      case "v1":
+      case "v2":
+        return [
+          `schema mismatch: ${declared}, but the server's ` +
+            `Transactions.stationId is ${found === "v1" ? "a string (v1.9.1)" : "an integer (v2.0.0)"}. ` +
+            `Set CITRINE_VARIANT=${found} for this server.`,
+        ];
+      case undefined:
+        return [
+          `schema mismatch: ${declared}, but the server's Transactions ` +
+            "matches no CitrineOS line this driver knows -- neither an " +
+            "ocppConnectionName nor a String or Int stationId.",
+        ];
+    }
   }
 
   /**
@@ -1251,7 +1275,7 @@ export class CitrineProvisioner {
     const stationId = await this.ensureChargingStation(cpId, now);
     for (const target of statusTargets(connectors)) {
       const evseRowId = await this.ensureEvse(cpId, stationId, target, now);
-      await this.ensureConnector(cpId, stationId, evseRowId, target, now);
+      await this.ensureConnector(stationId, evseRowId, target, now);
     }
   }
 
@@ -1303,7 +1327,7 @@ export class CitrineProvisioner {
    * it" rather than "this fixture created it", and the difference is a leak
    * rather than a nuance. CitrineOS creates an EVSE of its own accord -- the
    * transaction repository does `readOrCreateByQuery` on
-   * `(ocppConnectionName, evseTypeId)` -- so on a database that saw traffic
+   * `(stationId, evseTypeId)` -- so on a database that saw traffic
    * before this fixture existed, the row is already there and unmarked. The
    * connector written under it would then be invisible to teardown, which
    * finds connectors only through marked EVSEs, and would survive every
@@ -1340,7 +1364,6 @@ export class CitrineProvisioner {
           {
             object: {
               stationId,
-              ocppConnectionName: cpId,
               evseTypeId: target.evseId,
               evseId: marker,
               tenantId: this.tenant,
@@ -1394,7 +1417,6 @@ export class CitrineProvisioner {
    * the suite as an unanswered TransactionEvent.
    */
   private async ensureConnector(
-    cpId: string,
     stationId: number,
     evseRowId: number,
     target: StatusTarget,
@@ -1422,7 +1444,6 @@ export class CitrineProvisioner {
           {
             object: {
               stationId,
-              ocppConnectionName: cpId,
               connectorId: target.connectorId,
               evseId: evseRowId,
               evseTypeConnectorId: target.connectorId,

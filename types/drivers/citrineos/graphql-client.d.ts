@@ -47,10 +47,11 @@ export declare class CitrineGraphQL {
     query<T>(document: string, variables?: Record<string, unknown>): Promise<T>;
     /**
      * Makes the data API able to answer: every table in the source is tracked,
-     * then the three relationships the queries name are created.
+     * then the relationships the queries name are created -- which ones depends
+     * on the declared line, see {@link relationshipsFor}.
      *
-     * EVERY table, rather than the seven this driver reads today, and that is
-     * the point rather than laziness. `teardown` has to know which tables
+     * EVERY table, rather than the handful this driver reads, and that is the
+     * point rather than laziness. `teardown` has to know which tables
      * reference an Authorization before it deletes one -- four do on the pinned
      * image, none of them cascading -- and it used to read that from
      * `pg_constraint`. `pg_suggest_relationships` answers the same question from

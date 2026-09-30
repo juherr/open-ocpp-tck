@@ -37,6 +37,7 @@
 import { CsmsNotDispatchedError, type FetchLike } from "../../tck/driver";
 import type { CitrineConfig } from "./config";
 import { errorBody, readAnsweredBody } from "./http";
+import type { CitrineVariant } from "./variant";
 
 const HTTP_TIMEOUT_MS = 15_000;
 
@@ -115,10 +116,11 @@ export class CitrineGraphQL {
 
   /**
    * Makes the data API able to answer: every table in the source is tracked,
-   * then the three relationships the queries name are created.
+   * then the relationships the queries name are created -- which ones depends
+   * on the declared line, see {@link relationshipsFor}.
    *
-   * EVERY table, rather than the seven this driver reads today, and that is
-   * the point rather than laziness. `teardown` has to know which tables
+   * EVERY table, rather than the handful this driver reads, and that is the
+   * point rather than laziness. `teardown` has to know which tables
    * reference an Authorization before it deletes one -- four do on the pinned
    * image, none of them cascading -- and it used to read that from
    * `pg_constraint`. `pg_suggest_relationships` answers the same question from
@@ -165,7 +167,7 @@ export class CitrineGraphQL {
         defined.add(`${entry.table.name}.${rel.name}`);
       }
     }
-    for (const rel of RELATIONSHIPS) {
+    for (const rel of relationshipsFor(this.cfg.variant)) {
       if (defined.has(`${rel.on}.${rel.name}`)) continue;
       await this.post(METADATA_PATH, {
         type:
@@ -290,6 +292,13 @@ export class CitrineGraphQL {
   }
 }
 
+interface Relationship {
+  on: string;
+  name: string;
+  kind: "object" | "array";
+  using: Record<string, unknown>;
+}
+
 /**
  * The relationships the driver's queries name, and only those.
  *
@@ -298,11 +307,11 @@ export class CitrineGraphQL {
  * recording: several are one-to-one shapes whose key lives on the OTHER table,
  * which needs a different `using` form, so the batch failed on
  * `Transactions.StartTransaction` with "no foreign constraint exists on the
- * given column(s)". Nothing in this driver reads those. Six relationships carry
- * every query below -- the three the SQL used to JOIN, and the three the 2.0.1
- * device-model reads walk -- and spelling them out means a rename upstream
- * fails here with the name in the message rather than somewhere inside a
- * generated batch.
+ * given column(s)". Nothing in this driver reads those. The ones below carry
+ * every query -- the three the SQL used to JOIN, the three the 2.0.1
+ * device-model reads walk, and on the GA the three that reach a station by
+ * name -- and spelling them out means a rename upstream fails here with the
+ * name in the message rather than somewhere inside a generated batch.
  *
  * THE LIST IS MEANT TO GROW, which is the answer to "why not derive them": a
  * query that needs a join names the relationship it needs, here, and the three
@@ -311,32 +320,20 @@ export class CitrineGraphQL {
  * `foreign_key_constraint_on: "<column>"` form rather than the table/column
  * shape the one array relationship below needs.
  *
+ * `Transactions.StopTransactions` is NOT in this common half, because its
+ * `using` is the one thing here the GA's partitioning changed -- see
+ * {@link V2_ONLY}.
+ *
  * Teardown's guard does NOT go through this list -- it reads the foreign keys
  * themselves, through `referencesTo`, so a fifth referencing table is still
  * picked up.
  */
-const RELATIONSHIPS: readonly {
-  on: string;
-  name: string;
-  kind: "object" | "array";
-  using: Record<string, unknown>;
-}[] = [
+const RELATIONSHIPS: readonly Relationship[] = [
   {
     on: "Transactions",
     name: "Authorization",
     kind: "object",
     using: { foreign_key_constraint_on: "authorizationId" },
-  },
-  {
-    on: "Transactions",
-    name: "StopTransactions",
-    kind: "array",
-    using: {
-      foreign_key_constraint_on: {
-        table: { schema: "public", name: "StopTransactions" },
-        column: "transactionDatabaseId",
-      },
-    },
   },
   {
     on: "Authorizations",
@@ -378,3 +375,69 @@ const RELATIONSHIPS: readonly {
   },
 ];
 
+/**
+ * `Transactions.StopTransactions` on v1.9.1: a plain single-column foreign key.
+ */
+const STOP_TRANSACTIONS_V1: Relationship = {
+  on: "Transactions",
+  name: "StopTransactions",
+  kind: "array",
+  using: {
+    foreign_key_constraint_on: {
+      table: { schema: "public", name: "StopTransactions" },
+      column: "transactionDatabaseId",
+    },
+  },
+};
+
+/**
+ * What the v2.0.0 GA changes, and only that.
+ *
+ * `Transactions` is range-partitioned on `createdAt` from the GA
+ * (`20260818120000-partition-transactions`), so its primary key is
+ * `(id, "createdAt")` and the key `StopTransactions` holds onto it is the
+ * PAIR `(transactionDatabaseId, transactionCreatedAt)`. The single-column
+ * `foreign_key_constraint_on` above names no constraint there, and the
+ * metadata call fails -- taking `provision` with it. So the join is spelled as
+ * a column mapping, verbatim from upstream's own metadata at the tag
+ * (`db/hasura-metadata/.../public_Transactions.yaml`, which maps the one-row
+ * `StopTransaction` the same way).
+ *
+ * The three `ChargingStation` relationships are what `stationScoped` in
+ * variant.ts walks: the GA dropped the OCPP name from those three tables, and
+ * it is now on the station row alone. Upstream's names, and the plain object
+ * form, because the integer `stationId` on each is an ordinary foreign key.
+ */
+const V2_ONLY: readonly Relationship[] = [
+  {
+    on: "Transactions",
+    name: "StopTransactions",
+    kind: "array",
+    using: {
+      manual_configuration: {
+        remote_table: { schema: "public", name: "StopTransactions" },
+        column_mapping: {
+          id: "transactionDatabaseId",
+          createdAt: "transactionCreatedAt",
+        },
+      },
+    },
+  },
+  ...["Transactions", "Connectors", "VariableAttributes"].map(
+    (on): Relationship => ({
+      on,
+      name: "ChargingStation",
+      kind: "object",
+      using: { foreign_key_constraint_on: "stationId" },
+    }),
+  ),
+];
+
+/** The relationships `ensureTracked` creates on a line. */
+function relationshipsFor(
+  variant: CitrineVariant,
+): readonly Relationship[] {
+  return variant === "v2"
+    ? [...RELATIONSHIPS, ...V2_ONLY]
+    : [...RELATIONSHIPS, STOP_TRANSACTIONS_V1];
+}
