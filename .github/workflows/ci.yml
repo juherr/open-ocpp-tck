@@ -227,6 +227,11 @@ jobs:
       - name: A red row is red whatever its namespace
         run: bash tests/summary-red-rows.sh
 
+      # The other reader of the summary table: an isolated-retry cell -- an
+      # inconclusive one above all -- lands in the statistic it stands for.
+      - name: The flake record reads every retry cell the runner writes
+        run: bash tests/flake-report-retry.sh
+
       # The other layering boundary: nothing outside the harness layer may
       # cite the harness overlay.
       - name: Harness layering holds

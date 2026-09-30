@@ -239,6 +239,14 @@ export async function awaitBootQuiet(
   }
 }
 
+/**
+ * {@link settleBoot}'s answer: the quiet gate's, and whether the boot gate saw
+ * the CSMS accept the BootNotification. Returned rather than left to the
+ * callback, because the runner's isolated retry has to KNOW it -- a retry whose
+ * boot was never accepted measured the CSMS's absence, not the case (#141).
+ */
+export type BootSettled = BootQuiet & { bootAccepted: boolean };
+
 /** What {@link settleBoot} needs beyond the station. */
 export interface BootSettleOptions {
   /** How long to wait for BootNotification.conf before going on without it. */
@@ -254,7 +262,8 @@ export interface BootSettleOptions {
   hardCapMs: number;
   /** The wait itself, injected so the guard can make lines land DURING it. */
   sleep: (ms: number) => Promise<void>;
-  /** Called with the error when the boot gate gives up; the runner warns. */
+  /** Called with the error when the boot gate gives up; the runner warns.
+   *  Whether it was called is also {@link BootSettled.bootAccepted}. */
   onBootGateTimeout: (err: unknown) => void;
   clock?: QuietClock;
 }
@@ -291,20 +300,23 @@ export interface BootSettleOptions {
 export async function settleBoot(
   sim: SimWire,
   options: BootSettleOptions,
-): Promise<BootQuiet> {
+): Promise<BootSettled> {
+  let bootAccepted = true;
   try {
     await sim.waitForLine(
       /Received: \[3,(?=[^\]]*"status":"Accepted")(?=[^\]]*"currentTime")/,
       options.bootGateMs,
     );
   } catch (err) {
+    bootAccepted = false;
     options.onBootGateTimeout(err);
   }
   await options.sleep(options.bootWaitMs);
-  return awaitBootQuiet(sim, {
+  const quiet = await awaitBootQuiet(sim, {
     timeoutMs: options.quietTimeoutMs,
     staleAfterMs: options.staleAfterMs,
     hardCapMs: options.hardCapMs,
     clock: options.clock,
   });
+  return { ...quiet, bootAccepted };
 }

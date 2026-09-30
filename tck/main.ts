@@ -68,6 +68,7 @@ import {
   type ScopeTable,
 } from "./scope";
 import {
+  adjudicateRetry,
   declaredButErroredDetail,
   effectivelyFailed,
   endsTheBuild,
@@ -75,6 +76,7 @@ import {
   standingOf,
   unexpectedPassDetail,
   type DeclaredStanding,
+  type RetryAdjudication,
   type SweepStanding,
   type Verdict,
 } from "./standing";
@@ -403,6 +405,18 @@ interface RunOptions {
    * what it has always meant: what happened in the run being reported.
    */
   attempt?: string;
+  /**
+   * Whether the CSMS accepted the BootNotification, written as soon as the
+   * boot gate answers so a caller can read it even when the run THROWS --
+   * which a run against a CSMS that stopped answering often does, and which a
+   * field on the returned {@link ScenarioRun} would lose. Stays unset when the
+   * run never reached the gate. The isolated retry is its reader.
+   */
+  witness?: BootWitness;
+}
+
+interface BootWitness {
+  bootGateOpened?: boolean;
 }
 
 /** 0 FAIL + >=1 SKIPPED is PARTIAL; anything with a FAIL is FAIL. */
@@ -770,6 +784,7 @@ async function runScenario<D>(
           })\n`,
         ),
     });
+    if (options.witness) options.witness.bootGateOpened = quiet.bootAccepted;
     // ABORT, NOT WARN: the cap was reached with a CALL still inside the TTL
     // window, so the one dispatch this gate exists to hold would land on a
     // live entry. A throw here is an ERROR row -- the scenario never got an
@@ -1210,6 +1225,11 @@ interface RetryOutcome {
   errorMessage?: string;
 }
 
+/** An isolated retry, with what it says about the parallel failure. */
+interface IsolatedRetry extends RetryOutcome {
+  adjudication: RetryAdjudication;
+}
+
 interface ScenarioOutcome extends RetryOutcome {
   templateId: string;
   cpId: string;
@@ -1224,7 +1244,7 @@ interface ScenarioOutcome extends RetryOutcome {
    * change. A non-failing isolated retry means the parallel FAIL/ERROR was
    * a flake.
    */
-  isolatedRetry?: RetryOutcome;
+  isolatedRetry?: IsolatedRetry;
   /** The driver's declaration that this scenario is known to fail, attached
    *  whether or not it did. Both directions are reported: a declared FAIL is
    *  excused, a declared PASS fails the sweep. */
@@ -1360,6 +1380,7 @@ async function runOneForSweep<D>(
   spec: ScenarioSpec<D>,
   cpId: string,
   attempt?: string,
+  witness?: BootWitness,
 ): Promise<ScenarioOutcome> {
   // What every branch below shares, stated once. `expected` is read BEFORE the
   // run and carried even by the branches that never start a container: a
@@ -1384,7 +1405,7 @@ async function runOneForSweep<D>(
   }
 
   try {
-    const run = await runScenario(spec, { cpId, attempt });
+    const run = await runScenario(spec, { cpId, attempt, witness });
     if (run.kind === "not-applicable") {
       return { ...common, verdict: "NOT APPLICABLE", reason: run.reason };
     }
@@ -1413,6 +1434,13 @@ async function runOneForSweep<D>(
   }
 }
 
+/** How the retry loop's result line names each adjudication. */
+const RETRY_RESULT: Record<RetryAdjudication, string> = {
+  flake: "FLAKE (parallel-only false negative, isolated non-failure)",
+  confirmed: "CONFIRMED (fails isolated too, not a parallel-lane artifact)",
+  inconclusive: "INCONCLUSIVE, recorded as ERROR, which still fails the sweep",
+};
+
 /**
  * --retry-failed-isolated: re-runs every FAIL/ERROR outcome from a
  * --parallel sweep ONE more time, sequentially -- one scenario at a time,
@@ -1436,6 +1464,12 @@ async function runOneForSweep<D>(
  * the only evidence that would let the declaration be deleted; a declared row
  * that passes its isolated retry is reported as an unexpected pass, because
  * there is no "expected flaky".
+ *
+ * A failing retry CONFIRMS the parallel failure only if the CSMS was there to
+ * fail it. On a collapsed shard it is not: the retry's BootNotification goes
+ * unaccepted and every check that needed the CSMS fails. That retry is
+ * adjudicated INCONCLUSIVE and recorded as ERROR -- {@link adjudicateRetry}
+ * holds the rule and why -- so the sweep still fails, and says why (#141).
  */
 async function retryFailedOutcomesIsolated(
   outcomes: ScenarioOutcome[],
@@ -1466,20 +1500,31 @@ async function retryFailedOutcomesIsolated(
     process.stderr.write(
       `[runner] isolated retry: ${outcome.templateId} on ${outcome.cpId} (parallel verdict was ${outcome.verdict})\n`,
     );
-    const retryOutcome = await runOneForSweep(spec, outcome.cpId, ".retry");
+    const witness: BootWitness = {};
+    const retryOutcome = await runOneForSweep(spec, outcome.cpId, ".retry", witness);
+    const { verdict, adjudication } = adjudicateRetry(
+      retryOutcome.verdict,
+      witness.bootGateOpened,
+    );
+    const lostCsms =
+      adjudication === "inconclusive"
+        ? `the CSMS did not accept this retry's BootNotification within ` +
+          `${BOOT_GATE_TIMEOUT_MS / 1000}s, so its ${retryOutcome.verdict} measures ` +
+          "the CSMS's absence, not the case"
+        : undefined;
     outcome.isolatedRetry = {
-      verdict: retryOutcome.verdict,
+      verdict,
+      adjudication,
       checks: retryOutcome.checks,
       failed: retryOutcome.failed,
       skipped: retryOutcome.skipped,
-      errorMessage: retryOutcome.errorMessage,
+      errorMessage:
+        [lostCsms, retryOutcome.errorMessage].filter(Boolean).join("\n") ||
+        undefined,
     };
-    const flake = !isFailure(retryOutcome.verdict);
     process.stderr.write(
-      `[runner] isolated retry result: ${outcome.templateId} ${retryOutcome.verdict}` +
-        (flake
-          ? " -- FLAKE (parallel-only false negative, isolated non-failure)\n"
-          : " -- CONFIRMED (fails isolated too, not a parallel-lane artifact)\n"),
+      `[runner] isolated retry result: ${outcome.templateId} ${verdict} -- ` +
+        `${RETRY_RESULT[adjudication]}${lostCsms ? ` (${lostCsms})` : ""}\n`,
     );
   }
 }
@@ -1557,9 +1602,7 @@ async function writeSummary(
     const base = `| ${o.templateId} | ${o.cpId} | ${verdict} | ${checks} | ${failed} | ${skipped} |`;
     if (!anyRetried) return base;
     if (!o.isolatedRetry) return `${base} - |`;
-    const flake = !isFailure(o.isolatedRetry.verdict);
-    const label = `${o.isolatedRetry.verdict}${flake ? " (flake)" : " (confirmed)"}`;
-    return `${base} ${label} |`;
+    return `${base} ${o.isolatedRetry.verdict} (${o.isolatedRetry.adjudication}) |`;
   });
 
   const columns = ["scenario", "cp", "verdict", "checks", "failed", "skipped"];
@@ -1622,14 +1665,16 @@ async function writeSummary(
     );
   }
   if (anyRetried) {
-    const flakeCount = parts.flakes.length;
-    const confirmedCount = outcomes.filter(
-      (o) => o.isolatedRetry !== undefined && isFailure(o.isolatedRetry.verdict),
-    ).length;
+    const adjudicated = (adjudication: RetryAdjudication): number =>
+      outcomes.filter((o) => o.isolatedRetry?.adjudication === adjudication)
+        .length;
     notes.push(
       "",
-      `--retry-failed-isolated: ${flakeCount} flake(s) (parallel FAIL/ERROR, isolated non-failure), ` +
-        `${confirmedCount} confirmed failure(s) (fails isolated too).`,
+      `--retry-failed-isolated: ${adjudicated("flake")} flake(s) (parallel FAIL/ERROR, isolated non-failure), ` +
+        `${adjudicated("confirmed")} confirmed failure(s) (fails isolated too), ` +
+        `${adjudicated("inconclusive")} inconclusive (the CSMS did not accept the ` +
+        "retry's BootNotification, so the retry says nothing about the case; " +
+        "recorded as ERROR, and it fails the sweep).",
       "Sequential (`run-all` without `--parallel`) remains the reliable reporting mode.",
     );
   }
@@ -1743,9 +1788,7 @@ async function runGroupSweep(
   process.stderr.write(`\n[runner] group '${groupName}' results:\n`);
   for (const o of outcomes) {
     const retrySuffix = o.isolatedRetry
-      ? ` [isolated retry: ${o.isolatedRetry.verdict}${
-          isFailure(o.isolatedRetry.verdict) ? " -- confirmed" : " -- flake"
-        }]`
+      ? ` [isolated retry: ${o.isolatedRetry.verdict} -- ${o.isolatedRetry.adjudication}]`
       : "";
     const reasonSuffix = o.reason ? ` -- ${o.reason}` : "";
     const note = declarationNote(o);

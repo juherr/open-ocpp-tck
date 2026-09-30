@@ -23,15 +23,25 @@
  * says what a CSMS ANSWERS; an ERROR is the scenario never getting an answer,
  * so excusing it would let a container that refuses to boot pass as the
  * documented finding -- exactly the blindness the whole mechanism replaced.
+ *
+ * THE RETRY'S ADJUDICATION is the second table: whether an isolated retry was
+ * a flake, a confirmation, or INCONCLUSIVE because the CSMS never accepted its
+ * BootNotification. An inconclusive retry is recorded as an ERROR, so the
+ * first table decides its standing -- and the composed rows below hold that it
+ * still ends the build, declared or not, rather than reading "confirmed" or
+ * being excused as the declared finding (#141).
  */
 import type { ExpectedFailureEntry } from "../tck/expected";
 import {
+  adjudicateRetry,
   declaredButErroredDetail,
   effectivelyFailed,
   endsTheBuild,
+  RETRY_ADJUDICATIONS,
   standingOf,
   unexpectedPassDetail,
   unexpectedPassKind,
+  type RetryAdjudication,
   type SweepStanding,
   type UnexpectedPassKind,
   type Verdict,
@@ -187,6 +197,62 @@ check(
     "scenario.",
 );
 
+// WHAT AN ISOLATED RETRY SAYS about the parallel failure, as a value table.
+//
+// The input the verdict cannot carry is whether the retry's boot gate opened:
+// a retry against a CSMS that never accepted its BootNotification fails every
+// check that needed the CSMS, and those FAILs are about the CSMS's absence,
+// not about the case. `undefined` is a run that threw before reaching the gate
+// (the container never started) -- not this rule's to reclassify.
+const ADJUDICATIONS: {
+  verdict: Verdict;
+  bootGateOpened: boolean | undefined;
+  adjudication: RetryAdjudication;
+  recorded: Verdict;
+  because: string;
+}[] = [
+  { verdict: "FAIL", bootGateOpened: true, adjudication: "confirmed", recorded: "FAIL", because: "the CSMS answered and the case failed again with no lane contending" },
+  { verdict: "ERROR", bootGateOpened: true, adjudication: "confirmed", recorded: "ERROR", because: "a crash after a healthy boot is a crash, as before" },
+  { verdict: "FAIL", bootGateOpened: false, adjudication: "inconclusive", recorded: "ERROR", because: "checks against a CSMS that never accepted the boot measure its absence -- ERROR is 'never got an answer'" },
+  { verdict: "ERROR", bootGateOpened: false, adjudication: "inconclusive", recorded: "ERROR", because: "same, when the absent CSMS made the run throw" },
+  { verdict: "PASS", bootGateOpened: false, adjudication: "flake", recorded: "PASS", because: "a pass after a late boot is still a pass -- real flake evidence" },
+  { verdict: "PARTIAL", bootGateOpened: false, adjudication: "flake", recorded: "PARTIAL", because: "a non-failure retry is a flake whatever the gate did" },
+  { verdict: "FAIL", bootGateOpened: undefined, adjudication: "confirmed", recorded: "FAIL", because: "a run that never reached the gate keeps today's reading" },
+];
+for (const row of ADJUDICATIONS) {
+  const got = adjudicateRetry(row.verdict, row.bootGateOpened);
+  check(
+    got.adjudication === row.adjudication && got.verdict === row.recorded,
+    `adjudicateRetry(${row.verdict}, bootGateOpened=${row.bootGateOpened}) is ` +
+      `${got.adjudication}/${got.verdict}, expected ${row.adjudication}/${row.recorded} -- ${row.because}.`,
+  );
+}
+// Every adjudication the list names is one a row produces, so a fourth member
+// added to RETRY_ADJUDICATIONS without a branch -- or a branch deleted -- shows.
+for (const adjudication of RETRY_ADJUDICATIONS) {
+  check(
+    ADJUDICATIONS.some((row) => row.adjudication === adjudication),
+    `no row adjudicates a retry "${adjudication}".`,
+  );
+}
+// "It still fails, saying so": the inconclusive retry's RECORDED verdict fed
+// through the exit-code rule. Undeclared it is an unexpected failure; declared
+// it must not be excused as the documented finding, because the CSMS never
+// gave the answer that finding describes.
+const inconclusive = adjudicateRetry("FAIL", false).verdict;
+for (const [declared, expect] of [
+  [false, "unexpected-fail"],
+  [true, "declared-but-errored"],
+] as const) {
+  const standing = standingOf("FAIL", declared ? DECLARED : undefined, inconclusive);
+  check(
+    standing === expect && endsTheBuild(standing),
+    `${declared ? "declared" : "undeclared"} FAIL with an inconclusive retry ` +
+      `stands "${standing}", expected "${expect}" ending the build -- a run that ` +
+      "lost its CSMS is not a passing run, and not the declared finding either.",
+  );
+}
+
 function check(condition: boolean, failure: string): void {
   if (!condition) failures.push(failure);
 }
@@ -199,6 +265,7 @@ if (failures.length > 0) {
 
 process.stdout.write(
   `Exit-code rule holds across all ${TABLE.length} verdict/retry/declaration ` +
-    "combinations (a declaration excuses an answer, never a crash, and never " +
-    "a scenario that stopped failing).\n",
+    `combinations and ${ADJUDICATIONS.length} retry adjudications (a ` +
+    "declaration excuses an answer, never a crash, and never a scenario that " +
+    "stopped failing; a retry that lost its CSMS confirms nothing).\n",
 );

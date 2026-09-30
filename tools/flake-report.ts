@@ -103,7 +103,9 @@ import { join } from "node:path";
 import {
   effectivelyFailed,
   isFailure,
+  RETRY_ADJUDICATIONS,
   VERDICTS,
+  type RetryAdjudication,
   type Verdict,
 } from "../tck/standing";
 
@@ -120,8 +122,9 @@ interface Observation {
   cpId: string;
   verdict: Verdict;
   /** Present only when the run passed --retry-failed-isolated AND this row
-   *  failed in its lane. `null` everywhere else -- including a run that used
-   *  the flag and where this row simply did not fail. */
+   *  failed in its lane AND the retry adjudicated something. `null` everywhere
+   *  else -- including a run that used the flag and where this row simply did
+   *  not fail, and a retry the runner called inconclusive. */
   retryVerdict: Verdict | null;
   /** Seconds this scenario's observation window ran past its holdSecs, for
    *  the two runs that ever recorded it -- see the `held past floor` note in
@@ -142,6 +145,13 @@ interface ParsedRun {
 function leadingVerdict(cell: string): Verdict | null {
   for (const v of VERDICTS) if (cell.startsWith(v)) return v;
   return null;
+}
+
+/** The runner's adjudication in a retry cell's trailing parenthetical, or null
+ *  when the cell carries none this runtime names. */
+function retryAdjudication(cell: string): RetryAdjudication | null {
+  const word = /\((\w+)\)$/.exec(cell)?.[1];
+  return RETRY_ADJUDICATIONS.find((a) => a === word) ?? null;
 }
 
 function parseSummary(runLabel: string, text: string): ParsedRun | null {
@@ -198,10 +208,16 @@ function parseSummary(runLabel: string, text: string): ParsedRun | null {
       unparsed.push(line);
       continue;
     }
-    // The retry cell reads "VERDICT (flake)" or "VERDICT (confirmed)". Only
-    // the verdict is taken: the parenthetical is the runner's adjudication
-    // rendered as prose, and re-deriving it through `effectivelyFailed` keeps
-    // this file to one reading of that rule rather than trusting a word.
+    // The retry cell reads "VERDICT (flake)", "VERDICT (confirmed)" or
+    // "ERROR (inconclusive)". For the first two only the verdict is taken:
+    // re-deriving the adjudication through `effectivelyFailed` keeps this file
+    // to one reading of that rule rather than trusting a word. The third is the
+    // exception, because what decides it -- whether the CSMS accepted the
+    // retry's BootNotification -- is in no cell: a retry that lost its CSMS
+    // adjudicated nothing, so the row counts as unadjudicated rather than as
+    // the confirmation its ERROR would re-derive to (#141). Retries recorded
+    // before that rule existed read "(confirmed)" either way; the corpus
+    // cannot tell those apart.
     const retryCell = optional(cells, retryAt);
     const heldCell = optional(cells, heldAt);
 
@@ -215,7 +231,10 @@ function parseSummary(runLabel: string, text: string): ParsedRun | null {
       templateId: cells[templateAt],
       cpId: cells[cpAt],
       verdict,
-      retryVerdict: retryCell === null ? null : leadingVerdict(retryCell),
+      retryVerdict:
+        retryCell === null || retryAdjudication(retryCell) === "inconclusive"
+          ? null
+          : leadingVerdict(retryCell),
       extraHoldSecs: heldCell === null ? null : Number(heldCell.replace(/[+s]/g, "")),
     });
   }
@@ -231,9 +250,10 @@ interface ScenarioStats {
   adjudicatedFlakes: number;
   /** Failed in a lane and failed again isolated. */
   confirmed: number;
-  /** Failed with no retry to adjudicate it -- a sequential run, or a sweep
-   *  that did not pass the flag. Neither flake nor finding, and kept in its
-   *  own column rather than folded into one of them. */
+  /** Failed with no retry to adjudicate it -- a sequential run, a sweep that
+   *  did not pass the flag, or a retry that lost its CSMS (inconclusive).
+   *  Neither flake nor finding, and kept in its own column rather than folded
+   *  into one of them. */
   unadjudicated: number;
   /** FAILED in at least one run and PASSED in at least one other. Weaker than
    *  an adjudication and reported as such. */

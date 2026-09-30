@@ -25,7 +25,7 @@ error.
 
 `bun run verify` is every check CI runs before it starts a container —
 typecheck, committed declarations, three driver scope checks, twenty in-process
-guards and seventeen shell guards — with one exit code, and every step runs even
+guards and eighteen shell guards — with one exit code, and every step runs even
 after one fails, where CI enumerates them and stops at the first.
 
 There is a third copy of that list — `bun run test`, the guards without the

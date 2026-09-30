@@ -707,6 +707,26 @@ Released as `0.3.0`. The documented install ref already points at that tag, so
 
 ### Fixed
 
+- **An isolated retry against a CSMS that had stopped answering read
+  "confirmed".** On a collapsed shard, `--retry-failed-isolated` re-ran each
+  failure against a CSMS that no longer accepted the station's
+  `BootNotification`: the boot gate warned and continued, every check that
+  needed the CSMS failed, and the row was reported as failing isolated too, not
+  a parallel-lane artifact — a verdict about the CSMS's absence rather than
+  about the case (#141). The runner now records whether each run's boot gate
+  opened, and a failing retry whose gate did not is adjudicated **inconclusive**
+  (`adjudicateRetry` in `tck/standing.ts`): logged as `INCONCLUSIVE`, rendered
+  `ERROR (inconclusive)` in the summary's retry cell and counted apart in its
+  note. It is recorded as ERROR — the scenario never got an answer — so the
+  sweep still fails on it, and a declared scenario reads
+  `declared-but-errored` rather than being excused as the documented finding.
+  A retry that passes despite a late boot is still a flake. `tools/flake-report.ts`
+  counts an inconclusive retry as unadjudicated; retries archived before this
+  change read `(confirmed)` either way. `tests/expected-failure-standing.ts`
+  holds the adjudication as a table beside the exit-code rule, and
+  `tests/flake-report-retry.sh` holds the flake record's reading of every retry
+  cell shape, the pre-change `ERROR (confirmed)` included.
+
 - **TC_013 ran its template twice on the 0.7.9 simulator, and reported the
   CSMS for it.** From 0.7.6 the simulator re-arms a `triggerOn: "connect"`
   scenario on every reconnect (shiv3/ocpp-cp-simulator#253), so a template

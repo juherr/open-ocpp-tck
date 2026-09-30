@@ -40,7 +40,9 @@
  *      ahead of the settle reads an empty set and opens. This is the
  *      placement row, the one the runner's comment used to hold alone;
  *  11. `settleBoot`'s boot gate is soft: a conf that never comes is reported
- *      through the callback, and the settle and the quiet gate still run;
+ *      through the callback and as `bootAccepted: false` -- the answer the
+ *      runner's isolated retry adjudicates on (#141) -- and the settle and the
+ *      quiet gate still run; row 10 is its control, `bootAccepted: true`;
  *  12. a CALL the station sends LATE in the budget is aged on its own clock:
  *      the gate does not give up on it until it has been open `staleAfterMs`,
  *      so a Heartbeat at t=89s holds the gate past t=90s. The budget alone is
@@ -515,6 +517,7 @@ const NEVER: Script = () => "silence";
     quiet.kind === "outstanding" ? quiet.calls.map((c) => `${c.action}(${c.uniqueId})`) : [];
   if (
     quiet.kind === "outstanding" &&
+    quiet.bootAccepted &&
     JSON.stringify(slept) === "[4000]" &&
     JSON.stringify(named) === JSON.stringify([`StatusNotification(${SN0})`, `StatusNotification(${SN1})`])
   ) {
@@ -558,6 +561,7 @@ const NEVER: Script = () => "silence";
     quiet.kind === "outstanding" ? quiet.calls.map((c) => `${c.action}(${c.uniqueId})`) : [];
   if (
     reported instanceof Error &&
+    !quiet.bootAccepted &&
     bootGate?.timeoutMs === 30_000 &&
     JSON.stringify(slept) === "[4000]" &&
     quiet.kind === "outstanding" &&
