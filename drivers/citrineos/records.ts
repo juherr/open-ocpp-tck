@@ -51,10 +51,10 @@ import {
 } from "./device-model";
 import { CitrineGraphQL } from "./graphql-client";
 import {
-  localListScoped,
   speaksOcpp201,
-  stationScoped,
+  stationWhere,
   type CitrineVariant,
+  type StationScopedTable,
   type Where,
 } from "./variant";
 import { refByDescription } from "./profiles";
@@ -117,9 +117,9 @@ export class CitrineRecords
 
   /**
    * The declared line, which decides how a table is scoped to a station --
-   * variant.ts's `stationScoped` and `localListScoped`. See variant.ts for why
-   * it is declared rather than detected, and for why the GA needs two
-   * spellings where the older lines needed one.
+   * variant.ts's `stationWhere`. See variant.ts for why it is declared rather
+   * than detected, and for why the GA needs two spellings where the older
+   * lines needed one.
    */
   private readonly variant: CitrineVariant;
 
@@ -136,20 +136,16 @@ export class CitrineRecords
     if (speaksOcpp201(cfg.variant)) this.deviceModel = this.deviceModelReader;
   }
 
-  /** `where` on a station's rows in `Transactions`, `Connectors` or
-   *  `VariableAttributes`, spelled once. */
-  private stationFilter(cpId: string): Where {
-    return { ...stationScoped(this.variant, cpId), tenantId: { _eq: this.tenant } };
-  }
-
-  /** The same for `LocalListVersions` and `SendLocalLists`, which the GA left
-   *  keyed by name. */
-  private localListFilter(cpId: string): Where {
-    return { ...localListScoped(this.variant, cpId), tenantId: { _eq: this.tenant } };
+  /** `where` on one station's rows of `table`, for this tenant, spelled once. */
+  private stationFilter(table: StationScopedTable, cpId: string): Where {
+    return {
+      ...stationWhere(this.variant, table, cpId),
+      tenantId: { _eq: this.tenant },
+    };
   }
 
   private async newestTransaction(
-    where: Record<string, unknown>,
+    where: Where,
   ): Promise<TransactionRow | undefined> {
     const data = await this.gql.query<{ Transactions: TransactionRow[] }>(
       `query Newest($where: Transactions_bool_exp!) {
@@ -163,7 +159,9 @@ export class CitrineRecords
   }
 
   async latestTransaction(cpId: string): Promise<string> {
-    const row = await this.newestTransaction(this.stationFilter(cpId));
+    const row = await this.newestTransaction(
+      this.stationFilter("Transactions", cpId),
+    );
     return row === undefined ? "" : String(row.id);
   }
 
@@ -187,7 +185,7 @@ export class CitrineRecords
     return waitForCondition(
       async () => {
         const row = await this.newestTransaction({
-          ...this.stationFilter(cpId),
+          ...this.stationFilter("Transactions", cpId),
           isActive: { _eq: true },
           Authorization: { idToken: { _eq: idTag } },
         });
@@ -257,14 +255,12 @@ export class CitrineRecords
    *    which is what every one of those scenarios assumes.
    */
   async prepareStation(cpId: string): Promise<void> {
-    const station = this.stationFilter(cpId);
-    const localList = this.localListFilter(cpId);
     const now = new Date().toISOString();
 
-    // Two station predicates for three tables, because the GA split them:
-    // `Transactions` lost the name column and is reached through its station,
-    // the local-list tables kept it. Both come from variant.ts, so the
-    // variant-dependent spelling lives there and not in this file.
+    // One predicate per table rather than one for all three, because the GA
+    // split them: `Transactions` lost the name column and is reached through
+    // its station, the local-list tables kept it. variant.ts decides which,
+    // so the variant-dependent spelling lives there and not in this file.
     const open = await this.gql.query<{
       Transactions: { id: number; endTime: string | null; stoppedReason: string | null }[];
       LocalListVersions: { id: number }[];
@@ -276,9 +272,12 @@ export class CitrineRecords
          SendLocalLists(where: $sends) { id }
        }`,
       {
-        open: { ...station, isActive: { _eq: true } },
-        versions: localList,
-        sends: localList,
+        open: {
+          ...this.stationFilter("Transactions", cpId),
+          isActive: { _eq: true },
+        },
+        versions: this.stationFilter("LocalListVersions", cpId),
+        sends: this.stationFilter("SendLocalLists", cpId),
       },
     );
 
@@ -370,7 +369,7 @@ export class CitrineRecords
        }`,
       {
         where: {
-          ...this.stationFilter(cpId),
+          ...this.stationFilter("Transactions", cpId),
           Authorization: { idToken: { _eq: idTag } },
         },
       },
@@ -452,7 +451,7 @@ export class CitrineRecords
          }`,
         {
           where: {
-            ...this.stationFilter(cpId),
+            ...this.stationFilter("Connectors", cpId),
             connectorId: { _eq: connectorId },
             Evse: { evseTypeId: { _eq: evseId } },
           },
@@ -474,7 +473,7 @@ export class CitrineRecords
          }`,
         {
           where: {
-            ...this.stationFilter(cpId),
+            ...this.stationFilter("VariableAttributes", cpId),
             // MEASURED, not assumed: the attribute CitrineOS writes from a
             // status notification comes back typed `Actual`. Left unfiltered,
             // a `Target` row -- a setpoint somebody asked for -- would answer a

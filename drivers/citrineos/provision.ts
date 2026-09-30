@@ -64,6 +64,7 @@ import {
 import { CitrineGraphQL } from "./graphql-client";
 import {
   NO_OCPP_201_ON_V1,
+  describeStationId,
   schemaOf,
   speaksOcpp201,
   type IntrospectedField,
@@ -470,7 +471,7 @@ export class CitrineProvisioner {
       __type: { fields: IntrospectedField[] } | null;
     }>(
       `{ __type(name: "Transactions") {
-           fields { name type { kind name ofType { kind name ofType { kind name } } } }
+           fields { name type { name ofType { name } } }
          } }`,
     );
     if (data.__type === null) {
@@ -497,7 +498,7 @@ export class CitrineProvisioner {
       case "v2":
         return [
           `schema mismatch: ${declared}, but the server's ` +
-            `Transactions.stationId is ${found === "v1" ? "a string (v1.9.1)" : "an integer (v2.0.0)"}. ` +
+            `Transactions.stationId is ${describeStationId(found)}. ` +
             `Set CITRINE_VARIANT=${found} for this server.`,
         ];
       case undefined:

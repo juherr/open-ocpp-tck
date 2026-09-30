@@ -58,42 +58,54 @@ export declare function resolveVariant(env: CsmsEnv): CitrineVariant;
 /** A Hasura `where` fragment. */
 export type Where = Record<string, unknown>;
 /**
- * Scopes a table that carries the integer station key on the GA --
- * `Transactions`, `Connectors`, `VariableAttributes` -- to one charge point.
- *
- * Through the `ChargingStation` relationship on v2, because the OCPP name is no
- * longer on the row: it lives on `ChargingStations`, which kept it with its
- * `(ocppConnectionName, tenantId)` unique key. Filtering the integer column
- * directly would cost a lookup of the station's id first, and a station the
- * CSMS has not created yet would have to be told apart from one with no
- * transactions -- the join answers both as "no rows". graphql-client.ts
- * creates the relationship, under upstream's own name.
+ * The tables that carry the integer station key on the GA and lost the OCPP
+ * name with it, so they reach a station through the `ChargingStation`
+ * relationship. ONE LIST, TWO READERS: {@link stationWhere} walks the
+ * relationship and graphql-client.ts creates it for exactly these tables, so a
+ * table added here cannot be queried through a relationship nobody created.
  */
-export declare function stationScoped(variant: CitrineVariant, cpId: string): Where;
+export declare const STATION_JOINED_TABLES: readonly ["Transactions", "Connectors", "VariableAttributes"];
+/** Every table this driver scopes to a station. `LocalListVersions` and
+ *  `SendLocalLists` never got the integer key, so the GA left their name
+ *  column in place -- and a relationship they do not carry would fail the
+ *  whole query. */
+export type StationScopedTable = (typeof STATION_JOINED_TABLES)[number] | "LocalListVersions" | "SendLocalLists";
 /**
- * Scopes `LocalListVersions` and `SendLocalLists` to one charge point. They
- * never got the integer key, so the GA left their name column in place -- and
- * a relationship they do not carry would fail the whole query.
+ * Scopes `table` to one charge point on the declared line.
+ *
+ * v1.9.1 carries the name as a string `stationId` on every one of them. On v2
+ * the tables in {@link STATION_JOINED_TABLES} go through `ChargingStation`,
+ * which kept the name with its `(ocppConnectionName, tenantId)` unique key;
+ * filtering their integer column directly would cost a lookup of the
+ * station's id first, and a station the CSMS has not created yet would have to
+ * be told apart from one with no rows -- the join answers both as "no rows".
  */
-export declare function localListScoped(variant: CitrineVariant, cpId: string): Where;
-/** A field of the `Transactions` type, as GraphQL introspection spells it. */
+export declare function stationWhere(variant: CitrineVariant, table: StationScopedTable, cpId: string): Where;
+/**
+ * A field of the `Transactions` type, as GraphQL introspection spells it --
+ * one wrapper deep, because a column is `T` or `T!` and never a list.
+ */
 export interface IntrospectedField {
     name: string;
-    type: IntrospectedType | null;
-}
-interface IntrospectedType {
-    kind: string;
-    name: string | null;
-    ofType: IntrospectedType | null;
+    type: {
+        name: string | null;
+        ofType: {
+            name: string | null;
+        } | null;
+    } | null;
 }
 /** The schema shapes `schemaOf` can recognise. `v2-prerelease` is refused. */
 export type CitrineSchema = CitrineVariant | "v2-prerelease";
+/** How `verify` names a line's `stationId`. */
+export declare function describeStationId(variant: CitrineVariant): string;
 /**
  * Which line a server's `Transactions` belongs to, or `undefined` for a shape
  * none of the three has.
  *
- *  - `ocppConnectionName` present: a v2 prerelease. The GA dropped it.
- *  - otherwise `stationId`'s scalar type: `Int` on the GA, `String` on v1.9.1.
+ *  - `ocppConnectionName` present: a v2 prerelease. The GA dropped it, and a
+ *    refused shape is not a line, which is why it is not a row of
+ *    {@link STATION_ID}.
+ *  - otherwise `stationId`'s scalar type, looked up in {@link STATION_ID}.
  *
  * Pure; its one caller is `verify`, which asks the introspection query, and
  * `tests/citrineos-device-model-fixture.ts` part 11 reaches it through that
@@ -171,4 +183,3 @@ export declare const CERT_201_SCENARIOS: readonly ["cert201-tcb01-cold-boot", "c
 /** Scenarios the local-auth-list gap costs on v1. Named here rather than in
  *  scope.ts so the two cannot drift from {@link unroutedActions}. */
 export declare const V1_LOCAL_LIST_SCENARIOS: readonly ["cert16-tc042-1-get-local-list-version-not-supported", "cert16-tc042-2-get-local-list-version-empty", "cert16-tc043-1-send-local-list-not-supported", "cert16-tc043-3-send-local-list-failed", "cert16-tc043-4-send-local-list-full", "cert16-tc043-5-send-local-list-differential"];
-export {};

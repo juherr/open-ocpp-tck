@@ -53,21 +53,17 @@ export declare class CitrineRecords implements Omit<CsmsRecords, "reservations" 
     private readonly tenant;
     /**
      * The declared line, which decides how a table is scoped to a station --
-     * variant.ts's `stationScoped` and `localListScoped`. See variant.ts for why
-     * it is declared rather than detected, and for why the GA needs two
-     * spellings where the older lines needed one.
+     * variant.ts's `stationWhere`. See variant.ts for why it is declared rather
+     * than detected, and for why the GA needs two spellings where the older
+     * lines needed one.
      */
     private readonly variant;
     /** `fetchImpl` is the {@link FetchLike} seam
      *  `tests/citrineos-device-model-fixture.ts` reads the `where` of every
      *  reader through; the CLI never passes it. */
     constructor(cfg: CitrineConfig, fetchImpl?: FetchLike);
-    /** `where` on a station's rows in `Transactions`, `Connectors` or
-     *  `VariableAttributes`, spelled once. */
+    /** `where` on one station's rows of `table`, for this tenant, spelled once. */
     private stationFilter;
-    /** The same for `LocalListVersions` and `SendLocalLists`, which the GA left
-     *  keyed by name. */
-    private localListFilter;
     private newestTransaction;
     latestTransaction(cpId: string): Promise<string>;
     /**

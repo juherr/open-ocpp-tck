@@ -48,7 +48,7 @@ export declare class CitrineGraphQL {
     /**
      * Makes the data API able to answer: every table in the source is tracked,
      * then the relationships the queries name are created -- which ones depends
-     * on the declared line, see {@link relationshipsFor}.
+     * on the declared line, see {@link RELATIONSHIPS_BY_VARIANT}.
      *
      * EVERY table, rather than the handful this driver reads, and that is the
      * point rather than laziness. `teardown` has to know which tables

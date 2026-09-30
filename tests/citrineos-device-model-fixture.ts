@@ -141,6 +141,7 @@ import {
 } from "../drivers/citrineos/device-model";
 import { CitrineProvisioner } from "../drivers/citrineos/provision";
 import { CitrineRecords } from "../drivers/citrineos/records";
+import type { CitrineSchema } from "../drivers/citrineos/variant";
 
 let failures = 0;
 
@@ -160,6 +161,10 @@ const TENANT = 1;
  *  would be a second declaration of what the driver actually uses. */
 const CFG = defaultCitrineConfig({
   CITRINE_GRAPHQL_URL: "http://citrine.test:8090",
+});
+const V1_CFG = defaultCitrineConfig({
+  CITRINE_GRAPHQL_URL: "http://citrine.test:8090",
+  CITRINE_VARIANT: "v1",
 });
 
 type Row = Record<string, unknown>;
@@ -181,7 +186,7 @@ type Row = Record<string, unknown>;
 class FakeCitrine {
   /** Which schema `Transactions` introspects as, and which columns the
    *  station-scoped inserts accept. Part 11 and 12. */
-  constructor(readonly schema: FakeSchema = "v2") {}
+  constructor(readonly schema: CitrineSchema = "v2") {}
 
   readonly evseTypes: Row[] = [];
   readonly variables: Row[] = [];
@@ -270,12 +275,7 @@ class FakeCitrine {
    */
   private droppedColumn(operation: string, vars: Row): string | undefined {
     if (this.schema !== "v2") return undefined;
-    const table =
-      operation === "SeedEvse"
-        ? "Evses"
-        : operation === "SeedConnector"
-          ? "Connectors"
-          : undefined;
+    const table = GA_DROPPED_NAME_ON[operation];
     if (table === undefined) return undefined;
     const object = (vars.object ?? {}) as Row;
     return "ocppConnectionName" in object
@@ -577,11 +577,15 @@ class FakeCitrine {
  *  - v2-prerelease is beta1..beta4: both columns, `stationId` an integer.
  *  - v1 is v1.9.1: no name column, `stationId` a STRING holding the name.
  */
-type FakeSchema = "v2" | "v2-prerelease" | "v1";
+/** The station-scoped inserts, by the table the GA dropped the name from. */
+const GA_DROPPED_NAME_ON: Record<string, string | undefined> = {
+  SeedEvse: "Evses",
+  SeedConnector: "Connectors",
+};
 const INT = { kind: "SCALAR", name: "Int", ofType: null };
 const STRING = { kind: "SCALAR", name: "String", ofType: null };
 const nonNull = (type: Row) => ({ kind: "NON_NULL", name: null, ofType: type });
-const TRANSACTIONS_FIELDS: Record<FakeSchema, Row[]> = {
+const TRANSACTIONS_FIELDS: Record<CitrineSchema, Row[]> = {
   v2: [
     { name: "id", type: nonNull(INT) },
     { name: "stationId", type: INT },
@@ -607,8 +611,8 @@ function remove(rows: Row[], predicate: (row: Row) => boolean): void {
   }
 }
 
-function provisionerOn(csms: FakeCitrine): CitrineProvisioner {
-  return new CitrineProvisioner(CFG, () => {}, csms.fetch);
+function provisionerOn(csms: FakeCitrine, cfg = CFG): CitrineProvisioner {
+  return new CitrineProvisioner(cfg, () => {}, csms.fetch);
 }
 
 /** Every problem `verify` reported that is about the device model rather than
@@ -912,14 +916,7 @@ const TARGETS = statusTargets(CONNECTORS);
 
 {
   const csms = new FakeCitrine("v1");
-  const v1 = new CitrineProvisioner(
-    defaultCitrineConfig({
-      CITRINE_GRAPHQL_URL: "http://citrine.test:8090",
-      CITRINE_VARIANT: "v1",
-    }),
-    () => {},
-    csms.fetch,
-  );
+  const v1 = provisionerOn(csms, V1_CFG);
   await v1.provisionDeviceModel();
   await v1.ensureStationTopology(CP_ID, CONNECTORS);
   await v1.teardown();
@@ -958,12 +955,7 @@ const TARGETS = statusTargets(CONNECTORS);
   // have handed a spec queries naming a column v1.9.1 does not have.
   check(
     "part 7: and the driver offers no device-model reader there",
-    new CitrineRecords(
-      defaultCitrineConfig({
-        CITRINE_GRAPHQL_URL: "http://citrine.test:8090",
-        CITRINE_VARIANT: "v1",
-      }),
-    ).deviceModel === undefined,
+    new CitrineRecords(V1_CFG).deviceModel === undefined,
     "the parts carry a reader on a line whose capability says false, so " +
       "nothing substitutes the stub and a spec would run v2-shaped queries " +
       "against a v1 schema",
@@ -1133,69 +1125,85 @@ const TARGETS = statusTargets(CONNECTORS);
 // Part 11: the schema check tells the three shapes apart
 // ---------------------------------------------------------------------------
 
-const V1_CFG = defaultCitrineConfig({
-  CITRINE_GRAPHQL_URL: "http://citrine.test:8090",
-  CITRINE_VARIANT: "v1",
-});
-
 /** The schema half of `verify`, without the fixture half: every problem that
  *  is a mismatch sentence rather than a missing row. */
 async function schemaProblems(
   cfg: typeof CFG,
-  schema: FakeSchema,
+  schema: CitrineSchema,
 ): Promise<string[]> {
-  const csms = new FakeCitrine(schema);
-  const problems = await new CitrineProvisioner(cfg, () => {}, csms.fetch).verify();
+  const problems = await provisionerOn(new FakeCitrine(schema), cfg).verify();
   return problems.filter((problem) => problem.startsWith("schema mismatch"));
 }
 
-{
-  const ga = await schemaProblems(CFG, "v2");
-  check(
-    "part 11: v2 against the GA schema is accepted",
-    ga.length === 0,
-    "the declared line and the pinned image agree, and verify refused them: " +
-      JSON.stringify(ga),
-  );
+/**
+ * Each declared line against each server shape: accepted, or refused with a
+ * sentence that points at the line to set. The prerelease points at none --
+ * no declaration drives it.
+ */
+const SCHEMA_ROWS: {
+  declared: typeof CFG;
+  server: CitrineSchema;
+  refusal: string | undefined;
+  why: string;
+}[] = [
+  {
+    declared: CFG,
+    server: "v2",
+    refusal: undefined,
+    why: "the declared line and the pinned image agree",
+  },
+  {
+    declared: V1_CFG,
+    server: "v1",
+    refusal: undefined,
+    why: "the declared line and the v1.9.1 image agree",
+  },
+  {
+    declared: CFG,
+    server: "v2-prerelease",
+    refusal: "prerelease",
+    why:
+      "a beta1..beta4 server still carries ocppConnectionName on " +
+      "Transactions, Evses and Connectors, so every station-scoped read and " +
+      "write of the GA port targets the wrong shape",
+  },
+  {
+    declared: V1_CFG,
+    server: "v2",
+    refusal: "CITRINE_VARIANT=v2",
+    why:
+      "the GA and v1.9.1 both lack ocppConnectionName on Transactions, so a " +
+      "check reading only that column cannot tell them apart -- stationId's " +
+      "TYPE is what does",
+  },
+  {
+    declared: CFG,
+    server: "v1",
+    refusal: "CITRINE_VARIANT=v1",
+    why: "stationId is a string on v1.9.1, and every v2 read would miss",
+  },
+];
 
+for (const row of SCHEMA_ROWS) {
+  const problems = await schemaProblems(row.declared, row.server);
+  check(
+    `part 11: ${row.declared.variant} against a ${row.server} server is ` +
+      (row.refusal === undefined ? "accepted" : `refused, naming ${row.refusal}`),
+    row.refusal === undefined
+      ? problems.length === 0
+      : problems.length === 1 && problems[0]!.includes(row.refusal),
+    `${row.why}. Reported: ${JSON.stringify(problems)}`,
+  );
+}
+
+{
   const prerelease = await schemaProblems(CFG, "v2-prerelease");
   check(
-    "part 11: v2 against a v2 prerelease is refused",
-    prerelease.length === 1,
-    "a beta1..beta4 server still carries ocppConnectionName on Transactions, " +
-      "Evses and Connectors, so every station-scoped read and write of the GA " +
-      `port targets the wrong shape. Reported: ${JSON.stringify(prerelease)}`,
-  );
-  check(
-    "part 11: and the refusal names the prerelease rather than the other line",
-    prerelease.every(
-      (problem) =>
-        problem.includes("prerelease") && !problem.includes("CITRINE_VARIANT=v1"),
-    ),
+    "part 11: and the prerelease refusal does not send the operator to v1",
+    prerelease.every((problem) => !problem.includes("CITRINE_VARIANT=v1")),
     "the old check read ocppConnectionName's ABSENCE as v1, so a v2 server on " +
       "either side of the GA was told to switch to a line it is not. " +
       `Reported: ${JSON.stringify(prerelease)}`,
-  );
-
-  const v1OnGa = await schemaProblems(V1_CFG, "v2");
-  check(
-    "part 11: v1 against the GA schema is refused, and pointed at v2",
-    v1OnGa.length === 1 && v1OnGa[0]!.includes("CITRINE_VARIANT=v2"),
-    "the GA and v1.9.1 both lack ocppConnectionName on Transactions, so a " +
-      "check reading only that column cannot tell them apart -- stationId's " +
-      `TYPE is what does. Reported: ${JSON.stringify(v1OnGa)}`,
-  );
-  const v2OnV1 = await schemaProblems(CFG, "v1");
-  check(
-    "part 11: v2 against the v1.9.1 schema is refused, and pointed at v1",
-    v2OnV1.length === 1 && v2OnV1[0]!.includes("CITRINE_VARIANT=v1"),
-    `Reported: ${JSON.stringify(v2OnV1)}`,
-  );
-  const v1OnV1 = await schemaProblems(V1_CFG, "v1");
-  check(
-    "part 11: v1 against the v1.9.1 schema is accepted",
-    v1OnV1.length === 0,
-    `Reported: ${JSON.stringify(v1OnV1)}`,
   );
 }
 
@@ -1367,7 +1375,7 @@ function relationshipsCreated(csms: FakeCitrine): Map<string, unknown> {
 
 {
   const csms = new FakeCitrine("v1");
-  await new CitrineProvisioner(V1_CFG, () => {}, csms.fetch).ensureApiAccess();
+  await provisionerOn(csms, V1_CFG).ensureApiAccess();
   const created = relationshipsCreated(csms);
   check(
     "part 14: on v1.9.1, the relationships are the ones it always had",
