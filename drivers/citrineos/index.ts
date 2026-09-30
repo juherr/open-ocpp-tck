@@ -91,7 +91,9 @@ import {
  * beta3 on a file identity, and re-counted on the running v2.0.0-beta4
  * container rather than carried again: the route tables moved to
  * `packages/ocpp/src/apis/ocpp/1.6/*.ts` under that pin, and the same 18
- * actions are what they register.
+ * actions are what they register. At v2.0.0 the route tables register the
+ * same 18 again, and the running container's /docs/json advertises them
+ * (2026-09-30).
  *
  * Declared by subtraction from the contract's own list rather than by
  * enumerating the supported ones, so that an operation added to the contract
@@ -147,11 +149,11 @@ function capabilitiesFor(variant: CitrineVariant): CsmsCapabilities {
     reservations: false,
     chargingProfiles: true,
     // Tied to the SAME line predicate as the vocabulary above, and for a
-    // concrete reason rather than by association: the reader joins
-    // `VariableAttributes` and `Connectors` on `ocppConnectionName`, which is
-    // the column variant.ts says v1.9.1 spells `stationId`. Declaring it on v1
-    // would be claiming a query nobody has run against a schema that names its
-    // station differently.
+    // concrete reason rather than by association: the reader reaches
+    // `VariableAttributes` and `Connectors` through their integer `stationId`
+    // and the `ChargingStation` relationship, a key v1.9.1 does not have --
+    // variant.ts. Declaring it on v1 would be claiming a query nobody has run
+    // against a schema that keys its station differently.
     deviceModel: speaksOcpp201(variant),
   };
 }
@@ -263,9 +265,11 @@ export const csmsDriver: CsmsDriverModule = {
     teardown: teardownCommand,
   },
   envHelp: [
-    "CITRINE_VARIANT     v2 (default) or v1. v1 targets the v1.9.1 line: it names",
-    "                    the station column stationId and routes no 1.6 local",
-    "                    auth list, so 6 scenarios become NOT APPLICABLE.",
+    "CITRINE_VARIANT     v2 (default) or v1. v2 is the v2.0.0 schema; driver",
+    "                    verify refuses a v2 prerelease. v1 targets the v1.9.1",
+    "                    line: it keys stations by a string stationId and routes",
+    "                    no 1.6 local auth list, so 6 scenarios become NOT",
+    "                    APPLICABLE.",
     "CITRINE_API_URL     message API base (default http://localhost:8080).",
     "                    No credentials: the shipped docker app-env selects",
     "                    LocalBypassAuthProvider, which accepts every request.",

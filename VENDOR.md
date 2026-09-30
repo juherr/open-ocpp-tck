@@ -509,8 +509,8 @@ anywhere in this file is read as a vendored-file row.
 | field | value |
 |---|---|
 | image | `ghcr.io/citrineos/citrineos-server` |
-| tag resolved | `v2.0.0-beta4` |
-| digest | `sha256:e33badb992d7b7fd28a8d1ac0d0ee6f10817f34f2647db168603424102eeb7c2` |
+| tag resolved | `v2.0.0` |
+| digest | `sha256:c57849f27223b93a574b5cb12dd2c11878d8d5936aa4640d7f3f1d2ee8681f81` |
 | image | `postgis/postgis` |
 | tag resolved | `16-3.5` |
 | digest | `sha256:4e07b425403ba55c20b541884db2e80c686dd6476bf9265046ac9c163895605d` |
@@ -520,14 +520,15 @@ anywhere in this file is read as a vendored-file row.
 | image | `hasura/graphql-engine` |
 | tag resolved | `v2.40.3` |
 | digest | `sha256:679fb764590e848e59ab6b82b3e906cc46f87d776f869f49132ca728660df244` |
-| resolved on | CitrineOS 2026-09-13, the rest 2026-08-11, from the registry manifest `Docker-Content-Digest` |
+| resolved on | CitrineOS 2026-09-30, the rest 2026-08-11, from the registry manifest `Docker-Content-Digest` |
 | declared in | `drivers/citrineos/compose.yaml` |
 
-A **prerelease**, which is the one thing here that needs defending. The OCPP
-1.6 `getLocalListVersion` and `sendLocalList` message endpoints exist only from
-the v2 line, and six scenarios need them. Pinning by digest is what makes
-depending on a moving tag safe — the alternative is `v1.9.1`, whose cost is
-spelled out in `drivers/citrineos/README.md`.
+The **v2 line**, not the `v1.9.1` stable: the OCPP 1.6 `getLocalListVersion`
+and `sendLocalList` message endpoints exist only from v2, and six scenarios
+need them. `v1.9.1`'s cost is spelled out in `drivers/citrineos/README.md`.
+Until the GA this row pinned a prerelease, which pinning by digest made safe
+to depend on; `v2.0.0` shipped 2026-09-25, and the image's
+`org.opencontainers.image.revision` label is the tag's commit, `bc578ab6`.
 
 NOT THE CERTIFIED BUILD, and not one that could sit in this table beside it.
 The OCA certificate `OCA.0201.0053.CSMS` is for CitrineOS **1.5.1**. That image
@@ -541,6 +542,25 @@ paths without a version segment. Its schema predates `Connectors` and
 `EvseTypes`, and its stack serves Directus where this driver reads and seeds
 through Hasura. `OCA-201-SELECTION.md` says what that costs the "CitrineOS is
 certified" argument.
+
+WHY THE GA RATHER THAN beta4: it is a driver port, not a digest swap, and
+beta4 cannot be driven by the port. Three schema changes reach the driver,
+read off the migrations at the tag (citrineos-core#1058, #867, #909):
+`ocppConnectionName` is dropped from the sixteen tables that carry the integer
+`stationId` foreign key to `ChargingStations.id` — `Transactions`, `Evses`,
+`Connectors` and `VariableAttributes` among them — while `LocalListVersions`
+and `SendLocalLists`, which never got that key, keep it; `Transactions` is
+range-partitioned monthly on `createdAt`, so its primary key is
+`(id, "createdAt")` and `StopTransactions` references the pair; and the image is
+slim (#1064), with its `WORKDIR` moved to `apps/ocpp-server` and no `src/`, so
+the compose file's fileAccess and Swagger paths are absolute under `dist/`.
+`CITRINE_VARIANT=v2` now means this schema, and `driver verify` refuses a
+prerelease by name rather than read it as v1.9.1, whose `Transactions` also
+lacks the name column. The 1.6 and 2.0.1 route tables are unchanged, and so is
+the log envelope `drivers/citrineos/redelivery-loops.ts` reads. Two changes
+reach the server's behaviour rather than the driver: a redelivered message is
+now requeued with a capped backoff and dropped after `maxCallLengthSeconds`
+(#1030), and one pending CALL per station is taken atomically (#1096).
 
 WHY beta4 RATHER THAN beta3: four findings this suite carried closed at once,
 and the configuration surface the compose file is written against was
@@ -567,13 +587,15 @@ artifacts, every one at `ocpp_correlate_message()` line 44, SteVe zero. Issue
 which is a conformance finding against a CSMS that answered.
 
 The statements the driver is built on, each read from citrineos-core at
-`v2.0.0-beta4` and cross-checked at `v1.9.1`. Re-check them before moving the
-pin — several are the difference between a driver and a fiction. The source
-moved under this pin (`packages/core` became `packages/ocpp`, the module
+`v2.0.0` and cross-checked at `v1.9.1`. Re-check them before moving the
+pin — several are the difference between a driver and a fiction. At beta4 the
+source moved (`packages/core` became `packages/ocpp`, the module
 `MessageApi.ts` files became per-protocol route tables under
-`packages/ocpp/src/apis/ocpp/{1.6,2}/`), so nothing carried over on a file
-identity this time: the route tables were re-read and the running container's
-`/docs/json` re-counted.
+`packages/ocpp/src/apis/ocpp/{1.6,2}/`), and the GA moved the migrations and
+upstream's Hasura metadata under `apps/ocpp-server/db/`; every statement below
+was re-read at the GA tag rather than carried over on a file identity, and the
+running GA container's `/docs/json` re-counted on 2026-09-30: 119 paths, 18 of
+them `/ocpp/1.6/`, none `/data/`.
 
 - **No 1.6 route binds `ReserveNow` or `CancelReservation`.** The four
   `packages/ocpp/src/apis/ocpp/1.6/*.ts` tables register 18 actions, and
@@ -593,7 +615,10 @@ identity this time: the route tables were re-read and the running container's
   else.
 - More than one `Authorizations` row for an idToken makes that handler answer
   `Invalid` outright — the invariant `provision` upserts for and `verify`
-  counts.
+  counts. From the GA the schema enforces half of it: `idToken_type` is
+  `UNIQUE NULLS NOT DISTINCT ("tenantId", "idToken", "idTokenType")`, so a
+  duplicate is refused at insert unless its `idTokenType` differs, which the
+  handler's lookup does not filter on.
 - **The data API this driver reads and seeds through is Hasura, and from this
   tag it is the only one there is.** The REST `/data/*` surface was dropped
   (citrineos-core#849); `/docs/json` advertises zero such paths. GraphQL is
@@ -607,8 +632,16 @@ identity this time: the route tables were re-read and the running container's
   `Transactions.authorizationId`, `LocalListAuthorizations.authorizationId`,
   `LocalListAuthorizations.groupAuthorizationId`, and the self-reference
   `Authorizations.groupAuthorizationId`. `teardown` derives its guards from
-  `pg_constraint` rather than listing them, so a fifth does not silently break
-  it.
+  the foreign keys through Hasura's `pg_suggest_relationships` rather than
+  listing them, so a fifth does not silently break it. The GA re-creates
+  `Transactions.authorizationId` on the partitioned parent, unchanged.
+- **The OCPP name is on `ChargingStations` alone for the tables with the
+  integer station key**, and `ChargingStations` keeps its
+  `(ocppConnectionName, tenantId)` unique key — which is what the driver's
+  `ChargingStation` relationships filter through. `StopTransactions` joins
+  `Transactions` on `(transactionDatabaseId, transactionCreatedAt)`; upstream's
+  own metadata at the tag spells that join as a column mapping, and so does
+  `drivers/citrineos/graphql-client.ts`.
 - `createTransactionByStartTransaction` requires a `Connectors` row matching
   the OCPP connectorId and **throws** without one;
   `processOcpp16StatusNotification` auto-commissions it for ad-hoc 1.6 stations.
@@ -668,11 +701,23 @@ did not include; the next row taken is where the larger number appears.
 
 | CitrineOS | digest | validated | `all` (44), parallel pass | `authorize` (3) |
 |---|---|---|---|---|
-| `v2.0.0-beta4` — **current pin**, `CITRINE_VARIANT=v2` | `sha256:e33badb9…` | 2026-09-13 | **All 96 registered scenarios, CI, two shards on fresh stacks** (run 34773560624): 84 PASS, 5 PARTIAL, 7 N/A, **0 FAIL and 0 EXPECTED FAIL** — the four beta3 declarations all PASS outright. Shard 2 needed no isolated retry; shard 1 took 22 (all PASS isolated) under 3 redelivery loops. The CI run before it collapsed on both shards (10 loops each), and so did the developer machine twice — the paragraph below the table says why that is not the pin | in the sweep: 3 PASS (`tc023-3` answers `Blocked`) |
+| `v2.0.0` — **current pin**, `CITRINE_VARIANT=v2` | `sha256:c57849f2…` | 2026-09-30 | **All 96 registered scenarios, CI, two samples of two shards on fresh stacks** (runs 36689267963 and 36690738965), both **84 PASS, 5 PARTIAL, 7 N/A, 0 FAIL and 0 EXPECTED FAIL**. **No redelivery loop in any of the four shard logs**: 64 + 52 and 70 + 52 dispatch envelopes, each logged once, the same count as the CSMS-to-station CALLs in the wire traces. The first sample needed no isolated retry. The second one's shard 1 took 3 (`tcg04`, `tcg06`, `tcg08`, all PASS isolated) after two 2.0.1 boot bursts left the boot `StatusNotification`s unanswered for 90 s — 25 pool acquire timeouts in a 9.5 MB log, the #119 seed, which the GA no longer turns into a loop | in the sweep: 3 PASS, both samples |
+| `v2.0.0-beta4` — superseded pin, `CITRINE_VARIANT=v2` | `sha256:e33badb9…` | 2026-09-13 | **All 96 registered scenarios, CI, two shards on fresh stacks** (run 34773560624): 84 PASS, 5 PARTIAL, 7 N/A, **0 FAIL and 0 EXPECTED FAIL** — the four beta3 declarations all PASS outright. Shard 2 needed no isolated retry; shard 1 took 22 (all PASS isolated) under 3 redelivery loops. The CI run before it collapsed on both shards (10 loops each), and so did the developer machine twice — the paragraph below the table says why that is not the pin | in the sweep: 3 PASS (`tc023-3` answers `Blocked`) |
 | `v2.0.0-beta3` — superseded pin, `CITRINE_VARIANT=v2` | `sha256:ddd8e987…` | 2026-09-05 | 38 PASS, 5 PARTIAL, 7 N/A, 4 EXPECTED FAIL — **0 flakes**, all four confirmed isolated; the 54-scenario sweep, `authorize` included | in the sweep: 2 PASS, 1 EXPECTED FAIL (`tc023-3`) |
 | `v2.0.0-beta1` — superseded pin, `CITRINE_VARIANT=v2` | `sha256:58800f45…` | 2026-08-11 | 34 PASS, 7 N/A, 3 FAIL — two lane flakes PASS on isolated retry, `tc044-2` confirmed | 2 PASS, 1 FAIL (`tc023-3`) |
 | `v1.9.1` — `CITRINE_VARIANT=v1` | `sha256:4f879151…` | 2026-08-11 | 16 PASS, 13 N/A, 15 FAIL — **all 15 confirmed on isolated retry, no flakes** | 2 PASS, 1 FAIL (`tc023-3`) |
 | `v2.0.0-beta1` — same pin, GraphQL transport | `sha256:58800f45…` | 2026-08-12 | 37 PASS, 7 N/A, **0 FAIL, and no flakes** — the parallel pass needed no isolated retry at all | 2 PASS, 1 FAIL (`tc023-3`) |
+
+THE v2.0.0 ROW IS TWO CI SAMPLES, and read size and loops first: 72 974,
+66 987, 78 861 and 66 661 log lines, against the 0.8 to 15 million lines of
+the beta4 artifacts. The difference is citrineos-core#1030: a Call refused
+because the station has one in progress is now requeued with a capped backoff
+and dropped after `maxCallLengthSeconds`, where beta4 requeued it every
+millisecond for ever. The seed is unchanged — the pool is still the vendor's
+default and still exhausts at a 2.0.1 boot burst, which is what the second
+sample's `WARN: boot quiet` lines are — but nothing accumulates behind it, so
+the CSMS recovers and the scenarios after the burst pass in the parallel pass.
+A local GA stack agreed on the six scenarios run against it sequentially.
 
 THE beta4 ROW IS A CI MEASUREMENT, and the developer-machine half of the
 story is why. Locally, the 96-scenario sweep collapsed at its first

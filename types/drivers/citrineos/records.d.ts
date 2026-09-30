@@ -26,15 +26,15 @@
  * WHAT IT COSTS, stated because the earlier `docker exec psql` transport was
  * chosen partly to avoid it: another pinned image and another published port
  * (compose.yaml), and no insulation from the schema -- Hasura derives its
- * field names from column names, so the v1.9.1 -> v2 rename of the OCPP
- * connection column (variant.ts) breaks these queries exactly as it broke the
- * SQL. It is a different syntax for the same coupling.
+ * field names from column names, so each move of the OCPP connection name
+ * (variant.ts) breaks these queries exactly as it broke the SQL. It is a
+ * different syntax for the same coupling.
  *
  * WHAT IT BUYS: this driver no longer shells into a container, so it can be
  * pointed at a CitrineOS nobody on this host owns -- and a query costs an HTTP
  * round trip rather than the ~350 ms process spawn a `docker exec` paid.
  */
-import { type CsmsChargingProfileRecords, type CsmsDeviceModelRecords, type CsmsRecords } from "../../tck/driver";
+import { type CsmsChargingProfileRecords, type CsmsDeviceModelRecords, type CsmsRecords, type FetchLike } from "../../tck/driver";
 import type { CitrineConfig } from "./config";
 /**
  * Two names are omitted from the `implements`, and each omission is a
@@ -52,19 +52,17 @@ export declare class CitrineRecords implements Omit<CsmsRecords, "reservations" 
      *  tenant's rows as this tenant's. */
     private readonly tenant;
     /**
-     * The column holding the OCPP connection name for the declared variant --
-     * `ocppConnectionName` on v2, `stationId` on v1.9.1. See variant.ts for why
-     * this is declared rather than detected, and for the trap that makes
-     * `stationId`'s mere presence useless as a discriminator.
-     *
-     * It is interpolated into the GraphQL document rather than passed as a
-     * variable because GraphQL has no way to parameterise a field name -- the
-     * same reason the SQL interpolated it into a WHERE clause. The value comes
-     * from variant.ts's closed union, never from input.
+     * The declared line, which decides how a table is scoped to a station --
+     * variant.ts's `stationWhere`. See variant.ts for why it is declared rather
+     * than detected, and for why the GA needs two spellings where the older
+     * lines needed one.
      */
-    private readonly station;
-    constructor(cfg: CitrineConfig);
-    /** `where` on a station's transactions, spelled once. */
+    private readonly variant;
+    /** `fetchImpl` is the {@link FetchLike} seam
+     *  `tests/citrineos-device-model-fixture.ts` reads the `where` of every
+     *  reader through; the CLI never passes it. */
+    constructor(cfg: CitrineConfig, fetchImpl?: FetchLike);
+    /** `where` on one station's rows of `table`, for this tenant, spelled once. */
     private stationFilter;
     private newestTransaction;
     latestTransaction(cpId: string): Promise<string>;

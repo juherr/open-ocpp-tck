@@ -1,16 +1,32 @@
 /**
  * variant.ts -- the two CitrineOS lines this driver speaks, in one place.
  *
- * CitrineOS restructured between the v1.x stable line and the v2 prerelease,
- * and two of those changes reach this driver. Both were read off running
- * containers rather than inferred from release notes:
+ * CitrineOS restructured between the v1.x stable line and the v2 line, and
+ * two of those changes reach this driver:
  *
- *  1. THE OCPP CONNECTION NAME MOVED COLUMN. `Transactions`,
- *     `LocalListVersions` and `SendLocalLists` carry it as `stationId` on
- *     v1.9.1 and as `ocppConnectionName` on v2.0.0-beta1.
+ *  1. THE OCPP CONNECTION NAME MOVED, TWICE. On v1.9.1 `Transactions`,
+ *     `LocalListVersions` and `SendLocalLists` carry it as a string
+ *     `stationId`. The v2 prereleases (beta1..beta4) renamed it
+ *     `ocppConnectionName` and added an integer `stationId` foreign key to
+ *     `ChargingStations.id` beside it. The v2.0.0 GA then DROPPED the name
+ *     from every table that has the integer key -- `Transactions`, `Evses`,
+ *     `Connectors`, `VariableAttributes` and twelve more (citrineos-core
+ *     #1058, the `20260914*-drop-ocpp-connection-name-*` migrations) -- and
+ *     kept it on the tables that never got one, `LocalListVersions` and
+ *     `SendLocalLists` among them. So on the GA the name is one column on
+ *     some tables and a join through `ChargingStations` on others, which is
+ *     why this module hands out a `where` per table family rather than a
+ *     column name. All three shapes were read off running containers, the
+ *     GA's after its migrations at the tag.
  *  2. THE 1.6 LOCAL AUTH LIST ENDPOINTS DID NOT EXIST YET. v1.9.1 advertises
  *     16 `/ocpp/1.6/` paths, v2.0.0-beta1 advertises 18; the two extra are
  *     `evdriver/sendLocalList` and `evdriver/getLocalListVersion`.
+ *
+ * `v2` MEANS THE GA, which is what `compose.yaml` pins. The prereleases are
+ * not a third line: their scope and capabilities are the GA's, only the
+ * schema differs, and a line kept for a prerelease nobody should still be
+ * running would cost a second v2 schema in every guard. `driver verify`
+ * refuses one by name instead -- see {@link schemaOf}.
  *
  * WHY THIS IS DECLARED AND NOT DETECTED
  * -------------------------------------
@@ -26,11 +42,12 @@
  * check -- rather than two sources of truth free to disagree in silence.
  *
  * THE TRAP, recorded because it is the obvious wrong detection: `stationId`
- * exists on `Transactions` in BOTH lines. On v1.9.1 it is `character varying`
- * and holds the OCPP name; on v2 it is an `integer` foreign key and the name
- * lives in `ocppConnectionName`. Testing for the presence of `stationId` is
- * therefore always true and always useless. The presence of
- * `ocppConnectionName` is the discriminator, and that is what verify() checks.
+ * exists on `Transactions` in ALL THREE shapes. On v1.9.1 it is `character
+ * varying` and holds the OCPP name; on the prereleases and the GA it is an
+ * `integer` foreign key. Testing for its presence is therefore always true and
+ * always useless -- and so, since the GA, is testing for the ABSENCE of
+ * `ocppConnectionName`, which v1.9.1 and the GA share. It takes both facts:
+ * see {@link schemaOf}.
  */
 import { type CsmsEnv, type CsmsOperation16Action, type CsmsOperation201Action } from "../../tck/driver";
 export type CitrineVariant = "v1" | "v2";
@@ -38,19 +55,71 @@ export type CitrineVariant = "v1" | "v2";
  *  only line with a complete OCPP 1.6 surface. */
 export declare const DEFAULT_VARIANT: CitrineVariant;
 export declare function resolveVariant(env: CsmsEnv): CitrineVariant;
+/** A Hasura `where` fragment. */
+export type Where = Record<string, unknown>;
 /**
- * The column carrying the OCPP connection name -- the string a charge point
- * connects as. Unquoted; callers quote it.
+ * The tables that carry the integer station key on the GA and lost the OCPP
+ * name with it, so they reach a station through the `ChargingStation`
+ * relationship. ONE LIST, TWO READERS: {@link stationWhere} walks the
+ * relationship and graphql-client.ts creates it for exactly these tables, so a
+ * table added here cannot be queried through a relationship nobody created.
  */
-export declare function stationColumn(variant: CitrineVariant): string;
+export declare const STATION_JOINED_TABLES: readonly ["Transactions", "Connectors", "VariableAttributes"];
+/** Every table this driver scopes to a station. `LocalListVersions` and
+ *  `SendLocalLists` never got the integer key, so the GA left their name
+ *  column in place -- and a relationship they do not carry would fail the
+ *  whole query. */
+export type StationScopedTable = (typeof STATION_JOINED_TABLES)[number] | "LocalListVersions" | "SendLocalLists";
+/**
+ * Scopes `table` to one charge point on the declared line.
+ *
+ * v1.9.1 carries the name as a string `stationId` on every one of them. On v2
+ * the tables in {@link STATION_JOINED_TABLES} go through `ChargingStation`,
+ * which kept the name with its `(ocppConnectionName, tenantId)` unique key;
+ * filtering their integer column directly would cost a lookup of the
+ * station's id first, and a station the CSMS has not created yet would have to
+ * be told apart from one with no rows -- the join answers both as "no rows".
+ */
+export declare function stationWhere(variant: CitrineVariant, table: StationScopedTable, cpId: string): Where;
+/**
+ * A field of the `Transactions` type, as GraphQL introspection spells it --
+ * one wrapper deep, because a column is `T` or `T!` and never a list.
+ */
+export interface IntrospectedField {
+    name: string;
+    type: {
+        name: string | null;
+        ofType: {
+            name: string | null;
+        } | null;
+    } | null;
+}
+/** The schema shapes `schemaOf` can recognise. `v2-prerelease` is refused. */
+export type CitrineSchema = CitrineVariant | "v2-prerelease";
+/** How `verify` names a line's `stationId`. */
+export declare function describeStationId(variant: CitrineVariant): string;
+/**
+ * Which line a server's `Transactions` belongs to, or `undefined` for a shape
+ * none of the three has.
+ *
+ *  - `ocppConnectionName` present: a v2 prerelease. The GA dropped it, and a
+ *    refused shape is not a line, which is why it is not a row of
+ *    {@link STATION_ID}.
+ *  - otherwise `stationId`'s scalar type, looked up in {@link STATION_ID}.
+ *
+ * Pure; its one caller is `verify`, which asks the introspection query, and
+ * `tests/citrineos-device-model-fixture.ts` part 11 reaches it through that
+ * caller with a fake answering each shape.
+ */
+export declare function schemaOf(fields: readonly IntrospectedField[]): CitrineSchema | undefined;
 /**
  * Why the reservation actions are unrouted, worded ONCE.
  *
  * Both the scope table and the runtime escape have to state this, and they are
  * the two halves a reader compares: a scope row saying one thing and an
  * UnsupportedOperationError saying another is the drift this module exists to
- * prevent. Verified in the sources at v1.9.1, v2.0.0-beta1 and main, and
- * against both running containers.
+ * prevent. Verified in the sources at v1.9.1, v2.0.0-beta1 and v2.0.0, and
+ * against the running v1.9.1, v2.0.0-beta1 and v2.0.0 containers.
  */
 export declare const NO_RESERVATIONS: string;
 /** Same, for the local auth list pair, which v1.9.1 alone lacks. */

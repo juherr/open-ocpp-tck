@@ -5,7 +5,7 @@
  * prepare hook write so a 2.0.1 StatusNotification reaches the CSMS's device
  * model, and the rows they refuse to remove.
  *
- * PROPERTY, in 10 parts:
+ * PROPERTY, in 14 parts:
  *  1. THE STATION-SCOPE TARGET IS PROVISIONED. A station reports `(evseId 0,
  *     connectorId 0)` for itself as well as one pair per connector, and a
  *     fixture covering only the connectors leaves half the failure exactly
@@ -77,6 +77,40 @@
  *     drops a clause whose comparison value is null, so the wrong spelling
  *     reads back the PAIRED row, finds it, and never seeds the one that was
  *     missing.
+ * 11. THE SCHEMA CHECK TELLS THREE SHAPES APART, not two. `Transactions`
+ *     carries `ocppConnectionName` on the v2 prereleases only; the GA dropped
+ *     it, and v1.9.1 never had it -- so its absence, which is what the check
+ *     used to read as "v1", is shared by the GA and v1.9.1, and a v2 driver
+ *     pointed at the image `compose.yaml` pins was told to switch lines.
+ *     `stationId`'s TYPE is the other half: Int on the GA, String on v1.9.1.
+ *     A prerelease is refused BY NAME, because `CITRINE_VARIANT=v2` follows
+ *     the pin and no declaration makes that schema drivable. And a shape none
+ *     of the three has -- a `stationId` of another scalar, or none -- is
+ *     refused as unknown on either declaration, rather than read as whichever
+ *     line a fallback picks: that would pass verify and fail every scenario.
+ * 12. NO STATION-SCOPED WRITE NAMES A COLUMN THE GA DROPPED. `Evses` and
+ *     `Connectors` lost `ocppConnectionName` and keep the integer station key
+ *     alone; Hasura's insert type refuses the field before Postgres sees it,
+ *     so the fake refuses it the same way. Every part that writes the
+ *     topology rides on this, which is why a regression here CRASHES part 4
+ *     with the field named rather than failing only its own row.
+ * 13. EACH READER SCOPES A STATION THE WAY ITS TABLE SPELLS IT. On the GA the
+ *     name is a join through `ChargingStation` for `Transactions`,
+ *     `Connectors` and `VariableAttributes`, and still a column on
+ *     `LocalListVersions` and `SendLocalLists`, which never got the integer
+ *     key. One spelling for all five is wrong on one side or the other, and
+ *     `Residue` asks three of them in a single query, so either mistake
+ *     fails every `prepareStation`. v1.9.1 keeps one string column
+ *     throughout. Held on the `where` each reader SENDS, offline: live, a
+ *     wrong spelling is a validation error in every scenario that reads a
+ *     transaction, which only a sweep would find.
+ * 14. THE RELATIONSHIPS THOSE READERS WALK EXIST ON THE SCHEMA THEY WALK. The
+ *     GA partitions `Transactions` on `createdAt`, so the key
+ *     `StopTransactions` holds onto it is a pair and a single-column
+ *     `foreign_key_constraint_on` names no constraint -- the metadata call
+ *     fails, and `provision` with it. The mapping is upstream's own. The
+ *     three `ChargingStation` relationships part 13 walks are created on v2
+ *     and on v2 only, since v1.9.1 has no integer key to hang them on.
  *
  * WHAT IT DOES NOT ASSERT is that these rows make CitrineOS behave -- that the
  * four warnings stop. No offline guard can: it is a property of a CSMS reading
@@ -90,7 +124,9 @@
  * and a wrong one identically: a `StatusNotificationResponse` is empty, so the
  * wire says nothing, and the rows that would say something are the ones under
  * test. Handing the provisioner its `fetch` is the way in, the same seam
- * `citrineos-transport-classification.ts` rides and for the same reason.
+ * `citrineos-transport-classification.ts` rides and for the same reason --
+ * and part 13 hands the records reader the same one, because the `where` a
+ * reader sends is printed nowhere else.
  *
  * Offline: answers every request from an in-memory store. Opens no socket,
  * starts nothing.
@@ -108,6 +144,7 @@ import {
 } from "../drivers/citrineos/device-model";
 import { CitrineProvisioner } from "../drivers/citrineos/provision";
 import { CitrineRecords } from "../drivers/citrineos/records";
+import type { CitrineSchema } from "../drivers/citrineos/variant";
 
 let failures = 0;
 
@@ -128,6 +165,10 @@ const TENANT = 1;
 const CFG = defaultCitrineConfig({
   CITRINE_GRAPHQL_URL: "http://citrine.test:8090",
 });
+const V1_CFG = defaultCitrineConfig({
+  CITRINE_GRAPHQL_URL: "http://citrine.test:8090",
+  CITRINE_VARIANT: "v1",
+});
 
 type Row = Record<string, unknown>;
 
@@ -146,6 +187,10 @@ type Row = Record<string, unknown>;
  * the driver sends it.
  */
 class FakeCitrine {
+  /** Which schema `Transactions` introspects as, and which columns the
+   *  station-scoped inserts accept. Part 11 and 12. */
+  constructor(readonly schema: FakeSchema = "v2") {}
+
   readonly evseTypes: Row[] = [];
   readonly variables: Row[] = [];
   readonly components: Row[] = [];
@@ -153,6 +198,11 @@ class FakeCitrine {
   readonly stations: Row[] = [];
   readonly evses: Row[] = [];
   readonly connectors: Row[] = [];
+
+  /** Every named GraphQL operation and its variables, in order. Part 13. */
+  readonly operations: { name: string; variables: Row }[] = [];
+  /** Every metadata call, in order. Part 14. */
+  readonly metadataCalls: { type?: string; args?: Row }[] = [];
 
   /** Every `delete_<Table>` the provisioner asked for, in order. */
   readonly deletes: { table: string; ids: number[] }[] = [];
@@ -179,6 +229,7 @@ class FakeCitrine {
       args?: { tables?: { name: string }[] };
     };
     if (url.endsWith("/v1/metadata")) {
+      this.metadataCalls.push(payload as { type?: string; args?: Row });
       return json(this.metadata(payload));
     }
 
@@ -190,6 +241,11 @@ class FakeCitrine {
     // about. See tests/citrineos-transport-classification.ts.
     const operation =
       /(?:query|mutation)\s+(\w+)/.exec(payload.query ?? "")?.[1] ?? "";
+    // Part 12. What Hasura answers an insert naming a column the table does
+    // not have -- in-band, like every other GraphQL refusal.
+    const dropped = this.droppedColumn(operation, payload.variables ?? {});
+    if (dropped !== undefined) return json({ errors: [{ message: dropped }] });
+
     const refusal = this.refuseSeed.get(operation);
     if (refusal !== undefined) {
       // Consumed, so the retry is answered normally: a fake that refused
@@ -212,6 +268,23 @@ class FakeCitrine {
 
     return json({ data: this.graphql(payload) });
   };
+
+  /**
+   * The GA dropped `ocppConnectionName` from `Evses` and `Connectors`
+   * (citrineos-core `20260914160000-drop-ocpp-connection-name-evses-connectors`),
+   * so an insert still naming it is refused -- by the generated input type,
+   * before anything reaches Postgres. The prerelease had the column, which is
+   * why the refusal is keyed on the schema rather than unconditional.
+   */
+  private droppedColumn(operation: string, vars: Row): string | undefined {
+    if (this.schema !== "v2") return undefined;
+    const table = GA_DROPPED_NAME_ON[operation];
+    if (table === undefined) return undefined;
+    const object = (vars.object ?? {}) as Row;
+    return "ocppConnectionName" in object
+      ? `field 'ocppConnectionName' not found in type: '${table}_insert_input'`
+      : undefined;
+  }
 
   private metadata(payload: { type?: string; args?: unknown }): unknown {
     if (payload.type === "pg_get_source_tables") return [];
@@ -242,6 +315,7 @@ class FakeCitrine {
     const document = payload.query ?? "";
     const vars = payload.variables ?? {};
     const operation = /(?:query|mutation)\s+(\w+)/.exec(document)?.[1] ?? "";
+    if (operation !== "") this.operations.push({ name: operation, variables: vars });
 
     switch (operation) {
       // -- the tag half, answered emptily on purpose: part 3 asserts that the
@@ -437,6 +511,20 @@ class FakeCitrine {
         return { delete_ComponentVariables: { affected_rows: ids.length } };
       }
 
+      // -- the records half, answered emptily: part 13 is about the `where`
+      // -- each reader SENDS, which the log above holds, not about what comes
+      // -- back.
+      case "Newest":
+        return { Transactions: [] };
+      case "Residue":
+        return { Transactions: [], LocalListVersions: [], SendLocalLists: [] };
+      case "CountForTag":
+        return { Transactions_aggregate: { aggregate: { count: 0 } } };
+      case "ConnectorState":
+        return { Connectors: [] };
+      case "DeviceModelState":
+        return { VariableAttributes: [] };
+
       case "Referenced": {
         const kept = this.stillReferenced.get(this.lastReferenceTarget) ?? [];
         const asked = vars.ids as number[];
@@ -456,9 +544,10 @@ class FakeCitrine {
     }
 
     // The variant check, which has no operation name because it is an
-    // anonymous introspection query. Answered as v2, which is what CFG says.
+    // anonymous introspection query. Answered in the shape of the schema this
+    // fake was built with -- part 11.
     if (document.includes("__type")) {
-      return { __type: { fields: [{ name: "ocppConnectionName" }] } };
+      return { __type: { fields: TRANSACTIONS_FIELDS[this.schema] } };
     }
     throw new Error(`guard: no arm for GraphQL operation ${operation || document}`);
   }
@@ -481,6 +570,54 @@ class FakeCitrine {
   }
 }
 
+/**
+ * The three `Transactions` shapes, as GraphQL introspection spells them. Only
+ * the two fields the discriminator reads are listed, plus `id` so that a
+ * check reading "the first field" rather than a named one does not pass by
+ * accident.
+ *
+ *  - v2 is the GA: `ocppConnectionName` dropped, `stationId` an integer FK.
+ *  - v2-prerelease is beta1..beta4: both columns, `stationId` an integer.
+ *  - v1 is v1.9.1: no name column, `stationId` a STRING holding the name.
+ */
+/**
+ * The shapes the fake can answer as: the three `schemaOf` names, and two it
+ * must NOT name -- a `stationId` of a scalar no line has, and no `stationId`
+ * at all. Those two are what `verify`'s fourth branch is for: a CSMS this
+ * driver was never read against, which must be refused rather than read as
+ * whichever line a fallback happens to pick.
+ */
+type FakeSchema = CitrineSchema | "stationId-uuid" | "no-stationId";
+
+/** The station-scoped inserts, by the table the GA dropped the name from. */
+const GA_DROPPED_NAME_ON: Record<string, string | undefined> = {
+  SeedEvse: "Evses",
+  SeedConnector: "Connectors",
+};
+const INT = { kind: "SCALAR", name: "Int", ofType: null };
+const STRING = { kind: "SCALAR", name: "String", ofType: null };
+const nonNull = (type: Row) => ({ kind: "NON_NULL", name: null, ofType: type });
+const TRANSACTIONS_FIELDS: Record<FakeSchema, Row[]> = {
+  v2: [
+    { name: "id", type: nonNull(INT) },
+    { name: "stationId", type: INT },
+  ],
+  "v2-prerelease": [
+    { name: "id", type: nonNull(INT) },
+    { name: "ocppConnectionName", type: STRING },
+    { name: "stationId", type: INT },
+  ],
+  v1: [
+    { name: "id", type: nonNull(INT) },
+    { name: "stationId", type: nonNull(STRING) },
+  ],
+  "stationId-uuid": [
+    { name: "id", type: nonNull(INT) },
+    { name: "stationId", type: { kind: "SCALAR", name: "uuid", ofType: null } },
+  ],
+  "no-stationId": [{ name: "id", type: nonNull(INT) }],
+};
+
 function json(value: unknown): Response {
   return new Response(JSON.stringify(value), { status: 200 });
 }
@@ -491,8 +628,8 @@ function remove(rows: Row[], predicate: (row: Row) => boolean): void {
   }
 }
 
-function provisionerOn(csms: FakeCitrine): CitrineProvisioner {
-  return new CitrineProvisioner(CFG, () => {}, csms.fetch);
+function provisionerOn(csms: FakeCitrine, cfg = CFG): CitrineProvisioner {
+  return new CitrineProvisioner(cfg, () => {}, csms.fetch);
 }
 
 /** Every problem `verify` reported that is about the device model rather than
@@ -795,15 +932,8 @@ const TARGETS = statusTargets(CONNECTORS);
 // ---------------------------------------------------------------------------
 
 {
-  const csms = new FakeCitrine();
-  const v1 = new CitrineProvisioner(
-    defaultCitrineConfig({
-      CITRINE_GRAPHQL_URL: "http://citrine.test:8090",
-      CITRINE_VARIANT: "v1",
-    }),
-    () => {},
-    csms.fetch,
-  );
+  const csms = new FakeCitrine("v1");
+  const v1 = provisionerOn(csms, V1_CFG);
   await v1.provisionDeviceModel();
   await v1.ensureStationTopology(CP_ID, CONNECTORS);
   await v1.teardown();
@@ -819,8 +949,8 @@ const TARGETS = statusTargets(CONNECTORS);
   check(
     "part 7: nothing is written on the line that declares no 2.0.1 surface",
     written === 0,
-    "the v1.9.1 schema exposes no ocppConnectionName and spells its station " +
-      "column differently, so these writes fail there -- once per scenario, " +
+    "the v1.9.1 schema keys a station by a STRING stationId holding the " +
+      "OCPP name, so these writes fail there -- once per scenario, " +
       "because the prepare hook runs before every one of them. " +
       `Wrote ${written} row(s): ${JSON.stringify({
         evseTypes: csms.evseTypes,
@@ -842,12 +972,7 @@ const TARGETS = statusTargets(CONNECTORS);
   // have handed a spec queries naming a column v1.9.1 does not have.
   check(
     "part 7: and the driver offers no device-model reader there",
-    new CitrineRecords(
-      defaultCitrineConfig({
-        CITRINE_GRAPHQL_URL: "http://citrine.test:8090",
-        CITRINE_VARIANT: "v1",
-      }),
-    ).deviceModel === undefined,
+    new CitrineRecords(V1_CFG).deviceModel === undefined,
     "the parts carry a reader on a line whose capability says false, so " +
       "nothing substitutes the stub and a spec would run v2-shaped queries " +
       "against a v1 schema",
@@ -876,7 +1001,6 @@ const TARGETS = statusTargets(CONNECTORS);
   csms.evses.push({
     id: strayEvseId,
     stationId,
-    ocppConnectionName: CP_ID,
     evseTypeId: TARGETS[TARGETS.length - 1]!.evseId,
     evseId: "US*TST*C*00000001*0",
     tenantId: TENANT,
@@ -1011,6 +1135,299 @@ const TARGETS = statusTargets(CONNECTORS);
     ),
     "the connector-less rows survived teardown, so a second provision finds " +
       `them and the fixture is never actually removed: ${JSON.stringify(csms.evseTypes)}`,
+  );
+}
+
+// ---------------------------------------------------------------------------
+// Part 11: the schema check tells the three shapes apart
+// ---------------------------------------------------------------------------
+
+/** The schema half of `verify`, without the fixture half: every problem that
+ *  is a mismatch sentence rather than a missing row. */
+async function schemaProblems(
+  cfg: typeof CFG,
+  schema: FakeSchema,
+): Promise<string[]> {
+  const problems = await provisionerOn(new FakeCitrine(schema), cfg).verify();
+  return problems.filter((problem) => problem.startsWith("schema mismatch"));
+}
+
+/**
+ * Each declared line against each server shape: accepted, or refused with a
+ * sentence that points at the line to set. The prerelease points at none --
+ * no declaration drives it.
+ */
+const SCHEMA_ROWS: {
+  declared: typeof CFG;
+  server: FakeSchema;
+  refusal: string | undefined;
+  why: string;
+}[] = [
+  {
+    declared: CFG,
+    server: "v2",
+    refusal: undefined,
+    why: "the declared line and the pinned image agree",
+  },
+  {
+    declared: V1_CFG,
+    server: "v1",
+    refusal: undefined,
+    why: "the declared line and the v1.9.1 image agree",
+  },
+  {
+    declared: CFG,
+    server: "v2-prerelease",
+    refusal: "prerelease",
+    why:
+      "a beta1..beta4 server still carries ocppConnectionName on " +
+      "Transactions, Evses and Connectors, so every station-scoped read and " +
+      "write of the GA port targets the wrong shape",
+  },
+  {
+    declared: V1_CFG,
+    server: "v2",
+    refusal: "CITRINE_VARIANT=v2",
+    why:
+      "the GA and v1.9.1 both lack ocppConnectionName on Transactions, so a " +
+      "check reading only that column cannot tell them apart -- stationId's " +
+      "TYPE is what does",
+  },
+  {
+    declared: CFG,
+    server: "v1",
+    refusal: "CITRINE_VARIANT=v1",
+    why: "stationId is a string on v1.9.1, and every v2 read would miss",
+  },
+  // The fourth branch, on both lines: a shape none of the three has must be
+  // refused as unknown. A fallback that read it as the DECLARED line would
+  // pass verify and fail every scenario instead, which is the silent,
+  // expensive symptom verifySchema exists to turn into one sentence.
+  {
+    declared: CFG,
+    server: "stationId-uuid",
+    refusal: "matches no CitrineOS line",
+    why: "a stationId of a scalar no line has is not the GA's Int",
+  },
+  {
+    declared: V1_CFG,
+    server: "stationId-uuid",
+    refusal: "matches no CitrineOS line",
+    why: "nor v1.9.1's String",
+  },
+  {
+    declared: CFG,
+    server: "no-stationId",
+    refusal: "matches no CitrineOS line",
+    why: "a Transactions with no station column at all is no line's",
+  },
+];
+
+for (const row of SCHEMA_ROWS) {
+  const problems = await schemaProblems(row.declared, row.server);
+  check(
+    `part 11: ${row.declared.variant} against a ${row.server} server is ` +
+      (row.refusal === undefined ? "accepted" : `refused, naming ${row.refusal}`),
+    row.refusal === undefined
+      ? problems.length === 0
+      : problems.length === 1 && problems[0]!.includes(row.refusal),
+    `${row.why}. Reported: ${JSON.stringify(problems)}`,
+  );
+}
+
+{
+  const prerelease = await schemaProblems(CFG, "v2-prerelease");
+  check(
+    "part 11: and the prerelease refusal does not send the operator to v1",
+    prerelease.every((problem) => !problem.includes("CITRINE_VARIANT=v1")),
+    "the old check read ocppConnectionName's ABSENCE as v1, so a v2 server on " +
+      "either side of the GA was told to switch to a line it is not. " +
+      `Reported: ${JSON.stringify(prerelease)}`,
+  );
+}
+
+// ---------------------------------------------------------------------------
+// Part 12: no station-scoped write names a column the GA dropped
+// ---------------------------------------------------------------------------
+
+{
+  const csms = new FakeCitrine("v2");
+  const provisioner = provisionerOn(csms);
+  await provisioner.provisionDeviceModel();
+  let refused: unknown;
+  try {
+    await provisioner.ensureStationTopology(CP_ID, CONNECTORS);
+  } catch (err) {
+    refused = err;
+  }
+  check(
+    "part 12: the station topology is written against the GA schema",
+    refused === undefined &&
+      csms.evses.length === TARGETS.length &&
+      csms.connectors.length === TARGETS.length,
+    "an Evses or Connectors insert was refused -- the GA keys both by the " +
+      "integer stationId alone, and naming ocppConnectionName fails the " +
+      `insert type before Postgres sees it. Threw: ${String(refused)}`,
+  );
+  check(
+    "part 12: and every row is keyed by the station's integer id",
+    [...csms.evses, ...csms.connectors].every(
+      (row) => row.stationId === csms.stations[0]?.id,
+    ),
+    `stations ${JSON.stringify(csms.stations)}, evses ${JSON.stringify(csms.evses)}, ` +
+      `connectors ${JSON.stringify(csms.connectors)}`,
+  );
+}
+
+// ---------------------------------------------------------------------------
+// Part 13: each reader scopes a station the way its table spells it
+// ---------------------------------------------------------------------------
+
+/** Every `where` a records call sent, by operation. `Residue` carries three. */
+function wheresOf(csms: FakeCitrine, name: string): Row[] {
+  return csms.operations
+    .filter((op) => op.name === name)
+    .flatMap((op) =>
+      name === "Residue"
+        ? [op.variables.open, op.variables.versions, op.variables.sends]
+        : [op.variables.where],
+    ) as Row[];
+}
+
+const BY_RELATIONSHIP = { ChargingStation: { ocppConnectionName: { _eq: CP_ID } } };
+const BY_NAME = { ocppConnectionName: { _eq: CP_ID } };
+const BY_V1_COLUMN = { stationId: { _eq: CP_ID } };
+
+/** Whether `where` scopes the station exactly as `scope` does, and names no
+ *  other station column beside it. */
+function scopedBy(where: Row | undefined, scope: Row): boolean {
+  if (where === undefined) return false;
+  const station = ["ChargingStation", "ocppConnectionName", "stationId"].filter(
+    (key) => key in where,
+  );
+  const [key] = Object.keys(scope);
+  return (
+    station.length === 1 &&
+    station[0] === key &&
+    JSON.stringify(where[key!]) === JSON.stringify(scope[key!])
+  );
+}
+
+{
+  const csms = new FakeCitrine("v2");
+  const records = new CitrineRecords(CFG, csms.fetch);
+  await records.latestTransaction(CP_ID);
+  await records.transactionCountForIdTag(CP_ID, "TAG");
+  await records.prepareStation(CP_ID);
+  await records.deviceModel!.connectorStatus(CP_ID, 1, 1);
+  await records.deviceModel!.availabilityState(CP_ID, 1, 1);
+
+  const [open, versions, sends] = wheresOf(csms, "Residue");
+  check(
+    "part 13: on the GA, Transactions are scoped through the station row",
+    [...wheresOf(csms, "Newest"), ...wheresOf(csms, "CountForTag"), open].every(
+      (where) => scopedBy(where, BY_RELATIONSHIP),
+    ),
+    "the GA dropped Transactions.ocppConnectionName and keeps only the " +
+      "integer stationId, so the OCPP name is reachable only through " +
+      `ChargingStation. Sent: ${JSON.stringify(csms.operations)}`,
+  );
+  check(
+    "part 13: and so are Connectors and VariableAttributes",
+    [
+      ...wheresOf(csms, "ConnectorState"),
+      ...wheresOf(csms, "DeviceModelState"),
+    ].every((where) => scopedBy(where, BY_RELATIONSHIP)),
+    `Sent: ${JSON.stringify(csms.operations)}`,
+  );
+  check(
+    "part 13: while the local-list tables keep the name column",
+    scopedBy(versions, BY_NAME) && scopedBy(sends, BY_NAME),
+    "LocalListVersions and SendLocalLists were not in the GA's drop -- " +
+      "they never had the integer stationId -- so routing them through a " +
+      "relationship they do not carry fails the whole Residue query. " +
+      `Sent: ${JSON.stringify({ versions, sends })}`,
+  );
+}
+
+{
+  const csms = new FakeCitrine("v1");
+  const records = new CitrineRecords(V1_CFG, csms.fetch);
+  await records.latestTransaction(CP_ID);
+  await records.transactionCountForIdTag(CP_ID, "TAG");
+  await records.prepareStation(CP_ID);
+  check(
+    "part 13: on v1.9.1, every table is scoped by the string stationId",
+    [
+      ...wheresOf(csms, "Newest"),
+      ...wheresOf(csms, "CountForTag"),
+      ...wheresOf(csms, "Residue"),
+    ].every((where) => scopedBy(where, BY_V1_COLUMN)),
+    `Sent: ${JSON.stringify(csms.operations)}`,
+  );
+}
+
+// ---------------------------------------------------------------------------
+// Part 14: the relationships the readers walk exist on the schema they walk
+// ---------------------------------------------------------------------------
+
+/** The `using` of every relationship `provision` created, by `Table.name`. */
+function relationshipsCreated(csms: FakeCitrine): Map<string, unknown> {
+  const created = new Map<string, unknown>();
+  for (const call of csms.metadataCalls) {
+    if (!/^pg_create_(object|array)_relationship$/.test(call.type ?? "")) continue;
+    const args = call.args as { table: { name: string }; name: string; using: unknown };
+    created.set(`${args.table.name}.${args.name}`, args.using);
+  }
+  return created;
+}
+
+{
+  const csms = new FakeCitrine("v2");
+  await provisionerOn(csms).ensureApiAccess();
+  const created = relationshipsCreated(csms);
+  check(
+    "part 14: on the GA, StopTransactions is joined on the partition key too",
+    JSON.stringify(created.get("Transactions.StopTransactions")) ===
+      JSON.stringify({
+        manual_configuration: {
+          remote_table: { schema: "public", name: "StopTransactions" },
+          column_mapping: { id: "transactionDatabaseId", createdAt: "transactionCreatedAt" },
+        },
+      }),
+    "Transactions is partitioned on the GA with a composite key, so the " +
+      "StopTransactions foreign key is (transactionDatabaseId, " +
+      "transactionCreatedAt) and a single-column foreign_key_constraint_on " +
+      "matches no constraint -- the metadata call fails and provision with it. " +
+      `Created: ${JSON.stringify(created.get("Transactions.StopTransactions"))}`,
+  );
+  check(
+    "part 14: and every table part 13 scopes through ChargingStation has it",
+    ["Transactions", "Connectors", "VariableAttributes"].every(
+      (table) =>
+        JSON.stringify(created.get(`${table}.ChargingStation`)) ===
+        JSON.stringify({ foreign_key_constraint_on: "stationId" }),
+    ),
+    `Created: ${JSON.stringify([...created.keys()])}`,
+  );
+}
+
+{
+  const csms = new FakeCitrine("v1");
+  await provisionerOn(csms, V1_CFG).ensureApiAccess();
+  const created = relationshipsCreated(csms);
+  check(
+    "part 14: on v1.9.1, the relationships are the ones it always had",
+    ![...created.keys()].some((key) => key.endsWith(".ChargingStation")) &&
+      JSON.stringify(created.get("Transactions.StopTransactions")) ===
+        JSON.stringify({
+          foreign_key_constraint_on: {
+            table: { schema: "public", name: "StopTransactions" },
+            column: "transactionDatabaseId",
+          },
+        }),
+    "v1.9.1's Transactions is neither partitioned nor keyed by an integer " +
+      `stationId. Created: ${JSON.stringify([...created.entries()])}`,
   );
 }
 

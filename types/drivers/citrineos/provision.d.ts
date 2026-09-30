@@ -59,10 +59,9 @@ export declare class CitrineProvisioner {
      * pointed at. THE SAME PREDICATE THE CAPABILITY USES, and for a reason that
      * is not symmetry.
      *
-     * The v1.9.1 line has no `ocppConnectionName`: it never got the rename
-     * migration, and its `Connector.stationId` is a STRING holding the OCPP
-     * name. Every write below spells `ocppConnectionName` literally -- correctly
-     * for v2, and as a field the v1 schema does not expose -- so an ungated
+     * The v1.9.1 line keys a station by a STRING `stationId` holding the OCPP
+     * name. Every write below keys its rows by the station's INTEGER id -- the
+     * v2 shape, which the v1 schema does not have -- so an ungated
      * `ensureStationTopology` fails on every scenario of a line where eighteen
      * of them are still drivable. Nothing offline sees it: the scope check is
      * static, and no CI lane sweeps v1.
@@ -133,17 +132,17 @@ export declare class CitrineProvisioner {
      * Does the running server's schema match the variant we were told to expect?
      *
      * variant.ts declares rather than detects, so that the scope table stays
-     * readable offline -- which leaves exactly one way for the declaration to be
-     * wrong: pointing a `v2` driver at a `v1.9.1` server, or the reverse. The
-     * symptom without this check is silent and expensive: every record read
-     * filters on a field the schema does not have, so the data API rejects the
-     * query and a dozen scenarios report the CSMS as empty. One query converts
-     * that into a sentence.
+     * readable offline -- which leaves two ways for the declaration to be wrong:
+     * pointing a `v2` driver at a `v1.9.1` server or the reverse, and pointing
+     * it at a v2 PRERELEASE, whose schema is neither. The symptom without this
+     * check is silent and expensive: every record read filters on a field the
+     * schema does not have, so the data API rejects the query and a dozen
+     * scenarios report the CSMS as empty. One query converts that into a
+     * sentence.
      *
-     * The discriminator is `ocppConnectionName`, never `stationId`: `stationId`
-     * exists on `Transactions` in BOTH lines -- `character varying` holding the
-     * OCPP name on v1.9.1, an `integer` foreign key on v2 -- so its presence
-     * proves nothing. Both facts were read off running containers.
+     * The discriminator is variant.ts's `schemaOf`, which needs both
+     * `ocppConnectionName`'s presence and `stationId`'s TYPE: `stationId` exists
+     * in all three shapes, and the name column is absent from two of them.
      *
      * Asked of the GraphQL schema rather than of `information_schema`, which
      * Hasura does not expose: the generated type mirrors the table's columns, so
@@ -370,7 +369,7 @@ export declare class CitrineProvisioner {
      * it" rather than "this fixture created it", and the difference is a leak
      * rather than a nuance. CitrineOS creates an EVSE of its own accord -- the
      * transaction repository does `readOrCreateByQuery` on
-     * `(ocppConnectionName, evseTypeId)` -- so on a database that saw traffic
+     * `(stationId, evseTypeId)` -- so on a database that saw traffic
      * before this fixture existed, the row is already there and unmarked. The
      * connector written under it would then be invisible to teardown, which
      * finds connectors only through marked EVSEs, and would survive every
