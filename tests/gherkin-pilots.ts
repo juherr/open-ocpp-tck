@@ -405,6 +405,7 @@ for (let index = 0; index < authorizeSpecs.length; index += 1) {
     assert.ok(gherkinResult.every((result) => /^\w+ .+/.test(result)), "authorize reports retain readable descriptions");
   }
 }
+assert.equal(AUTHORIZE_SPECS.length, authorizeSpecs.length);
 assert.ok(AUTHORIZE_SPECS.every((spec, index) => spec === authorizeSpecs[index]));
 assert.throws(
   () => compileFeaturePlanText(
