@@ -20,15 +20,21 @@ Ask before running anything that reaches a server or leaves state behind:
 - `ocpp-tck driver provision | verify | teardown | selftest` — talk to a CSMS,
   and the first and third of those write fixtures.
 - `docker compose -f drivers/*/compose.yaml` — brings a CSMS up.
-- `bash tools/vendor-diff.sh` — the one guard-adjacent script that uses the
-  network.
+- `bash tools/vendor-diff.sh`, `bash tools/trace-conformance.sh` — the two
+  guard-adjacent scripts that use the network. Both only read: they clone an
+  upstream into a temp dir and compare. `trace-conformance.sh` also takes a
+  directory of archived traces, which `gh run download` puts somewhere
+  harmless.
 
 ## Two habits this repo rewards
 
-- **Re-pin before verifying, not after.** Editing an `upstream-verbatim`
-  file (`tck/ocpp.ts`, `tck/util.ts`) and running the gate costs a full run
-  to be told to run `tools/repin-vendored.sh`. The runner itself is
-  `upstream-forked` and needs no re-pin. See the origin table in @AGENTS.md.
+- **Re-pin before verifying, not after.** Editing a file whose `VENDOR.md`
+  row is `upstream-verbatim` (`tck/util.ts`) or `upstream-patched`
+  (`tck/ocpp.ts`) and running the gate costs a full run to be told to run
+  `tools/repin-vendored.sh`. The runner itself is `upstream-forked` and needs
+  no re-pin. Read the row rather than this list: `tck/ocpp.ts` was verbatim
+  until a correlation fix patched it, and the next such change moves another
+  name across. See the origin table in @AGENTS.md.
 - **Mutation-test a new guard as you write it.** `tools/mutate.sh` does the
   edit, the run and the restore, and refuses to conclude anything when the
   expression matched nothing — see the Tests section of @AGENTS.md. The

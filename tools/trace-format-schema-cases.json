@@ -1,0 +1,738 @@
+{
+  "//": [
+    "Cases for the differential check in tools/trace-conformance.sh: every one",
+    "is run through BOTH packages/trace-format/validate.ts and the specification's",
+    "own ajv + trace-v1.schema.json, and the two must agree on accept/reject.",
+    "",
+    "The specification's fixtures cannot do this job. They are all CONFORMANT, so",
+    "they only ever exercise the accept direction -- a transcription that is too",
+    "lax passes all 16 and is wrong. That is not hypothetical: this table was",
+    "added after `2024-01-15T10:00:60Z` was found accepted here and rejected by",
+    "ajv, with the corpus green.",
+    "",
+    "ONE REJECTION PER CHECK validate.ts MAKES, which is a stronger claim than",
+    "one per schema rule and the one worth holding: a rule enforced by two call",
+    "sites needs two cases, or deleting either leaves this green. Each was",
+    "verified by deleting its check and watching the verdicts diverge -- that is",
+    "the only thing that tells a covering case from a decorative one.",
+    "",
+    "The date-time rows are the largest block because `format: date-time` is not",
+    "RFC 3339 here: it is whatever ajv-formats implements, which admits a",
+    "whitespace separator and the `+0100` and `+01` offset spellings the grammar",
+    "does not. See SPEC-FEEDBACK.md finding 6."
+  ],
+  "cases": [
+    {
+      "name": "conformant CALL",
+      "record": {
+        "schemaVersion": "1.1",
+        "timestamp": "2024-01-15T10:00:00Z",
+        "transport": "json",
+        "direction": "cp-to-csms",
+        "messageType": "CALL",
+        "action": "Heartbeat"
+      }
+    },
+    {
+      "name": "required: no schemaVersion",
+      "record": {
+        "timestamp": "2024-01-15T10:00:00Z",
+        "transport": "json",
+        "direction": "cp-to-csms",
+        "messageType": "CALL",
+        "action": "Heartbeat"
+      }
+    },
+    {
+      "name": "required: no timestamp",
+      "record": {
+        "schemaVersion": "1.1",
+        "transport": "json",
+        "direction": "cp-to-csms",
+        "messageType": "CALL",
+        "action": "Heartbeat"
+      }
+    },
+    {
+      "name": "required: no transport",
+      "record": {
+        "schemaVersion": "1.1",
+        "timestamp": "2024-01-15T10:00:00Z",
+        "direction": "cp-to-csms",
+        "messageType": "CALL",
+        "action": "Heartbeat"
+      }
+    },
+    {
+      "name": "required: no direction",
+      "record": {
+        "schemaVersion": "1.1",
+        "timestamp": "2024-01-15T10:00:00Z",
+        "transport": "json",
+        "messageType": "CALL",
+        "action": "Heartbeat"
+      }
+    },
+    {
+      "name": "required: no messageType",
+      "record": {
+        "schemaVersion": "1.1",
+        "timestamp": "2024-01-15T10:00:00Z",
+        "transport": "json",
+        "direction": "cp-to-csms"
+      }
+    },
+    {
+      "name": "type: numeric schemaVersion",
+      "record": {
+        "schemaVersion": 1.1,
+        "timestamp": "2024-01-15T10:00:00Z",
+        "transport": "json",
+        "direction": "cp-to-csms",
+        "messageType": "CALL",
+        "action": "Heartbeat"
+      }
+    },
+    {
+      "name": "type: numeric messageId",
+      "record": {
+        "schemaVersion": "1.1",
+        "timestamp": "2024-01-15T10:00:00Z",
+        "transport": "json",
+        "direction": "cp-to-csms",
+        "messageType": "CALL",
+        "action": "Heartbeat",
+        "messageId": 1
+      }
+    },
+    {
+      "name": "type: array raw",
+      "record": {
+        "schemaVersion": "1.1",
+        "timestamp": "2024-01-15T10:00:00Z",
+        "transport": "json",
+        "direction": "cp-to-csms",
+        "messageType": "CALL",
+        "action": "Heartbeat",
+        "raw": [
+          "a"
+        ]
+      }
+    },
+    {
+      "name": "type: string meta",
+      "record": {
+        "schemaVersion": "1.1",
+        "timestamp": "2024-01-15T10:00:00Z",
+        "transport": "json",
+        "direction": "cp-to-csms",
+        "messageType": "CALL",
+        "action": "Heartbeat",
+        "meta": "x"
+      }
+    },
+    {
+      "name": "enum: transport mqtt",
+      "record": {
+        "schemaVersion": "1.1",
+        "timestamp": "2024-01-15T10:00:00Z",
+        "transport": "mqtt",
+        "direction": "cp-to-csms",
+        "messageType": "CALL",
+        "action": "Heartbeat"
+      }
+    },
+    {
+      "name": "enum: transport soap",
+      "record": {
+        "schemaVersion": "1.1",
+        "timestamp": "2024-01-15T10:00:00Z",
+        "transport": "soap",
+        "direction": "cp-to-csms",
+        "messageType": "CALL",
+        "action": "Heartbeat"
+      }
+    },
+    {
+      "name": "enum: direction cp-to-cp",
+      "record": {
+        "schemaVersion": "1.1",
+        "timestamp": "2024-01-15T10:00:00Z",
+        "transport": "json",
+        "direction": "cp-to-cp",
+        "messageType": "CALL",
+        "action": "Heartbeat"
+      }
+    },
+    {
+      "name": "enum: messageType CALLBACK",
+      "record": {
+        "schemaVersion": "1.1",
+        "timestamp": "2024-01-15T10:00:00Z",
+        "transport": "json",
+        "direction": "cp-to-csms",
+        "messageType": "CALLBACK"
+      }
+    },
+    {
+      "name": "connectorId 0 (the minimum)",
+      "record": {
+        "schemaVersion": "1.1",
+        "timestamp": "2024-01-15T10:00:00Z",
+        "transport": "json",
+        "direction": "cp-to-csms",
+        "messageType": "CALL",
+        "action": "Heartbeat",
+        "connectorId": 0
+      }
+    },
+    {
+      "name": "connectorId -1",
+      "record": {
+        "schemaVersion": "1.1",
+        "timestamp": "2024-01-15T10:00:00Z",
+        "transport": "json",
+        "direction": "cp-to-csms",
+        "messageType": "CALL",
+        "action": "Heartbeat",
+        "connectorId": -1
+      }
+    },
+    {
+      "name": "connectorId 1.5",
+      "record": {
+        "schemaVersion": "1.1",
+        "timestamp": "2024-01-15T10:00:00Z",
+        "transport": "json",
+        "direction": "cp-to-csms",
+        "messageType": "CALL",
+        "action": "Heartbeat",
+        "connectorId": 1.5
+      }
+    },
+    {
+      "name": "date-time: not a date",
+      "record": {
+        "schemaVersion": "1.1",
+        "timestamp": "yesterday",
+        "transport": "json",
+        "direction": "cp-to-csms",
+        "messageType": "CALL",
+        "action": "Heartbeat"
+      }
+    },
+    {
+      "name": "date-time: 31 February",
+      "record": {
+        "schemaVersion": "1.1",
+        "timestamp": "2024-02-31T00:00:00Z",
+        "transport": "json",
+        "direction": "cp-to-csms",
+        "messageType": "CALL",
+        "action": "Heartbeat"
+      }
+    },
+    {
+      "name": "date-time: 29 February on a leap year",
+      "record": {
+        "schemaVersion": "1.1",
+        "timestamp": "2024-02-29T00:00:00Z",
+        "transport": "json",
+        "direction": "cp-to-csms",
+        "messageType": "CALL",
+        "action": "Heartbeat"
+      }
+    },
+    {
+      "name": "date-time: no timezone",
+      "record": {
+        "schemaVersion": "1.1",
+        "timestamp": "2024-01-15T10:00:00",
+        "transport": "json",
+        "direction": "cp-to-csms",
+        "messageType": "CALL",
+        "action": "Heartbeat"
+      }
+    },
+    {
+      "name": "date-time: offset +01:00",
+      "record": {
+        "schemaVersion": "1.1",
+        "timestamp": "2024-01-15T10:00:00+01:00",
+        "transport": "json",
+        "direction": "cp-to-csms",
+        "messageType": "CALL",
+        "action": "Heartbeat"
+      }
+    },
+    {
+      "name": "date-time: offset hour 99",
+      "record": {
+        "schemaVersion": "1.1",
+        "timestamp": "2024-01-15T10:00:00+99:00",
+        "transport": "json",
+        "direction": "cp-to-csms",
+        "messageType": "CALL",
+        "action": "Heartbeat"
+      }
+    },
+    {
+      "name": "date-time: offset minute 99",
+      "record": {
+        "schemaVersion": "1.1",
+        "timestamp": "2024-01-15T10:00:00-00:99",
+        "transport": "json",
+        "direction": "cp-to-csms",
+        "messageType": "CALL",
+        "action": "Heartbeat"
+      }
+    },
+    {
+      "name": "leap second at 23:59:60Z",
+      "record": {
+        "schemaVersion": "1.1",
+        "timestamp": "2024-12-31T23:59:60Z",
+        "transport": "json",
+        "direction": "cp-to-csms",
+        "messageType": "CALL",
+        "action": "Heartbeat"
+      }
+    },
+    {
+      "name": "leap second at 00:59:60+01:00 (23:59 UTC)",
+      "record": {
+        "schemaVersion": "1.1",
+        "timestamp": "2025-01-01T00:59:60+01:00",
+        "transport": "json",
+        "direction": "cp-to-csms",
+        "messageType": "CALL",
+        "action": "Heartbeat"
+      }
+    },
+    {
+      "name": "leap second at 22:59:60-01:00 (23:59 UTC)",
+      "record": {
+        "schemaVersion": "1.1",
+        "timestamp": "2024-12-31T22:59:60-01:00",
+        "transport": "json",
+        "direction": "cp-to-csms",
+        "messageType": "CALL",
+        "action": "Heartbeat"
+      }
+    },
+    {
+      "name": "second 60 mid-day",
+      "record": {
+        "schemaVersion": "1.1",
+        "timestamp": "2024-01-15T10:00:60Z",
+        "transport": "json",
+        "direction": "cp-to-csms",
+        "messageType": "CALL",
+        "action": "Heartbeat"
+      }
+    },
+    {
+      "name": "second 60 at 23:59 local but not UTC",
+      "record": {
+        "schemaVersion": "1.1",
+        "timestamp": "2024-12-31T23:59:60+01:00",
+        "transport": "json",
+        "direction": "cp-to-csms",
+        "messageType": "CALL",
+        "action": "Heartbeat"
+      }
+    },
+    {
+      "name": "second 61",
+      "record": {
+        "schemaVersion": "1.1",
+        "timestamp": "2024-12-31T23:59:61Z",
+        "transport": "json",
+        "direction": "cp-to-csms",
+        "messageType": "CALL",
+        "action": "Heartbeat"
+      }
+    },
+    {
+      "name": "conditional: CALL with no action",
+      "record": {
+        "schemaVersion": "1.1",
+        "timestamp": "2024-01-15T10:00:00Z",
+        "transport": "json",
+        "direction": "cp-to-csms",
+        "messageType": "CALL"
+      }
+    },
+    {
+      "name": "conditional: CALLERROR with no error",
+      "record": {
+        "schemaVersion": "1.1",
+        "timestamp": "2024-01-15T10:00:00Z",
+        "transport": "json",
+        "direction": "csms-to-cp",
+        "messageType": "CALLERROR"
+      }
+    },
+    {
+      "name": "conditional: CALLERROR with an error",
+      "record": {
+        "schemaVersion": "1.1",
+        "timestamp": "2024-01-15T10:00:00Z",
+        "transport": "json",
+        "direction": "csms-to-cp",
+        "messageType": "CALLERROR",
+        "error": {
+          "code": "GenericError"
+        }
+      }
+    },
+    {
+      "name": "conditional: error on a CALL",
+      "record": {
+        "schemaVersion": "1.1",
+        "timestamp": "2024-01-15T10:00:00Z",
+        "transport": "json",
+        "direction": "cp-to-csms",
+        "messageType": "CALL",
+        "action": "Heartbeat",
+        "error": {
+          "code": "GenericError"
+        }
+      }
+    },
+    {
+      "name": "conditional: error on a CALLRESULT",
+      "record": {
+        "schemaVersion": "1.1",
+        "timestamp": "2024-01-15T10:00:00Z",
+        "transport": "json",
+        "direction": "csms-to-cp",
+        "messageType": "CALLRESULT",
+        "error": {
+          "code": "GenericError"
+        }
+      }
+    },
+    {
+      "name": "CALLERROR error.code not a string",
+      "record": {
+        "schemaVersion": "1.1",
+        "timestamp": "2024-01-15T10:00:00Z",
+        "transport": "json",
+        "direction": "csms-to-cp",
+        "messageType": "CALLERROR",
+        "error": {
+          "code": 7
+        }
+      }
+    },
+    {
+      "name": "an unknown member is ignored",
+      "record": {
+        "schemaVersion": "1.1",
+        "timestamp": "2024-01-15T10:00:00Z",
+        "transport": "json",
+        "direction": "cp-to-csms",
+        "messageType": "CALL",
+        "action": "Heartbeat",
+        "somethingNew": true
+      }
+    },
+    {
+      "name": "a schemaVersion major this reader does not implement",
+      "record": {
+        "schemaVersion": "2.0",
+        "timestamp": "2024-01-15T10:00:00Z",
+        "transport": "json",
+        "direction": "cp-to-csms",
+        "messageType": "CALL",
+        "action": "Heartbeat"
+      }
+    },
+    {
+      "name": "not an object: a string",
+      "record": "[2]"
+    },
+    {
+      "name": "not an object: null",
+      "record": null
+    },
+    {
+      "name": "not an object: an array",
+      "record": [
+        1,
+        2
+      ]
+    },
+    {
+      "name": "separator: lowercase t",
+      "record": {
+        "schemaVersion": "1.1",
+        "timestamp": "2024-01-15t10:00:00Z",
+        "transport": "json",
+        "direction": "cp-to-csms",
+        "messageType": "CALL",
+        "action": "Heartbeat"
+      }
+    },
+    {
+      "name": "separator: a space",
+      "record": {
+        "schemaVersion": "1.1",
+        "timestamp": "2024-01-15 10:00:00Z",
+        "transport": "json",
+        "direction": "cp-to-csms",
+        "messageType": "CALL",
+        "action": "Heartbeat"
+      }
+    },
+    {
+      "name": "separator: a tab",
+      "record": {
+        "schemaVersion": "1.1",
+        "timestamp": "2024-01-15\t10:00:00Z",
+        "transport": "json",
+        "direction": "cp-to-csms",
+        "messageType": "CALL",
+        "action": "Heartbeat"
+      }
+    },
+    {
+      "name": "separator: two of them",
+      "record": {
+        "schemaVersion": "1.1",
+        "timestamp": "2024-01-15T10:00:00 Z",
+        "transport": "json",
+        "direction": "cp-to-csms",
+        "messageType": "CALL",
+        "action": "Heartbeat"
+      }
+    },
+    {
+      "name": "offset: +0100, no colon",
+      "record": {
+        "schemaVersion": "1.1",
+        "timestamp": "2024-01-15T10:00:00+0100",
+        "transport": "json",
+        "direction": "cp-to-csms",
+        "messageType": "CALL",
+        "action": "Heartbeat"
+      }
+    },
+    {
+      "name": "offset: +01, no minutes",
+      "record": {
+        "schemaVersion": "1.1",
+        "timestamp": "2024-01-15T10:00:00+01",
+        "transport": "json",
+        "direction": "cp-to-csms",
+        "messageType": "CALL",
+        "action": "Heartbeat"
+      }
+    },
+    {
+      "name": "offset: lowercase z",
+      "record": {
+        "schemaVersion": "1.1",
+        "timestamp": "2024-01-15T10:00:00z",
+        "transport": "json",
+        "direction": "cp-to-csms",
+        "messageType": "CALL",
+        "action": "Heartbeat"
+      }
+    },
+    {
+      "name": "leap second with a colonless offset",
+      "record": {
+        "schemaVersion": "1.1",
+        "timestamp": "2025-01-01T00:59:60+0100",
+        "transport": "json",
+        "direction": "cp-to-csms",
+        "messageType": "CALL",
+        "action": "Heartbeat"
+      }
+    },
+    {
+      "name": "leap second with an hour-only offset",
+      "record": {
+        "schemaVersion": "1.1",
+        "timestamp": "2025-01-01T00:59:60+01",
+        "transport": "json",
+        "direction": "cp-to-csms",
+        "messageType": "CALL",
+        "action": "Heartbeat"
+      }
+    },
+    {
+      "name": "fractional seconds",
+      "record": {
+        "schemaVersion": "1.1",
+        "timestamp": "2024-01-15T10:00:00.123456Z",
+        "transport": "json",
+        "direction": "cp-to-csms",
+        "messageType": "CALL",
+        "action": "Heartbeat"
+      }
+    },
+    {
+      "name": "type: non-string ocppVersion",
+      "record": {
+        "schemaVersion": "1.1",
+        "timestamp": "2024-01-15T10:00:00Z",
+        "transport": "json",
+        "direction": "cp-to-csms",
+        "messageType": "CALL",
+        "action": "Heartbeat",
+        "ocppVersion": 7
+      }
+    },
+    {
+      "name": "type: non-string chargePointId",
+      "record": {
+        "schemaVersion": "1.1",
+        "timestamp": "2024-01-15T10:00:00Z",
+        "transport": "json",
+        "direction": "cp-to-csms",
+        "messageType": "CALL",
+        "action": "Heartbeat",
+        "chargePointId": 7
+      }
+    },
+    {
+      "name": "type: non-string action",
+      "record": {
+        "schemaVersion": "1.1",
+        "timestamp": "2024-01-15T10:00:00Z",
+        "transport": "json",
+        "direction": "cp-to-csms",
+        "messageType": "CALL",
+        "action": 7
+      }
+    },
+    {
+      "name": "type: non-string transport",
+      "record": {
+        "schemaVersion": "1.1",
+        "timestamp": "2024-01-15T10:00:00Z",
+        "transport": 7,
+        "direction": "cp-to-csms",
+        "messageType": "CALL",
+        "action": "Heartbeat"
+      }
+    },
+    {
+      "name": "type: non-string direction",
+      "record": {
+        "schemaVersion": "1.1",
+        "timestamp": "2024-01-15T10:00:00Z",
+        "transport": "json",
+        "direction": 7,
+        "messageType": "CALL",
+        "action": "Heartbeat"
+      }
+    },
+    {
+      "name": "type: non-string messageType",
+      "record": {
+        "schemaVersion": "1.1",
+        "timestamp": "2024-01-15T10:00:00Z",
+        "transport": "json",
+        "direction": "cp-to-csms",
+        "messageType": 7,
+        "action": "Heartbeat"
+      }
+    },
+    {
+      "name": "type: non-string timestamp",
+      "record": {
+        "schemaVersion": "1.1",
+        "timestamp": 7,
+        "transport": "json",
+        "direction": "cp-to-csms",
+        "messageType": "CALL",
+        "action": "Heartbeat"
+      }
+    },
+    {
+      "name": "type: array meta",
+      "record": {
+        "schemaVersion": "1.1",
+        "timestamp": "2024-01-15T10:00:00Z",
+        "transport": "json",
+        "direction": "cp-to-csms",
+        "messageType": "CALL",
+        "action": "Heartbeat",
+        "meta": [
+          1
+        ]
+      }
+    },
+    {
+      "name": "type: string connectorId",
+      "record": {
+        "schemaVersion": "1.1",
+        "timestamp": "2024-01-15T10:00:00Z",
+        "transport": "json",
+        "direction": "cp-to-csms",
+        "messageType": "CALL",
+        "action": "Heartbeat",
+        "connectorId": "1"
+      }
+    },
+    {
+      "name": "CALLERROR error is a string",
+      "record": {
+        "schemaVersion": "1.1",
+        "timestamp": "2024-01-15T10:00:00Z",
+        "transport": "json",
+        "direction": "csms-to-cp",
+        "messageType": "CALLERROR",
+        "error": "boom"
+      }
+    },
+    {
+      "name": "CALLERROR error is an array",
+      "record": {
+        "schemaVersion": "1.1",
+        "timestamp": "2024-01-15T10:00:00Z",
+        "transport": "json",
+        "direction": "csms-to-cp",
+        "messageType": "CALLERROR",
+        "error": [
+          1
+        ]
+      }
+    },
+    {
+      "name": "CALLERROR error.description not a string",
+      "record": {
+        "schemaVersion": "1.1",
+        "timestamp": "2024-01-15T10:00:00Z",
+        "transport": "json",
+        "direction": "csms-to-cp",
+        "messageType": "CALLERROR",
+        "error": {
+          "code": "GenericError",
+          "description": 7
+        }
+      }
+    },
+    {
+      "name": "CALLERROR error.details may be anything",
+      "record": {
+        "schemaVersion": "1.1",
+        "timestamp": "2024-01-15T10:00:00Z",
+        "transport": "json",
+        "direction": "csms-to-cp",
+        "messageType": "CALLERROR",
+        "error": {
+          "code": "GenericError",
+          "details": [
+            1,
+            2
+          ]
+        }
+      }
+    }
+  ]
+}

@@ -1,0 +1,159 @@
+/**
+ * consumer-view.ts -- the derivation every consumer of this format owes the
+ * specification.
+ *
+ * `conformance/README.md` does not merely describe a file layout: it says a
+ * conformant consumer must "derive the consumer view by reproducing each
+ * fixture's `expected.json` exactly". So this is not one reader's convenience
+ * shape, it is the normative output, and `tools/trace-conformance.sh` checks
+ * it against the corpus rather than against our opinion of it.
+ *
+ * THE CORRELATION RULE ITSELF IS `correlate.ts`, because this is not its only
+ * caller -- a consumer that has already mapped a trace onto its own frame type
+ * needs the same rule over those, and writing it twice is what put the clause
+ * below in two places once already. So this module is the VIEW: counts, the
+ * effective action, and the shape `expected.json` is in. The rule it applies
+ * is one function, and `correlate.ts`'s header is where its three clauses and
+ * their failure modes are argued.
+ *
+ * ORDER IS THE INPUT'S ORDER, and `index` is the input's index. For a file
+ * that means the ordinal among non-blank lines -- `jsonl.ts` keeps that
+ * alignment by leaving a hole for an unreadable line rather than closing the
+ * gap, because `correlatesWith` is an index and a renumbered trace is a trace
+ * of wrong answers.
+ */
+
+import { correlate } from "./correlate";
+import type { Diagnostic } from "./diagnostics";
+import type { TraceMessageType, TraceRecord } from "./record";
+
+/** One record's place in the derived view. */
+export interface ConsumerRecordView {
+  index: number;
+  messageType: TraceMessageType;
+  messageId?: string;
+  /**
+   * The record's EFFECTIVE action: its own for a CALL, the correlated CALL's
+   * for a response that has one, and -- for an ORPHAN -- whatever the record
+   * carries itself, if anything. That last clause is the rules verbatim: "an
+   * orphan response has no effective action unless its record carries one
+   * explicitly". The reference consumer loses it, no fixture has the shape,
+   * and `SPEC-FEEDBACK.md` finding 5 is why this follows the prose instead.
+   */
+  action?: string;
+  /** The index of the CALL this response answers. */
+  correlatesWith?: number;
+}
+
+/** How many of each, as `expected.json` spells it. */
+export interface ConsumerCounts {
+  records: number;
+  calls: number;
+  callResults: number;
+  callErrors: number;
+}
+
+/** The whole derived view of one trace. */
+export interface ConsumerView {
+  schemaVersion: string;
+  counts: ConsumerCounts;
+  records: ConsumerRecordView[];
+  unansweredCalls: readonly number[];
+  orphanResponses: readonly number[];
+}
+
+/**
+ * Derives the normative consumer view.
+ *
+ * Pure, and deliberately reports nothing: a trace where every response is an
+ * orphan is a perfectly derivable view, and whether that is alarming is the
+ * caller's question. The one cross-record fact that IS a producer-conformance
+ * violation lives in {@link crossRecordDiagnostics}, so that this function
+ * stays the reference's `buildConsumerView` and nothing else.
+ */
+export function consumerView(records: readonly TraceRecord[]): ConsumerView {
+  const view: ConsumerRecordView[] = records.map((record, index) => {
+    const entry: ConsumerRecordView = {
+      index,
+      messageType: record.messageType,
+      messageId: record.messageId,
+    };
+    // A CALL's own action, and a response's own action WHEN IT HAS ONE. The
+    // correlation pass below overwrites the second with the CALL's, so this
+    // line only survives for an orphan -- which is exactly what the rules
+    // say: "an orphan response has no effective action unless its record
+    // carries one explicitly" (conformance/README.md).
+    //
+    // The reference consumer sets this for CALLs only, so an orphan carrying
+    // an explicit action loses it there. No fixture has that shape, so the
+    // corpus cannot tell the two apart -- see SPEC-FEEDBACK.md finding 5 for
+    // why the prose is followed here rather than the implementation.
+    entry.action = record.action;
+    return entry;
+  });
+
+  const { answers, unansweredCalls, orphanResponses } = correlate(records);
+  answers.forEach((match, index) => {
+    if (match === undefined) return;
+    view[index].action = records[match].action;
+    view[index].correlatesWith = match;
+  });
+
+  return {
+    schemaVersion: records[0]?.schemaVersion ?? "unknown",
+    counts: {
+      records: records.length,
+      calls: countOf(records, "CALL"),
+      callResults: countOf(records, "CALLRESULT"),
+      callErrors: countOf(records, "CALLERROR"),
+    },
+    records: view,
+    unansweredCalls,
+    orphanResponses,
+  };
+}
+
+/**
+ * The one producer rule that needs the whole trace to check.
+ *
+ * A response MAY carry its own `action`, and when it does the conformance
+ * rules oblige it to equal the action of the CALL it correlates with. A
+ * disagreement means one of the two is wrong and nothing in the record says
+ * which -- which is exactly the shape of fact this library reports and does
+ * not act on.
+ *
+ * Separate from {@link consumerView} so that function stays a transcription of
+ * the reference's `buildConsumerView`; the reference checks this rule in its
+ * harness, for the same reason.
+ */
+export function crossRecordDiagnostics(
+  records: readonly TraceRecord[],
+  view: ConsumerView,
+): Diagnostic[] {
+  const diagnostics: Diagnostic[] = [];
+  view.records.forEach((entry, index) => {
+    const own = records[index]?.action;
+    if (
+      entry.correlatesWith !== undefined &&
+      own !== undefined &&
+      own !== entry.action
+    ) {
+      diagnostics.push({
+        index,
+        code: "response-action-mismatch",
+        member: "action",
+        detail:
+          `explicit action ${JSON.stringify(own)} contradicts the action of ` +
+          `the correlated CALL at index ${entry.correlatesWith}`,
+      });
+    }
+  });
+  return diagnostics;
+}
+
+function countOf(
+  records: readonly TraceRecord[],
+  messageType: TraceMessageType,
+): number {
+  return records.filter((record) => record.messageType === messageType).length;
+}

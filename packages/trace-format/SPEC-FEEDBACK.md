@@ -1,0 +1,240 @@
+# Feedback for the specification
+
+Findings from writing a reader against `open-ocpp-trace/specification` and
+running it in a real consumer. Each one needs a change to the **document**, not
+to this code — which is why they are here rather than in an issue that would be
+closed by a commit.
+
+Measured against `schema/trace-v1.schema.json` and `conformance/README.md`.
+
+---
+
+## 1. There is no word for "valid, but unusable for my purpose"
+
+**The rule today.** `conformance/README.md` says a conformant consumer must
+"accept any record that validates against the schema and ignore unknown
+fields."
+
+**The problem.** `raw` is optional. `messageId` is optional. `payload` is
+optional. So a record can validate perfectly and still be unusable by a given
+consumer — not because anything is wrong with it, but because that consumer
+needs a member the format does not require.
+
+The worked example is real, and it is the first consumer of this library. A
+conformance suite judges an OCPP session by parsing the wire frames out of
+`raw`; its assertions quote those bytes. Handed a record with `payload` and no
+`raw` it has three options, and the rules only permit the worst one:
+
+| | |
+|---|---|
+| Accept and synthesise the frame from `payload` | Re-serialises. Every failure it then reports claims to quote the wire and quotes its own re-encoding instead. |
+| Accept and judge on nothing | Reports a false verdict about a session it could not read. |
+| **Refuse the trace and say why** | What it does. And this makes it, by the letter of the rules, **non-conformant.** |
+
+A record with no `messageId` is the same shape of problem, though for a
+subtler reason: correlation is not *undefined* for it -- the reference pairs
+id-less records with each other, see finding 4 -- it is **not
+distinguishing**. A consumer that must say which request a response answers
+cannot rely on a match that would hold between any two id-less records in the
+trace, so it needs to refuse them, and the rules give it no way to say so.
+Only consumers that correlate are affected; one that renders a timeline reads
+such a record perfectly well.
+
+**What the document is missing** is not permission to refuse — it is the
+vocabulary to distinguish two things it currently collapses:
+
+- **invalid** — the record violates the schema. The producer is wrong.
+- **unusable for a purpose** — the record satisfies the schema and lacks a
+  member *this* consumer requires. Nobody is wrong; the consumer simply cannot
+  answer its question from this trace.
+
+**Suggested shape.** Let a consumer declare the optional members it requires,
+and define conformance as: accept every record that validates *and* carries the
+members you declared; for the rest, refuse explicitly and say which member was
+missing. A consumer that declares nothing is exactly the consumer the current
+rule describes, so this is backwards compatible.
+
+This library implements the distinction already, in the only way it can without
+the document: a record that validates produces **no diagnostic**, and the
+refusal is the caller's, under the caller's own name. See `README.md`, "No error
+policy". The first consumer spells its version `payload-only`.
+
+---
+
+## 2. `raw` being optional deserves a stated consequence
+
+Following from 1, and worth saying in the document rather than leaving each
+consumer to discover it.
+
+Two consumer families read this format, and the split is clean:
+
+- those that read **`payload`** — timeline UIs, failure detectors, report
+  generators;
+- those that read **`raw`** — anything that must quote or re-parse the wire
+  bytes: conformance suites, protocol linters, replay tools that re-send.
+
+A producer that emits only one of the two silently excludes the other family.
+The schema permits it and the conformance rules do not mention it, so a
+producer has no way to know it made that choice.
+
+**Suggested shape.** A producer recommendation — emit both when the original
+bytes are available, and document which you emit when they are not — plus a
+fixture in the corpus carrying `payload` and no `raw`, so that consumers
+discover the case in CI rather than in the field. There is currently no such
+fixture: all 16 carry `raw`, so a `raw`-requiring reader passes the whole
+corpus and still breaks on a conformant producer.
+
+---
+
+## 3. The correlation rule's third clause needs a fixture
+
+**The rule today**, from `conformance/README.md`: a response correlates with
+"the most recent preceding CALL" that has the same `messageId`, travels in the
+opposite direction, and "is not already correlated with an earlier response".
+
+**The problem.** The third clause is unobservable in the corpus. Every fixture
+uses unique `messageId`s, so an implementation that drops the clause entirely
+reproduces all 16 `expected.json` files. It is a normative rule that the
+conformance suite cannot fail anyone for getting wrong.
+
+This is not hypothetical. The consumer this library was extracted from
+correlated by scanning *forward* from each CALL to the first matching response
+— which is the same rule minus that clause. It passed every real trace for as
+long as it existed, because real producers generate UUIDs. It was found by
+reading the specification, not by running anything.
+
+**Suggested shape.** A fixture with one `messageId` reused across two
+exchanges:
+
+```text
+0  CALL        cp-to-csms  id=X
+1  CALL        cp-to-csms  id=X
+2  CALLRESULT  csms-to-cp  id=X   -> correlatesWith 1
+3  CALLRESULT  csms-to-cp  id=X   -> correlatesWith 0
+```
+
+Both ways of dropping the clause show up here, and no fixture that exists
+catches either:
+
+- a response-centric search that forgets "not already correlated" picks the
+  most recent preceding CALL twice, so **both responses map to index 1** and
+  index 0 is reported unanswered;
+- a call-centric forward scan — the shape the consumer above actually had —
+  takes the first matching response after each CALL, so **both CALLs map to
+  record 2** and record 3 is left over.
+
+The rule pairs them one to one, most recent first, which is what the mapping
+above states.
+
+A second fixture would pin the **opposite-direction** clause, which has the
+same problem for the same reason — every fixture has all CALLs travelling one
+way. It needs the nearer candidate to be the wrong-direction one:
+
+```text
+0  CALL        cp-to-csms  id=Y
+1  CALL        csms-to-cp  id=Y
+2  CALLRESULT  csms-to-cp  id=Y   -> correlatesWith 0, not 1
+```
+
+Both cases were caught here by mutation-testing the guard rather than by the
+corpus — and the second only after the first attempt at that guard passed while
+the clause was removed.
+
+---
+
+## 4. What does "the same `messageId`" mean when neither record has one?
+
+`messageId` is optional, and the correlation rule says a response correlates
+with the most recent preceding CALL that has "the same `messageId`". The
+reference consumer implements that as `c.messageId === r.messageId`, so a CALL
+with no id and a response with no id **do** correlate — `undefined === undefined`.
+
+That may well be intended, but nothing says so, and it is the kind of clause
+two implementations will read differently: the obvious defensive reading is
+that a record with no id correlates with nothing. This library reproduces the
+reference deliberately rather than guessing, and a review of it flagged the
+absence of the guard as a bug — which is the evidence that the document is
+ambiguous, not that either behaviour is wrong.
+
+**Suggested shape.** One sentence saying which it is, and a fixture carrying
+two id-less records in an exchange so the corpus can fail an implementation
+that chose the other reading. No fixture exercises it today.
+
+## 5. The reference loses an orphan's explicit `action`
+
+**The rule today.** `conformance/README.md` is explicit: "The effective
+`action` of a correlated response is its CALL's `action`; an orphan response
+has no effective action **unless its record carries one explicitly**."
+
+**The problem.** `buildConsumerView` in `conformance/validate.mjs` sets
+`entry.action` for `messageType === 'CALL'` only, then overwrites it on
+correlation. An orphan response that carries its own `action` therefore comes
+out of the reference with none — contradicting the sentence above.
+
+The view table one section down reads "the effective action: explicit for a
+CALL, derived by correlation for a response. Absent when underivable", which
+looks like a second reading. It is not, on inspection: an action the record
+states explicitly is not *underivable*. The prose is the specific rule and the
+table is a summary of it, so this is an implementation bug rather than an
+ambiguity — which is why this library follows the prose and its own guard pins
+it.
+
+**Why no one has noticed.** None of the 16 fixtures has an orphan response
+carrying an `action`. `orphan-response` has one orphan and it carries none, so
+the corpus cannot separate the two behaviours, and a conformant reader that
+follows the prose still reproduces all 16 `expected.json` files — measured.
+
+**Suggested shape.** Fix `buildConsumerView` to seed `entry.action` from the
+record whatever its type, and add a fixture whose orphan carries an explicit
+action so the corpus can fail either reading.
+
+## 6. `format: date-time` is whatever the validator implements
+
+**The problem.** The schema says `"format": "date-time"` and the conformance
+rules say a consumer must accept what validates. But `format` is a JSON Schema
+*annotation* unless a validator asserts it, and which strings it then admits is
+that validator's business. The specification uses `ajv-formats`, and at
+`3.0.1` it is **looser than RFC 3339** in two places:
+
+| spelling | RFC 3339 §5.6 | `ajv-formats@3.0.1` |
+|---|---|---|
+| `2024-01-15 10:00:00Z` (space separator) | a NOTE permits it "by mutual agreement", the grammar does not | accepted |
+| `2024-01-15T10:00:00+0100` | `time-numoffset` requires the colon | accepted |
+| `2024-01-15T10:00:00+01` | requires `time-minute` | accepted |
+
+So two conformant readers can disagree about a record, and both can point at
+the document. A reader written to the RFC refuses timestamps the reference
+accepts, which is the direction that makes a correct producer look broken.
+This library therefore transcribes `ajv-formats` rather than the RFC, and says
+so where it does.
+
+**Suggested shape.** Say in the prose which the format means — the RFC's
+grammar, or whatever the reference validator accepts — and pin the validator
+version if it is the second. Fixtures for the three spellings above would let
+the corpus decide it instead of leaving each consumer to.
+
+## 7. Smaller notes
+
+- **`conformance/validate.mjs` is a second implementation of the rules.** It
+  compiles the schema with ajv and open-codes `buildConsumerView`, so the
+  document's own CI proves the fixtures self-consistent rather than proving any
+  shipped reader correct. `conformance.ts` in this library is offered as a
+  replacement: same checks, expressed over the reader consumers actually
+  import.
+- **`timestamp` and `direction` are `required`, and neither is in `raw`.**
+  `raw` is the OCPP-J array — message type id, `messageId`, `action`, payload —
+  so both are transport metadata the frame itself cannot carry. Worth a line in
+  the prose: they are load-bearing in a way their position in the `required`
+  list does not convey. `direction` especially, since the correlation rule is
+  written in terms of it, and a producer that mislabels it emits a trace that
+  validates and correlates wrongly.
+- **Leap seconds have no stated consumer behaviour.** RFC 3339 admits
+  `23:59:60`, so `format: date-time` does too, and the document says nothing
+  about what a consumer should do with one. Not a theoretical gap: in
+  JavaScript `new Date("2024-12-31T23:59:60Z")` is **Invalid Date**, not a
+  normalised instant — measured, not assumed — so a consumer that converts
+  timestamps eagerly turns a conformant record into a parse failure, while one
+  that keeps them as strings does not. The document should say which of reject,
+  preserve or normalise it expects. This library preserves: `validate.ts`
+  accepts second 60 because RFC 3339 does, and never constructs a `Date`, so
+  the string reaches the caller intact and the choice stays theirs.
