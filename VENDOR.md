@@ -27,13 +27,18 @@ What that changes in this manifest:
   the upstream path and the digest upstream shipped at the fork point — that
   is the provenance Apache-2.0 §4(b) rests on — but carries no local digest
   and no patch, because there is no upstream original left to diff against.
-- `patches/` is gone. Its two jobs were a verifiable §4(b) record and a
-  mechanically applicable upstream pull request; the second no longer exists,
-  and the first is now the `Derived from … @ <commit>` header on the file's
-  first lines, which `tests/vendor-integrity.sh` checks per row.
-- `upstream-verbatim` rows are unchanged. `tck/ocpp.ts` and `tck/util.ts`
-  are copies of modules upstream keeps, and stay pinned and re-importable
-  until upstream exports them from its package.
+- `patches/` emptied out. For the forked files its two jobs were a verifiable
+  §4(b) record and a mechanically applicable upstream pull request; the second
+  no longer exists, and the first is now the `Derived from … @ <commit>`
+  header on the file's first lines, which `tests/vendor-integrity.sh` checks
+  per row. The directory is not abolished, though — a still-tracked file that
+  gets edited becomes `upstream-patched` and `tools/repin-vendored.sh`
+  recreates its patch there. `tck/ocpp.ts` is that case today.
+- `upstream-verbatim` still means what it did: a copy of a module upstream
+  keeps, pinned and re-importable until upstream exports it from its package.
+  `tck/util.ts` is one. `tck/ocpp.ts` WAS one and is now `upstream-patched`,
+  its correlation aligned with the open-ocpp-trace rule — the inventory row is
+  the authority on which is which, and this paragraph is not.
 
 ### Fork commit: `604054adb0d7d7129a26a5f1ad2d5fdc290d1ca1`
 
@@ -86,7 +91,8 @@ offline guard stays deterministic and network-free. What the guard holds
 them to is attribution, in three parts: the file's first three lines must
 carry `Derived from shiv3/ocpp-cp-simulator <upstream path> @ <fork commit>`
 **and a `Modified:` clause** — Apache-2.0 §4(b) asks for the change to be
-stated, and with `patches/` gone that sentence is the only place it is — the
+stated, and a FORKED file has no patch, so that sentence is the only place it
+is — the
 notice must survive into `types/**/*.d.ts`, and `NOTICE` must list the file.
 Nothing else about a forked file is pinned.
 
@@ -204,8 +210,8 @@ Copying those shims verbatim would import nothing. The **implementations** in
 An `upstream-forked` file is edited like any local file: keep its first-line
 `Derived from …` header, and the guard is satisfied. Nothing to re-pin.
 
-Changing an `upstream-patched` file — there are none today, the origin stays
-defined for a file that is patched again — means its patch and its local
+Changing an `upstream-patched` file — `tck/ocpp.ts` is the one today — means
+its patch and its local
 digest must change with it, in that order — and the one way to get it wrong is to record
 the digest and then touch the file again. One command does both:
 
@@ -254,9 +260,9 @@ test -f NOTICE && echo "ACTION REQUIRED: reproduce upstream NOTICE"
 shasum -a 256 /tmp/ocpp-upstream/<upstream path>          # → upstream sha256
 shasum -a 256 <path>                   # → local sha256
 
-# 3. Regenerate every patch (none today) so it still reconstructs the new
-#    upstream bytes. patches/ does not exist while no row is patched, and the
-#    redirect will not create its parent:
+# 3. Regenerate every patch so it still reconstructs the new upstream bytes.
+#    patches/ holds one file per `upstream-patched` row and nothing while
+#    there are none, and the redirect will not create its parent:
 mkdir -p "$(dirname "patches/<path>.patch")"
 diff -u /tmp/ocpp-upstream/<upstream path> <path> > patches/<path>.patch
 

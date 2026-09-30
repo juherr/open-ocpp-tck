@@ -236,10 +236,20 @@ for (const { name, value, code } of offSchema) {
 // the three rows above would be satisfied by a validator that rejects second
 // 60 outright. Measured against the specification's own ajv at the pinned ref
 // -- see tools/trace-format-schema-cases.json, which runs these through both.
+// `format: date-time` is not RFC 3339 here -- it is whatever `ajv-formats`
+// admits, which includes a whitespace separator and the colonless and
+// hour-only offset spellings the grammar forbids. Refusing those would make a
+// conformant producer look broken, so they validate; finding 6 asks the
+// document to say which of the two it means.
 for (const ts of [
   "2024-12-31T23:59:60Z",
   "2025-01-01T00:59:60+01:00",
   "2024-12-31T22:59:60-01:00",
+  "2024-01-15t10:00:00Z",
+  "2024-01-15 10:00:00Z",
+  "2024-01-15T10:00:00+0100",
+  "2024-01-15T10:00:00+01",
+  "2025-01-01T00:59:60+01",
 ]) {
   if (validateRecord(tweak(CALL, { timestamp: ts }), 0).record === undefined) {
     fail("a leap second at 23:59 UTC validates", `${ts} was refused`);
@@ -438,7 +448,7 @@ const recordsOf = (values: readonly unknown[]): TraceRecord[] => {
 // has no effective action unless its record carries one explicitly". No
 // fixture in the corpus has that shape and the reference consumer copies
 // `action` for CALLs only, so this row is the only thing holding the
-// derivation to the prose -- see SPEC-FEEDBACK.md finding 6.
+// derivation to the prose -- see SPEC-FEEDBACK.md finding 5.
 {
   const orphan = tweak(RESULT, { action: "BootNotification" });
   const view = consumerView(recordsOf([orphan]));

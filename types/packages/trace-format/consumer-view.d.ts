@@ -30,11 +30,12 @@ export interface ConsumerRecordView {
     messageType: TraceMessageType;
     messageId?: string;
     /**
-     * The record's EFFECTIVE action: its own for a CALL, and for a response the
-     * action of the CALL it correlates with. A response that correlates with
-     * nothing has none, even if it carried one of its own -- the view states
-     * what the trace establishes, and an uncorrelated response establishes
-     * nothing about which request it answers.
+     * The record's EFFECTIVE action: its own for a CALL, the correlated CALL's
+     * for a response that has one, and -- for an ORPHAN -- whatever the record
+     * carries itself, if anything. That last clause is the rules verbatim: "an
+     * orphan response has no effective action unless its record carries one
+     * explicitly". The reference consumer loses it, no fixture has the shape,
+     * and `SPEC-FEEDBACK.md` finding 5 is why this follows the prose instead.
      */
     action?: string;
     /** The index of the CALL this response answers. */

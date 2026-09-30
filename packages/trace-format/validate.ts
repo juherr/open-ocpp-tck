@@ -65,18 +65,34 @@ const REQUIRED = [
 ];
 
 /**
- * RFC 3339 `date-time`, which is what the schema's `format` means and what
- * `ajv-formats` enforces for the reference consumer.
+ * `date-time`, as the schema's `format` keyword actually decides it.
  *
- * Deliberately no stricter than that. The failure modes are not symmetric: a
- * validator that is too lax lets through a timestamp the format would reject,
- * which costs a consumer nothing it was going to rely on; one that is too
- * strict refuses a whole record -- and, for an all-or-nothing consumer, a whole
- * file -- over a spelling. So the shape is checked here, and the calendar
- * below, and nothing beyond what the format actually says.
+ * TRANSCRIBED FROM `ajv-formats`, NOT FROM RFC 3339, and the difference is the
+ * point. The specification validates with `addFormats(ajv)` in its `full`
+ * mode, so "satisfies the schema" means "satisfies that function" -- and that
+ * function is LOOSER than RFC 3339 in two places the grammar does not allow:
+ * the date/time separator may be any whitespace, not only `T`, and the offset
+ * may be spelled `+0100` or `+01` where §5.6 requires `+01:00`.
+ *
+ * Writing the RFC instead would make this reader refuse records the reference
+ * accepts, which is the direction that matters: it makes a conformant producer
+ * look broken. So the reference wins, and `SPEC-FEEDBACK.md` finding 6 asks the
+ * document to say which of the two it means rather than leaving it to whatever
+ * a validator happens to implement.
+ *
+ * Every rule below is checked against the real thing by the differential in
+ * `tools/trace-conformance.sh`; the shapes here came out of reading
+ * `ajv-formats@3.0.1`'s `formats.js` rather than out of a guess about it, and
+ * the first four attempts at this function each differed from it somewhere.
  */
-const RFC3339 =
-  /^(\d{4})-(\d{2})-(\d{2})[Tt](\d{2}):(\d{2}):(\d{2})(\.\d+)?([Zz]|([+-])(\d{2}):(\d{2}))$/;
+const AJV_DATE = /^(\d\d\d\d)-(\d\d)-(\d\d)$/;
+
+/** Any whitespace, or `t` -- `DATE_TIME_SEPARATOR` in the reference. */
+const AJV_DATE_TIME_SEPARATOR = /t|\s/i;
+
+/** Note the OPTIONAL offset minutes, and the OPTIONAL colon before them. */
+const AJV_TIME =
+  /^(\d\d):(\d\d):(\d\d(?:\.\d+)?)(z|([+-])(\d\d)(?::?(\d\d))?)?$/i;
 
 const DAYS_IN_MONTH = [31, 28, 31, 30, 31, 30, 31, 31, 30, 31, 30, 31];
 
@@ -84,50 +100,55 @@ function isLeapYear(year: number): boolean {
   return (year % 4 === 0 && year % 100 !== 0) || year % 400 === 0;
 }
 
-function isRfc3339DateTime(value: string): boolean {
-  const match = RFC3339.exec(value);
+function isFullDate(value: string): boolean {
+  const match = AJV_DATE.exec(value);
   if (!match) return false;
   const year = Number(match[1]);
   const month = Number(match[2]);
   const day = Number(match[3]);
-  const hour = Number(match[4]);
-  const minute = Number(match[5]);
-  const second = Number(match[6]);
   if (month < 1 || month > 12) return false;
   const monthLength =
     month === 2 && isLeapYear(year) ? 29 : DAYS_IN_MONTH[month - 1];
-  if (day < 1 || day > monthLength) return false;
-  if (hour > 23 || minute > 59) return false;
+  return day >= 1 && day <= monthLength;
+}
 
-  // The offset has ranges too -- `time-numoffset` is `time-hour ":" time-minute`
-  // in the grammar, so `+99:99` is not a date-time however well it matches the
-  // shape. Both groups are absent for a `Z` suffix, hence the presence checks.
-  if (match[10] !== undefined && Number(match[10]) > 23) return false;
-  if (match[11] !== undefined && Number(match[11]) > 59) return false;
+/**
+ * `full-time`, with the offset REQUIRED -- the schema's `date-time` is the
+ * reference's strict-timezone variant, so a bare `10:00:00` is not one.
+ */
+function isFullTime(value: string): boolean {
+  const match = AJV_TIME.exec(value);
+  if (!match) return false;
 
-  if (second < 60) return true;
-  if (second > 60) return false;
+  const hour = Number(match[1]);
+  const minute = Number(match[2]);
+  const second = Number(match[3]);
+  const zone = match[4];
+  if (zone === undefined) return false;
 
-  // SECOND 60 IS A LEAP SECOND, AND RFC 3339 admits it only where one can
-  // occur: §5.7 inserts leap seconds at 23:59:60 UTC, so the offset decides
-  // whether this timestamp names that instant. `2024-12-31T23:59:60Z` and
-  // `2025-01-01T00:59:60+01:00` are the same instant and both valid;
-  // `2024-01-15T10:00:60Z` is not a time.
-  //
-  // Measured against the reference rather than reasoned about: the
-  // specification validates with `ajv-formats`, and all three of those cases
-  // were run through it at the pinned ref before this was written. The first
-  // shape of this function returned `second <= 60` unconditionally, which
-  // accepted the mid-day one and broke the contract this file opens with --
-  // a record comes back if and only if it satisfies the schema.
-  const offsetMinutes =
-    match[9] === undefined
-      ? 0
-      : (match[9] === "-" ? -1 : 1) *
-        (Number(match[10]) * 60 + Number(match[11]));
-  const utcMinuteOfDay =
-    (((hour * 60 + minute - offsetMinutes) % 1440) + 1440) % 1440;
-  return utcMinuteOfDay === 23 * 60 + 59;
+  const sign = match[5] === "-" ? -1 : 1;
+  const offsetHour = Number(match[6] ?? 0);
+  const offsetMinute = Number(match[7] ?? 0);
+  if (offsetHour > 23 || offsetMinute > 59) return false;
+
+  if (hour <= 23 && minute <= 59 && second < 60) return true;
+
+  // A LEAP SECOND, and only where one can occur: RFC 3339 §5.7 inserts it at
+  // 23:59:60 UTC, so the offset decides whether this reading names that
+  // instant. The sentinels are the reference's: -1 is "59 of the hour before"
+  // and, for the hour, "23 of the day before".
+  const utcMinute = minute - offsetMinute * sign;
+  const utcHour = hour - offsetHour * sign - (utcMinute < 0 ? 1 : 0);
+  return (
+    (utcHour === 23 || utcHour === -1) &&
+    (utcMinute === 59 || utcMinute === -1) &&
+    second < 61
+  );
+}
+
+function isRfc3339DateTime(value: string): boolean {
+  const parts = value.split(AJV_DATE_TIME_SEPARATOR);
+  return parts.length === 2 && isFullDate(parts[0]) && isFullTime(parts[1]);
 }
 
 /**

@@ -160,7 +160,7 @@ ambiguous, not that either behaviour is wrong.
 two id-less records in an exchange so the corpus can fail an implementation
 that chose the other reading. No fixture exercises it today.
 
-## 6. The reference loses an orphan's explicit `action`
+## 5. The reference loses an orphan's explicit `action`
 
 **The rule today.** `conformance/README.md` is explicit: "The effective
 `action` of a correlated response is its CALL's `action`; an orphan response
@@ -187,6 +187,31 @@ follows the prose still reproduces all 16 `expected.json` files — measured.
 **Suggested shape.** Fix `buildConsumerView` to seed `entry.action` from the
 record whatever its type, and add a fixture whose orphan carries an explicit
 action so the corpus can fail either reading.
+
+## 6. `format: date-time` is whatever the validator implements
+
+**The problem.** The schema says `"format": "date-time"` and the conformance
+rules say a consumer must accept what validates. But `format` is a JSON Schema
+*annotation* unless a validator asserts it, and which strings it then admits is
+that validator's business. The specification uses `ajv-formats`, and at
+`3.0.1` it is **looser than RFC 3339** in two places:
+
+| spelling | RFC 3339 §5.6 | `ajv-formats@3.0.1` |
+|---|---|---|
+| `2024-01-15 10:00:00Z` (space separator) | a NOTE permits it "by mutual agreement", the grammar does not | accepted |
+| `2024-01-15T10:00:00+0100` | `time-numoffset` requires the colon | accepted |
+| `2024-01-15T10:00:00+01` | requires `time-minute` | accepted |
+
+So two conformant readers can disagree about a record, and both can point at
+the document. A reader written to the RFC refuses timestamps the reference
+accepts, which is the direction that makes a correct producer look broken.
+This library therefore transcribes `ajv-formats` rather than the RFC, and says
+so where it does.
+
+**Suggested shape.** Say in the prose which the format means — the RFC's
+grammar, or whatever the reference validator accepts — and pin the validator
+version if it is the second. Fixtures for the three spellings above would let
+the corpus decide it instead of leaving each consumer to.
 
 ## 7. Smaller notes
 

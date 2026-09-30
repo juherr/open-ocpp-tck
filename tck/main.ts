@@ -1014,8 +1014,9 @@ async function runScenario<D>(
   // and from parsing its log lines when there is not. The trace is what the
   // pinned image DOCUMENTS (`--trace-output`, the open-ocpp-trace format);
   // ocpp.ts's line grammar is a format upstream never promised anybody, which
-  // is why that file is vendored `upstream-verbatim` -- it tracks something
-  // that can move under a digest bump.
+  // is why that file is vendored at all -- it tracks something that can move
+  // under a digest bump. Its row is `upstream-patched` now rather than
+  // verbatim; the pin is still what the grammar is checked against.
   //
   // parseLog IS THE FLOOR, not a second opinion. `SIM_TRACE=0`, a docker that
   // declines the mount, a runner that is itself containerised, an older
