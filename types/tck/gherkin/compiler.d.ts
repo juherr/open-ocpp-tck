@@ -70,6 +70,7 @@ export interface GherkinPilotPlan {
     readonly assertions: readonly AssertionInstruction[];
     readonly drive: readonly DriveInstruction[];
 }
+export declare function compileFeaturePlanText(source: string, uri?: string): GherkinPilotPlan;
 export declare function compileFeatureText(source: string, uri?: string): ScenarioSpec<void>;
 export declare function loadPilotPlans(): GherkinPilotPlan[];
 export declare function loadPilotSpecs(): ScenarioSpec<void>[];

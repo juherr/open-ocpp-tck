@@ -4,7 +4,7 @@ import type { AssertContext, DriveContext, ScenarioSpec } from "../tck/spec-type
 import type { Frame } from "../tck/ocpp";
 import { CORE_SPECS, tc001ColdBootSpec, tc003ChargingPluginFirstSpec } from "../tck/specs/core";
 import { REMOTETRIGGER_SMARTCHARGING_SPECS, tc011RemoteStartStopSpec } from "../tck/specs/remotetrigger-smartcharging";
-import { compileFeatureText, GHERKIN_PILOT_SPECS, loadPilotSpecs } from "../tck/gherkin/compiler";
+import { compileFeaturePlanText, compileFeatureText, GHERKIN_PILOT_SPECS, loadPilotPlans, loadPilotSpecs } from "../tck/gherkin/compiler";
 import { compile201FeatureText, GHERKIN_201_PILOT } from "../tck/gherkin/compiler-201";
 import { CORE_201_SPECS, TC_B_21_REFERENCE } from "../tck/specs/core-201";
 
@@ -35,6 +35,20 @@ const source = `
     Then a "BootNotification" request is sent
 `;
 assert.equal(compileFeatureText(source, "valid.feature").templateId, "cert16-test");
+const rejectedFeature = source.replace(
+  'Then a "BootNotification" request is sent',
+  'Then the "BootNotification" response status is "Rejected"',
+);
+const rejectedAssertion = compileFeaturePlanText(rejectedFeature, "rejected-status.feature").assertions.find(
+  (assertion) => assertion.kind === "response",
+);
+assert.ok(rejectedAssertion);
+assert.equal(rejectedAssertion.status, "Rejected");
+assert.equal(rejectedAssertion.description, "BootNotification response status is Rejected");
+assert.doesNotMatch(rejectedAssertion.description, /accepted/i);
+const acceptedAssertion = loadPilotPlans()[0]?.assertions.find((assertion) => assertion.kind === "response");
+assert.ok(acceptedAssertion);
+assert.equal(acceptedAssertion.description, "BootNotification accepted");
 assert.throws(
   () => compileFeatureText(source.replace("@ocpp:1.6", "@ocpp:9.9"), "invalid-version.feature"),
   /unsupported OCPP version/i,

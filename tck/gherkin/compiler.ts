@@ -209,7 +209,11 @@ function compileSteps(steps: readonly GherkinStep[], uri: string): CompiledSteps
           : `${match[1]}.req sent`;
       result.assertions.push({ kind: "sent", action: match[1], description });
     } else if ((match = /^the "([A-Za-z]+)" response status is "([A-Za-z]+)"$/.exec(text))) {
-      result.assertions.push({ kind: "response", action: match[1], status: match[2], description: `${match[1]} accepted`, direction: "sent" });
+      const [action, status] = [match[1]!, match[2]!];
+      const description = status === "Accepted"
+        ? `${action} accepted`
+        : `${action} response status is ${status}`;
+      result.assertions.push({ kind: "response", action, status, description, direction: "sent" });
     } else if ((match = /^every "([A-Za-z]+)" request is answered$/.exec(text))) {
       result.assertions.push({ kind: "answered", action: match[1] });
     } else if ((match = /^a "StatusNotification" request with status "(Preparing|Available)" precedes a "(StartTransaction|StopTransaction)" request$/.exec(text))) {
@@ -360,16 +364,7 @@ async function runAssertion(
   }
 }
 
-export function compileFeatureText(source: string, uri = "<feature>"): ScenarioSpec<void> {
-  const document = parseDocument(source, uri);
-  const { metadata, steps } = parseScenario(document, uri);
-  const feature = document.feature;
-  const scenario = feature?.children[0]?.scenario;
-  metadata.description = feature && scenario ? `${feature.name}: ${scenario.name}` : scenario?.name ?? "";
-  return makeSpec(metadata, steps);
-}
-
-function compilePlan(source: string, uri: string): GherkinPilotPlan {
+export function compileFeaturePlanText(source: string, uri = "<feature>"): GherkinPilotPlan {
   const document = parseDocument(source, uri);
   const { metadata, steps } = parseScenario(document, uri);
   const feature = document.feature;
@@ -386,10 +381,14 @@ function compilePlan(source: string, uri: string): GherkinPilotPlan {
   };
 }
 
+export function compileFeatureText(source: string, uri = "<feature>"): ScenarioSpec<void> {
+  return compileFeaturePlanText(source, uri).spec;
+}
+
 export function loadPilotPlans(): GherkinPilotPlan[] {
   return PILOT_URIS.map((relative) => {
     const path = fileURLToPath(new URL(relative, import.meta.url));
-    return compilePlan(readFileSync(path, "utf8"), path);
+    return compileFeaturePlanText(readFileSync(path, "utf8"), path);
   });
 }
 
