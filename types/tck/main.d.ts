@@ -4,9 +4,10 @@
  *
  * main.ts -- TypeScript OCPP conformance runner CLI.
  *
- * Usage: ocpp-tck run <template-id> [--cp CP1] [--timeout N] [--connector N]
- *        ocpp-tck run --group core|authlist-reservation|remotetrigger-smartcharging|firmware|authorize|core-201|all [--parallel]
- *        ocpp-tck run-all [--group <name>] [--parallel] [--shard k/n]
+ * Usage: ocpp-tck run [--version 1.6|2.0.1] [--parallel]
+ *        ocpp-tck run <template-id> [--version 1.6|2.0.1] [--cp CP1] [--timeout N] [--connector N]
+ *        ocpp-tck run --group core|authlist-reservation|remotetrigger-smartcharging|firmware|authorize|all [--version 1.6|2.0.1] [--parallel]
+ *        ocpp-tck run-all [--group <name>] [--version 1.6|2.0.1] [--parallel] [--shard k/n]
  *
  * Brings its own simulator container up (sim.ts), drives it over the JSON
  * Lines stdin protocol, captures its full stdout, parses OCPP-J frames

@@ -1,6 +1,7 @@
 /** TCK-specific driver lifecycle and assertion record contracts. */
 import type { ExpectedFailureTable } from "./expected";
 import type { ScopeTable } from "./scope";
+import type { ScenarioOcppVersion } from "./spec-types";
 import type { CsmsCapabilities, CsmsEnv, CsmsOperations16, CsmsOperations201, CsmsSessionApi, CsmsConnectorApi, ChargingProfileRef, ReservationRef, TransactionRef } from "../packages/csms-driver";
 export * from "../packages/csms-driver";
 /** TCK-only observations exposed by a driver's assertion record adapters. */
@@ -60,6 +61,7 @@ export interface CsmsDriverModule {
     readonly id: string;
     readonly displayName: string;
     readonly scope?: EnvDependent<ScopeTable>;
+    readonly protocols?: EnvDependent<readonly ScenarioOcppVersion[]>;
     readonly capabilities?: EnvDependent<CsmsTckCapabilities>;
     readonly expectedFailures?: EnvDependent<ExpectedFailureTable>;
     create(env: CsmsEnv): Promise<CsmsDriverParts> | CsmsDriverParts;
@@ -67,5 +69,6 @@ export interface CsmsDriverModule {
     readonly envHelp?: string;
 }
 export declare function driverScope(module: CsmsDriverModule, env: CsmsEnv): ScopeTable | undefined;
+export declare function driverProtocols(module: CsmsDriverModule, env: CsmsEnv): readonly ScenarioOcppVersion[] | undefined;
 export declare function driverCapabilities(module: CsmsDriverModule, env: CsmsEnv): CsmsTckCapabilities | undefined;
 export declare function driverExpectedFailures(module: CsmsDriverModule, env: CsmsEnv): ExpectedFailureTable | undefined;

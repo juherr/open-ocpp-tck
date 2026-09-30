@@ -59,6 +59,7 @@ import { sleep } from "../util";
 
 export const tc0441FirmwareUpdateSpec: ScenarioSpec<void> = {
   templateId: "cert16-tc044-1-firmware-update",
+  ocppVersion: "OCPP-1.6J",
   description:
     "TC_044.1 Firmware Update: full Downloading -> Downloaded -> Installing -> Installed train.",
   connector: 1,
@@ -146,6 +147,7 @@ export const tc0441FirmwareUpdateSpec: ScenarioSpec<void> = {
 
 export const tc0442FirmwareDownloadFailedSpec: ScenarioSpec<void> = {
   templateId: "cert16-tc044-2-firmware-download-failed",
+  ocppVersion: "OCPP-1.6J",
   description:
     "TC_044.2 Firmware Update — Download Failed: stops after DownloadFailed, Installing/Installed never reached.",
   connector: 1,
@@ -214,6 +216,7 @@ export const tc0442FirmwareDownloadFailedSpec: ScenarioSpec<void> = {
 
 export const tc0443FirmwareInstallFailedSpec: ScenarioSpec<void> = {
   templateId: "cert16-tc044-3-firmware-install-failed",
+  ocppVersion: "OCPP-1.6J",
   description:
     "TC_044.3 Firmware Update — Installation Failed: full download train, then InstallationFailed instead of Installed.",
   connector: 1,
@@ -311,6 +314,7 @@ export const tc0443FirmwareInstallFailedSpec: ScenarioSpec<void> = {
 
 export const tc0451GetDiagnosticsSpec: ScenarioSpec<void> = {
   templateId: "cert16-tc045-1-get-diagnostics",
+  ocppVersion: "OCPP-1.6J",
   description:
     "TC_045.1 Get Diagnostics: fileName returned, Uploading -> UploadFailed (hermetic unreachable target).",
   connector: 1,

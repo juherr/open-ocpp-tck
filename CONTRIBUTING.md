@@ -48,7 +48,7 @@ const SCOPE: ScopeTable = {
     status: "DRIVABLE",
     reason: "POST /charge-points/{id}/reset",
   },
-  // one row per registered scenario -- `ocpp-tck check-driver` lists the gaps
+  // one row per supported protocol scenario -- `ocpp-tck check-driver` lists the gaps
 };
 
 export const csmsDriver: CsmsDriverModule = {

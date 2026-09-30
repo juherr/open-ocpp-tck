@@ -9,11 +9,9 @@
  * says DRIVABLE, which is what turns "the refactor kept everything working"
  * from a claim into something a reader can check row by row.
  *
- * The 2.0.1 rows are the opposite kind of fact and cost that guard nothing:
- * SteVe implements OCPP 1.6 and nothing else, so no capability of ours could
- * have been dropped to produce them. They are here one per scenario because
- * there is deliberately no protocol-level way to decline in one line -- the
- * note above `scopeCoverage` in tck/scope.ts has the argument.
+ * SteVe declares support for OCPP-1.6J only, so runtime marks 2.0.1 cases
+ * NOT_APPLICABLE even if an individual row is absent. The explicit 2.0.1 rows
+ * remain useful as reviewable reasons in check-driver output and scope data.
  *
  * A driver for a CSMS with a smaller API says so row by row, citing the
  * precise limitation -- see tck/scope.ts for the rules.

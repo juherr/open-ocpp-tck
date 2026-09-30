@@ -49,7 +49,7 @@ word_to_number() {
     nine) echo 9 ;; ten) echo 10 ;; eleven) echo 11 ;; twelve) echo 12 ;;
     thirteen) echo 13 ;; fourteen) echo 14 ;; fifteen) echo 15 ;;
     sixteen) echo 16 ;; seventeen) echo 17 ;; eighteen) echo 18 ;;
-    nineteen) echo 19 ;; twenty) echo 20 ;;
+    nineteen) echo 19 ;; twenty) echo 20 ;; twenty-one) echo 21 ;;
     *) echo "" ;;
   esac
 }
@@ -141,7 +141,7 @@ fi
 sentence=$(tr '\n' ' ' < "$doc" | tr -s ' ')
 read -r said_scope said_inprocess said_shell <<< "$(
   printf '%s' "$sentence" |
-    sed -n 's/.*, \([a-z]*\) driver scope checks, \([a-z]*\) in-process guards and \([a-z]*\) shell guards.*/\1 \2 \3/p'
+    sed -n 's/.*, \([a-z-]*\) driver scope checks, \([a-z-]*\) in-process guards and \([a-z-]*\) shell guards.*/\1 \2 \3/p'
 )"
 
 if [ -z "${said_scope:-}" ]; then

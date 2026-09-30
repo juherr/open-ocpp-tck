@@ -20,6 +20,7 @@ assert.ok(CORE_SPECS.includes(specs[1]!));
 assert.ok(REMOTETRIGGER_SMARTCHARGING_SPECS.includes(specs[2]!));
 assert.deepEqual(loadPilotSpecs().map((spec) => spec.templateId), expectedIds);
 assert.ok(specs.every((spec) => spec.ocppVersion === "OCPP-1.6J"));
+assert.ok(loadPilotPlans().every((plan) => plan.ocppVersion === plan.spec.ocppVersion));
 assert.ok(specs.every((spec) => spec.connector === 1));
 assert.ok(specs.every((spec) => Boolean(spec.description)));
 assert.deepEqual(
@@ -83,6 +84,8 @@ const plan201 = compile201FeatureText(source201, "tcb21-reset-scheduled.feature"
 assert.equal(GHERKIN_201_PILOT.templateId, plan201.templateId);
 assert.equal(plan201.spec.templateId, "cert201-tcb21-reset-scheduled");
 assert.ok(CORE_201_SPECS.includes(GHERKIN_201_PILOT.spec));
+assert.equal(GHERKIN_201_PILOT.ocppVersion, "OCPP-2.0.1");
+assert.equal(GHERKIN_201_PILOT.spec.ocppVersion, GHERKIN_201_PILOT.ocppVersion);
 assert.ok(GHERKIN_201_PILOT.spec.description?.includes("scheduled reset"));
 assert.equal(plan201.spec.ocppVersion, "OCPP-2.0.1");
 assert.deepEqual(plan201.states, [{ state: "EnergyTransferStarted", connectorId: 1, idToken: "CE712001" }]);

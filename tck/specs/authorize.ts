@@ -58,6 +58,7 @@ async function assertNoTransactionForTag(
 
 export const tc0231AuthorizeInvalidSpec: ScenarioSpec<void> = {
   templateId: "cert16-tc023-1-authorize-invalid",
+  ocppVersion: "OCPP-1.6J",
   description:
     "TC_023.1 Authorize Outcome (Invalid): unknown idTag CERT023-INV -> Authorize.conf Invalid, no StartTransaction.",
   connector: 1,
@@ -109,6 +110,7 @@ export const tc0231AuthorizeInvalidSpec: ScenarioSpec<void> = {
 
 export const tc0232AuthorizeExpiredSpec: ScenarioSpec<void> = {
   templateId: "cert16-tc023-2-authorize-expired",
+  ocppVersion: "OCPP-1.6J",
   description:
     "TC_023.2 Authorize Outcome (Expired): idTag CERT023-EXP has expiry_date in the past -> Authorize.conf Expired, no StartTransaction.",
   connector: 1,
@@ -154,6 +156,7 @@ export const tc0232AuthorizeExpiredSpec: ScenarioSpec<void> = {
 
 export const tc0233AuthorizeBlockedSpec: ScenarioSpec<void> = {
   templateId: "cert16-tc023-3-authorize-blocked",
+  ocppVersion: "OCPP-1.6J",
   description:
     "TC_023.3 Authorize Outcome (Blocked): idTag CERT023-BLK is blocked -> Authorize.conf Blocked, no StartTransaction.",
   connector: 1,

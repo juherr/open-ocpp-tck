@@ -28,14 +28,11 @@
  *    column. That protocol makes features optional rather than cases and
  *    publishes an identifier per feature; OCPP 1.6 publishes none, so its rows
  *    are prose and stay prose. OCA-201-SELECTION.md has the provenance.
- *  - A CSMS that does not speak OCPP 2.0.1 AT ALL still needs a row per
- *    `cert201-` scenario, and those rows are PROSE -- "no OCPP 2.0.1 message
- *    endpoint" -- not a feature identifier. An identifier names the feature a
- *    CONDITIONAL case hangs on; a CSMS with no 2.0.1 surface is declining
- *    every case whatever its features, so there is nothing conditional to
- *    cite. Why there is no shorter way to say it: see the note above
- *    `scopeCoverage`.
+ *  - A driver that declares `protocols` needs rows only for scenarios in those
+ *    protocols. A driver with no declaration keeps the compatibility rule:
+ *    rows for every registered scenario. This is checked by `scopeCoverage`.
  */
+import type { ScenarioOcppVersion } from "./spec-types";
 export type ScopeStatus = "DRIVABLE" | "CONDITIONAL" | "NOT_APPLICABLE";
 export interface ScopeEntry {
     status: ScopeStatus;
@@ -43,6 +40,10 @@ export interface ScopeEntry {
 }
 /** One row per registered scenario `templateId`. */
 export type ScopeTable = Readonly<Record<string, ScopeEntry>>;
+/** A protocol declaration can make an absent scope row mean the driver cannot
+ *  execute that scenario. Without a declaration, absence retains the legacy
+ *  "run it and find out" behavior. */
+export declare function scopeEntryForScenario(table: ScopeTable | undefined, templateId: string, ocppVersion: ScenarioOcppVersion, protocols?: readonly ScenarioOcppVersion[]): ScopeEntry | undefined;
 export declare function scopeFor(table: ScopeTable, templateId: string): ScopeEntry | undefined;
 export declare function templateIdsWithStatus(table: ScopeTable, status: ScopeStatus): string[];
 /**
@@ -55,7 +56,10 @@ export declare function templateIdsWithStatus(table: ScopeTable, status: ScopeSt
  * `stale` -- a row for a scenario nobody registers: usually a rename, and it
  * silently stops covering anything.
  */
-export declare function scopeCoverage(table: ScopeTable, registeredTemplateIds: readonly string[]): {
+export declare function scopeCoverage(table: ScopeTable, registeredScenarios: readonly {
+    templateId: string;
+    ocppVersion: ScenarioOcppVersion;
+}[], protocols?: readonly ScenarioOcppVersion[]): {
     missing: string[];
     stale: string[];
 };

@@ -4,9 +4,10 @@
  *
  * main.ts -- TypeScript OCPP conformance runner CLI.
  *
- * Usage: ocpp-tck run <template-id> [--cp CP1] [--timeout N] [--connector N]
- *        ocpp-tck run --group core|authlist-reservation|remotetrigger-smartcharging|firmware|authorize|core-201|all [--parallel]
- *        ocpp-tck run-all [--group <name>] [--parallel] [--shard k/n]
+ * Usage: ocpp-tck run [--version 1.6|2.0.1] [--parallel]
+ *        ocpp-tck run <template-id> [--version 1.6|2.0.1] [--cp CP1] [--timeout N] [--connector N]
+ *        ocpp-tck run --group core|authlist-reservation|remotetrigger-smartcharging|firmware|authorize|all [--version 1.6|2.0.1] [--parallel]
+ *        ocpp-tck run-all [--group <name>] [--version 1.6|2.0.1] [--parallel] [--shard k/n]
  *
  * Brings its own simulator container up (sim.ts), drives it over the JSON
  * Lines stdin protocol, captures its full stdout, parses OCPP-J frames
@@ -51,6 +52,7 @@ import {
   CSMS_OPERATION_16_ACTIONS,
   driverCapabilities,
   driverExpectedFailures,
+  driverProtocols,
   driverScope,
   UnsupportedOperationError,
 } from "./driver";
@@ -63,6 +65,7 @@ import {
 } from "./expected";
 import {
   scopeCoverage,
+  scopeEntryForScenario,
   templateIdsWithStatus,
   type ScopeStatus,
   type ScopeTable,
@@ -99,7 +102,7 @@ import { readTrace } from "./trace";
 import {
   DEFAULT_SIM_IMAGE,
   defaultSimConfig,
-  namesFlag,
+  simConfigForScenario,
   traceRequested,
   startSim,
   type SimConfig,
@@ -122,7 +125,12 @@ import {
   FIRMWARE_SPECS,
   REMOTETRIGGER_SMARTCHARGING_SPECS,
 } from "./specs/index";
-import type { ScenarioSpec } from "./spec-types";
+import type { ScenarioOcppVersion, ScenarioSpec } from "./spec-types";
+import {
+  filterScenariosByVersion,
+  parseScenarioVersionFilter,
+  type ScenarioVersionFilter,
+} from "./scenario-selection";
 import {
   divergesFromReference,
   establishStates,
@@ -431,7 +439,7 @@ function verdictForRecorder(rec: AssertRecorder): Verdict {
  * UnsupportedOperationError catch below is the backstop).
  */
 async function scopeEntryFor(
-  templateId: string,
+  spec: Pick<ScenarioSpec, "templateId" | "ocppVersion">,
 ): Promise<{ status: string; reason: string } | undefined> {
   // Reads the MODULE, and deliberately never calls create(). A driver is
   // entitled to build its HTTP client in create() and throw when its token is
@@ -439,7 +447,14 @@ async function scopeEntryFor(
   // order to tell you it was not going to use one, contradicting the promise
   // three lines below. Importing a module does not contact the CSMS, and
   // neither may the table's own resolution.
-  return (await scopeTable())?.[templateId];
+  const module = await driverModule();
+  const protocols = driverProtocols(module, ENV);
+  return scopeEntryForScenario(
+    await scopeTable(),
+    spec.templateId,
+    spec.ocppVersion,
+    protocols,
+  );
 }
 
 /**
@@ -652,61 +667,13 @@ async function runScenario<D>(
 
   const parts = await driver();
   const resolved = mergeSimTransport(
-    defaultSimConfig(),
+    simConfigForScenario(spec.templateId, spec.ocppVersion),
     await parts.simTransport?.(options.cpId),
   );
   const simCfg = {
     ...resolved,
-    // THE ONE `SIM_*` SETTING A SCENARIO OVERRULES, and the exception is
-    // narrow: every other field here is a fact about the deployment (where the
-    // CSMS is, how to authenticate, which docker network), where the protocol
-    // is what the scenario is ABOUT. See ScenarioSpec.ocppVersion for the
-    // measurement -- a scenario run on the other version goes six checks out of
-    // seven green, so leaving this to an export makes a green sweep unable to
-    // say which protocol it exercised. A scenario that declares nothing is
-    // still the environment's, which is every scenario written before the
-    // field existed.
-    //
-    // NO OFFLINE GUARD, and that was weighed rather than skipped. Inverting
-    // this precedence is the one way to get it wrong, and it cannot hide: the
-    // environment's value is never undefined, so an inverted `??` would run
-    // every 2.0.1 scenario on the 1.6 default, and cert201-tcb01 asserts a
-    // member the 1.6 BootNotification does not have. The sweep goes red in CI
-    // on the first scenario. A pure helper extracted for a test to call would
-    // pin the same rule one layer earlier and buy a layer, not a signal.
-    ocppVersion: spec.ocppVersion ?? resolved.ocppVersion,
     tracePath: prepareTracePath(`${artifactStem}.jsonl`),
   };
-  // SIM_EXTRA_ARGS IS THE LAST WORD ON THE ARGV, AND IT MAY NOT BE THE LAST
-  // WORD ON A CERTIFICATION CASE. buildDockerArgs drops our --ocpp-version
-  // when extraArgs already names one, which is the right rule for a default
-  // and a silent lie for a scenario that declared its protocol: the run then
-  // measures the other one. It is not hypothetical for the reason the boot
-  // assertion in cert201-tcb01 exists -- a Heartbeat request and response are
-  // byte-identical across 1.6 and 2.0.1, so cert201-tcf20 would pass every one
-  // of its checks on a 1.6 wire and certify a case it never exercised.
-  //
-  // A REFUSAL AND NOT A WARNING, by preflight()'s rule two hundred lines up: a
-  // per-scenario complaint about a process-wide environment variable is one
-  // typo rendered as a table of rows nobody can act on.
-  //
-  // AND PER SCENARIO ANYWAY, WHICH IS A TRADE AND NOT A CONSTRAINT. preflight()
-  // is the layer that owns refusals about the environment, and both its call
-  // sites already have the scenario set in hand, so refusing there is
-  // available: it would name every affected scenario once, before any container
-  // starts. It also stops the whole sweep on one exported variable. Here, the
-  // 47 scenarios that declare no version report normally and the typo arrives
-  // as a handful of ERROR rows that name themselves -- which is what an
-  // operator who set SIM_EXTRA_ARGS to debug a 1.6 handshake actually wants.
-  // Worth moving up the day the scenarios that declare a version are the
-  // majority, and the cost of the trade flips with them.
-  if (spec.ocppVersion && namesFlag(simCfg.extraArgs, "--ocpp-version")) {
-    throw new Error(
-      `${spec.templateId} is written for ${spec.ocppVersion}, and SIM_EXTRA_ARGS ` +
-        "names --ocpp-version, which would silently replace it. Drop it from " +
-        "SIM_EXTRA_ARGS, or run a scenario that declares no version.",
-    );
-  }
   const csms16 = parts.operations16;
   // A cert201- scenario against a 1.6-only driver therefore throws out of
   // drive() and is caught below as NOT APPLICABLE.
@@ -1090,80 +1057,17 @@ async function runScenario<D>(
 }
 
 // ---------------------------------------------------------------------------
-// Spec registry -- five groups mirror the upstream group names and array
-// membership/order exactly (47 scenarios: 15 core + 13 authlist-reservation +
-// 12 remotetrigger-smartcharging + 4 firmware + 3 authorize), and one has no
-// upstream counterpart at all: core-201, the 33 OCPP 2.0.1 scenarios written
-// here rather than ported. 80 in total.
-//
-// A SIXTH BUCKET, NOT A SECOND AXIS, and the difference is worth stating here
-// because the note further down forbids the second. --group selects
-// hand-declared buckets; this is one, sitting beside the five for the same
-// reason they sit beside each other -- it is the set of scenarios one file
-// holds. Nothing derives it: no code reads a templateId's namespace to decide
-// membership, which is what a protocol axis would be and what issue #34 owns.
-// Honestly, though: today that bucket also happens to be every 2.0.1 scenario
-// there is, so `--group core-201` selects by version by coincidence. What
-// keeps that from becoming the axis by accident is that a second 2.0.1 file
-// would join `all` and get its own bucket, exactly as a second 1.6 one would,
-// rather than being folded in to keep the coincidence true.
-//
-// AND THE COINCIDENCE IS MEANT TO END. Issue #74 replaces it with the two axes
-// this bucket welds together -- `--version` filtering on what a scenario
-// DECLARES, and `--group` back to a domain -- at which point `core-201`
-// disappears into `core` and "Core" means the certification profile it means
-// in both protocols. The note below refuses a version axis on the ground that
-// it would ship before there were two values to test it with; there are two
-// now, which is what makes #74 constructible and this bucket temporary.
-//
-// DIVERGENCE FROM UPSTREAM, deliberate: "all" includes "authorize". Upstream
-// leaves the 3 TC_023 scenarios outside it, and this registry used to mirror
-// that, with a TODO saying the fix belonged upstream because fidelity was
-// worth more than tidiness and every re-sync would otherwise re-litigate it.
-//
-// That trade was wrong, and the comment made the case against itself: anyone
-// running "all" and reading "44 scenarios, no failures" believes they ran the
-// suite. They did not run the three scenarios that most directly exercise
-// CSMS-side authorization state -- the ones that prove `driver provision`
-// seeded anything at all. A default that silently under-reports coverage is a
-// correctness problem, not a cosmetic one, and no amount of re-sync
-// convenience buys it back.
-//
-// The divergence is cheap to carry because this file is no longer tracking
-// upstream at all: it is `upstream-forked` since shiv3/ocpp-cp-simulator#271
-// ceded the runner layer here, so the decision above is simply ours to make.
-// The header records where it came from; there is no patch to re-sync.
-//
-// NOT BUILT, here because here is where it gets re-proposed: a second
-// selection dimension beside --group -- by domain, or by the certification
-// profile a scenario's case belongs to. The gap is real and issue #34 owns
-// it. What it must NOT become is one axis per protocol version: the newer
-// protocol's profiles are a ready-made taxonomy, and building a selector for
-// them alone would give this runner two ways to select the same thing, one of
-// them shipped before there were two values to test it with. Until #34 lands,
-// a scenario outside this file's namespace is run by id or by a whole sweep --
-// the namespace a templateId opens with separates the protocols, but no flag
-// reads it, so it is not the second axis already in place.
-// OCA-201-SELECTION.md records that decision.
-//
-// THE SECOND HALF OF THAT ARGUMENT HAS EXPIRED, and the first half has not.
-// "Before there were two values to test it with" was true of a seven-case
-// slice in one profile; the rule now selects all four, so the values exist.
-// What still holds -- and holds harder -- is that it must be ONE axis: doing
-// nothing here does not leave the runner axis-less, it grows
-// `smartcharging-201`, `security-201`, `iso15118-201` beside `core-201`, each
-// arriving as a reasonable local decision. #34 moved into the same milestone
-// for that reason, and it is still the issue that owns the shape.
-// ---------------------------------------------------------------------------
-
+// Scenario groups describe certification domains. Protocol versions are a
+// separate filter over each scenario's required `ocppVersion` declaration.
+// Core cases from both supported protocols share `core`; use --version to
+// narrow it. The all group remains the complete registered suite.
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
 const GROUPS: Record<string, ScenarioSpec<any>[]> = {
-  core: CORE_SPECS,
+  core: [...CORE_SPECS, ...CORE_201_SPECS],
   "authlist-reservation": AUTHLIST_RESERVATION_SPECS,
   "remotetrigger-smartcharging": REMOTETRIGGER_SMARTCHARGING_SPECS,
   firmware: FIRMWARE_SPECS,
   authorize: AUTHORIZE_SPECS,
-  "core-201": CORE_201_SPECS,
   all: [
     ...CORE_SPECS,
     ...AUTHLIST_RESERVATION_SPECS,
@@ -1396,7 +1300,7 @@ async function runOneForSweep<D>(
     expected: await expectedFailureEntryFor(spec.templateId),
   };
 
-  const scope = await scopeEntryFor(spec.templateId);
+  const scope = await scopeEntryFor(spec);
   if (scope?.status === "NOT_APPLICABLE") {
     process.stderr.write(
       `[runner] === ${spec.templateId} NOT APPLICABLE (no container started): ${scope.reason}\n`,
@@ -1709,6 +1613,7 @@ async function runGroupSweep(
   parallel: boolean,
   retryFailedIsolated: boolean,
   shard?: Shard,
+  version?: ScenarioVersionFilter,
 ): Promise<number> {
   const selected = GROUPS[groupName];
   if (!selected) {
@@ -1718,15 +1623,22 @@ async function runGroupSweep(
     return 1;
   }
 
-  const specs = selectShard(selected, shard);
-  const shardNote = describeShard(shard, specs.length, selected.length);
+  const versioned = filterScenariosByVersion(selected, version);
+  try {
+    for (const spec of versioned) simConfigForScenario(spec.templateId, spec.ocppVersion);
+  } catch (error) {
+    process.stderr.write(`${error instanceof Error ? error.message : String(error)}\n`);
+    return 1;
+  }
+  const specs = selectShard(versioned, shard);
+  const shardNote = describeShard(shard, specs.length, versioned.length);
   // REFUSED RATHER THAN RUN EMPTY. More shards than scenarios is a workflow
   // whose matrix grew and whose suite did not, and an empty sweep exits 0 with
   // a table of no rows -- which reads as a pass.
   if (specs.length === 0) {
     process.stderr.write(
       `[runner] ${shardNote ?? "the selection"} is empty: group '${groupName}' ` +
-        `has ${selected.length} scenario(s). Nothing to run, and an empty sweep ` +
+        `has ${versioned.length} scenario(s) for version ${version ?? "all"}. Nothing to run, and an empty sweep ` +
         `is not a passing one.\n`,
     );
     return 1;
@@ -1877,6 +1789,7 @@ async function runGroupSweep(
 interface CliArgs {
   templateId?: string;
   group?: string;
+  version?: ScenarioVersionFilter;
   runAll: boolean;
   parallel: boolean;
   retryFailedIsolated: boolean;
@@ -1921,13 +1834,14 @@ const VERBS = [
 
 async function printUsage(): Promise<void> {
   process.stderr.write(
-    "Usage: ocpp-tck run <template-id> [--cp CP1] [--timeout N] " +
+    "Usage: ocpp-tck run [--version 1.6|2.0.1] [--parallel] [--retry-failed-isolated]  # all scenarios\n" +
+      "       ocpp-tck run <template-id> [--version 1.6|2.0.1] [--cp CP1] [--timeout N] " +
       "[--connector N] [--results-dir DIR]\n" +
       "       ocpp-tck run --group " +
-      `${Object.keys(GROUPS).join("|")} [--parallel] [--retry-failed-isolated]\n` +
-      "       ocpp-tck run-all [--group <name>] [--parallel] " +
+      `${Object.keys(GROUPS).join("|")} [--version 1.6|2.0.1] [--parallel] [--retry-failed-isolated]\n` +
+      "       ocpp-tck run-all [--group <name>] [--version 1.6|2.0.1] [--parallel] " +
       "[--retry-failed-isolated] [--results-dir DIR] [--shard k/n]\n" +
-      "       ocpp-tck list-scenarios [--group <name>] [--json]\n" +
+      "       ocpp-tck list-scenarios [--group <name>] [--version 1.6|2.0.1] [--json]\n" +
       "       ocpp-tck check-driver [--driver SPEC] [--json]\n" +
       "       ocpp-tck print-sim-image\n" +
       "       ocpp-tck driver <verb> [args...]\n" +
@@ -1949,7 +1863,9 @@ async function printUsage(): Promise<void> {
       "OCPP_STATIONS (ocpp_id=station_id[,...] override when the stations were " +
       "created by hand), SIM_WS_URL, SIM_IMAGE, SIM_NETWORK, " +
       "SIM_WS_APPEND_CP_ID, SIM_WS_BASIC_USER/SIM_WS_BASIC_PASS, " +
-      "SIM_OCPP_VERSION (default OCPP-1.6J), SIM_TRACE=0 (no JSONL wire " +
+      "SIM_OCPP_VERSION (must match every selected scenario), " +
+      "SIM_FORCE_OCPP_VERSION (explicit cross-version diagnostic override), " +
+      "SIM_TRACE=0 (no JSONL wire " +
       "trace beside the log -- the assertions then read the log instead).\n",
   );
 
@@ -1980,6 +1896,7 @@ async function printUsage(): Promise<void> {
 function parseArgs(argv: string[]): CliArgs {
   let templateId: string | undefined;
   let group: string | undefined;
+  let version: ScenarioVersionFilter | undefined;
   let parallel = false;
   let retryFailedIsolated = false;
   let cpId = resolveStations()[0];
@@ -1987,73 +1904,41 @@ function parseArgs(argv: string[]): CliArgs {
   let timeoutSecs: number | undefined;
   let resultsDirArg: string | undefined;
   let shard: Shard | undefined;
+  let cpWasSet = false;
+  let connectorWasSet = false;
+  let timeoutWasSet = false;
+  const verb = argv[0];
+  const runAll = verb === "run-all";
+  if (!runAll && verb !== "run") throw new Error(`Unsupported runner verb: ${verb}`);
 
-  if (argv[0] === "run-all") {
-    group = "all";
-    for (let i = 1; i < argv.length; i++) {
-      switch (argv[i]) {
-        case "--group":
-          group = requireValue(argv, ++i, "--group");
-          break;
-        case "--parallel":
-          parallel = true;
-          break;
-        case "--retry-failed-isolated":
-          retryFailedIsolated = true;
-          break;
-        case "--results-dir":
-          resultsDirArg = requireValue(argv, ++i, "--results-dir");
-          break;
-        case "--shard": {
-          const parsed = parseShard(requireValue(argv, ++i, "--shard"));
-          if (typeof parsed === "string") {
-            process.stderr.write(`${parsed}\n`);
-            process.exit(1);
-          }
-          shard = parsed;
-          break;
-        }
-        default:
-          process.stderr.write(`Unknown argument: ${argv[i]}\n`);
-          process.exit(1);
-      }
-    }
-    return {
-      group,
-      runAll: true,
-      parallel,
-      retryFailedIsolated,
-      cpId,
-      resultsDir: resultsDirArg,
-      shard,
-    };
-  }
-
-  // argv[0] === "run"
-  if (!argv[1]) {
-    process.stderr.write("run needs a <template-id> or --group <name>.\n");
-    process.exit(1);
-  }
-
-  let startIndex: number;
-  if (argv[1] === "--group") {
-    group = requireValue(argv, 2, "--group");
-    startIndex = 3;
-  } else {
-    templateId = argv[1];
-    startIndex = 2;
-  }
-
-  for (let i = startIndex; i < argv.length; i++) {
+  let i = 1;
+  if (!runAll && argv[i] && !argv[i].startsWith("--")) templateId = argv[i++];
+  for (; i < argv.length; i++) {
     switch (argv[i]) {
+      case "--group":
+        group = requireValue(argv, ++i, "--group");
+        break;
+      case "--version": {
+        const raw = requireValue(argv, ++i, "--version");
+        try {
+          version = parseScenarioVersionFilter(raw);
+        } catch (error) {
+          process.stderr.write(`${error instanceof Error ? error.message : String(error)}\n`);
+          process.exit(1);
+        }
+        break;
+      }
       case "--cp":
         cpId = requireValue(argv, ++i, "--cp");
+        cpWasSet = true;
         break;
       case "--connector":
         connector = requireNumber(argv, ++i, "--connector");
+        connectorWasSet = true;
         break;
       case "--timeout":
         timeoutSecs = requireNumber(argv, ++i, "--timeout");
+        timeoutWasSet = true;
         break;
       case "--parallel":
         parallel = true;
@@ -2064,21 +1949,50 @@ function parseArgs(argv: string[]): CliArgs {
       case "--results-dir":
         resultsDirArg = requireValue(argv, ++i, "--results-dir");
         break;
+      case "--shard": {
+        const parsed = parseShard(requireValue(argv, ++i, "--shard"));
+        if (typeof parsed === "string") {
+          process.stderr.write(`${parsed}\n`);
+          process.exit(1);
+        }
+        shard = parsed;
+        break;
+      }
       default:
         process.stderr.write(`Unknown argument: ${argv[i]}\n`);
         process.exit(1);
     }
   }
+  if (templateId && group) {
+    throw new Error("--group cannot be combined with a <template-id> in the run command.");
+  }
+  const sweep = runAll || group !== undefined || templateId === undefined;
+  if (sweep && (cpWasSet || connectorWasSet || timeoutWasSet)) {
+    throw new Error("--cp, --connector, and --timeout cannot be used with a scenario sweep.");
+  }
+  if (sweep && !runAll && shard) {
+    throw new Error("--shard is only supported by run-all.");
+  }
+  if (templateId && shard) {
+    throw new Error("--shard cannot be used with a single <template-id> run.");
+  }
+  if (templateId && (parallel || retryFailedIsolated)) {
+    throw new Error("--parallel and --retry-failed-isolated cannot be used with a single <template-id> run.");
+  }
+  if (runAll && !group) group = "all";
+  if (!runAll && !templateId && !group) group = "all";
   return {
     templateId,
     group,
-    runAll: false,
+    version,
+    runAll,
     parallel,
     retryFailedIsolated,
     cpId,
     connector,
     timeoutSecs,
     resultsDir: resultsDirArg,
+    shard,
   };
 }
 
@@ -2087,7 +2001,11 @@ function parseArgs(argv: string[]): CliArgs {
 // ---------------------------------------------------------------------------
 
 /** Every registered templateId, with the group it is first reachable from. */
-function registeredScenarios(): Array<{ templateId: string; group: string }> {
+function registeredScenarios(): Array<{
+  templateId: string;
+  group: string;
+  ocppVersion: ScenarioSpec<any>["ocppVersion"];
+}> {
   const seen = new Map<string, string>();
   for (const [group, specs] of Object.entries(GROUPS)) {
     if (group === "all") continue;
@@ -2095,15 +2013,28 @@ function registeredScenarios(): Array<{ templateId: string; group: string }> {
       if (!seen.has(spec.templateId)) seen.set(spec.templateId, group);
     }
   }
-  return [...seen].map(([templateId, group]) => ({ templateId, group }));
+  return [...seen].map(([templateId, group]) => {
+    const spec = SPECS_BY_TEMPLATE_ID.get(templateId);
+    if (!spec) throw new Error(`Scenario registry lost '${templateId}'.`);
+    return { templateId, group, ocppVersion: spec.ocppVersion };
+  });
 }
 
 function listScenarios(argv: string[]): number {
   let group: string | undefined;
+  let version: ScenarioVersionFilter | undefined;
   let asJson = false;
   for (let i = 0; i < argv.length; i++) {
     if (argv[i] === "--group") group = requireValue(argv, ++i, "--group");
-    else if (argv[i] === "--json") asJson = true;
+    else if (argv[i] === "--version") {
+      const raw = requireValue(argv, ++i, "--version");
+      try {
+        version = parseScenarioVersionFilter(raw);
+      } catch (error) {
+        process.stderr.write(`${error instanceof Error ? error.message : String(error)}\n`);
+        return 1;
+      }
+    } else if (argv[i] === "--json") asJson = true;
     else {
       process.stderr.write(`Unknown argument: ${argv[i]}\n`);
       return 1;
@@ -2120,10 +2051,12 @@ function listScenarios(argv: string[]): number {
     const ids = new Set(GROUPS[group].map((s) => s.templateId));
     rows = rows.filter((r) => ids.has(r.templateId));
   }
+  rows = filterScenariosByVersion(rows, version);
+  const outputRows = rows.map(({ templateId, group }) => ({ templateId, group }));
   process.stdout.write(
     asJson
-      ? `${JSON.stringify(rows, null, 2)}\n`
-      : `${rows.map((r) => `${r.templateId}\t${r.group}`).join("\n")}\n`,
+      ? `${JSON.stringify(outputRows, null, 2)}\n`
+      : `${outputRows.map((r) => `${r.templateId}\t${r.group}`).join("\n")}\n`,
   );
   return 0;
 }
@@ -2159,11 +2092,13 @@ async function checkDriver(argv: string[]): Promise<number> {
   // where it used to print one sentence.
   let module: CsmsDriverModule;
   let scope: ScopeTable | undefined;
+  let protocols: readonly ScenarioOcppVersion[] | undefined;
   let capabilities: CsmsTckCapabilities | undefined;
   let expected: ExpectedFailureTable | undefined;
   try {
     module = await driverModule();
     scope = await scopeTable();
+    protocols = driverProtocols(module, ENV);
     capabilities = driverCapabilities(module, ENV);
     expected = await expectedFailureTable();
   } catch (err) {
@@ -2189,7 +2124,7 @@ async function checkDriver(argv: string[]): Promise<number> {
         "the CSMS. Legal, but the table is what makes that cheap.",
     );
   } else {
-    const { missing, stale } = scopeCoverage(scope, registered);
+    const { missing, stale } = scopeCoverage(scope, scenarios, protocols);
     if (missing.length > 0) {
       problems.push(
         `${missing.length} registered scenario(s) have NO row:\n` +
@@ -2338,6 +2273,7 @@ async function checkDriver(argv: string[]): Promise<number> {
   const summary = {
     driver: module.id ?? "",
     displayName: module.displayName ?? "",
+    protocols: protocols ?? [...new Set(scenarios.map((scenario) => scenario.ocppVersion))].sort(),
     registeredScenarios: registered.length,
     // Both vocabularies, listed rather than counted, for the reason the
     // expectedFailures field below gives: --json is what a conformance report
@@ -2397,6 +2333,7 @@ async function checkDriver(argv: string[]): Promise<number> {
         : "") +
       ".\n",
   );
+  process.stderr.write(`  protocols: ${summary.protocols.join(", ")}\n`);
   // Silence when absent: a 1.6-only driver is the ordinary case, not a gap.
   // `?.length` rather than truthiness -- an empty declaration is a driver that
   // claims 2.0.1 and drives none of it, which the warning above reports and
@@ -2617,7 +2554,13 @@ export async function cli(argv: string[]): Promise<number> {
   if (verb === "check-driver") return checkDriver(argv.slice(1));
   if (verb === "driver") return runDriverCommand(argv.slice(1));
 
-  const args = parseArgs(argv);
+  let args: CliArgs;
+  try {
+    args = parseArgs(argv);
+  } catch (error) {
+    process.stderr.write(`${error instanceof Error ? error.message : String(error)}\n`);
+    return 1;
+  }
   RESULTS_DIR = resultsDir(args.resultsDir);
 
   if (args.runAll || args.group !== undefined) {
@@ -2626,6 +2569,7 @@ export async function cli(argv: string[]): Promise<number> {
       args.parallel,
       args.retryFailedIsolated,
       args.shard,
+      args.version,
     );
   }
 
@@ -2642,6 +2586,15 @@ export async function cli(argv: string[]): Promise<number> {
     return 1;
   }
 
+  if (args.version && filterScenariosByVersion([spec], args.version).length === 0) {
+    process.stderr.write(
+      `Scenario '${spec.templateId}' declares ${spec.ocppVersion}, which does not match --version ${args.version}.\n`,
+    );
+    return 1;
+  }
+  try { simConfigForScenario(spec.templateId, spec.ocppVersion); }
+  catch (error) { process.stderr.write(`${error instanceof Error ? error.message : String(error)}\n`); return 1; }
+
   // The same declaration the sweep reads, so that running one scenario by
   // hand means what running it in the sweep means. Without this,
   // `bun run e2e:smoke` -- which names an expected-failing scenario
@@ -2649,7 +2602,7 @@ export async function cli(argv: string[]): Promise<number> {
   const expected = await expectedFailureEntryFor(spec.templateId);
 
   // Scope table first -- a NOT_APPLICABLE scenario never starts a container.
-  const scope = await scopeEntryFor(spec.templateId);
+  const scope = await scopeEntryFor(spec);
   if (scope?.status === "NOT_APPLICABLE") {
     process.stderr.write(
       `[runner] RESULT: ${spec.templateId} NOT APPLICABLE (no container started): ${scope.reason}\n`,

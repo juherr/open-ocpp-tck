@@ -108,7 +108,7 @@ docker compose -f node_modules/open-ocpp-tck/drivers/steve/compose.yaml up -d --
 bunx ocpp-tck driver provision
 bunx ocpp-tck driver selftest    # seconds: can the driver answer the contract?
 
-bunx ocpp-tck run-all --group core
+bunx ocpp-tck run-all --group core --version 1.6
 ```
 
 `run-all` is the whole suite: every registered scenario, one command. It did
@@ -160,14 +160,21 @@ is a module specifier — a relative path, an absolute one, or a package name.
 Adding a driver is purely additive, so it never conflicts with an upstream
 re-sync, and your driver can live in a completely different repository.
 
+## Scenario protocol versions
+
+Every scenario declares its executable OCPP protocol. `ocpp-tck run` selects the full suite; `--version 1.6` selects the OCPP-1.6J scenarios and `--version 2.0.1` selects OCPP 2.0.1. With no version filter, both are included. Group and version filters intersect; for example, `--group core --version 2.0.1` lists or runs the Core 2.0.1 scenarios. `core` contains Core cases for both protocols, and there is no separate `core-201` group.
+
+`SIM_OCPP_VERSION`, when explicitly set, must match every selected scenario. Leave it unset to let each scenario configure the simulator. `SIM_EXTRA_ARGS --ocpp-version` may only repeat the selected scenario's declared version. For deliberate cross-version diagnostics such as the experiment in #57, set `SIM_FORCE_OCPP_VERSION` to a simulator-supported protocol; this explicitly runs scenarios against that protocol. If also set, `SIM_OCPP_VERSION` and `SIM_EXTRA_ARGS --ocpp-version` must agree with the forced protocol.
+
 ## Commands
 
 | Command | Needs | What it does |
 |---|---|---|
-| `ocpp-tck run <template-id>` | docker + CSMS | One scenario, plus its `results/<template-id>.log` and `.jsonl` wire trace |
-| `ocpp-tck run-all [--group N] [--parallel]` | docker + CSMS | A sweep, plus `results/summary.md` |
+| `ocpp-tck run [--version 1.6\|2.0.1] [--group N]` | docker + CSMS | A full suite sweep, optionally filtered |
+| `ocpp-tck run <template-id> [--version 1.6\|2.0.1]` | docker + CSMS | One scenario, optionally checked against its declared version |
+| `ocpp-tck run-all [--group N] [--version 1.6\|2.0.1] [--parallel]` | docker + CSMS | A sweep; group and version filters intersect |
 | `ocpp-tck check-driver [--driver SPEC]` | nothing | Offline conformance of a driver against this core |
-| `ocpp-tck list-scenarios [--json]` | nothing | The 64 registered scenarios |
+| `ocpp-tck list-scenarios [--group N] [--version 1.6\|2.0.1] [--json]` | nothing | The 96 registered scenarios, optionally filtered |
 | `ocpp-tck print-sim-image` | nothing | The pinned simulator image digest |
 | `ocpp-tck driver selftest [--with-writes]` | CSMS | Every `CsmsRecords` method once, in seconds: does this driver answer the contract? `--with-writes` adds the `prepareStation` hook |
 | `ocpp-tck driver <verb>` | driver-defined | A bootstrap verb your driver contributes |
@@ -255,11 +262,16 @@ the kind of breakage the mechanism exists to catch.
 | `SIM_WS_URL` | driver-supplied | CSMS OCPP endpoint. |
 | `SIM_IMAGE` | pinned digest | Simulator image override. |
 | `SIM_NETWORK`, `SIM_WS_APPEND_CP_ID`, `SIM_WS_BASIC_USER`, `SIM_WS_BASIC_PASS` | driver-supplied | Transport. |
-| `SIM_OCPP_VERSION` | `OCPP-1.6J` | Protocol the charge point speaks, spelled as the simulator's CLI spells it. An unaccepted value is refused before a container starts. |
+| `SIM_OCPP_VERSION` | unset | Optional compatibility assertion. It must match every selected scenario; unset lets each scenario choose its declared protocol. |
+| `SIM_FORCE_OCPP_VERSION` | unset | Explicit diagnostic override for cross-version experiments. It takes precedence over scenario declarations; any `SIM_OCPP_VERSION` assertion or `SIM_EXTRA_ARGS --ocpp-version` must match it. |
 | `SIM_TRACE` | on | `0` switches off the JSONL wire trace written beside each scenario's log — for a docker that refuses the bind mount it needs. The trace is what the assertions read; without one they read the log, which the runner parses itself, and the verdicts are the same. |
 
-An explicit `SIM_*` value always beats the driver's default: an operator
-chasing a handshake problem must not have their override silently replaced.
+Explicit transport `SIM_*` values take precedence over driver transport
+defaults. `SIM_OCPP_VERSION` is the exception: it confirms that every selected
+scenario uses the requested protocol and never overrides the scenario.
+`SIM_FORCE_OCPP_VERSION` is the deliberately named diagnostic exception; it
+overrides the scenario declaration and should be used only for cross-version
+experiments.
 
 ## TypeScript
 

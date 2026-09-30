@@ -1,4 +1,4 @@
-import type { ScenarioSpec } from "../spec-types";
+import type { ScenarioOcppVersion, ScenarioSpec } from "../spec-types";
 import type { StateInvocation } from "../states-201";
 type Payload = Readonly<Record<string, string | number | boolean | null>>;
 type DriveInstruction = {
@@ -36,6 +36,7 @@ type AssertionInstruction = {
 export interface Gherkin201Plan {
     readonly spec: ScenarioSpec<void>;
     readonly templateId: string;
+    readonly ocppVersion: ScenarioOcppVersion;
     readonly connector: number;
     readonly bootWaitSecs: number;
     readonly holdSecs: number;

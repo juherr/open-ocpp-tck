@@ -15,7 +15,7 @@ import {
   assertResponseStatus,
   UNEXERCISED_PREFIX,
 } from "../assert";
-import type { AssertContext, DriveContext, ScenarioSpec } from "../spec-types";
+import type { AssertContext, DriveContext, ScenarioOcppVersion, ScenarioSpec } from "../spec-types";
 import type { StateInvocation } from "../states-201";
 import { assertStateEstablished } from "../states-201";
 import { sleep } from "../util";
@@ -35,6 +35,7 @@ type AssertionInstruction =
 export interface Gherkin201Plan {
   readonly spec: ScenarioSpec<void>;
   readonly templateId: string;
+  readonly ocppVersion: ScenarioOcppVersion;
   readonly connector: number;
   readonly bootWaitSecs: number;
   readonly holdSecs: number;
@@ -88,7 +89,7 @@ function metadata(document: GherkinDocument, uri: string) {
   };
   const connector = positive("connector");
   if (connector !== 1) throw new Error(`${uri}: this pilot compiler supports only @connector:1`);
-  return { scenario: feature.children[0].scenario, id, connector, bootWaitSecs: positive("bootWaitSecs"), holdSecs: positive("holdSecs") };
+  return { scenario: feature.children[0].scenario, id, ocppVersion: "OCPP-2.0.1" as const, connector, bootWaitSecs: positive("bootWaitSecs"), holdSecs: positive("holdSecs") };
 }
 
 function compileSteps(steps: readonly Step[], uri: string) {
@@ -132,7 +133,7 @@ function makeSpec(plan: Omit<Gherkin201Plan, "spec">, description: string): Scen
   return {
     templateId: plan.templateId,
     description,
-    ocppVersion: "OCPP-2.0.1",
+    ocppVersion: plan.ocppVersion,
     runsSimTemplate: false,
     connector: plan.connector,
     bootWaitSecs: plan.bootWaitSecs,
@@ -165,7 +166,7 @@ export function compile201FeatureText(source: string, uri = "<feature>"): Gherki
   const parsed = parse(source, uri);
   const meta = metadata(parsed, uri);
   const steps = compileSteps(meta.scenario.steps, uri);
-  const plan = { templateId: meta.id, connector: meta.connector, bootWaitSecs: meta.bootWaitSecs, holdSecs: meta.holdSecs, ...steps };
+  const plan = { templateId: meta.id, ocppVersion: meta.ocppVersion, connector: meta.connector, bootWaitSecs: meta.bootWaitSecs, holdSecs: meta.holdSecs, ...steps };
   return { ...plan, spec: makeSpec(plan, `${parsed.feature?.name ?? ""}: ${meta.scenario.name}`) };
 }
 

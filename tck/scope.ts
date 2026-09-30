@@ -30,14 +30,12 @@
  *    column. That protocol makes features optional rather than cases and
  *    publishes an identifier per feature; OCPP 1.6 publishes none, so its rows
  *    are prose and stay prose. OCA-201-SELECTION.md has the provenance.
- *  - A CSMS that does not speak OCPP 2.0.1 AT ALL still needs a row per
- *    `cert201-` scenario, and those rows are PROSE -- "no OCPP 2.0.1 message
- *    endpoint" -- not a feature identifier. An identifier names the feature a
- *    CONDITIONAL case hangs on; a CSMS with no 2.0.1 surface is declining
- *    every case whatever its features, so there is nothing conditional to
- *    cite. Why there is no shorter way to say it: see the note above
- *    `scopeCoverage`.
+ *  - A driver that declares `protocols` needs rows only for scenarios in those
+ *    protocols. A driver with no declaration keeps the compatibility rule:
+ *    rows for every registered scenario. This is checked by `scopeCoverage`.
  */
+
+import type { ScenarioOcppVersion } from "./spec-types";
 
 export type ScopeStatus = "DRIVABLE" | "CONDITIONAL" | "NOT_APPLICABLE";
 
@@ -69,6 +67,24 @@ export interface ScopeEntry {
 /** One row per registered scenario `templateId`. */
 export type ScopeTable = Readonly<Record<string, ScopeEntry>>;
 
+/** A protocol declaration can make an absent scope row mean the driver cannot
+ *  execute that scenario. Without a declaration, absence retains the legacy
+ *  "run it and find out" behavior. */
+export function scopeEntryForScenario(
+  table: ScopeTable | undefined,
+  templateId: string,
+  ocppVersion: ScenarioOcppVersion,
+  protocols?: readonly ScenarioOcppVersion[],
+): ScopeEntry | undefined {
+  if (protocols !== undefined && !protocols.includes(ocppVersion)) {
+    return {
+      status: "NOT_APPLICABLE",
+      reason: `Driver does not declare support for ${ocppVersion}.`,
+    };
+  }
+  return table?.[templateId];
+}
+
 export function scopeFor(
   table: ScopeTable,
   templateId: string,
@@ -96,51 +112,25 @@ export function templateIdsWithStatus(
  * `stale` -- a row for a scenario nobody registers: usually a rename, and it
  * silently stops covering anything.
  */
-// TRIED AND NOT BUILT, here because here is where it gets re-proposed: the day
-// the first cert201- scenario registered, EVERY table in this repository and
-// every third-party one reported it `missing`, and the reader of that red is
-// the person who proposes letting a driver decline a whole protocol in one
-// line -- `protocols: ["1.6"]` on the module, or a status this function skips.
-// It is declined, and the reason is not verbosity.
-//
-// THE ARGUMENT THAT USED TO BE HERE IS SPENT, and it is left standing only
-// long enough to say so: it was that such a declaration obliges the CORE to
-// turn a templateId into a protocol, which means a version literal --
-// "cert201-", "2.0.1" -- inside tck/. That was already half untrue (sim.ts
-// spells every version the simulator CLI takes) and issue #63 finished it:
-// `ScenarioSpec.ocppVersion` makes a scenario's protocol a FIELD, so the core
-// can answer "which protocol is this" without reading a prefix. The namespace
-// stays what it was -- container names and guard reach, no flag reading it as
-// a version -- and that is still recorded in OCA-201-SELECTION.md.
-//
-// WHAT ACTUALLY BLOCKS IT NOW is that the field is OPTIONAL, and 47 of 52
-// scenarios declare nothing: the core's honest answer for them is "undeclared"
-// rather than "1.6", so a `protocols: ["1.6"]` opt-out would silently decline
-// nothing at all, or decline everything, depending on how the absence is read.
-// Making it non-optional is the move to weigh, and it is not free -- it leaves
-// SIM_OCPP_VERSION with nothing to influence, which is how issue #57 ran the
-// same scenario on both protocols and found six checks out of seven green.
-// Issue #74 owns that change and carries the costing; this opt-out is one of
-// the things it would unlock, so re-propose it there rather than here.
-//
-// So the answer is one NOT_APPLICABLE row per scenario, which is verbose and
-// says something true per row. It is not the "branch on a scenario id" that
-// CONTRIBUTING.md forbids -- that rule is about execute() and the record
-// queries at runtime, and it names this table as where the fact belongs; every
-// row here already names a scenario. The cost is bounded by the REGISTERED
-// cert201- scenarios rather than by the slice, which is 147 cases: a table
-// grows by at most one row per scenario, seven today, and check-driver going
-// red until they are written is the drift detection this pair of lists is for.
-// What those rows say is an author's business, and it is the last bullet of
-// this file's header.
+// A protocol declaration is resolved and validated by driverProtocols, then
+// used for both scope coverage and runtime applicability. Declared protocols
+// need rows only for scenarios in those protocols; unsupported scenarios are
+// NOT_APPLICABLE before simulator startup. Drivers without a declaration keep
+// the legacy requirement for rows covering every registered scenario.
 export function scopeCoverage(
   table: ScopeTable,
-  registeredTemplateIds: readonly string[],
+  registeredScenarios: readonly { templateId: string; ocppVersion: ScenarioOcppVersion }[],
+  protocols?: readonly ScenarioOcppVersion[],
 ): { missing: string[]; stale: string[] } {
-  const registered = new Set(registeredTemplateIds);
+  const registered = new Set(registeredScenarios.map((scenario) => scenario.templateId));
+  const required = new Set(
+    registeredScenarios
+      .filter((scenario) => protocols === undefined || protocols.includes(scenario.ocppVersion))
+      .map((scenario) => scenario.templateId),
+  );
   const rows = new Set(Object.keys(table));
   return {
-    missing: [...registered].filter((id) => !rows.has(id)).sort(),
+    missing: [...required].filter((id) => !rows.has(id)).sort(),
     stale: [...rows].filter((id) => !registered.has(id)).sort(),
   };
 }

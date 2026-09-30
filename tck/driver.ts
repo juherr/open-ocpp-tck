@@ -3,6 +3,7 @@
 /** TCK-specific driver lifecycle and assertion record contracts. */
 import type { ExpectedFailureTable } from "./expected";
 import type { ScopeTable } from "./scope";
+import type { ScenarioOcppVersion } from "./spec-types";
 import type {
   CsmsCapabilities,
   CsmsEnv,
@@ -81,6 +82,7 @@ export interface CsmsDriverModule {
   readonly id: string;
   readonly displayName: string;
   readonly scope?: EnvDependent<ScopeTable>;
+  readonly protocols?: EnvDependent<readonly ScenarioOcppVersion[]>;
   readonly capabilities?: EnvDependent<CsmsTckCapabilities>;
   readonly expectedFailures?: EnvDependent<ExpectedFailureTable>;
   create(env: CsmsEnv): Promise<CsmsDriverParts> | CsmsDriverParts;
@@ -91,6 +93,29 @@ export interface CsmsDriverModule {
 export function driverScope(module: CsmsDriverModule, env: CsmsEnv): ScopeTable | undefined {
   const value = module.scope;
   return typeof value === "function" ? value(env) : value;
+}
+
+export function driverProtocols(
+  module: CsmsDriverModule,
+  env: CsmsEnv,
+): readonly ScenarioOcppVersion[] | undefined {
+  const value = module.protocols;
+  const protocols = typeof value === "function" ? value(env) : value;
+  if (protocols === undefined) return undefined;
+  if (!Array.isArray(protocols) || protocols.length === 0) {
+    throw new Error("Driver protocols must declare at least one supported protocol.");
+  }
+  const seen = new Set<string>();
+  for (const protocol of protocols as readonly unknown[]) {
+    if (protocol !== "OCPP-1.6J" && protocol !== "OCPP-2.0.1") {
+      throw new Error(`Driver protocols contains unsupported protocol ${JSON.stringify(protocol)}.`);
+    }
+    if (seen.has(protocol)) {
+      throw new Error(`Driver protocols contains duplicate protocol '${protocol}'.`);
+    }
+    seen.add(protocol);
+  }
+  return protocols;
 }
 
 export function driverCapabilities(module: CsmsDriverModule, env: CsmsEnv): CsmsTckCapabilities | undefined {

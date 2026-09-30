@@ -1,4 +1,4 @@
-import type { ScenarioSpec } from "../spec-types";
+import type { ScenarioOcppVersion, ScenarioSpec } from "../spec-types";
 type AssertionInstruction = {
     kind: "sent";
     action: string;
@@ -64,6 +64,7 @@ type DriveInstruction = {
 export interface GherkinPilotPlan {
     readonly spec: ScenarioSpec<void>;
     readonly templateId: string;
+    readonly ocppVersion: ScenarioOcppVersion;
     readonly connector: number;
     readonly bootWaitSecs: number;
     readonly holdSecs: number;

@@ -23,6 +23,7 @@
  */
 
 import { basename, dirname } from "node:path";
+import type { ScenarioOcppVersion } from "./spec-types";
 
 const STOP_GRACE_MS = 10_000;
 
@@ -196,8 +197,8 @@ export interface SimConfig {
   entrypoint?: string;
   /** Argv handed to {@link entrypoint} ahead of the connection flags. */
   command: string[];
-  /** OCPP version the charge point speaks (`SIM_OCPP_VERSION`). A PROPERTY OF
-   *  THE SCENARIO, not of the CSMS -- and deliberately not on the driver's
+  /** OCPP version the charge point speaks (`SIM_OCPP_VERSION` or the explicit
+   *  diagnostic `SIM_FORCE_OCPP_VERSION`). A PROPERTY OF THE SCENARIO, not of the CSMS -- and deliberately not on the driver's
    *  {@link https://github.com/juherr/open-ocpp-tck/issues/57 transport
    *  defaults}, see the note beside `SimTransportDefaults` in driver.ts. */
   ocppVersion: SimOcppVersion;
@@ -260,12 +261,15 @@ export function namesFlag(extraArgs: readonly string[], flag: string): boolean {
  * scenario that boots nothing and a timeout, several minutes from the mistake.
  * Refusing here says the wrong word back to them, with the accepted list.
  */
-function resolveOcppVersion(raw: string | undefined): SimOcppVersion {
-  if (!raw) return DEFAULT_SIM_OCPP_VERSION;
+function resolveOcppVersion(
+  raw: string | undefined,
+  variable = "SIM_OCPP_VERSION",
+): SimOcppVersion {
+  if (raw === undefined) return DEFAULT_SIM_OCPP_VERSION;
   const known = SIM_OCPP_VERSIONS.find((version) => version === raw);
   if (known) return known;
   throw new Error(
-    `SIM_OCPP_VERSION=${raw} is not a version this simulator image accepts. ` +
+    `${variable}=${raw} is not a version this simulator image accepts. ` +
       `Spell it exactly as its CLI does: ${SIM_OCPP_VERSIONS.join(", ")}.`,
   );
 }
@@ -286,9 +290,56 @@ export function defaultSimConfig(
       env.SIM_COMMAND !== undefined
         ? splitArgs(env.SIM_COMMAND)
         : [...DEFAULT_SIM_COMMAND],
-    ocppVersion: resolveOcppVersion(env.SIM_OCPP_VERSION),
+    ocppVersion: resolveOcppVersion(
+      env.SIM_FORCE_OCPP_VERSION ?? env.SIM_OCPP_VERSION,
+      env.SIM_FORCE_OCPP_VERSION === undefined
+        ? "SIM_OCPP_VERSION"
+        : "SIM_FORCE_OCPP_VERSION",
+    ),
     extraArgs: splitArgs(env.SIM_EXTRA_ARGS),
   };
+}
+
+/** Resolve simulator settings for one scenario. SIM_OCPP_VERSION is an
+ *  assertion; SIM_FORCE_OCPP_VERSION is the explicit diagnostic escape hatch. */
+export function simConfigForScenario(
+  templateId: string,
+  ocppVersion: ScenarioOcppVersion,
+  env: NodeJS.ProcessEnv = process.env,
+): SimConfig {
+  const config = defaultSimConfig(env);
+  const forceVersion = env.SIM_FORCE_OCPP_VERSION === undefined
+    ? undefined
+    : resolveOcppVersion(env.SIM_FORCE_OCPP_VERSION, "SIM_FORCE_OCPP_VERSION");
+  const effectiveVersion = forceVersion ?? ocppVersion;
+  const assertedVersion = env.SIM_OCPP_VERSION === undefined
+    ? undefined
+    : resolveOcppVersion(env.SIM_OCPP_VERSION);
+  if (assertedVersion !== undefined && assertedVersion !== effectiveVersion) {
+    const expectation = forceVersion === undefined
+      ? `scenario protocol ${ocppVersion}`
+      : `forced simulator protocol ${forceVersion}`;
+    throw new Error(
+      `SIM_OCPP_VERSION=${assertedVersion} conflicts with ${expectation} for '${templateId}'.`,
+    );
+  }
+  for (let index = 0; index < config.extraArgs.length; index++) {
+    const token = config.extraArgs[index]!;
+    if (token !== "--ocpp-version" && !token.startsWith("--ocpp-version=")) continue;
+    const extraVersion = token.includes("=")
+      ? token.slice(token.indexOf("=") + 1)
+      : config.extraArgs[index + 1];
+    if (extraVersion !== effectiveVersion) {
+      const expectation = forceVersion === undefined
+        ? `scenario protocol ${ocppVersion}`
+        : `simulator protocol ${forceVersion}`;
+      throw new Error(
+        `SIM_EXTRA_ARGS --ocpp-version=${extraVersion ?? "(missing)"} conflicts with ${expectation} for '${templateId}'.`,
+      );
+    }
+    if (token === "--ocpp-version") index++;
+  }
+  return { ...config, ocppVersion: effectiveVersion };
 }
 
 /**

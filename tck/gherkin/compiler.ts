@@ -25,7 +25,7 @@ import {
 } from "../assert";
 import type { Frame } from "../ocpp";
 import { warnOpFailed } from "../op-warn";
-import type { AssertContext, DriveContext, ScenarioSpec } from "../spec-types";
+import type { AssertContext, DriveContext, ScenarioOcppVersion, ScenarioSpec } from "../spec-types";
 import { sleep } from "../util";
 
 const PILOT_URIS = [
@@ -68,6 +68,7 @@ interface ScenarioMetadata {
   id: string;
   sut: "csms";
   template: string;
+  ocppVersion: ScenarioOcppVersion;
   connector: number;
   bootWaitSecs: number;
   holdSecs: number;
@@ -77,6 +78,7 @@ interface ScenarioMetadata {
 export interface GherkinPilotPlan {
   readonly spec: ScenarioSpec<void>;
   readonly templateId: string;
+  readonly ocppVersion: ScenarioOcppVersion;
   readonly connector: number;
   readonly bootWaitSecs: number;
   readonly holdSecs: number;
@@ -125,7 +127,7 @@ function parseTags(document: GherkinDocument, scenario: GherkinScenario, uri: st
   if (connector !== 1) throw new Error(`${uri}: this pilot compiler supports only @connector:1`);
   const bootWaitSecs = positiveInteger(values.get("bootWaitSecs"), "bootWaitSecs", uri, true);
   const holdSecs = positiveInteger(values.get("holdSecs"), "holdSecs", uri);
-  return { id, sut: "csms", template, connector, bootWaitSecs, holdSecs, description: "" };
+  return { id, sut: "csms", template, ocppVersion: "OCPP-1.6J", connector, bootWaitSecs, holdSecs, description: "" };
 }
 
 function positiveInteger(value: string | undefined, name: string, uri: string, allowZero = false): number {
@@ -260,7 +262,7 @@ function makeSpec(metadata: ScenarioMetadata, steps: CompiledSteps): ScenarioSpe
   const spec: ScenarioSpec<void> = {
     templateId: metadata.id,
     description: metadata.description,
-    ocppVersion: "OCPP-1.6J",
+    ocppVersion: metadata.ocppVersion,
     connector: metadata.connector,
     bootWaitSecs: metadata.bootWaitSecs,
     holdSecs: metadata.holdSecs,
@@ -373,6 +375,7 @@ export function compileFeaturePlanText(source: string, uri = "<feature>"): Gherk
   return {
     spec: makeSpec(metadata, steps),
     templateId: metadata.id,
+    ocppVersion: metadata.ocppVersion,
     connector: metadata.connector,
     bootWaitSecs: metadata.bootWaitSecs,
     holdSecs: metadata.holdSecs,
