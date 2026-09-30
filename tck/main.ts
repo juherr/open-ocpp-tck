@@ -65,6 +65,7 @@ import {
 } from "./expected";
 import {
   scopeCoverage,
+  scopeEntryForScenario,
   templateIdsWithStatus,
   type ScopeStatus,
   type ScopeTable,
@@ -438,7 +439,7 @@ function verdictForRecorder(rec: AssertRecorder): Verdict {
  * UnsupportedOperationError catch below is the backstop).
  */
 async function scopeEntryFor(
-  templateId: string,
+  spec: Pick<ScenarioSpec, "templateId" | "ocppVersion">,
 ): Promise<{ status: string; reason: string } | undefined> {
   // Reads the MODULE, and deliberately never calls create(). A driver is
   // entitled to build its HTTP client in create() and throw when its token is
@@ -446,7 +447,14 @@ async function scopeEntryFor(
   // order to tell you it was not going to use one, contradicting the promise
   // three lines below. Importing a module does not contact the CSMS, and
   // neither may the table's own resolution.
-  return (await scopeTable())?.[templateId];
+  const module = await driverModule();
+  const protocols = driverProtocols(module, ENV);
+  return scopeEntryForScenario(
+    await scopeTable(),
+    spec.templateId,
+    spec.ocppVersion,
+    protocols,
+  );
 }
 
 /**
@@ -1292,7 +1300,7 @@ async function runOneForSweep<D>(
     expected: await expectedFailureEntryFor(spec.templateId),
   };
 
-  const scope = await scopeEntryFor(spec.templateId);
+  const scope = await scopeEntryFor(spec);
   if (scope?.status === "NOT_APPLICABLE") {
     process.stderr.write(
       `[runner] === ${spec.templateId} NOT APPLICABLE (no container started): ${scope.reason}\n`,
@@ -1855,7 +1863,9 @@ async function printUsage(): Promise<void> {
       "OCPP_STATIONS (ocpp_id=station_id[,...] override when the stations were " +
       "created by hand), SIM_WS_URL, SIM_IMAGE, SIM_NETWORK, " +
       "SIM_WS_APPEND_CP_ID, SIM_WS_BASIC_USER/SIM_WS_BASIC_PASS, " +
-      "SIM_OCPP_VERSION (must match every selected scenario), SIM_TRACE=0 (no JSONL wire " +
+      "SIM_OCPP_VERSION (must match every selected scenario), " +
+      "SIM_FORCE_OCPP_VERSION (explicit cross-version diagnostic override), " +
+      "SIM_TRACE=0 (no JSONL wire " +
       "trace beside the log -- the assertions then read the log instead).\n",
   );
 
@@ -1894,6 +1904,9 @@ function parseArgs(argv: string[]): CliArgs {
   let timeoutSecs: number | undefined;
   let resultsDirArg: string | undefined;
   let shard: Shard | undefined;
+  let cpWasSet = false;
+  let connectorWasSet = false;
+  let timeoutWasSet = false;
   const verb = argv[0];
   const runAll = verb === "run-all";
   if (!runAll && verb !== "run") throw new Error(`Unsupported runner verb: ${verb}`);
@@ -1917,12 +1930,15 @@ function parseArgs(argv: string[]): CliArgs {
       }
       case "--cp":
         cpId = requireValue(argv, ++i, "--cp");
+        cpWasSet = true;
         break;
       case "--connector":
         connector = requireNumber(argv, ++i, "--connector");
+        connectorWasSet = true;
         break;
       case "--timeout":
         timeoutSecs = requireNumber(argv, ++i, "--timeout");
+        timeoutWasSet = true;
         break;
       case "--parallel":
         parallel = true;
@@ -1946,6 +1962,22 @@ function parseArgs(argv: string[]): CliArgs {
         process.stderr.write(`Unknown argument: ${argv[i]}\n`);
         process.exit(1);
     }
+  }
+  if (templateId && group) {
+    throw new Error("--group cannot be combined with a <template-id> in the run command.");
+  }
+  const sweep = runAll || group !== undefined || templateId === undefined;
+  if (sweep && (cpWasSet || connectorWasSet || timeoutWasSet)) {
+    throw new Error("--cp, --connector, and --timeout cannot be used with a scenario sweep.");
+  }
+  if (sweep && !runAll && shard) {
+    throw new Error("--shard is only supported by run-all.");
+  }
+  if (templateId && shard) {
+    throw new Error("--shard cannot be used with a single <template-id> run.");
+  }
+  if (templateId && (parallel || retryFailedIsolated)) {
+    throw new Error("--parallel and --retry-failed-isolated cannot be used with a single <template-id> run.");
   }
   if (runAll && !group) group = "all";
   if (!runAll && !templateId && !group) group = "all";
@@ -2522,7 +2554,13 @@ export async function cli(argv: string[]): Promise<number> {
   if (verb === "check-driver") return checkDriver(argv.slice(1));
   if (verb === "driver") return runDriverCommand(argv.slice(1));
 
-  const args = parseArgs(argv);
+  let args: CliArgs;
+  try {
+    args = parseArgs(argv);
+  } catch (error) {
+    process.stderr.write(`${error instanceof Error ? error.message : String(error)}\n`);
+    return 1;
+  }
   RESULTS_DIR = resultsDir(args.resultsDir);
 
   if (args.runAll || args.group !== undefined) {
@@ -2564,7 +2602,7 @@ export async function cli(argv: string[]): Promise<number> {
   const expected = await expectedFailureEntryFor(spec.templateId);
 
   // Scope table first -- a NOT_APPLICABLE scenario never starts a container.
-  const scope = await scopeEntryFor(spec.templateId);
+  const scope = await scopeEntryFor(spec);
   if (scope?.status === "NOT_APPLICABLE") {
     process.stderr.write(
       `[runner] RESULT: ${spec.templateId} NOT APPLICABLE (no container started): ${scope.reason}\n`,

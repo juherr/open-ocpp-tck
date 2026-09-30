@@ -103,8 +103,8 @@ export interface SimConfig {
     entrypoint?: string;
     /** Argv handed to {@link entrypoint} ahead of the connection flags. */
     command: string[];
-    /** OCPP version the charge point speaks (`SIM_OCPP_VERSION`). A PROPERTY OF
-     *  THE SCENARIO, not of the CSMS -- and deliberately not on the driver's
+    /** OCPP version the charge point speaks (`SIM_OCPP_VERSION` or the explicit
+     *  diagnostic `SIM_FORCE_OCPP_VERSION`). A PROPERTY OF THE SCENARIO, not of the CSMS -- and deliberately not on the driver's
      *  {@link https://github.com/juherr/open-ocpp-tck/issues/57 transport
      *  defaults}, see the note beside `SimTransportDefaults` in driver.ts. */
     ocppVersion: SimOcppVersion;
@@ -148,8 +148,8 @@ export interface SimConfig {
  *  certification case's own version. See the refusal in main.ts. */
 export declare function namesFlag(extraArgs: readonly string[], flag: string): boolean;
 export declare function defaultSimConfig(env?: NodeJS.ProcessEnv): SimConfig;
-/** Resolve simulator settings for one scenario, treating an explicit
- *  SIM_OCPP_VERSION as a compatibility assertion rather than an override. */
+/** Resolve simulator settings for one scenario. SIM_OCPP_VERSION is an
+ *  assertion; SIM_FORCE_OCPP_VERSION is the explicit diagnostic escape hatch. */
 export declare function simConfigForScenario(templateId: string, ocppVersion: ScenarioOcppVersion, env?: NodeJS.ProcessEnv): SimConfig;
 /**
  * Whether a run should ask its container for a wire trace at all --

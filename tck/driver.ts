@@ -100,7 +100,22 @@ export function driverProtocols(
   env: CsmsEnv,
 ): readonly ScenarioOcppVersion[] | undefined {
   const value = module.protocols;
-  return typeof value === "function" ? value(env) : value;
+  const protocols = typeof value === "function" ? value(env) : value;
+  if (protocols === undefined) return undefined;
+  if (!Array.isArray(protocols) || protocols.length === 0) {
+    throw new Error("Driver protocols must declare at least one supported protocol.");
+  }
+  const seen = new Set<string>();
+  for (const protocol of protocols as readonly unknown[]) {
+    if (protocol !== "OCPP-1.6J" && protocol !== "OCPP-2.0.1") {
+      throw new Error(`Driver protocols contains unsupported protocol ${JSON.stringify(protocol)}.`);
+    }
+    if (seen.has(protocol)) {
+      throw new Error(`Driver protocols contains duplicate protocol '${protocol}'.`);
+    }
+    seen.add(protocol);
+  }
+  return protocols;
 }
 
 export function driverCapabilities(module: CsmsDriverModule, env: CsmsEnv): CsmsTckCapabilities | undefined {

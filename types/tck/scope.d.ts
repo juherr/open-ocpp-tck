@@ -40,6 +40,10 @@ export interface ScopeEntry {
 }
 /** One row per registered scenario `templateId`. */
 export type ScopeTable = Readonly<Record<string, ScopeEntry>>;
+/** A protocol declaration can make an absent scope row mean the driver cannot
+ *  execute that scenario. Without a declaration, absence retains the legacy
+ *  "run it and find out" behavior. */
+export declare function scopeEntryForScenario(table: ScopeTable | undefined, templateId: string, ocppVersion: ScenarioOcppVersion, protocols?: readonly ScenarioOcppVersion[]): ScopeEntry | undefined;
 export declare function scopeFor(table: ScopeTable, templateId: string): ScopeEntry | undefined;
 export declare function templateIdsWithStatus(table: ScopeTable, status: ScopeStatus): string[];
 /**

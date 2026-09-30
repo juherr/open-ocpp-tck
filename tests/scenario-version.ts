@@ -12,7 +12,8 @@ import {
 } from "../tck/scenario-selection";
 import type { ScenarioOcppVersion, ScenarioSpec } from "../tck/spec-types";
 import { simConfigForScenario } from "../tck/sim";
-import { scopeCoverage } from "../tck/scope";
+import { scopeCoverage, scopeEntryForScenario } from "../tck/scope";
+import { driverProtocols, type CsmsDriverModule } from "../tck/driver";
 import { cli } from "../tck/main";
 import { CORE_SPECS } from "../tck/specs/core";
 import { CORE_201_SPECS } from "../tck/specs/core-201";
@@ -147,6 +148,36 @@ assert.throws(
   /conflicts with scenario protocol OCPP-2\.0\.1/,
   "an explicit incompatible simulator version is refused",
 );
+assert.equal(
+  simConfigForScenario("case-201", "OCPP-2.0.1", {
+    SIM_FORCE_OCPP_VERSION: "OCPP-1.6J",
+  }).ocppVersion,
+  "OCPP-1.6J",
+  "the diagnostic force switch can run a scenario against another protocol",
+);
+assert.throws(
+  () => simConfigForScenario("case-201", "OCPP-2.0.1", {
+    SIM_FORCE_OCPP_VERSION: "OCPP-1.6J",
+    SIM_OCPP_VERSION: "OCPP-2.0.1",
+  }),
+  /SIM_OCPP_VERSION=OCPP-2\.0\.1 conflicts with forced simulator protocol OCPP-1\.6J/,
+  "the compatibility assertion must agree with a forced diagnostic protocol",
+);
+assert.throws(
+  () => simConfigForScenario("case-201", "OCPP-2.0.1", {
+    SIM_FORCE_OCPP_VERSION: "OCPP-1.6J",
+    SIM_EXTRA_ARGS: "--ocpp-version OCPP-2.0.1",
+  }),
+  /SIM_EXTRA_ARGS --ocpp-version=OCPP-2\.0\.1 conflicts with simulator protocol OCPP-1\.6J/,
+  "a lower-level argument cannot silently undo the diagnostic force switch",
+);
+assert.throws(
+  () => simConfigForScenario("case-201", "OCPP-2.0.1", {
+    SIM_FORCE_OCPP_VERSION: "OCPP-9.9",
+  }),
+  /SIM_FORCE_OCPP_VERSION=OCPP-9\.9 is not a version this simulator image accepts/,
+  "the diagnostic switch accepts only protocol values understood by the simulator",
+);
 assert.throws(
   () => simConfigForScenario("case-201", "OCPP-2.0.1", { SIM_OCPP_VERSION: "" }),
   /SIM_OCPP_VERSION= is not a version this simulator image accepts/,
@@ -197,6 +228,58 @@ assert.deepEqual(
   { missing: ["legacy-201"], stale: [] },
   "drivers without a protocol declaration retain all-scenario scope checks",
 );
+const singleProtocolDriver = fixtureDriver(["OCPP-1.6J"]);
+const singleProtocolDeclaration = driverProtocols(singleProtocolDriver, {});
+assert.deepEqual(
+  scopeEntryForScenario({}, "missing-201", "OCPP-2.0.1", singleProtocolDeclaration),
+  {
+    status: "NOT_APPLICABLE",
+    reason: "Driver does not declare support for OCPP-2.0.1.",
+  },
+  "runtime treats an omitted unsupported-protocol row as not applicable before simulator startup",
+);
+assert.equal(
+  scopeEntryForScenario(
+    {},
+    "missing-201",
+    "OCPP-2.0.1",
+    driverProtocols(fixtureDriver(undefined), {}),
+  ),
+  undefined,
+  "legacy drivers without protocols keep their previous runtime behavior",
+);
+
+function fixtureDriver(protocols: unknown): CsmsDriverModule {
+  return {
+    id: "fixture",
+    displayName: "Fixture",
+    protocols: protocols as CsmsDriverModule["protocols"],
+    create() { return {} as never; },
+  };
+}
+assert.throws(() => driverProtocols(fixtureDriver([]), {}), /at least one supported protocol/);
+assert.throws(() => driverProtocols(fixtureDriver(["OCPP-9.9"]), {}), /unsupported protocol/);
+assert.throws(() => driverProtocols(fixtureDriver(["OCPP-1.6J", "OCPP-1.6J"]), {}), /duplicate protocol/);
+
+const priorSimVersionForInvalidCli = process.env.SIM_OCPP_VERSION;
+process.env.SIM_OCPP_VERSION = "OCPP-2.0.1";
+try {
+  const invalidCliCombinations = [
+    ["run", "cert16-tc001-cold-boot", "--group", "core"],
+    ["run-all", "--cp", "fixture"],
+    ["run-all", "--connector", "2"],
+    ["run-all", "--timeout", "5"],
+    ["run", "cert16-tc001-cold-boot", "--shard", "1/2"],
+  ];
+  for (const invocation of invalidCliCombinations) {
+    const result = await captureCli(invocation);
+    assert.equal(result.code, 1, `${invocation.join(" ")} must fail`);
+    assert.match(result.output, /cannot be used with|cannot be combined/i);
+  }
+} finally {
+  if (priorSimVersionForInvalidCli === undefined) delete process.env.SIM_OCPP_VERSION;
+  else process.env.SIM_OCPP_VERSION = priorSimVersionForInvalidCli;
+}
 
 process.stdout.write(
   "Scenario versions drive CLI selection, simulator configuration, and driver scope.\n",

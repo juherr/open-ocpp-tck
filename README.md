@@ -164,7 +164,7 @@ re-sync, and your driver can live in a completely different repository.
 
 Every scenario declares its executable OCPP protocol. `ocpp-tck run` selects the full suite; `--version 1.6` selects the OCPP-1.6J scenarios and `--version 2.0.1` selects OCPP 2.0.1. With no version filter, both are included. Group and version filters intersect; for example, `--group core --version 2.0.1` lists or runs the Core 2.0.1 scenarios. `core` contains Core cases for both protocols, and there is no separate `core-201` group.
 
-`SIM_OCPP_VERSION`, when explicitly set, must match every selected scenario. Leave it unset to let each scenario configure the simulator. `SIM_EXTRA_ARGS --ocpp-version` may only repeat the selected scenario's declared version.
+`SIM_OCPP_VERSION`, when explicitly set, must match every selected scenario. Leave it unset to let each scenario configure the simulator. `SIM_EXTRA_ARGS --ocpp-version` may only repeat the selected scenario's declared version. For deliberate cross-version diagnostics such as the experiment in #57, set `SIM_FORCE_OCPP_VERSION` to a simulator-supported protocol; this explicitly runs scenarios against that protocol. If also set, `SIM_OCPP_VERSION` and `SIM_EXTRA_ARGS --ocpp-version` must agree with the forced protocol.
 
 ## Commands
 
@@ -263,11 +263,15 @@ the kind of breakage the mechanism exists to catch.
 | `SIM_IMAGE` | pinned digest | Simulator image override. |
 | `SIM_NETWORK`, `SIM_WS_APPEND_CP_ID`, `SIM_WS_BASIC_USER`, `SIM_WS_BASIC_PASS` | driver-supplied | Transport. |
 | `SIM_OCPP_VERSION` | unset | Optional compatibility assertion. It must match every selected scenario; unset lets each scenario choose its declared protocol. |
+| `SIM_FORCE_OCPP_VERSION` | unset | Explicit diagnostic override for cross-version experiments. It takes precedence over scenario declarations; any `SIM_OCPP_VERSION` assertion or `SIM_EXTRA_ARGS --ocpp-version` must match it. |
 | `SIM_TRACE` | on | `0` switches off the JSONL wire trace written beside each scenario's log — for a docker that refuses the bind mount it needs. The trace is what the assertions read; without one they read the log, which the runner parses itself, and the verdicts are the same. |
 
 Explicit transport `SIM_*` values take precedence over driver transport
 defaults. `SIM_OCPP_VERSION` is the exception: it confirms that every selected
 scenario uses the requested protocol and never overrides the scenario.
+`SIM_FORCE_OCPP_VERSION` is the deliberately named diagnostic exception; it
+overrides the scenario declaration and should be used only for cross-version
+experiments.
 
 ## TypeScript
 
