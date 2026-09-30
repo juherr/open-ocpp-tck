@@ -3,6 +3,7 @@
 # Operations are normalised: OCPP action + argument VALUES (keys
 # discarded, lowercased, sorted), so a pure driver-syntax change is
 # invisible here while a dropped or retargeted step is not.
+# Gherkin plans are printed as well, so waits and declared instruction order are pinned.
 
 GROUP core
   SPEC cert16-tc001-cold-boot
@@ -99,6 +100,12 @@ GROUP remotetrigger-smartcharging
     OP RemoteStartTransaction [1, cert-tag-2]
     OBS latest-transaction
     OP RemoteStopTransaction [txpk]
+    PLAN-DRIVE {"kind":"wait","seconds":2}
+    PLAN-DRIVE {"kind":"remote-start","connectorId":1,"idTag":"CERT-TAG-2"}
+    PLAN-DRIVE {"kind":"wait","seconds":3}
+    PLAN-DRIVE {"kind":"capture-latest-transaction"}
+    PLAN-DRIVE {"kind":"wait","seconds":2}
+    PLAN-DRIVE {"kind":"remote-stop-captured-transaction"}
     -> driveState keys=[]
   SPEC cert16-tc012-remote-stop
     OBS latest-transaction
@@ -187,6 +194,8 @@ GROUP core-201
     SIM wait-for-line Sent: \[2,"([^"]*)","TransactionEvent",(?=[^\]]*"chargingState":"Charging") 15000
     SIM wait-for-line Received: \[3,"<uniqueId>" 15000
     OP 201:Reset [onidle]
+    PLAN-DRIVE {"kind":"wait","seconds":2}
+    PLAN-DRIVE {"kind":"operation","action":"Reset","type":"OnIdle"}
     -> driveState keys=[]
   SPEC cert201-tcb22-reset-rejected
     OP 201:Reset [9, immediate]
