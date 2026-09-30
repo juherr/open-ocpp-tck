@@ -29,6 +29,7 @@ import { findAllCalls, findCall, findResponseFor, type Frame } from "../ocpp";
 import { warnOpFailed } from "../op-warn";
 import type { ScenarioSpec } from "../spec-types";
 import { sleep } from "../util";
+import { GHERKIN_PILOT_SPECS } from "../gherkin/compiler";
 
 /**
  * TC_019_1's actual obligation: a GetConfiguration reached the charge point
@@ -1089,8 +1090,8 @@ export const tc064DataTransferSpec: ScenarioSpec<void> = {
 // main.ts's SPECS_BY_TEMPLATE_ID registry.
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
 export const CORE_SPECS: ScenarioSpec<any>[] = [
-  tc001ColdBootSpec,
-  tc003ChargingPluginFirstSpec,
+  GHERKIN_PILOT_SPECS[0]!,
+  GHERKIN_PILOT_SPECS[1]!,
   tc004ChargingIdFirstSpec,
   tc005EvSideDisconnectSpec,
   tc013HardResetSpec,
