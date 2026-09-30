@@ -4,10 +4,10 @@
  *
  * main.ts -- TypeScript OCPP conformance runner CLI.
  *
- * Usage: ocpp-tck run [--version 1.6|2.0.1] [--parallel]
- *        ocpp-tck run <template-id> [--version 1.6|2.0.1] [--cp CP1] [--timeout N] [--connector N]
- *        ocpp-tck run --group core|authlist-reservation|remotetrigger-smartcharging|firmware|authorize|all [--version 1.6|2.0.1] [--parallel]
- *        ocpp-tck run-all [--group <name>] [--version 1.6|2.0.1] [--parallel] [--shard k/n]
+ * Usage: ocpp-tck run [--version 1.6|2.0.1] [--tag <name>] [--parallel]
+ *        ocpp-tck run <template-id> [--version 1.6|2.0.1] [--tag <name>] [--cp CP1] [--timeout N] [--connector N]
+ *        ocpp-tck run --group core|authlist-reservation|remotetrigger-smartcharging|firmware|authorize|all [--version 1.6|2.0.1] [--tag <name>] [--parallel]
+ *        ocpp-tck run-all [--group <name>] [--version 1.6|2.0.1] [--tag <name>] [--parallel] [--shard k/n]
  *
  * Brings its own simulator container up (sim.ts), drives it over the JSON
  * Lines stdin protocol, captures its full stdout, parses OCPP-J frames
@@ -64,6 +64,7 @@ import {
   type ExpectedFailureTable,
 } from "./expected";
 import {
+  scopeByTag,
   scopeCoverage,
   scopeEntryForScenario,
   templateIdsWithStatus,
@@ -127,10 +128,12 @@ import {
 } from "./specs/index";
 import type { ScenarioOcppVersion, ScenarioSpec } from "./spec-types";
 import {
+  filterScenariosByTag,
   filterScenariosByVersion,
   parseScenarioVersionFilter,
   type ScenarioVersionFilter,
 } from "./scenario-selection";
+import { parseScenarioTag, SCENARIO_TAGS, type ScenarioTag } from "./scenario-tags";
 import {
   divergesFromReference,
   establishStates,
@@ -1626,6 +1629,7 @@ async function runGroupSweep(
   retryFailedIsolated: boolean,
   shard?: Shard,
   version?: ScenarioVersionFilter,
+  tag?: ScenarioTag,
 ): Promise<number> {
   const selected = GROUPS[groupName];
   if (!selected) {
@@ -1635,7 +1639,7 @@ async function runGroupSweep(
     return 1;
   }
 
-  const versioned = filterScenariosByVersion(selected, version);
+  const versioned = filterScenariosByTag(filterScenariosByVersion(selected, version), tag);
   try {
     for (const spec of versioned) simConfigForScenario(spec.templateId, spec.ocppVersion);
   } catch (error) {
@@ -1650,7 +1654,8 @@ async function runGroupSweep(
   if (specs.length === 0) {
     process.stderr.write(
       `[runner] ${shardNote ?? "the selection"} is empty: group '${groupName}' ` +
-        `has ${versioned.length} scenario(s) for version ${version ?? "all"}. Nothing to run, and an empty sweep ` +
+        `has ${versioned.length} scenario(s) for version ${version ?? "all"}` +
+        `${tag === undefined ? "" : ` and tag ${tag}`}. Nothing to run, and an empty sweep ` +
         `is not a passing one.\n`,
     );
     return 1;
@@ -1802,6 +1807,7 @@ interface CliArgs {
   templateId?: string;
   group?: string;
   version?: ScenarioVersionFilter;
+  tag?: ScenarioTag;
   runAll: boolean;
   parallel: boolean;
   retryFailedIsolated: boolean;
@@ -1846,17 +1852,21 @@ const VERBS = [
 
 async function printUsage(): Promise<void> {
   process.stderr.write(
-    "Usage: ocpp-tck run [--version 1.6|2.0.1] [--parallel] [--retry-failed-isolated]  # all scenarios\n" +
-      "       ocpp-tck run <template-id> [--version 1.6|2.0.1] [--cp CP1] [--timeout N] " +
+    "Usage: ocpp-tck run [--version 1.6|2.0.1] [--tag <name>] [--parallel] [--retry-failed-isolated]  # all scenarios\n" +
+      "       ocpp-tck run <template-id> [--version 1.6|2.0.1] [--tag <name>] [--cp CP1] [--timeout N] " +
       "[--connector N] [--results-dir DIR]\n" +
       "       ocpp-tck run --group " +
-      `${Object.keys(GROUPS).join("|")} [--version 1.6|2.0.1] [--parallel] [--retry-failed-isolated]\n` +
-      "       ocpp-tck run-all [--group <name>] [--version 1.6|2.0.1] [--parallel] " +
+      `${Object.keys(GROUPS).join("|")} [--version 1.6|2.0.1] [--tag <name>] [--parallel] [--retry-failed-isolated]\n` +
+      "       ocpp-tck run-all [--group <name>] [--version 1.6|2.0.1] [--tag <name>] [--parallel] " +
       "[--retry-failed-isolated] [--results-dir DIR] [--shard k/n]\n" +
-      "       ocpp-tck list-scenarios [--group <name>] [--version 1.6|2.0.1] [--json]\n" +
+      "       ocpp-tck list-scenarios [--group <name>] [--version 1.6|2.0.1] [--tag <name>] [--json]\n" +
       "       ocpp-tck check-driver [--driver SPEC] [--json]\n" +
       "       ocpp-tck print-sim-image\n" +
       "       ocpp-tck driver <verb> [args...]\n" +
+      "\n" +
+      "--group is upstream's historical grouping, --version the protocol a " +
+      "scenario declares, --tag what it is about; given together they " +
+      `intersect. Tags: ${SCENARIO_TAGS.join(", ")}.\n` +
       "\n" +
       "check-driver is fully offline: it reads the driver MODULE (never " +
       "create()), so it needs no CSMS, no docker, no network and no " +
@@ -1905,10 +1915,19 @@ async function printUsage(): Promise<void> {
   }
 }
 
+/** One `--tag` per invocation: two would have to mean a union or an
+ *  intersection, and either reading is the wrong one for somebody. Throws, so
+ *  both callers report it as they report every other refusal. */
+function parseTagOnce(previous: ScenarioTag | undefined, raw: string): ScenarioTag {
+  if (previous !== undefined) throw new Error("--tag may be given once.");
+  return parseScenarioTag(raw);
+}
+
 function parseArgs(argv: string[]): CliArgs {
   let templateId: string | undefined;
   let group: string | undefined;
   let version: ScenarioVersionFilter | undefined;
+  let tag: ScenarioTag | undefined;
   let parallel = false;
   let retryFailedIsolated = false;
   let cpId = resolveStations()[0];
@@ -1940,6 +1959,9 @@ function parseArgs(argv: string[]): CliArgs {
         }
         break;
       }
+      case "--tag":
+        tag = parseTagOnce(tag, requireValue(argv, ++i, "--tag"));
+        break;
       case "--cp":
         cpId = requireValue(argv, ++i, "--cp");
         cpWasSet = true;
@@ -1997,6 +2019,7 @@ function parseArgs(argv: string[]): CliArgs {
     templateId,
     group,
     version,
+    tag,
     runAll,
     parallel,
     retryFailedIsolated,
@@ -2017,6 +2040,7 @@ function registeredScenarios(): Array<{
   templateId: string;
   group: string;
   ocppVersion: ScenarioSpec<any>["ocppVersion"];
+  tags: ScenarioSpec<any>["tags"];
 }> {
   const seen = new Map<string, string>();
   for (const [group, specs] of Object.entries(GROUPS)) {
@@ -2028,16 +2052,25 @@ function registeredScenarios(): Array<{
   return [...seen].map(([templateId, group]) => {
     const spec = SPECS_BY_TEMPLATE_ID.get(templateId);
     if (!spec) throw new Error(`Scenario registry lost '${templateId}'.`);
-    return { templateId, group, ocppVersion: spec.ocppVersion };
+    return { templateId, group, ocppVersion: spec.ocppVersion, tags: spec.tags };
   });
 }
 
 function listScenarios(argv: string[]): number {
   let group: string | undefined;
   let version: ScenarioVersionFilter | undefined;
+  let tag: ScenarioTag | undefined;
   let asJson = false;
   for (let i = 0; i < argv.length; i++) {
     if (argv[i] === "--group") group = requireValue(argv, ++i, "--group");
+    else if (argv[i] === "--tag") {
+      try {
+        tag = parseTagOnce(tag, requireValue(argv, ++i, "--tag"));
+      } catch (error) {
+        process.stderr.write(`${error instanceof Error ? error.message : String(error)}\n`);
+        return 1;
+      }
+    }
     else if (argv[i] === "--version") {
       const raw = requireValue(argv, ++i, "--version");
       try {
@@ -2063,12 +2096,12 @@ function listScenarios(argv: string[]): number {
     const ids = new Set(GROUPS[group].map((s) => s.templateId));
     rows = rows.filter((r) => ids.has(r.templateId));
   }
-  rows = filterScenariosByVersion(rows, version);
-  const outputRows = rows.map(({ templateId, group }) => ({ templateId, group }));
+  rows = filterScenariosByTag(filterScenariosByVersion(rows, version), tag);
+  const outputRows = rows.map(({ templateId, group, tags }) => ({ templateId, group, tags }));
   process.stdout.write(
     asJson
       ? `${JSON.stringify(outputRows, null, 2)}\n`
-      : `${outputRows.map((r) => `${r.templateId}\t${r.group}`).join("\n")}\n`,
+      : `${outputRows.map((r) => `${r.templateId}\t${r.group}\t${r.tags.join(",")}`).join("\n")}\n`,
   );
   return 0;
 }
@@ -2306,6 +2339,9 @@ async function checkDriver(argv: string[]): Promise<number> {
           NOT_APPLICABLE: templateIdsWithStatus(scope, "NOT_APPLICABLE").length,
         }
       : null,
+    // The same statuses per tag, so a report can say which DOMAINS a driver
+    // drives -- a driver whose table excludes all of one is named below.
+    scopeByTag: scope ? scopeByTag(scope, scenarios, protocols) : null,
     // The entries, not their count and not their ids: --json is what a
     // conformance report would read, and "which scenarios are excused, and on
     // what recorded evidence" is the question it has to answer without going
@@ -2346,6 +2382,13 @@ async function checkDriver(argv: string[]): Promise<number> {
       ".\n",
   );
   process.stderr.write(`  protocols: ${summary.protocols.join(", ")}\n`);
+  // Silence when none: only a domain the driver drives NOTHING of is news.
+  const excludedTags = Object.entries(summary.scopeByTag ?? {})
+    .filter(([, count]) => count.DRIVABLE + count.CONDITIONAL === 0)
+    .map(([tag]) => tag);
+  if (excludedTags.length > 0) {
+    process.stderr.write(`  drives no scenario tagged: ${excludedTags.join(", ")}\n`);
+  }
   // Silence when absent: a 1.6-only driver is the ordinary case, not a gap.
   // `?.length` rather than truthiness -- an empty declaration is a driver that
   // claims 2.0.1 and drives none of it, which the warning above reports and
@@ -2582,6 +2625,7 @@ export async function cli(argv: string[]): Promise<number> {
       args.retryFailedIsolated,
       args.shard,
       args.version,
+      args.tag,
     );
   }
 
@@ -2601,6 +2645,12 @@ export async function cli(argv: string[]): Promise<number> {
   if (args.version && filterScenariosByVersion([spec], args.version).length === 0) {
     process.stderr.write(
       `Scenario '${spec.templateId}' declares ${spec.ocppVersion}, which does not match --version ${args.version}.\n`,
+    );
+    return 1;
+  }
+  if (args.tag && filterScenariosByTag([spec], args.tag).length === 0) {
+    process.stderr.write(
+      `Scenario '${spec.templateId}' does not carry tag '${args.tag}' (it declares ${spec.tags.join(", ")}).\n`,
     );
     return 1;
   }

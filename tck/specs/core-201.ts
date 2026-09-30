@@ -1398,6 +1398,7 @@ const TC_B_06: ScenarioSpec = {
   description:
     "TC_B_06 Get Variables: the CSMS reads one variable and the station answers it.",
   ocppVersion: "OCPP-2.0.1",
+  tags: ["provisioning"],
   runsSimTemplate: false,
   connector: 1,
   bootWaitSecs: 4,
@@ -1447,6 +1448,7 @@ const TC_B_09: ScenarioSpec = {
   description:
     "TC_B_09 Set Variables: the CSMS writes one variable and the station accepts it.",
   ocppVersion: "OCPP-2.0.1",
+  tags: ["provisioning"],
   runsSimTemplate: false,
   connector: 1,
   bootWaitSecs: 4,
@@ -1504,6 +1506,7 @@ const TC_B_01: ScenarioSpec = {
   description:
     "TC_B_01 Cold Boot: the charge point boots on OCPP 2.0.1 and the CSMS accepts it.",
   ocppVersion: "OCPP-2.0.1",
+  tags: ["provisioning"],
   runsSimTemplate: false,
   connector: 1,
   bootWaitSecs: 4,
@@ -1552,6 +1555,7 @@ const TC_B_20: ScenarioSpec = {
   description:
     "TC_B_20 Reset: the CSMS sends Reset(Immediate) to an idle station, which accepts it and reboots.",
   ocppVersion: "OCPP-2.0.1",
+  tags: ["provisioning"],
   runsSimTemplate: false,
   connector: 1,
   bootWaitSecs: 4,
@@ -1625,6 +1629,7 @@ const TC_B_21: ScenarioSpec = {
   description:
     "TC_B_21 Reset: the CSMS sends Reset(OnIdle) while a transaction is running, and the station schedules it.",
   ocppVersion: "OCPP-2.0.1",
+  tags: ["provisioning", "transaction"],
   runsSimTemplate: false,
   connector: 1,
   bootWaitSecs: 4,
@@ -1704,6 +1709,7 @@ const TC_B_22: ScenarioSpec = {
   description:
     "TC_B_22 Reset: the CSMS sends Reset for an EVSE the station does not have, and the station rejects it.",
   ocppVersion: "OCPP-2.0.1",
+  tags: ["provisioning"],
   runsSimTemplate: false,
   connector: 1,
   bootWaitSecs: 4,
@@ -1767,6 +1773,7 @@ const TC_F_20: ScenarioSpec = {
   description:
     "TC_F_20 Trigger Message: the CSMS sends TriggerMessage(Heartbeat), and the station's Heartbeat is answered with a current time.",
   ocppVersion: "OCPP-2.0.1",
+  tags: ["remote-trigger"],
   runsSimTemplate: false,
   connector: 1,
   bootWaitSecs: 4,
@@ -1920,6 +1927,7 @@ const TC_B_42: ScenarioSpec = {
   description:
     "TC_B_42 Set Network Profile: the CSMS writes a new connection profile into one of the station's configuration slots.",
   ocppVersion: "OCPP-2.0.1",
+  tags: ["provisioning"],
   runsSimTemplate: false,
   connector: 1,
   bootWaitSecs: 4,
@@ -1972,6 +1980,7 @@ const TC_B_44: ScenarioSpec = {
   description:
     "TC_B_44 Set Network Profile: the station refuses the connection profile, and the CSMS carries the refusal back unchanged.",
   ocppVersion: "OCPP-2.0.1",
+  tags: ["provisioning"],
   runsSimTemplate: false,
   connector: 1,
   bootWaitSecs: 4,
@@ -2016,6 +2025,7 @@ const TC_C_02: ScenarioSpec = {
   description:
     "TC_C_02 Local start transaction: the station presents an idToken the CSMS does not know, and the CSMS reports it as not valid.",
   ocppVersion: "OCPP-2.0.1",
+  tags: ["authorization"],
   runsSimTemplate: false,
   connector: 1,
   bootWaitSecs: 4,
@@ -2086,6 +2096,7 @@ const TC_E_10: ScenarioSpec<AuthorizedStartPrecondition> = {
   description:
     "TC_E_10 Start transaction options: the station authorizes an idToken and then starts a transaction on it, and the CSMS accepts both.",
   ocppVersion: "OCPP-2.0.1",
+  tags: ["authorization", "transaction"],
   runsSimTemplate: false,
   connector: 1,
   bootWaitSecs: 4,
@@ -2245,6 +2256,7 @@ const TC_F_27: ScenarioSpec = {
   description:
     "TC_F_27 Trigger Message: the CSMS asks for a message this station does not implement, is answered NotImplemented, and goes on serving the station.",
   ocppVersion: "OCPP-2.0.1",
+  tags: ["remote-trigger"],
   runsSimTemplate: false,
   connector: 1,
   bootWaitSecs: 4,
@@ -2363,6 +2375,7 @@ const TC_J_01: ScenarioSpec = {
   description:
     "TC_J_01 Clock-aligned Meter Values: an idle station reports its meter three times and the CSMS answers every one.",
   ocppVersion: "OCPP-2.0.1",
+  tags: ["metering"],
   runsSimTemplate: false,
   connector: 1,
   bootWaitSecs: 4,
@@ -2477,6 +2490,7 @@ const TC_G_03: ScenarioSpec = {
   description:
     "TC_G_03 Change Availability EVSE: the CSMS makes one EVSE inoperative and answers the status the station then reports.",
   ocppVersion: "OCPP-2.0.1",
+  tags: ["availability"],
   runsSimTemplate: false,
   connector: 1,
   bootWaitSecs: 4,
@@ -2558,6 +2572,7 @@ const TC_G_04: ScenarioSpec = {
   description:
     "TC_G_04 Change Availability EVSE: the CSMS returns an out-of-service EVSE to service and answers the status the station then reports.",
   ocppVersion: "OCPP-2.0.1",
+  tags: ["availability"],
   runsSimTemplate: false,
   connector: 1,
   bootWaitSecs: 4,
@@ -2645,6 +2660,7 @@ const TC_G_05: ScenarioSpec = {
   description:
     "TC_G_05 Change Availability station: the CSMS takes the whole charging station out of service and answers the statuses it then reports.",
   ocppVersion: "OCPP-2.0.1",
+  tags: ["availability"],
   runsSimTemplate: false,
   connector: 1,
   bootWaitSecs: 4,
@@ -2710,6 +2726,7 @@ const TC_G_06: ScenarioSpec = {
   description:
     "TC_G_06 Change Availability station: the CSMS returns an out-of-service charging station to service and answers the statuses it then reports.",
   ocppVersion: "OCPP-2.0.1",
+  tags: ["availability"],
   runsSimTemplate: false,
   connector: 1,
   bootWaitSecs: 4,
@@ -2789,6 +2806,7 @@ const TC_G_07: ScenarioSpec = {
   description:
     "TC_G_07 Change Availability connector: the CSMS makes one connector of an EVSE inoperative and answers the status the station then reports.",
   ocppVersion: "OCPP-2.0.1",
+  tags: ["availability"],
   runsSimTemplate: false,
   connector: 1,
   bootWaitSecs: 4,
@@ -2843,6 +2861,7 @@ const TC_G_08: ScenarioSpec = {
   description:
     "TC_G_08 Change Availability connector: the CSMS returns an out-of-service connector to service and answers the status the station then reports.",
   ocppVersion: "OCPP-2.0.1",
+  tags: ["availability"],
   runsSimTemplate: false,
   connector: 1,
   bootWaitSecs: 4,
@@ -3009,6 +3028,7 @@ const TC_K_01: ScenarioSpec<ProfileWindow> = {
   description:
     "TC_K_01 Set Charging Profile: the CSMS installs a default profile on one EVSE and the station accepts it with the schedule it was given.",
   ocppVersion: "OCPP-2.0.1",
+  tags: ["smart-charging"],
   runsSimTemplate: false,
   connector: 1,
   bootWaitSecs: 4,
@@ -3104,6 +3124,7 @@ const TC_K_03: ScenarioSpec = {
   description:
     "TC_K_03 Set Charging Profile: the CSMS caps the whole charging station and the station accepts a profile addressed to itself.",
   ocppVersion: "OCPP-2.0.1",
+  tags: ["smart-charging"],
   runsSimTemplate: false,
   connector: 1,
   bootWaitSecs: 4,
@@ -3177,6 +3198,7 @@ const TC_K_04: ScenarioSpec = {
   description:
     "TC_K_04 Set Charging Profile: the CSMS sends a second profile under the identifier of the first, replacing it rather than adding to it.",
   ocppVersion: "OCPP-2.0.1",
+  tags: ["smart-charging"],
   runsSimTemplate: false,
   connector: 1,
   bootWaitSecs: 4,
@@ -3324,6 +3346,7 @@ const TC_K_10: ScenarioSpec = {
   description:
     "TC_K_10 Set Charging Profile: the CSMS installs a default profile for every EVSE at once rather than for one.",
   ocppVersion: "OCPP-2.0.1",
+  tags: ["smart-charging"],
   runsSimTemplate: false,
   connector: 1,
   bootWaitSecs: 4,
@@ -3396,6 +3419,7 @@ const TC_K_19: ScenarioSpec = {
   description:
     "TC_K_19 Set Charging Profile: the CSMS installs a profile that repeats on a daily cycle and the station accepts it.",
   ocppVersion: "OCPP-2.0.1",
+  tags: ["smart-charging"],
   runsSimTemplate: false,
   connector: 1,
   bootWaitSecs: 4,
@@ -3483,6 +3507,7 @@ const TC_K_60: ScenarioSpec<RunningTransaction> = {
   description:
     "TC_K_60 Set Charging Profile: the CSMS scopes a profile to the transaction actually running on an EVSE, and the station accepts it.",
   ocppVersion: "OCPP-2.0.1",
+  tags: ["smart-charging", "transaction"],
   runsSimTemplate: false,
   connector: 1,
   bootWaitSecs: 4,
@@ -3641,6 +3666,7 @@ const TC_K_70: ScenarioSpec = {
   description:
     "TC_K_70 Set Charging Profile: the CSMS installs a second profile at its own stack level, stacking it on the first rather than replacing it.",
   ocppVersion: "OCPP-2.0.1",
+  tags: ["smart-charging"],
   runsSimTemplate: false,
   connector: 1,
   bootWaitSecs: 4,
@@ -3779,6 +3805,7 @@ const TC_K_43: ScenarioSpec = {
   description:
     "TC_K_43 Get Composite Schedule: the CSMS asks one EVSE for its combined schedule over a chosen window and the station answers.",
   ocppVersion: "OCPP-2.0.1",
+  tags: ["smart-charging"],
   runsSimTemplate: false,
   connector: 1,
   bootWaitSecs: 4,
@@ -3834,6 +3861,7 @@ const TC_K_44: ScenarioSpec = {
   description:
     "TC_K_44 Get Composite Schedule: the CSMS asks the grid connection point for its combined schedule over a chosen window and the station answers.",
   ocppVersion: "OCPP-2.0.1",
+  tags: ["smart-charging"],
   runsSimTemplate: false,
   connector: 1,
   bootWaitSecs: 4,
@@ -3949,6 +3977,7 @@ const TC_K_29: ScenarioSpec = {
   description:
     "TC_K_29 Get Charging Profiles: with a transaction running, the CSMS asks the charging station itself which profiles it holds and the station reports them.",
   ocppVersion: "OCPP-2.0.1",
+  tags: ["smart-charging"],
   runsSimTemplate: false,
   connector: 1,
   bootWaitSecs: 4,
@@ -4054,6 +4083,7 @@ const TC_K_30: ScenarioSpec = {
   description:
     "TC_K_30 Get Charging Profiles: the CSMS asks one named EVSE which profiles it holds and the station reports them.",
   ocppVersion: "OCPP-2.0.1",
+  tags: ["smart-charging"],
   runsSimTemplate: false,
   connector: 1,
   bootWaitSecs: 4,
@@ -4129,6 +4159,7 @@ const TC_K_32: ScenarioSpec = {
   description:
     "TC_K_32 Get Charging Profiles: the CSMS asks for one profile by the identifier it installed it under, and the station reports that one.",
   ocppVersion: "OCPP-2.0.1",
+  tags: ["smart-charging"],
   runsSimTemplate: false,
   connector: 1,
   bootWaitSecs: 4,
@@ -4203,6 +4234,7 @@ const TC_K_33: ScenarioSpec = {
   description:
     "TC_K_33 Get Charging Profiles: the CSMS narrows one EVSE's profiles to a single stack level and the station reports those.",
   ocppVersion: "OCPP-2.0.1",
+  tags: ["smart-charging"],
   runsSimTemplate: false,
   connector: 1,
   bootWaitSecs: 4,
@@ -4276,6 +4308,7 @@ const TC_K_34: ScenarioSpec = {
   description:
     "TC_K_34 Get Charging Profiles: the CSMS narrows one EVSE's profiles to a single charging limit source and the station reports those.",
   ocppVersion: "OCPP-2.0.1",
+  tags: ["smart-charging"],
   runsSimTemplate: false,
   connector: 1,
   bootWaitSecs: 4,
@@ -4353,6 +4386,7 @@ const TC_K_35: ScenarioSpec = {
   description:
     "TC_K_35 Get Charging Profiles: the CSMS narrows one EVSE's profiles to a single purpose and the station reports those.",
   ocppVersion: "OCPP-2.0.1",
+  tags: ["smart-charging"],
   runsSimTemplate: false,
   connector: 1,
   bootWaitSecs: 4,
@@ -4424,6 +4458,7 @@ const TC_K_36: ScenarioSpec = {
   description:
     "TC_K_36 Get Charging Profiles: the CSMS narrows one EVSE's profiles by purpose and stack level together and the station reports those.",
   ocppVersion: "OCPP-2.0.1",
+  tags: ["smart-charging"],
   runsSimTemplate: false,
   connector: 1,
   bootWaitSecs: 4,
@@ -4635,6 +4670,7 @@ const TC_K_05: ScenarioSpec = {
   description:
     "TC_K_05 Clear Charging Profile: the CSMS reads which profiles a station holds and then clears one by the identifier the station reported.",
   ocppVersion: "OCPP-2.0.1",
+  tags: ["smart-charging"],
   runsSimTemplate: false,
   connector: 1,
   bootWaitSecs: 4,
@@ -4769,6 +4805,7 @@ const TC_K_06: ScenarioSpec = {
   description:
     "TC_K_06 Clear Charging Profile: the CSMS clears an installed profile by purpose and stack level rather than by identifier, and the station accepts.",
   ocppVersion: "OCPP-2.0.1",
+  tags: ["smart-charging"],
   runsSimTemplate: false,
   connector: 1,
   bootWaitSecs: 4,
@@ -4849,6 +4886,7 @@ const TC_K_08: ScenarioSpec = {
   description:
     "TC_K_08 Clear Charging Profile: the CSMS clears a profile identifier the station never installed, and the station declines with Unknown.",
   ocppVersion: "OCPP-2.0.1",
+  tags: ["smart-charging"],
   runsSimTemplate: false,
   connector: 1,
   bootWaitSecs: 4,
@@ -4986,6 +5024,7 @@ const TC_M_01: ScenarioSpec = {
   description:
     "TC_M_01 Install CA certificate: the CSMS asks the station to install a new CSMSRootCertificate.",
   ocppVersion: "OCPP-2.0.1",
+  tags: ["certificates"],
   runsSimTemplate: false,
   connector: 1,
   bootWaitSecs: 4,
@@ -5019,6 +5058,7 @@ const TC_M_02: ScenarioSpec = {
   description:
     "TC_M_02 Install CA certificate: the CSMS asks the station to install a new ManufacturerRootCertificate.",
   ocppVersion: "OCPP-2.0.1",
+  tags: ["certificates"],
   runsSimTemplate: false,
   connector: 1,
   bootWaitSecs: 4,
@@ -5047,6 +5087,7 @@ const TC_M_03: ScenarioSpec = {
   description:
     "TC_M_03 Install CA certificate: the CSMS asks the station to install a new V2GRootCertificate.",
   ocppVersion: "OCPP-2.0.1",
+  tags: ["certificates"],
   runsSimTemplate: false,
   connector: 1,
   bootWaitSecs: 4,
@@ -5081,6 +5122,7 @@ const TC_M_04: ScenarioSpec = {
   description:
     "TC_M_04 Install CA certificate: the CSMS asks the station to install a new MORootCertificate.",
   ocppVersion: "OCPP-2.0.1",
+  tags: ["certificates"],
   runsSimTemplate: false,
   connector: 1,
   bootWaitSecs: 4,
@@ -5109,6 +5151,7 @@ const TC_M_05: ScenarioSpec = {
   description:
     "TC_M_05 Install CA certificate: the station reports it could not install the certificate, and the CSMS carries the refusal back unchanged.",
   ocppVersion: "OCPP-2.0.1",
+  tags: ["certificates"],
   runsSimTemplate: false,
   connector: 1,
   bootWaitSecs: 4,
@@ -5230,6 +5273,7 @@ const TC_M_13: ScenarioSpec = {
   description:
     "TC_M_13 Retrieve certificates: the CSMS asks the station which ManufacturerRootCertificates it holds.",
   ocppVersion: "OCPP-2.0.1",
+  tags: ["certificates"],
   runsSimTemplate: false,
   connector: 1,
   bootWaitSecs: 4,
@@ -5271,6 +5315,7 @@ const TC_M_14: ScenarioSpec = {
   description:
     "TC_M_14 Retrieve certificates: the CSMS asks the station which V2GRootCertificates it holds.",
   ocppVersion: "OCPP-2.0.1",
+  tags: ["certificates"],
   runsSimTemplate: false,
   connector: 1,
   bootWaitSecs: 4,
@@ -5304,6 +5349,7 @@ const TC_M_15: ScenarioSpec = {
   description:
     "TC_M_15 Retrieve certificates: the CSMS asks the station which V2GCertificateChains it holds.",
   ocppVersion: "OCPP-2.0.1",
+  tags: ["certificates"],
   runsSimTemplate: false,
   connector: 1,
   bootWaitSecs: 4,
@@ -5342,6 +5388,7 @@ const TC_M_16: ScenarioSpec = {
   description:
     "TC_M_16 Retrieve certificates: the CSMS asks the station which MORootCertificates it holds.",
   ocppVersion: "OCPP-2.0.1",
+  tags: ["certificates"],
   runsSimTemplate: false,
   connector: 1,
   bootWaitSecs: 4,
@@ -5375,6 +5422,7 @@ const TC_M_18: ScenarioSpec = {
   description:
     "TC_M_18 Retrieve certificates: the CSMS asks the station for every certificate it holds, by omitting the type.",
   ocppVersion: "OCPP-2.0.1",
+  tags: ["certificates"],
   runsSimTemplate: false,
   connector: 1,
   bootWaitSecs: 4,
@@ -5413,6 +5461,7 @@ const TC_M_19: ScenarioSpec = {
   description:
     "TC_M_19 Retrieve certificates: the station holds no certificate of the type asked for, and answers NotFound.",
   ocppVersion: "OCPP-2.0.1",
+  tags: ["certificates"],
   runsSimTemplate: false,
   connector: 1,
   bootWaitSecs: 4,

@@ -12,6 +12,24 @@ Released as `0.3.0`. The documented install ref already points at that tag, so
 
 ### Added
 
+- **Scenarios carry functional tags, and `--tag <name>` selects on them**
+  (#34), beside `--group` and `--version` and intersecting with both. `--group`
+  stays upstream's historical grouping, `--version` the protocol; a tag says
+  what a scenario is about, and a scenario may carry several — `--tag
+  smart-charging` no longer drags in the remote-trigger scenarios that share
+  its group, and `--tag transaction` reaches across groups. The vocabulary is
+  closed (`tck/scenario-tags.ts`, thirteen tags after OCPP 2.0.1's functional
+  blocks), `ScenarioSpec.tags` is required and non-empty, and a `.feature`
+  declares `@tag:<name>` through the same vocabulary, refused at compile time
+  when missing, unknown or repeated. All 96 scenarios are tagged; a spec
+  written outside this repository against `open-ocpp-tck/spec-types` must now
+  declare `tags` as well.
+  `list-scenarios` prints each scenario's tags (a `tags` member in `--json`, a
+  third column otherwise), and `check-driver` counts scope per tag
+  (`scopeByTag` in `--json`) and names any tag a driver drives nothing of.
+  Tags are selection metadata: neither pinned artifact carries them.
+  `tests/scenario-tags.ts` holds the declaration, the vocabulary and the
+  selection.
 - **The runner holds a scenario's first CSMS dispatch until every CALL the
   station sent at boot has been answered** (`tck/boot-quiet.ts`, asked after the
   boot gate's settle). The pinned CitrineOS refuses a CSMS-initiated Call while

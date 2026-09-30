@@ -157,6 +157,11 @@ runner records `NOT APPLICABLE` *and* warns that your table is out of date.
   `reason` is a plain `string` either way; the provenance is in
   [`OCA-201-SELECTION.md`](OCA-201-SELECTION.md#what-a-201-reason-cites).
 
+`check-driver` also counts your table per [scenario tag](README.md#scenario-tags)
+and names every tag it drives no scenario of — `drives no scenario tagged:
+reservation` — so a whole domain your CSMS lacks reads as one line, and the
+`--json` summary carries the counts as `scopeByTag`.
+
 Put it on the **module**, not inside `create()`. `check-driver` and the
 preflight read it without calling `create()`, which is what lets them run with
 no credentials — including in your CI, which has none.

@@ -1,4 +1,4 @@
-@sut:csms @id:cert16-tc023-3-authorize-blocked @ocpp:1.6 @template:cert16-tc023-3-authorize-blocked @connector:1 @bootWaitSecs:4 @holdSecs:15
+@sut:csms @id:cert16-tc023-3-authorize-blocked @ocpp:1.6 @template:cert16-tc023-3-authorize-blocked @connector:1 @bootWaitSecs:4 @holdSecs:15 @tag:authorization @tag:transaction
 Feature: TC_023.3 Authorize Outcome (Blocked)
 
   Scenario: idTag CERT023-BLK is blocked -> Authorize.conf Blocked, no StartTransaction.

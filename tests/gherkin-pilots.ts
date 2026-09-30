@@ -31,13 +31,37 @@ assert.deepEqual(
 );
 
 const source = `
-@sut:csms @id:cert16-test @ocpp:1.6 @template:cert16-test @connector:1 @bootWaitSecs:4 @holdSecs:20
+@sut:csms @id:cert16-test @ocpp:1.6 @template:cert16-test @connector:1 @bootWaitSecs:4 @holdSecs:20 @tag:provisioning
   Feature: Test feature
   Scenario: One case
     Given a charge point connects on connector 1
     Then a "BootNotification" request is sent
 `;
 assert.equal(compileFeatureText(source, "valid.feature").templateId, "cert16-test");
+// Scenario tags: the same closed vocabulary as a TypeScript spec, `@tag` the
+// one key that may repeat, and every refusal at compile time.
+assert.deepEqual(compileFeatureText(source, "one-tag.feature").tags, ["provisioning"]);
+assert.deepEqual(
+  compileFeatureText(source.replace("@tag:provisioning", "@tag:authorization @tag:transaction"), "two-tags.feature").tags,
+  ["authorization", "transaction"],
+);
+assert.throws(
+  () => compileFeatureText(source.replace("@tag:provisioning", "@tag:smartcharging"), "unknown-scenario-tag.feature"),
+  /unknown-scenario-tag\.feature: Unknown scenario tag 'smartcharging'\. Supported tags: /,
+);
+assert.throws(
+  () => compileFeatureText(source.replace("@tag:provisioning", "@tag:transaction @tag:transaction"), "repeated-scenario-tag.feature"),
+  /repeated-scenario-tag\.feature: .*transaction.*more than once/,
+);
+assert.throws(
+  () => compileFeatureText(source.replace(" @tag:provisioning", ""), "untagged.feature"),
+  /untagged\.feature: .*at least one scenario tag/,
+);
+assert.throws(
+  () => compileFeatureText(source.replace("@holdSecs:20", "@holdSecs:20 @holdSecs:20"), "repeated-key.feature"),
+  /duplicate tag @holdSecs/,
+  "@tag repeating does not let any other key repeat",
+);
 const rejectedFeature = source.replace(
   'Then a "BootNotification" request is sent',
   'Then the "BootNotification" response status is "Rejected"',
@@ -91,6 +115,19 @@ assert.equal(GHERKIN_201_PILOT.spec.ocppVersion, GHERKIN_201_PILOT.ocppVersion);
 assert.ok(GHERKIN_201_PILOT.spec.description?.includes("scheduled reset"));
 assert.equal(plan201.spec.ocppVersion, "OCPP-2.0.1");
 assert.deepEqual(plan201.states, [{ state: "EnergyTransferStarted", connectorId: 1, idToken: "CE712001" }]);
+assert.deepEqual(plan201.spec.tags, TC_B_21_REFERENCE.tags, "the compiled TC_B_21 declares its reference's tags");
+assert.throws(
+  () => compile201FeatureText(source201.replace("@tag:provisioning", "@tag:nope"), "unknown-scenario-tag-201.feature"),
+  /Unknown scenario tag 'nope'/,
+);
+assert.throws(
+  () => compile201FeatureText(source201.replace(/ @tag:[a-z-]+/g, ""), "untagged-201.feature"),
+  /untagged-201\.feature: .*at least one scenario tag/,
+);
+assert.throws(
+  () => compile201FeatureText(source201.replace("@tag:provisioning", "@tag:provisioning @tag:provisioning"), "repeated-scenario-tag-201.feature"),
+  /more than once/,
+);
 assert.throws(
   () => compile201FeatureText(source201.replace("@connector:1", "@connector:2"), "unsupported-connector-201.feature"),
   /supports only @connector:1/i,
@@ -123,6 +160,13 @@ assert.notDeepEqual(
 );
 
 const references = [tc001ColdBootSpec, tc003ChargingPluginFirstSpec, tc011RemoteStartStopSpec];
+references.forEach((reference, index) => {
+  assert.deepEqual(specs[index]?.tags, reference.tags, `${reference.templateId}: the .feature declares its reference's tags`);
+});
+assert.ok(
+  AUTHORIZE_SPECS.every((spec) => spec.tags.includes("authorization")),
+  "the Authorize features are tagged for what they exercise",
+);
 assert.deepEqual(specs.map((spec, index) => spec.templateId === references[index]?.templateId), [true, true, true]);
 
 function frame(

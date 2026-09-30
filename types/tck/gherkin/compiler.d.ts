@@ -1,3 +1,4 @@
+import { type ScenarioTags } from "../scenario-tags";
 import type { ScenarioOcppVersion, ScenarioSpec } from "../spec-types";
 type AssertionInstruction = {
     kind: "sent";
@@ -85,6 +86,9 @@ export interface GherkinPilotPlan {
     readonly assertions: readonly AssertionInstruction[];
     readonly drive: readonly DriveInstruction[];
 }
+/** `@tag:<name>` values, through the same vocabulary a TypeScript spec uses;
+ *  the error names the file, as every other refusal here does. */
+export declare function featureScenarioTags(values: readonly string[], uri: string): ScenarioTags;
 export declare function compileFeaturePlanText(source: string, uri?: string): GherkinPilotPlan;
 export declare function compileFeatureText(source: string, uri?: string): ScenarioSpec<void>;
 export declare function loadPilotPlans(): GherkinPilotPlan[];

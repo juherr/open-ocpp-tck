@@ -32,6 +32,7 @@
  *    protocols. A driver with no declaration keeps the compatibility rule:
  *    rows for every registered scenario. This is checked by `scopeCoverage`.
  */
+import { type ScenarioTag } from "./scenario-tags";
 import type { ScenarioOcppVersion } from "./spec-types";
 export type ScopeStatus = "DRIVABLE" | "CONDITIONAL" | "NOT_APPLICABLE";
 export interface ScopeEntry {
@@ -63,3 +64,18 @@ export declare function scopeCoverage(table: ScopeTable, registeredScenarios: re
     missing: string[];
     stale: string[];
 };
+/**
+ * A driver's scope, counted per tag: what `check-driver` reports so that a
+ * driver excluding a whole domain is named as such rather than left for a
+ * reader to add up. A scenario counts under every tag it carries, so the
+ * counts do not sum to the registry. Its status is the one the runner would
+ * apply -- a protocol the driver does not declare is NOT_APPLICABLE with no
+ * row -- and a scenario with no status at all is left out: `scopeCoverage`
+ * already reports it as missing. Keys in vocabulary order, and only tags
+ * some scenario carries, so two runs diff cleanly.
+ */
+export declare function scopeByTag(table: ScopeTable, registeredScenarios: readonly {
+    templateId: string;
+    ocppVersion: ScenarioOcppVersion;
+    tags: readonly ScenarioTag[];
+}[], protocols?: readonly ScenarioOcppVersion[]): Partial<Record<ScenarioTag, Record<ScopeStatus, number>>>;

@@ -98,6 +98,9 @@ jobs:
       - name: Scenario protocol selection and simulator compatibility
         run: bun tests/scenario-version.ts
 
+      - name: Scenario tags are declared, closed and selected on
+        run: bun tests/scenario-tags.ts
+
       - name: Gherkin scenarios compile and preserve assertion behavior
         run: bun tests/gherkin-pilots.ts
 

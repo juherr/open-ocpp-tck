@@ -1,5 +1,7 @@
 // Copyright 2026 Julien Herr
 // SPDX-License-Identifier: Apache-2.0
+import type { ScenarioTag } from "./scenario-tags";
+
 /** OCPP version filters accepted by the scenario runner CLI. */
 export type ScenarioVersionFilter = "1.6" | "2.0.1";
 
@@ -21,4 +23,15 @@ export function filterScenariosByVersion<
   if (version === undefined) return [...scenarios];
   const protocol = version === "1.6" ? "OCPP-1.6J" : "OCPP-2.0.1";
   return scenarios.filter((scenario) => scenario.ocppVersion === protocol);
+}
+
+/** Filter by the tag declaration, independently of names, groups and versions. */
+export function filterScenariosByTag<
+  T extends { readonly tags: readonly string[] },
+>(
+  scenarios: readonly T[],
+  tag: ScenarioTag | undefined,
+): T[] {
+  if (tag === undefined) return [...scenarios];
+  return scenarios.filter((scenario) => scenario.tags.includes(tag));
 }

@@ -1,4 +1,4 @@
-@sut:csms @id:cert201-tcb21-reset-scheduled @ocpp:2.0.1 @template:cert201-tcb21-reset-scheduled @connector:1 @bootWaitSecs:4 @holdSecs:12
+@sut:csms @id:cert201-tcb21-reset-scheduled @ocpp:2.0.1 @template:cert201-tcb21-reset-scheduled @connector:1 @bootWaitSecs:4 @holdSecs:12 @tag:provisioning @tag:transaction
 Feature: TC_B_21 scheduled reset
 
   Scenario: The CSMS schedules a reset while a transaction is active

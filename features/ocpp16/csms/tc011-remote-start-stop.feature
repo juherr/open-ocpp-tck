@@ -1,4 +1,4 @@
-@sut:csms @id:cert16-tc011-remote-start-stop @ocpp:1.6 @template:cert16-tc011-remote-start-stop @connector:1 @bootWaitSecs:4 @holdSecs:20
+@sut:csms @id:cert16-tc011-remote-start-stop @ocpp:1.6 @template:cert16-tc011-remote-start-stop @connector:1 @bootWaitSecs:4 @holdSecs:20 @tag:remote-control @tag:transaction
 Feature: TC_011 Remote Start and Remote Stop
 
   Scenario: The CSMS starts and stops a charging transaction
