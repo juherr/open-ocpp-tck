@@ -52,6 +52,9 @@ run "driver scope: citrineos (v1)" bun run check:driver:citrineos-v1
 run "the v1 compose override configures v1.9.1" bash tests/citrineos-v1-override.sh
 run "driver scope follows the env" bun tests/driver-env-scope.ts
 run "scenario protocol selection and simulator compatibility" bun tests/scenario-version.ts
+# Gherkin is executable scenario source, and its specs, assertion vocabulary,
+# canonical plans and registry identity all need an in-process check.
+run "Gherkin scenarios compile and preserve assertion behavior" bun tests/gherkin-pilots.ts
 # And beside it, because it is the other half of the same reading: that guard
 # holds a declaration to the env it was resolved with, this one holds it to the
 # parts create() returns for that env. check-driver cannot -- it never calls
