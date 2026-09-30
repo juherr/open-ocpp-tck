@@ -32,9 +32,6 @@ export function citrineOsCapabilities(config: CitrineApiConfig): CsmsCapabilitie
     ...(speaksOcpp201(config.variant)
       ? { operations201: new Set(CSMS_OPERATION_201_ACTIONS.filter((action) => !unsupported201.has(action))) }
       : {}),
-    reservations: false,
-    chargingProfiles: true,
-    deviceModel: speaksOcpp201(config.variant),
   };
 }
 

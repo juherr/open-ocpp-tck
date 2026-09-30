@@ -5,6 +5,10 @@ dispatch errors, capability declarations, typed session and connector read
 interfaces, and the bundled SteVe and CitrineOS operation factories. OCPP 1.6
 and OCPP 2.0.1 remain separate contracts.
 
+Generic capabilities describe only the operations the returned factory can
+dispatch. TCK-only observation flags for reservations, charging profiles, and
+device-model records stay in the TCK adapter contract.
+
 The factories do not create a TCK scenario or simulator. They accept CSMS
 configuration, a transport, and any lookups needed to translate opaque CSMS
 handles. Read APIs can be supplied where a deployment exposes them. The TCK

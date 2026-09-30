@@ -49,12 +49,9 @@
  * `ocppConnectionName`, which v1.9.1 and the GA share. It takes both facts:
  * see {@link schemaOf}.
  */
-import { type CsmsEnv, type CsmsOperation16Action, type CsmsOperation201Action } from "../../tck/driver";
-export type CitrineVariant = "v1" | "v2";
-/** v2 by default: it is what `drivers/citrineos/compose.yaml` pins, and the
- *  only line with a complete OCPP 1.6 surface. */
-export declare const DEFAULT_VARIANT: CitrineVariant;
-export declare function resolveVariant(env: CsmsEnv): CitrineVariant;
+import type { CitrineVariant } from "../../packages/csms-driver/citrineos/variant";
+export { DEFAULT_VARIANT, NO_LOCAL_LIST, NO_OCPP_201_ON_V1, NO_RESERVATIONS, resolveVariant, speaksOcpp201, unroutedActions, unroutedActions201, } from "../../packages/csms-driver/citrineos/variant";
+export type { CitrineVariant } from "../../packages/csms-driver/citrineos/variant";
 /** A Hasura `where` fragment. */
 export type Where = Record<string, unknown>;
 /**
@@ -112,45 +109,6 @@ export declare function describeStationId(variant: CitrineVariant): string;
  * caller with a fake answering each shape.
  */
 export declare function schemaOf(fields: readonly IntrospectedField[]): CitrineSchema | undefined;
-/**
- * Why the reservation actions are unrouted, worded ONCE.
- *
- * Both the scope table and the runtime escape have to state this, and they are
- * the two halves a reader compares: a scope row saying one thing and an
- * UnsupportedOperationError saying another is the drift this module exists to
- * prevent. Verified in the sources at v1.9.1, v2.0.0-beta1 and v2.0.0, and
- * against the running v1.9.1, v2.0.0-beta1 and v2.0.0 containers.
- */
-export declare const NO_RESERVATIONS: string;
-/** Same, for the local auth list pair, which v1.9.1 alone lacks. */
-export declare const NO_LOCAL_LIST: string;
-/** The unrouted actions for a variant, mapped to why. */
-export declare function unroutedActions(variant: CitrineVariant): ReadonlyMap<CsmsOperation16Action, string>;
-/**
- * Whether this driver declares an OCPP 2.0.1 surface for a line.
- *
- * ONE PLACE, TWO READERS -- the capability set and the parts `create()`
- * returns -- for the reason this module exists: a driver whose capabilities
- * claim a protocol its parts cannot drive reports the gap only once a
- * container has started, and `check-driver` cannot catch it because it never
- * calls `create()`. The scope table is the third statement of the same fact
- * and reads {@link CERT_201_SCENARIOS} instead, because what it needs is the
- * rows rather than the answer.
- *
- * v2 ONLY, and that is a statement about what has been MEASURED rather than
- * about what v1.9.1 can do. The 2.0.1 routes were read off the v2 line and the
- * handshake was observed against the pinned v2 image; nobody has pointed a
- * 2.0.1 station at v1.9.1 here. Declaring a surface on the strength of a
- * version number is exactly the "declare, then check" this module refuses.
- */
-export declare function speaksOcpp201(variant: CitrineVariant): boolean;
-/** Why a `cert201-` row is NOT_APPLICABLE on v1. Prose rather than a feature
- *  identifier, by tck/scope.ts's rule: nothing here is conditional on a
- *  feature, the whole protocol is undeclared for this line. */
-export declare const NO_OCPP_201_ON_V1: string;
-/** The 2.0.1 actions this variant does not route, mapped to why. The 2.0.1
- *  half of {@link unroutedActions}. */
-export declare function unroutedActions201(variant: CitrineVariant): ReadonlyMap<CsmsOperation201Action, string>;
 /**
  * Scenarios the OCPP 2.0.1 declaration covers, and which v1 therefore demotes.
  * Named here rather than in scope.ts for the same reason

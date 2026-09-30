@@ -9,22 +9,29 @@ import {
 } from "../contracts";
 
 export type CitrineVariant = "v1" | "v2";
-export type Where = Record<string, unknown>;
+export const DEFAULT_VARIANT: CitrineVariant = "v2";
 
 export function resolveVariant(env: CsmsEnv): CitrineVariant {
   const raw = env.CITRINE_VARIANT;
-  if (raw === undefined || raw === "" || raw === "v2") return "v2";
+  if (raw === undefined || raw === "") return DEFAULT_VARIANT;
+  if (raw === "v2") return DEFAULT_VARIANT;
   if (raw === "v1") return "v1";
   throw new Error(`citrineos: CITRINE_VARIANT must be "v1" or "v2", got ${JSON.stringify(raw)}`);
 }
 
-/** Generic reason returned when a protocol operation is not routed. */
+/** Shared reason for the reservation routes absent from both supported lines. */
 export const NO_RESERVATIONS =
-  "CitrineOS has no OCPP 1.6 endpoint for ReserveNow or CancelReservation.";
-const NO_LOCAL_LIST =
-  "CitrineOS v1.9.1 has no OCPP 1.6 endpoint for SendLocalList or GetLocalListVersion.";
-const NO_OCPP_201_ON_V1 =
-  "This CitrineOS v1 driver exposes no measured OCPP 2.0.1 operations.";
+  "CitrineOS routes no OCPP 1.6 endpoint for ReserveNow or CancelReservation: " +
+  "the 1.6 schemas and the Reservations table exist, but no @AsMessageEndpoint " +
+  "binds either action to OCPPVersion.OCPP1_6 and no 1.6 response handler " +
+  "exists (verified at v1.9.1, v2.0.0-beta1 and v2.0.0), so the path answers 404.";
+export const NO_LOCAL_LIST =
+  "CitrineOS v1.9.1 routes no OCPP 1.6 endpoint for SendLocalList or " +
+  "GetLocalListVersion. Its message API registers 16 OCPP 1.6 routes; the v2 " +
+  "line registers 18, with this pair accounting for the difference.";
+export const NO_OCPP_201_ON_V1 =
+  "CitrineOS v1.9.1 has no measured OCPP 2.0.1 routes; this driver exposes " +
+  "that protocol on the v2 line only.";
 
 const UNROUTED_16: Readonly<Record<CitrineVariant, ReadonlyMap<CsmsOperation16Action, string>>> = {
   v2: new Map([

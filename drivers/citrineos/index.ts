@@ -70,6 +70,7 @@ import { profileByRef } from "./profiles";
 import { citrineosScope } from "./scope";
 import {
   resolveVariant,
+  speaksOcpp201,
 } from "./variant";
 
 /**
@@ -120,7 +121,15 @@ export const csmsDriver: CsmsDriverModule = {
   id: "citrineos",
   displayName: "CitrineOS",
   scope: (env) => citrineosScope(resolveVariant(env)),
-  capabilities: (env) => citrineOsCapabilities(defaultCitrineConfig(env)),
+  capabilities: (env) => {
+    const config = defaultCitrineConfig(env);
+    return {
+      ...citrineOsCapabilities(config),
+      reservations: false,
+      chargingProfiles: true,
+      deviceModel: speaksOcpp201(config.variant),
+    };
+  },
   // A function of the environment for the same reason the two above are: which
   // line this driver is pointed at decides which defects it meets. See
   // expected.ts for why the v1 list is empty rather than sixteen rows long.

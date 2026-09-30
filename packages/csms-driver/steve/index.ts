@@ -17,9 +17,6 @@ export interface SteveCsmsDriverOptions {
 
 export const STEVE_CAPABILITIES: CsmsCapabilities = {
   operations16: new Set(CSMS_OPERATION_16_ACTIONS),
-  reservations: true,
-  chargingProfiles: true,
-  deviceModel: false,
 };
 
 /** Creates the reusable SteVe operation surface without TCK lifecycle hooks. */

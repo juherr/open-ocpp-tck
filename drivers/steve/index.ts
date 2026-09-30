@@ -66,7 +66,12 @@ export const csmsDriver: CsmsDriverModule = {
   id: "steve",
   displayName: "SteVe",
   scope: STEVE_SCOPE,
-  capabilities: STEVE_CAPABILITIES,
+  capabilities: {
+    ...STEVE_CAPABILITIES,
+    reservations: true,
+    chargingProfiles: true,
+    deviceModel: false,
+  },
   create(env: CsmsEnv): CsmsDriverParts {
     const cfg = defaultSteveConfig(env);
     // `env`, not process.env: the runner owns what a driver may read, and the

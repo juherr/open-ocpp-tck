@@ -9,6 +9,7 @@ import {
 import type {
   CsmsOperation16 as Generic16,
   CsmsOperation201 as Generic201,
+  CsmsCapabilities,
 } from "../packages/csms-driver";
 import type {
   CsmsOperation16 as Compatible16,
@@ -26,7 +27,23 @@ const invalid16: Generic16 = genericRequest201;
 // @ts-expect-error OCPP 1.6 Reset values are not OCPP 2.0.1 values.
 const invalid201: Generic201 = genericRequest16;
 
-void [compatibleRequest16, compatibleRequest201, invalid16, invalid201];
+const genericCapabilities: CsmsCapabilities = {
+  operations16: new Set(["Reset"]),
+};
+const invalidGenericCapabilities: CsmsCapabilities = {
+  operations16: new Set(["Reset"]),
+  // @ts-expect-error TCK record availability is not a generic CSMS capability.
+  reservations: true,
+};
+
+void [
+  compatibleRequest16,
+  compatibleRequest201,
+  invalid16,
+  invalid201,
+  genericCapabilities,
+  invalidGenericCapabilities,
+];
 
 if (generic16 !== compatible16 || generic201 !== compatible201) {
   throw new Error("The legacy TCK driver entry must re-export library contracts.");

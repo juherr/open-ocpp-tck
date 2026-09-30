@@ -16,6 +16,13 @@ import type {
 } from "../packages/csms-driver";
 export * from "../packages/csms-driver";
 
+/** TCK-only observations exposed by a driver's assertion record adapters. */
+export interface CsmsTckCapabilities extends CsmsCapabilities {
+  readonly reservations: boolean;
+  readonly chargingProfiles: boolean;
+  readonly deviceModel: boolean;
+}
+
 /** Assertion-oriented observations used by TCK scenarios. */
 export interface CsmsRecords {
   latestTransaction(cpId: string): Promise<TransactionRef>;
@@ -74,7 +81,7 @@ export interface CsmsDriverModule {
   readonly id: string;
   readonly displayName: string;
   readonly scope?: EnvDependent<ScopeTable>;
-  readonly capabilities?: EnvDependent<CsmsCapabilities>;
+  readonly capabilities?: EnvDependent<CsmsTckCapabilities>;
   readonly expectedFailures?: EnvDependent<ExpectedFailureTable>;
   create(env: CsmsEnv): Promise<CsmsDriverParts> | CsmsDriverParts;
   readonly commands?: Readonly<Record<string, CsmsDriverCommand>>;
@@ -86,7 +93,7 @@ export function driverScope(module: CsmsDriverModule, env: CsmsEnv): ScopeTable 
   return typeof value === "function" ? value(env) : value;
 }
 
-export function driverCapabilities(module: CsmsDriverModule, env: CsmsEnv): CsmsCapabilities | undefined {
+export function driverCapabilities(module: CsmsDriverModule, env: CsmsEnv): CsmsTckCapabilities | undefined {
   const value = module.capabilities;
   return typeof value === "function" ? value(env) : value;
 }

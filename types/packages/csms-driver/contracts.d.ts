@@ -721,30 +721,13 @@ export interface CsmsCapabilities {
     /**
      * The same, for {@link CsmsOperation201}. ABSENT means "this driver does not
      * speak OCPP 2.0.1 at all" -- not "it speaks it and declares nothing" -- and
-     * `check-driver` says nothing about a driver that omits it.
+     * generic consumers can distinguish a 1.6-only driver from a driver whose
+     * 2.0.1 surface is empty.
      *
-     * It lives on the CAPABILITIES rather than only on {@link CsmsDriverParts}
-     * for the reason {@link CsmsDriverModule.capabilities} gives: parts are
-     * reachable only through `create(env)`, which is entitled to demand
-     * credentials, and "does this driver speak 2.0.1" has to be answerable
-     * offline, without a container.
+     * It lives on the capabilities rather than only on a factory result so a
+     * consumer can inspect protocol support without creating a client or
+     * opening a connection.
      */
     readonly operations201?: ReadonlySet<CsmsOperation201Action>;
-    readonly reservations: boolean;
-    readonly chargingProfiles: boolean;
-    /**
-     * Whether this driver can read back what the CSMS stored about a connector.
-     * See {@link CsmsDeviceModelRecords} for why that is not the same question as
-     * "does the CSMS speak 2.0.1".
-     *
-     * REQUIRED, not `deviceModel?`, and the asymmetry with `operations201?` above
-     * is deliberate rather than an oversight. That one is opt-in because its
-     * absence has a second meaning -- a 1.6-only driver would otherwise draw
-     * "operation not declared" warnings for operations it never claimed.
-     * This is a plain boolean beside `reservations` and `chargingProfiles`, its
-     * two siblings, and a driver that forgets it gets a compiler error naming the
-     * field instead of a printed capability list that quietly says `false`.
-     */
-    readonly deviceModel: boolean;
 }
 export type CsmsEnv = Readonly<Record<string, string | undefined>>;
