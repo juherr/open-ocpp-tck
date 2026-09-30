@@ -60,6 +60,10 @@ interface CompiledSteps {
   drive: DriveInstruction[];
 }
 
+interface AssertionExecutionState {
+  transactionPk: string | null;
+}
+
 interface ScenarioMetadata {
   id: string;
   sut: "csms";
@@ -290,8 +294,9 @@ function makeSpec(metadata: ScenarioMetadata, steps: CompiledSteps): ScenarioSpe
         }
       : {}),
     async assert(context: AssertContext<void>): Promise<void> {
+      const executionState: AssertionExecutionState = { transactionPk: null };
       for (const instruction of steps.assertions) {
-        const keepGoing = await runAssertion(instruction, context);
+        const keepGoing = await runAssertion(instruction, context, executionState);
         if (!keepGoing) return;
       }
     },
@@ -299,7 +304,21 @@ function makeSpec(metadata: ScenarioMetadata, steps: CompiledSteps): ScenarioSpe
   return spec;
 }
 
-async function runAssertion(instruction: AssertionInstruction, context: AssertContext<void>): Promise<boolean> {
+async function selectedTransactionPk(
+  context: AssertContext<void>,
+  state: AssertionExecutionState,
+): Promise<string> {
+  if (state.transactionPk === null) {
+    state.transactionPk = await context.records.latestTransaction(context.cpId);
+  }
+  return state.transactionPk;
+}
+
+async function runAssertion(
+  instruction: AssertionInstruction,
+  context: AssertContext<void>,
+  state: AssertionExecutionState,
+): Promise<boolean> {
   const { frames, lines, rec } = context;
   switch (instruction.kind) {
     case "sent": assertSent(rec, frames, instruction.action, instruction.description); return true;
@@ -318,7 +337,7 @@ async function runAssertion(instruction: AssertionInstruction, context: AssertCo
     case "boot-completed": assertLineMatches(rec, lines, /"event":"scenario_completed"/, "scenario ran to completion"); return true;
     case "boot-gate-clear": assertNoLineMatches(rec, lines, /blocked by the boot gate/, "no messages were dropped by the boot gate"); return true;
     case "transaction-id-tag": {
-      const txPk = await context.records.latestTransaction(context.cpId);
+      const txPk = await selectedTransactionPk(context, state);
       if (!txPk) {
         rec.fail(`DB: transaction row exists for ${context.cpId}`, "no transaction found");
         return false;
@@ -329,7 +348,7 @@ async function runAssertion(instruction: AssertionInstruction, context: AssertCo
       return true;
     }
     case "transaction-closed": {
-      const txPk = await context.records.latestTransaction(context.cpId);
+      const txPk = await selectedTransactionPk(context, state);
       if (!txPk) {
         rec.fail("DB: transaction is closed (stop_timestamp set)", "no transaction found");
         return false;

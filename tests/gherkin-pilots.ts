@@ -3,9 +3,8 @@ import { readFileSync } from "node:fs";
 import type { AssertContext, DriveContext, ScenarioSpec } from "../tck/spec-types";
 import type { Frame } from "../tck/ocpp";
 import { CORE_SPECS, tc001ColdBootSpec, tc003ChargingPluginFirstSpec } from "../tck/specs/core";
-import { tc011RemoteStartStopSpec } from "../tck/specs/remotetrigger-smartcharging";
-import { REMOTETRIGGER_SMARTCHARGING_SPECS } from "../tck/specs/remotetrigger-smartcharging";
-import { compileFeatureText, loadPilotSpecs } from "../tck/gherkin/compiler";
+import { REMOTETRIGGER_SMARTCHARGING_SPECS, tc011RemoteStartStopSpec } from "../tck/specs/remotetrigger-smartcharging";
+import { compileFeatureText, GHERKIN_PILOT_SPECS, loadPilotSpecs } from "../tck/gherkin/compiler";
 import { compile201FeatureText, GHERKIN_201_PILOT } from "../tck/gherkin/compiler-201";
 import { CORE_201_SPECS, TC_B_21_REFERENCE } from "../tck/specs/core-201";
 
@@ -14,10 +13,12 @@ const expectedIds = [
   "cert16-tc003-charging-plugin-first",
   "cert16-tc011-remote-start-stop",
 ];
-const specs = loadPilotSpecs();
+const specs = GHERKIN_PILOT_SPECS;
 assert.deepEqual(specs.map((spec) => spec.templateId), expectedIds);
-assert.ok(specs.slice(0, 2).every((spec) => CORE_SPECS.some((registered) => registered.templateId === spec.templateId)));
-assert.ok(REMOTETRIGGER_SMARTCHARGING_SPECS.some((registered) => registered.templateId === specs[2]?.templateId));
+assert.ok(CORE_SPECS.includes(specs[0]!));
+assert.ok(CORE_SPECS.includes(specs[1]!));
+assert.ok(REMOTETRIGGER_SMARTCHARGING_SPECS.includes(specs[2]!));
+assert.deepEqual(loadPilotSpecs().map((spec) => spec.templateId), expectedIds);
 assert.ok(specs.every((spec) => spec.ocppVersion === "OCPP-1.6J"));
 assert.ok(specs.every((spec) => spec.connector === 1));
 assert.ok(specs.every((spec) => Boolean(spec.description)));
@@ -194,6 +195,46 @@ async function assertionResults(
 for (let index = 0; index < specs.length; index += 1) {
   assert.deepEqual(await assertionResults(specs[index]!, index), await assertionResults(references[index]!, index));
 }
+async function transactionIdentityResults(spec: ScenarioSpec<void>) {
+  const results: string[] = [];
+  const latestPks: string[] = [];
+  const inspectedPks: string[] = [];
+  const rec = {
+    pass: (description: string) => results.push(`PASS ${description}`),
+    fail: (description: string, reason: string) => results.push(`FAIL ${description} :: ${reason}`),
+    skip: (description: string, reason: string) => results.push(`SKIP ${description} :: ${reason}`),
+  };
+  await spec.assert?.({
+    cpId: "CERTCP1",
+    connector: 1,
+    frames: framesByScenario[1] ?? [],
+    lines: linesByScenario[1] ?? [],
+    rec,
+    records: {
+      latestTransaction: async () => {
+        const pk = latestPks.length === 0 ? "transaction-A" : "transaction-B";
+        latestPks.push(pk);
+        return pk;
+      },
+      transactionIdTag: async (pk: string) => {
+        inspectedPks.push(`idTag:${pk}`);
+        return pk === "transaction-A" ? "CERT003" : "OTHER-TAG";
+      },
+      transactionStopTimestamp: async (pk: string) => {
+        inspectedPks.push(`closed:${pk}`);
+        return pk === "transaction-A" ? "" : "2026-01-01T00:00:00Z";
+      },
+    },
+    driveState: undefined,
+    fixtures: [],
+  } as unknown as AssertContext<void>);
+  return { results, latestPks, inspectedPks };
+}
+const gherkinTransactionIdentity = await transactionIdentityResults(specs[1]!);
+const referenceTransactionIdentity = await transactionIdentityResults(references[1]!);
+assert.deepEqual(gherkinTransactionIdentity, referenceTransactionIdentity);
+assert.deepEqual(gherkinTransactionIdentity.latestPks, ["transaction-A"]);
+assert.deepEqual(gherkinTransactionIdentity.inspectedPks, ["idTag:transaction-A", "closed:transaction-A"]);
 for (const index of [1, 2]) {
   assert.deepEqual(await assertionResults(specs[index]!, index, ""), await assertionResults(references[index]!, index, ""));
 }
