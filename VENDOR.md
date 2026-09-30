@@ -43,8 +43,9 @@ What that changes in this manifest:
 ### Fork commit: `604054adb0d7d7129a26a5f1ad2d5fdc290d1ca1`
 
 **Frozen, and deliberately a separate fact from `Pinned commit` above.** The
-pin is where the `upstream-verbatim` rows were last imported from, and it
-moves whenever they are re-imported. The fork commit is where this repository
+pin is where the rows that still track upstream -- `upstream-verbatim` and
+`upstream-patched` -- were last imported from, and it moves whenever they are
+re-imported. The fork commit is where this repository
 stopped tracking upstream for the forked files, and it never moves — a file
 does not become forked at a later commit because an unrelated file was
 re-imported. `tests/vendor-integrity.sh` validates every forked file's
@@ -216,7 +217,7 @@ digest must change with it, in that order — and the one way to get it wrong is
 the digest and then touch the file again. One command does both:
 
 ```sh
-tools/repin-vendored.sh <path>          # e.g. tck/ocpp.ts, once it is patched
+tools/repin-vendored.sh <path>          # e.g. tck/ocpp.ts
 ```
 
 `<path>` has to be a row the script can act on: `upstream-verbatim` or
@@ -318,10 +319,13 @@ asks whether the source pin should follow it:
   plus that Dockerfile fix, and `0.7.11` over `0.7.10` is a behaviour-neutral
   move of the charging-curve interpolator plus a fleet benchmark, k6 export
   and docs.
-- **The `upstream-verbatim` rows did not need a re-import.** `tck/ocpp.ts`,
+- **The upstream-tracking rows did not need a re-import.** `tck/ocpp.ts`,
   `tck/util.ts` and `tsconfig.json` hash at `v0.7.10`, `v0.7.11` and
-  `v0.7.12` to the digests in the inventory above, byte for byte, so
-  `Pinned commit` stayed where it was. The
+  `v0.7.12` to the **upstream** digests in the inventory above, byte for
+  byte, so `Pinned commit` stayed where it was. All three were
+  `upstream-verbatim` when that was measured; `tck/ocpp.ts` has since been
+  patched, which moves its LOCAL digest and leaves the upstream one -- and
+  therefore this measurement -- exactly as it was. The
   image and the source pin name different commits by design -- the image is
   what a sweep runs, the source pin is where three files were copied from --
   and the first bump is the one that establishes that they may differ.
