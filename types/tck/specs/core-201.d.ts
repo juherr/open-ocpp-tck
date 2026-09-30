@@ -181,6 +181,8 @@ export declare function assertChargingProfilesRequested(rec: AssertRecorder, fra
 /** The `evseId` the request must carry, or null for one that must omit it
  *  and so ask about every EVSE. */
 evseId: number | null, criterion: Readonly<Record<string, CriterionValue>>, description: string): void;
+/** Kept temporarily as the parity reference for its Gherkin pilot. */
+export declare const TC_B_21_REFERENCE: ScenarioSpec<void>;
 /**
  * The identifier of the first profile in a `ReportChargingProfiles` payload, or
  * {@link PROFILE_ID_UNREPORTED} when the payload does not carry one.

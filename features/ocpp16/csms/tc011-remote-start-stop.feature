@@ -14,9 +14,9 @@ Feature: TC_011 Remote Start and Remote Stop
     And the CSMS sends RemoteStopTransaction for the captured transaction when one exists
       | action | RemoteStopTransaction |
     Then the CSMS "RemoteStartTransaction" response status is "Accepted"
-    And a StartTransaction request is sent with idTag "CERT-TAG-2"
+    And a StartTransaction request is sent with CSMS-supplied idTag "CERT-TAG-2"
     And the CSMS "RemoteStopTransaction" response status is "Accepted"
-    And a StopTransaction request is sent with reason Remote
+    And a StopTransaction request is sent with reason "Remote"
     And every "StatusNotification" request is answered
     And every "StartTransaction" request is answered
     And every "Authorize" request is answered

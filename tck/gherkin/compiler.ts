@@ -1,5 +1,5 @@
 /**
- * A deliberately small Gherkin compiler for the three OCPP 1.6 feasibility
+ * A deliberately small Gherkin compiler for the OCPP 1.6 feasibility
  * pilots. Gherkin describes the case; this module translates its closed
  * vocabulary into the existing ScenarioSpec runner contract.
  */
@@ -43,11 +43,9 @@ type AssertionInstruction =
   | { kind: "no-line"; pattern: RegExp; description: string }
   | { kind: "line-order"; before: RegExp; after: RegExp; description: string }
   | { kind: "id-tag-status"; action: string; status: string; description: string }
-  | { kind: "tc003-database"; idTag: string }
-  | { kind: "tc011-database" }
+  | { kind: "transaction-id-tag"; idTag: string }
+  | { kind: "transaction-closed" }
   | { kind: "operation-result"; action: "RemoteStartTransaction" | "RemoteStopTransaction"; status: string; description: string }
-  | { kind: "remote-start-log"; idTag: string }
-  | { kind: "remote-stop-log" }
   | { kind: "boot-completed" }
   | { kind: "boot-gate-clear" };
 
@@ -69,6 +67,17 @@ interface ScenarioMetadata {
   connector: number;
   bootWaitSecs: number;
   holdSecs: number;
+  description: string;
+}
+
+export interface GherkinPilotPlan {
+  readonly spec: ScenarioSpec<void>;
+  readonly templateId: string;
+  readonly connector: number;
+  readonly bootWaitSecs: number;
+  readonly holdSecs: number;
+  readonly assertions: readonly AssertionInstruction[];
+  readonly drive: readonly DriveInstruction[];
 }
 
 function parseDocument(source: string, uri: string): GherkinDocument {
@@ -109,9 +118,10 @@ function parseTags(document: GherkinDocument, scenario: GherkinScenario, uri: st
   if (!id || !/^cert16-[a-z0-9-]+$/.test(id)) throw new Error(`${uri}: invalid or missing @id`);
   if (!template || template !== id) throw new Error(`${uri}: @template must match @id`);
   const connector = positiveInteger(values.get("connector"), "connector", uri);
+  if (connector !== 1) throw new Error(`${uri}: this pilot compiler supports only @connector:1`);
   const bootWaitSecs = positiveInteger(values.get("bootWaitSecs"), "bootWaitSecs", uri, true);
   const holdSecs = positiveInteger(values.get("holdSecs"), "holdSecs", uri);
-  return { id, sut: "csms", template, connector, bootWaitSecs, holdSecs };
+  return { id, sut: "csms", template, connector, bootWaitSecs, holdSecs, description: "" };
 }
 
 function positiveInteger(value: string | undefined, name: string, uri: string, allowZero = false): number {
@@ -210,16 +220,17 @@ function compileSteps(steps: readonly GherkinStep[], uri: string): CompiledSteps
       result.assertions.push({ kind: "status-payload", status: "Available", description: "StatusNotification(Available) sent for connector 1" });
     } else if ((match = /^the "StartTransaction" response idTagInfo status is "([A-Za-z]+)"$/.exec(text))) {
       result.assertions.push({ kind: "id-tag-status", action: "StartTransaction", status: match[1], description: "StartTransaction accepted by the CSMS" });
-    } else if ((match = /^a transaction exists with idTag "(CERT003)"$/.exec(text))) {
-      result.assertions.push({ kind: "tc003-database", idTag: match[1] });
+    } else if ((match = /^a transaction exists with idTag "([A-Z0-9-]+)"$/.exec(text))) {
+      result.assertions.push({ kind: "transaction-id-tag", idTag: match[1] });
     } else if (text === "the transaction is closed") {
-      result.assertions.push({ kind: "tc011-database" });
+      result.assertions.push({ kind: "transaction-closed" });
     } else if ((match = /^the CSMS "(RemoteStartTransaction|RemoteStopTransaction)" response status is "(Accepted)"$/.exec(text))) {
       result.assertions.push({ kind: "operation-result", action: match[1] as "RemoteStartTransaction" | "RemoteStopTransaction", status: match[2], description: `${match[1]} accepted` });
-    } else if ((match = /^a StartTransaction request is sent with idTag "(CERT-TAG-2)"$/.exec(text))) {
-      result.assertions.push({ kind: "remote-start-log", idTag: match[1] });
-    } else if (text === "a StopTransaction request is sent with reason Remote") {
-      result.assertions.push({ kind: "remote-stop-log" });
+    } else if ((match = /^a StartTransaction request is sent with (CSMS-supplied )?idTag "([A-Z0-9-]+)"$/.exec(text))) {
+      const wording = match[1] ? "CSMS-supplied idTag" : `idTag ${match[2]}`;
+      result.assertions.push({ kind: "line", pattern: new RegExp(`Sent: \\[2,.*"StartTransaction".*"idTag":"${match[2]}"`), description: `StartTransaction sent with ${wording}` });
+    } else if ((match = /^a StopTransaction request is sent with reason "([A-Za-z]+)"$/.exec(text))) {
+      result.assertions.push({ kind: "line", pattern: new RegExp(`Sent: \\[2,.*"StopTransaction".*"reason":"${match[1]}"`), description: `StopTransaction sent with reason ${match[1]}` });
     } else {
       unsupported();
     }
@@ -240,6 +251,7 @@ function parseScenario(document: GherkinDocument, uri: string): { metadata: Scen
 function makeSpec(metadata: ScenarioMetadata, steps: CompiledSteps): ScenarioSpec<void> {
   const spec: ScenarioSpec<void> = {
     templateId: metadata.id,
+    description: metadata.description,
     ocppVersion: "OCPP-1.6J",
     connector: metadata.connector,
     bootWaitSecs: metadata.bootWaitSecs,
@@ -305,7 +317,7 @@ async function runAssertion(instruction: AssertionInstruction, context: AssertCo
     }
     case "boot-completed": assertLineMatches(rec, lines, /"event":"scenario_completed"/, "scenario ran to completion"); return true;
     case "boot-gate-clear": assertNoLineMatches(rec, lines, /blocked by the boot gate/, "no messages were dropped by the boot gate"); return true;
-    case "tc003-database": {
+    case "transaction-id-tag": {
       const txPk = await context.records.latestTransaction(context.cpId);
       if (!txPk) {
         rec.fail(`DB: transaction row exists for ${context.cpId}`, "no transaction found");
@@ -314,10 +326,9 @@ async function runAssertion(instruction: AssertionInstruction, context: AssertCo
       rec.pass(`DB: transaction row exists for ${context.cpId} (pk=${txPk})`);
       const idTag = await context.records.transactionIdTag(txPk);
       assertEq(rec, idTag, instruction.idTag, `DB: id_tag is ${instruction.idTag}`);
-      assertNonEmpty(rec, await context.records.transactionStopTimestamp(txPk), "DB: transaction is closed (stop_timestamp set)");
       return true;
     }
-    case "tc011-database": {
+    case "transaction-closed": {
       const txPk = await context.records.latestTransaction(context.cpId);
       if (!txPk) {
         rec.fail("DB: transaction is closed (stop_timestamp set)", "no transaction found");
@@ -327,21 +338,44 @@ async function runAssertion(instruction: AssertionInstruction, context: AssertCo
       return true;
     }
     case "operation-result": assertResponseStatus(rec, frames, instruction.action, instruction.status, instruction.description); return true;
-    case "remote-start-log": assertLineMatches(rec, lines, new RegExp(`Sent: \\[2,.*"StartTransaction".*"idTag":"${instruction.idTag}"`), "StartTransaction sent with CSMS-supplied idTag"); return true;
-    case "remote-stop-log": assertLineMatches(rec, lines, /Sent: \[2,.*"StopTransaction".*"reason":"Remote"/, "StopTransaction sent with reason Remote"); return true;
   }
 }
 
 export function compileFeatureText(source: string, uri = "<feature>"): ScenarioSpec<void> {
-  const { metadata, steps } = parseScenario(parseDocument(source, uri), uri);
+  const document = parseDocument(source, uri);
+  const { metadata, steps } = parseScenario(document, uri);
+  const feature = document.feature;
+  const scenario = feature?.children[0]?.scenario;
+  metadata.description = feature && scenario ? `${feature.name}: ${scenario.name}` : scenario?.name ?? "";
   return makeSpec(metadata, steps);
 }
 
-export function loadPilotSpecs(): ScenarioSpec<void>[] {
+function compilePlan(source: string, uri: string): GherkinPilotPlan {
+  const document = parseDocument(source, uri);
+  const { metadata, steps } = parseScenario(document, uri);
+  const feature = document.feature;
+  const scenario = feature?.children[0]?.scenario;
+  metadata.description = feature && scenario ? `${feature.name}: ${scenario.name}` : scenario?.name ?? "";
+  return {
+    spec: makeSpec(metadata, steps),
+    templateId: metadata.id,
+    connector: metadata.connector,
+    bootWaitSecs: metadata.bootWaitSecs,
+    holdSecs: metadata.holdSecs,
+    assertions: steps.assertions,
+    drive: steps.drive,
+  };
+}
+
+export function loadPilotPlans(): GherkinPilotPlan[] {
   return PILOT_URIS.map((relative) => {
     const path = fileURLToPath(new URL(relative, import.meta.url));
-    return compileFeatureText(readFileSync(path, "utf8"), path);
+    return compilePlan(readFileSync(path, "utf8"), path);
   });
+}
+
+export function loadPilotSpecs(): ScenarioSpec<void>[] {
+  return loadPilotPlans().map((plan) => plan.spec);
 }
 
 export const GHERKIN_PILOT_SPECS = loadPilotSpecs();

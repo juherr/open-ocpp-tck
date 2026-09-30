@@ -13,3 +13,4 @@ Feature: TC_003 Charging Session, plug-in first
     And every "Authorize" request is answered
     And every "StatusNotification" request is answered
     And a transaction exists with idTag "CERT003"
+    And the transaction is closed
