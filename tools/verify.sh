@@ -143,6 +143,9 @@ run "core is CSMS-neutral" bash tests/generic-core.sh
 # The one reading in this repository that lives in the workflow rather than in
 # a file the gate can run -- so it is a file now, and this is what runs it.
 run "a red row is red whatever its namespace" bash tests/summary-red-rows.sh
+# The other reader of that table, and the one that mines the archived corpus:
+# an isolated-retry cell has to land in the statistic it stands for.
+run "the flake record reads every retry cell the runner writes" bash tests/flake-report-retry.sh
 # The other layering boundary the repository declares in prose: AGENTS.md and
 # everything it governs must not depend on the harness file.
 run "harness layering holds" bash tests/harness-layer.sh

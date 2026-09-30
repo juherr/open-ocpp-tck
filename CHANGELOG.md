@@ -723,7 +723,9 @@ Released as `0.3.0`. The documented install ref already points at that tag, so
   A retry that passes despite a late boot is still a flake. `tools/flake-report.ts`
   counts an inconclusive retry as unadjudicated; retries archived before this
   change read `(confirmed)` either way. `tests/expected-failure-standing.ts`
-  holds the adjudication as a table beside the exit-code rule.
+  holds the adjudication as a table beside the exit-code rule, and
+  `tests/flake-report-retry.sh` holds the flake record's reading of every retry
+  cell shape, the pre-change `ERROR (confirmed)` included.
 
 - **TC_013 ran its template twice on the 0.7.9 simulator, and reported the
   CSMS for it.** From 0.7.6 the simulator re-arms a `triggerOn: "connect"`
