@@ -388,8 +388,8 @@ the guard holds is read off the objects -- every registered scenario carries a
 valid tag, every tag is carried by some scenario -- or off `scopeByTag`, a pure
 helper `check-driver` only ever calls for the one driver it was handed. Its CLI
 rows go through the exported `cli()`, as `scenario-version.ts`'s do: the
-refusals it pins return before any container, and a process per row would buy
-nothing the call does not.
+refusals it pins return before any container, `check-driver` is offline, and
+a process per row would buy nothing the call does not.
 `trace-format.ts`: the same argument one layer down, on the library rather
 than on this suite's policy over it. Its sharpest row is the one no producer
 here can make either way — a `messageId` reused across two exchanges, which is

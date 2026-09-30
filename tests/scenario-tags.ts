@@ -6,7 +6,7 @@
  * Tags are the functional axis beside `--group` (upstream's array membership)
  * and `--version` (the protocol). They are selection metadata only -- neither
  * pinned artifact carries them -- so what keeps them honest is this guard, and
- * it claims six things:
+ * it claims eight things:
  *
  *  1. Every registered scenario declares at least one tag, every tag is in
  *     the closed vocabulary, and none is repeated. Checked at runtime over what
@@ -23,8 +23,21 @@
  *     function. An unknown tag, and a second `--tag`, are refused.
  *  5. `scopeByTag` counts a driver's scope per tag, including the protocol
  *     opt-out, and `tagsDrivenNone` reads off it the domains a driver
- *     excludes -- the line `check-driver` prints.
- *  6. The README's tag table lists exactly the vocabulary.
+ *     excludes.
+ *  6. `check-driver` exposes both: `scopeByTag` in `--json`, and the
+ *     `drives no scenario tagged:` line in its human output, each equal to
+ *     what the two helpers compute from the driver's own declarations.
+ *  7. `--tag transaction` selects every scenario that NEEDS a transaction --
+ *     #34's "debugging a driver whose records implementation is suspect".
+ *     Needing one is either declaring the `EnergyTransferStarted` state, which
+ *     has the CSMS accept a transaction before the case starts, or reading one
+ *     back from the CSMS: a TypeScript spec whose `drive`/`assert` calls a
+ *     transaction method of `CsmsRecords`, a `.feature` whose plan holds a
+ *     transaction-reading instruction. The TypeScript half reads function
+ *     SOURCE, so a call made through a helper defined outside the spec is
+ *     invisible to it; none is today. The converse is not claimed: the tag
+ *     also covers scenarios that only read transactions off the wire.
+ *  8. The README's tag table lists exactly the vocabulary.
  *
  * In-process rather than shell for the reason `tests/scenario-version.ts`
  * is: the spec objects and `scopeByTag` are unreachable through the CLI, and
@@ -33,6 +46,7 @@
  */
 import assert from "node:assert/strict";
 import { readFileSync } from "node:fs";
+import { fileURLToPath } from "node:url";
 import {
   SCENARIO_TAGS,
   parseScenarioTag,
@@ -41,7 +55,10 @@ import {
 } from "../tck/scenario-tags";
 import { filterScenariosByTag } from "../tck/scenario-selection";
 import { scopeByTag, tagsDrivenNone } from "../tck/scope";
+import { driverProtocols, driverScope, type CsmsDriverModule } from "../tck/driver";
 import { cli } from "../tck/main";
+import { GHERKIN_AUTHORIZE_PLANS, loadPilotPlans } from "../tck/gherkin/compiler";
+import { GHERKIN_201_PILOT } from "../tck/gherkin/compiler-201";
 import { CORE_SPECS } from "../tck/specs/core";
 import { CORE_201_SPECS } from "../tck/specs/core-201";
 import { AUTHLIST_RESERVATION_SPECS } from "../tck/specs/authlist-reservation";
@@ -229,7 +246,73 @@ assert.deepEqual(
   "one CONDITIONAL scenario is not an excluded domain",
 );
 
-// --- 6. the README table ----------------------------------------------------
+// --- 6. check-driver exposes the per-tag scope --------------------------------
+
+// The bundled SteVe driver, resolved here the way check-driver resolves it, so
+// the expectation is computed from its declarations rather than copied from
+// them: a change to its scope table moves both sides. Absolute, because
+// `--driver` is a module specifier and this guard may run from anywhere.
+const steveSpecifier = fileURLToPath(new URL("../drivers/steve/index.ts", import.meta.url));
+const steve = ((await import(steveSpecifier)) as { csmsDriver: CsmsDriverModule }).csmsDriver;
+const steveScope = driverScope(steve, process.env);
+assert.ok(steveScope, "the SteVe driver declares a scope table");
+const steveByTag = scopeByTag(
+  steveScope,
+  specs.map(({ templateId, ocppVersion, tags }) => ({ templateId, ocppVersion, tags })),
+  driverProtocols(steve, process.env),
+);
+const steveExcluded = tagsDrivenNone(steveByTag);
+// Not vacuous: a 1.6-only driver drives none of the 2.0.1-only domains.
+assert.ok(steveExcluded.includes("certificates"), `SteVe excludes certificates: ${steveExcluded.join(", ")}`);
+const priorDriver = process.env.CSMS_DRIVER;
+try {
+  const json = await captureCli(["check-driver", "--driver", steveSpecifier, "--json"]);
+  assert.equal(json.code, 0, json.output);
+  const summary = JSON.parse(json.output) as { scopeByTag?: unknown };
+  assert.deepEqual(summary.scopeByTag, steveByTag, "check-driver --json exposes scopeByTag");
+  const human = await captureCli(["check-driver", "--driver", steveSpecifier]);
+  assert.equal(human.code, 0, human.output);
+  assert.match(
+    human.output,
+    new RegExp(`^  drives no scenario tagged: ${steveExcluded.join(", ")}$`, "m"),
+    "check-driver names the tags the driver drives nothing of",
+  );
+} finally {
+  if (priorDriver === undefined) delete process.env.CSMS_DRIVER;
+  else process.env.CSMS_DRIVER = priorDriver;
+}
+
+// --- 7. --tag transaction reaches every scenario that needs one ----------------
+
+// The transaction half of CsmsRecords (tck/driver.ts); reservations, charging
+// profiles and the device model are records too, and are not transactions.
+const READS_TRANSACTION = /\brecords\.(?:latestTransaction|waitForActiveTransaction|transaction[A-Z]\w*)\(/;
+const gherkinPlans = [...loadPilotPlans(), ...GHERKIN_AUTHORIZE_PLANS];
+const gherkinIds = new Set([...gherkinPlans.map((plan) => plan.templateId), GHERKIN_201_PILOT.templateId]);
+const needsTransaction = new Map<string, string>();
+for (const spec of specs) {
+  if (spec.states?.some((invocation) => invocation.state === "EnergyTransferStarted")) {
+    needsTransaction.set(spec.templateId, "declares EnergyTransferStarted");
+  } else if (!gherkinIds.has(spec.templateId) && READS_TRANSACTION.test(`${spec.drive ?? ""}\n${spec.assert}`)) {
+    needsTransaction.set(spec.templateId, "reads a transaction from CsmsRecords");
+  }
+}
+for (const plan of gherkinPlans) {
+  const kinds = [...plan.drive, ...plan.assertions].map((instruction) => instruction.kind as string);
+  if (kinds.some((kind) => kind === "capture-latest-transaction" || kind.startsWith("transaction-"))) {
+    needsTransaction.set(plan.templateId, "its plan reads a transaction from CsmsRecords");
+  }
+}
+// Not vacuous: all three ways in are exercised.
+assert.ok(needsTransaction.get("cert201-tck29-profiles-in-transaction")?.includes("EnergyTransferStarted"));
+assert.ok(needsTransaction.get("cert16-tc013-hard-reset")?.includes("CsmsRecords"));
+assert.ok(needsTransaction.get("cert16-tc023-1-authorize-invalid")?.includes("plan"));
+const transactionIds = idSet(transactions);
+for (const [templateId, why] of needsTransaction) {
+  assert.ok(transactionIds.has(templateId), `${templateId} ${why}, so --tag transaction must select it`);
+}
+
+// --- 8. the README table ----------------------------------------------------
 
 const readme = readFileSync(new URL("../README.md", import.meta.url), "utf8");
 const section = /^### Scenario tags\n([\s\S]*?)(?=^#{2,3} )/m.exec(readme)?.[1];

@@ -3977,7 +3977,7 @@ const TC_K_29: ScenarioSpec = {
   description:
     "TC_K_29 Get Charging Profiles: with a transaction running, the CSMS asks the charging station itself which profiles it holds and the station reports them.",
   ocppVersion: "OCPP-2.0.1",
-  tags: ["smart-charging"],
+  tags: ["smart-charging", "transaction"],
   runsSimTemplate: false,
   connector: 1,
   bootWaitSecs: 4,

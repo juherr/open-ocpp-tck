@@ -17,7 +17,8 @@ Released as `0.3.0`. The documented install ref already points at that tag, so
   stays upstream's historical grouping, `--version` the protocol; a tag says
   what a scenario is about, and a scenario may carry several — `--tag
   smart-charging` no longer drags in the remote-trigger scenarios that share
-  its group, and `--tag transaction` reaches across groups. The vocabulary is
+  its group, and `--tag transaction` selects every scenario that needs a
+  transaction, across groups. The vocabulary is
   closed (`tck/scenario-tags.ts`, thirteen tags after OCPP 2.0.1's functional
   blocks), `ScenarioSpec.tags` is required and non-empty, and a `.feature`
   declares `@tag:<name>` through the same vocabulary, refused at compile time

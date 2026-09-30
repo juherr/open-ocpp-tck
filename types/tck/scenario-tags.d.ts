@@ -13,12 +13,21 @@
  * profile of its own and a conformance report is read along those.
  *
  * THE ASSIGNMENT RULE. A tag names a function the scenario EXERCISES -- one it
- * drives, or one its verdict reads -- not one it only passes through on the
- * way. TC_K_29 needs a running transaction and says in its own comment that it
- * is "not about the transaction", so it is `smart-charging` alone; TC_K_60
- * scopes its profile to that transaction's id, so it is both. A tag is
- * declared on the spec (or the `.feature`), never derived from its file, its
- * template id, its group, its OCA case prefix or its protocol.
+ * drives, one it has established against the CSMS as its precondition, or one
+ * its verdict reads -- not one that is incidental to it. TC_003 checks that
+ * every Authorize is answered, which is a transport obligation rather than an
+ * idToken decision, so it is `transaction` and not `authorization`. TC_K_29 is
+ * about the station's profiles, but its `EnergyTransferStarted` precondition
+ * has the CSMS accept a transaction first -- a CSMS that refuses one leaves
+ * the case unestablished -- so it is `transaction` as well as `smart-charging`.
+ *
+ * That makes `transaction` what #34 asked it to be: every scenario that NEEDS
+ * a transaction, the set to run when a driver's transaction records are
+ * suspect. `tests/scenario-tags.ts` holds that direction against what the
+ * specs declare and read.
+ *
+ * A tag is declared on the spec (or the `.feature`), never derived from its
+ * file, its template id, its group, its OCA case prefix or its protocol.
  *
  * Extending the vocabulary is adding a member here, a row to README.md's tag
  * table, and at least one scenario that carries it:

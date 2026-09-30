@@ -191,18 +191,24 @@ Every scenario declares its executable OCPP protocol. `ocpp-tck run` selects the
 
 ### Scenario tags
 
-Tags name the function a scenario exercises — one it drives or one its
-verdict reads — not one it only passes through: TC_K_29 needs a running
-transaction and is `smart-charging` alone, TC_K_60 scopes its profile to that
-transaction and is both. The names follow OCPP 2.0.1's functional blocks,
-with TriggerMessage kept apart as OCPP 1.6's Remote Trigger profile.
+Tags name the function a scenario exercises — one it drives, one it has
+established against the CSMS as its precondition, or one its verdict reads —
+not one that is incidental to it: TC_003 checks that every Authorize is
+answered, a transport obligation, so it is `transaction` and not
+`authorization`. The names follow OCPP 2.0.1's functional blocks, with
+TriggerMessage kept apart as OCPP 1.6's Remote Trigger profile.
+
+`--tag transaction` is every scenario that **needs** a transaction — the set to
+run when a driver's transaction records are suspect. That includes a scenario
+whose precondition has the CSMS accept one before the case starts: TC_K_29 is
+about charging profiles and is `transaction` as well.
 
 | Tag | Covers |
 |---|---|
 | `provisioning` | booting, resetting and configuring the station |
 | `authorization` | the CSMS's decision about an idToken, and the authorization cache |
 | `local-auth-list` | the station's local authorization list |
-| `transaction` | a charging transaction's start, stop, refusal or absence |
+| `transaction` | a charging transaction the scenario starts, stops, refuses, reads back or presupposes |
 | `remote-control` | RemoteStart/StopTransaction, UnlockConnector |
 | `remote-trigger` | TriggerMessage |
 | `availability` | operative state and status of a connector, an EVSE or the station |
