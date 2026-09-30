@@ -101,6 +101,7 @@ import {
   type Frame,
 } from "../ocpp";
 import type { ScenarioSpec } from "../spec-types";
+import { GHERKIN_201_PILOT } from "../gherkin/compiler-201";
 import { assertStateEstablished } from "../states-201";
 import { sleep } from "../util";
 
@@ -1695,6 +1696,8 @@ const TC_B_21: ScenarioSpec = {
     assertAllAnswered(rec, frames, "TransactionEvent");
   },
 };
+/** Kept temporarily as the parity reference for its Gherkin pilot. */
+export const TC_B_21_REFERENCE = TC_B_21;
 
 const TC_B_22: ScenarioSpec = {
   templateId: "cert201-tcb22-reset-rejected",
@@ -5466,7 +5469,7 @@ export const CORE_201_SPECS: ScenarioSpec<any>[] = [
   TC_B_06,
   TC_B_09,
   TC_B_20,
-  TC_B_21,
+  GHERKIN_201_PILOT.spec,
   TC_B_22,
   TC_B_42,
   TC_B_44,

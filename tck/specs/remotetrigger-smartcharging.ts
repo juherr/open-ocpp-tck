@@ -30,6 +30,7 @@ import { findAllCalls, findResponseFor, type Frame } from "../ocpp";
 import { warnOpFailed } from "../op-warn";
 import type { ScenarioSpec } from "../spec-types";
 import { sleep } from "../util";
+import { GHERKIN_PILOT_SPECS } from "../gherkin/compiler";
 
 /**
  * The CALLRESULT answering the received GetCompositeSchedule returns a
@@ -1064,7 +1065,7 @@ export const tc067ClearChargingProfileSpec: ScenarioSpec<void> = {
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
 export const REMOTETRIGGER_SMARTCHARGING_SPECS: ScenarioSpec<any>[] = [
   tc010RemoteStartSpec,
-  tc011RemoteStartStopSpec,
+  GHERKIN_PILOT_SPECS[2]!,
   tc012RemoteStopSpec,
   tc026RemoteStartRejectedSpec,
   tc028RemoteStopRejectedSpec,

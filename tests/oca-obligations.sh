@@ -2,7 +2,8 @@
 # Every OCA obligation has a check, and every answered-check has an obligation.
 #
 # PROPERTY: `tck/specs/OCA-OBLIGATIONS.txt` and the assertions actually written
-# in `tck/specs/*.ts` describe the same set. An obligation the reference states
+# in the scenario sources or compiled Gherkin inventory describe the same set.
+# An obligation the reference states
 # and no scenario checks is a coverage hole; a check with no obligation behind
 # it is an assertion nobody can trace to the document it claims to implement.
 #
@@ -95,8 +96,11 @@ awk '$3 == "assertAllAnswered" { print $1 "\t" $2 }' \
 # Written: every assertAllAnswered in the inventory, under the SPEC it sits in.
 awk '
   /^  SPEC / { spec = $2; next }
-  /assertAllAnswered\(/ {
-    if (match($0, /"[A-Za-z]+"/)) {
+  /assertAllAnswered\(/ || /ASSERT \{"kind":"answered"/ {
+    if (match($0, /"action":"[A-Za-z]+"/)) {
+      action = substr($0, RSTART + 10, RLENGTH - 11)
+      print spec "\t" action
+    } else if (match($0, /"[A-Za-z]+"/)) {
       action = substr($0, RSTART + 1, RLENGTH - 2)
       print spec "\t" action
     }
@@ -136,12 +140,19 @@ while read -r spec action by; do
   [ -n "${spec:-}" ] || continue
   if [ "$by" = "inline" ]; then
     needle="\"$action\""
+  elif [ "$by" = "assertResponseStatus" ]; then
+    needle="$by(·, ·, \"$action\"|\"kind\":\"response\",\"action\":\"$action\"|\"kind\":\"operation-result\",\"action\":\"$action\""
+  elif [ "$by" = "assertIdTagInfoStatus" ]; then
+    needle="$by(·, ·, \"$action\"|\"kind\":\"id-tag-status\",\"action\":\"$action\""
   else
     needle="$by(·, ·, \"$action\""
   fi
   awk -v spec="$spec" -v needle="$needle" '
     /^  SPEC / { inspec = ($2 == spec); next }
-    inspec && index($0, needle) { found = 1 }
+    inspec {
+      count = split(needle, alternatives, "|")
+      for (i = 1; i <= count; i++) if (index($0, alternatives[i])) found = 1
+    }
     END { exit(found ? 0 : 1) }
   ' "$inventory" && continue
   status=1

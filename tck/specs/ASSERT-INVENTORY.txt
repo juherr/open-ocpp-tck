@@ -437,14 +437,6 @@ FILE core-201.ts
     assertResponseStatus(·, ·, "Reset", "Accepted", "Reset accepted", {direction:"received"})
     assertResponseStatus(·, ·, "BootNotification", "Accepted", "the cold boot is accepted, so the next boot is the reset's", {direction:"sent",occurrence:0})
     assertAllAnswered(·, ·, "BootNotification", ·, {minimum:2})
-  SPEC cert201-tcb21-reset-scheduled connector=1 bootWaitSecs=4 holdSecs=12 ocppVersion="OCPP-2.0.1" runsSimTemplate=false states=[{state:"EnergyTransferStarted",connectorId:1,idToken:"CE712001"}]
-    assertStateEstablished(·, ·, "EnergyTransferStarted", "a transaction was running when the reset was asked for")
-    assertReceived(·, ·, "Reset", "Reset.req received")
-    assertCallPayload(·, ·, "received", "Reset", {type:"OnIdle"}, "Reset.req asks for type=OnIdle")
-    IF
-      assertResponseStatus(·, ·, "Reset", "Scheduled", "Reset scheduled until the transaction ends", {direction:"received"})
-      ·.skip("Reset scheduled until the transaction ends", ·)
-    assertAllAnswered(·, ·, "TransactionEvent")
   SPEC cert201-tcb22-reset-rejected connector=1 bootWaitSecs=4 holdSecs=10 ocppVersion="OCPP-2.0.1" runsSimTemplate=false
     assertReceived(·, ·, "Reset", "Reset.req received")
     assertCallPayload(·, ·, "received", "Reset", {type:"Immediate",evseId:9}, "Reset.req names the EVSE it was asked to name")
@@ -727,36 +719,6 @@ FILE core.ts
         ·.pass(·)
         RETURN
     ·.fail(·, ·)
-  SPEC cert16-tc001-cold-boot connector=1 bootWaitSecs=4 holdSecs=20
-    assertSent(·, ·, "BootNotification", "BootNotification.req sent")
-    assertResponseStatus(·, ·, "BootNotification", "Accepted", "BootNotification accepted", {direction:"sent"})
-    assertAllAnswered(·, ·, "StatusNotification")
-    assertAllAnswered(·, ·, "Heartbeat")
-    AND
-      AND
-        AND
-          AND
-    IF
-      ·.pass("StatusNotification(Available) sent for connector 1")
-      ·.fail("StatusNotification(Available) sent for connector 1", "no Sent StatusNotification frame with connectorId=1, status=Available")
-    assertLineMatches(·, ·, /"event":"scenario_completed"/, "scenario ran to completion")
-    assertNoLineMatches(·, ·, /blocked by the boot gate/, "no messages were dropped by the boot gate")
-  SPEC cert16-tc003-charging-plugin-first connector=1 bootWaitSecs=4 holdSecs=45
-    assertLineOrder(·, ·, /Sent: \[2,.*"StatusNotification".*"status":"Preparing"/, /Sent: \[2,.*"StartTransaction"/, "Preparing precedes StartTransaction")
-    assertLineMatches(·, ·, /Sent: \[2,.*"StartTransaction".*"idTag":"CERT003"/, "StartTransaction sent with idTag CERT003")
-    assertIdTagInfoStatus(·, ·, "StartTransaction", "Accepted", "StartTransaction accepted by the CSMS")
-    assertSent(·, ·, "MeterValues", "MeterValues sent while charging")
-    assertLineOrder(·, ·, /Sent: \[2,.*"MeterValues"/, /Sent: \[2,.*"StopTransaction"/, "MeterValues precede StopTransaction")
-    assertSent(·, ·, "StopTransaction", "StopTransaction sent")
-    assertLineMatches(·, ·, /Sent: \[2,.*"StatusNotification".*"status":"Available"/, "final StatusNotification(Available) sent")
-    assertAllAnswered(·, ·, "Authorize")
-    assertAllAnswered(·, ·, "StatusNotification")
-    IF
-      ·.fail(·, "no transaction found")
-      RETURN
-    ·.pass(·)
-    assertEq(·, ·, "CERT003", "DB: id_tag is CERT003")
-    assertNonEmpty(·, ·, "DB: transaction is closed (stop_timestamp set)")
   SPEC cert16-tc004-charging-id-first connector=1 bootWaitSecs=4 holdSecs=40
     assertLineMatches(·, ·, /Sent: \[2,.*"StartTransaction".*"idTag":"CERT004"/, "StartTransaction sent with idTag CERT004")
     assertIdTagInfoStatus(·, ·, "StartTransaction", "Accepted", "StartTransaction accepted by the CSMS")
@@ -936,18 +898,6 @@ FILE remotetrigger-smartcharging.ts
       ·.fail(·, "no transaction found")
       RETURN
     assertEq(·, ·, "CERT-TAG-1", ·)
-  SPEC cert16-tc011-remote-start-stop connector=1 bootWaitSecs=4 holdSecs=20
-    assertResponseStatus(·, ·, "RemoteStartTransaction", "Accepted", "RemoteStartTransaction accepted")
-    assertLineMatches(·, ·, /Sent: \[2,.*"StartTransaction".*"idTag":"CERT-TAG-2"/, "StartTransaction sent with CSMS-supplied idTag")
-    assertResponseStatus(·, ·, "RemoteStopTransaction", "Accepted", "RemoteStopTransaction accepted")
-    assertLineMatches(·, ·, /Sent: \[2,.*"StopTransaction".*"reason":"Remote"/, "StopTransaction sent with reason Remote")
-    assertAllAnswered(·, ·, "StatusNotification")
-    assertAllAnswered(·, ·, "StartTransaction")
-    assertAllAnswered(·, ·, "Authorize")
-    IF
-      ·.fail("DB: transaction is closed (stop_timestamp set)", "no transaction found")
-      RETURN
-    assertNonEmpty(·, ·, "DB: transaction is closed (stop_timestamp set)")
   SPEC cert16-tc012-remote-stop connector=1 bootWaitSecs=4 holdSecs=18
     assertLineMatches(·, ·, /Sent: \[2,.*"StartTransaction".*"idTag":"CERT012"/, "StartTransaction sent with idTag CERT012 (self-driven, not remote-started)")
     assertResponseStatus(·, ·, "RemoteStopTransaction", "Accepted", "RemoteStopTransaction accepted")
@@ -1025,3 +975,40 @@ FILE remotetrigger-smartcharging.ts
     assertResponseStatus(·, ·, "SetChargingProfile", "Accepted", "SetChargingProfile accepted")
     assertResponseStatus(·, ·, "ClearChargingProfile", "Accepted", "ClearChargingProfile accepted")
     assertLineMatches(·, ·, /Cleared.*profile/, "CP logged clearing the stored profile")
+
+FILE GHERKIN-COMPILED
+  SPEC cert16-tc001-cold-boot connector=1 bootWaitSecs=4 holdSecs=20 ocppVersion="OCPP-1.6J" runsSimTemplate=true
+    ASSERT {"kind":"sent","action":"BootNotification","description":"BootNotification.req sent"}
+    ASSERT {"kind":"response","action":"BootNotification","status":"Accepted","description":"BootNotification accepted","direction":"sent"}
+    ASSERT {"kind":"answered","action":"StatusNotification"}
+    ASSERT {"kind":"answered","action":"Heartbeat"}
+    ASSERT {"kind":"status-payload","status":"Available","description":"StatusNotification(Available) sent for connector 1"}
+    ASSERT {"kind":"boot-completed"}
+    ASSERT {"kind":"boot-gate-clear"}
+  SPEC cert16-tc003-charging-plugin-first connector=1 bootWaitSecs=4 holdSecs=45 ocppVersion="OCPP-1.6J" runsSimTemplate=true
+    ASSERT {"kind":"line-order","before":"/Sent: \\[2,.*\"StatusNotification\".*\"status\":\"Preparing\"/","after":"/Sent: \\[2,.*\"StartTransaction\"/","description":"Preparing precedes StartTransaction"}
+    ASSERT {"kind":"line","pattern":"/Sent: \\[2,.*\"StartTransaction\".*\"idTag\":\"CERT003\"/","description":"StartTransaction sent with idTag CERT003"}
+    ASSERT {"kind":"id-tag-status","action":"StartTransaction","status":"Accepted","description":"StartTransaction accepted by the CSMS"}
+    ASSERT {"kind":"sent","action":"MeterValues","description":"MeterValues sent while charging"}
+    ASSERT {"kind":"line-order","before":"/Sent: \\[2,.*\"MeterValues\"/","after":"/Sent: \\[2,.*\"StopTransaction\"/","description":"MeterValues precede StopTransaction"}
+    ASSERT {"kind":"sent","action":"StopTransaction","description":"StopTransaction sent"}
+    ASSERT {"kind":"line","pattern":"/Sent: \\[2,.*\"StatusNotification\".*\"status\":\"Available\"/","description":"final StatusNotification(Available) sent"}
+    ASSERT {"kind":"answered","action":"Authorize"}
+    ASSERT {"kind":"answered","action":"StatusNotification"}
+    ASSERT {"kind":"transaction-id-tag","idTag":"CERT003"}
+    ASSERT {"kind":"transaction-closed"}
+  SPEC cert16-tc011-remote-start-stop connector=1 bootWaitSecs=4 holdSecs=20 ocppVersion="OCPP-1.6J" runsSimTemplate=true
+    ASSERT {"kind":"operation-result","action":"RemoteStartTransaction","status":"Accepted","description":"RemoteStartTransaction accepted"}
+    ASSERT {"kind":"line","pattern":"/Sent: \\[2,.*\"StartTransaction\".*\"idTag\":\"CERT-TAG-2\"/","description":"StartTransaction sent with CSMS-supplied idTag"}
+    ASSERT {"kind":"operation-result","action":"RemoteStopTransaction","status":"Accepted","description":"RemoteStopTransaction accepted"}
+    ASSERT {"kind":"line","pattern":"/Sent: \\[2,.*\"StopTransaction\".*\"reason\":\"Remote\"/","description":"StopTransaction sent with reason Remote"}
+    ASSERT {"kind":"answered","action":"StatusNotification"}
+    ASSERT {"kind":"answered","action":"StartTransaction"}
+    ASSERT {"kind":"answered","action":"Authorize"}
+    ASSERT {"kind":"transaction-closed"}
+  SPEC cert201-tcb21-reset-scheduled connector=1 bootWaitSecs=4 holdSecs=12 ocppVersion="OCPP-2.0.1" runsSimTemplate=false states=[{"state":"EnergyTransferStarted","connectorId":1,"idToken":"CE712001"}]
+    ASSERT {"kind":"state","state":"EnergyTransferStarted","description":"a transaction was running when the reset was asked for"}
+    ASSERT {"kind":"received","action":"Reset","description":"Reset.req received"}
+    ASSERT {"kind":"payload","action":"Reset","expected":{"type":"OnIdle"},"description":"Reset.req asks for type=OnIdle"}
+    ASSERT {"kind":"conditional-response","state":"EnergyTransferStarted","action":"Reset","status":"Scheduled","description":"Reset scheduled until the transaction ends","skipReason":"scenario does not exercise this: the station was idle, so this case's distinguishing outcome was never reachable"}
+    ASSERT {"kind":"answered","action":"TransactionEvent"}

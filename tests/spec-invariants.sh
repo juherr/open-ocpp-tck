@@ -49,6 +49,12 @@ for artifact in ASSERT-INVENTORY.txt DRIVE-TRACE.txt; do
   fi
 done
 
+# The pilot features compile into the live registry. The assertion extractor
+# renders their canonical instruction plans directly, while the drive
+# extractor executes that live registry; parity tests compare both against
+# retained TypeScript references.
+bun tests/gherkin-pilots.ts
+
 if ! command -v docker >/dev/null 2>&1 || ! docker info >/dev/null 2>&1; then
   echo "FAIL: docker is required (the extractors run in $bun_image)." >&2
   exit 1
