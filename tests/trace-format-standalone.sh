@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
-# trace-format/ must not depend on anything in this repository.
+# packages/trace-format/ must not depend on anything in this repository.
 #
-# THE PROPERTY: every import and re-export specifier under trace-format/ is
+# THE PROPERTY: every import and re-export specifier under packages/trace-format/ is
 # either relative-and-inward or a Node built-in (`node:x`). Inward is about
 # where the specifier RESOLVES, not how it is spelled: `./x` and `./sub/x`
 # qualify, `../x` and `./../x` do not. A specifier that climbs out ties the
@@ -19,6 +19,11 @@
 # The direction of the mistake is the natural one -- everything a contributor
 # needs is one directory up, and the editor will autocomplete it. A convention
 # loses that argument; a red build wins it.
+#
+# SINCE THE LIBRARY MOVED UNDER packages/, the sibling is the newer temptation:
+# `../csms-driver/x` climbs out of this package exactly as `../../tck/x` does,
+# and reads far more innocently because both live under packages/. Neighbours
+# in a monorepo are not the same package, and this one is leaving.
 #
 # `export ... from` counts, and so does `import(...)`. Neither is pedantry:
 # index.ts is nothing but re-exports, and a re-export reaches outside the
@@ -41,7 +46,7 @@ set -uo pipefail
 
 cd "$(dirname "$0")/.." || exit 1
 
-subtree="trace-format"
+subtree="packages/trace-format"
 
 if [ ! -d "$subtree" ]; then
   printf 'FAIL: %s/ does not exist -- this guard has nothing to protect.\n' \
@@ -95,14 +100,14 @@ if [ -n "$offenders" ]; then
   printf '%s\n' "$offenders" | sed 's/^/  /' >&2
   cat >&2 <<'MSG'
 
-trace-format/ is destined for the open-ocpp-trace organisation, and it can go
+packages/trace-format/ is destined for the open-ocpp-trace organisation, and it can go
 there only while it depends on nothing here. A specifier that climbs out of
 the directory ties the library to this repository; a bare specifier adds a
 runtime dependency to every consumer of it, browser ones included.
 
-Either move what is needed INTO trace-format/ -- if it is really about the
+Either move what is needed INTO packages/trace-format/ -- if it is really about the
 format -- or leave it out of the library and do the work in tck/, which is
-where this suite's own policy belongs. See trace-format/README.md.
+where this suite's own policy belongs. See packages/trace-format/README.md.
 MSG
   exit 1
 fi

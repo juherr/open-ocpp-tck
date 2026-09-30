@@ -1,5 +1,5 @@
 /**
- * trace-conformance.ts -- does `trace-format/` actually implement the format?
+ * trace-conformance.ts -- does `packages/trace-format/` actually implement the format?
  *
  * The comparison half of `tools/trace-conformance.sh`, which does the network.
  * Split that way because the clone is the part that needs pinning and the
@@ -34,12 +34,12 @@ import { basename, join } from "node:path";
 
 import { parseLog, type Frame } from "../tck/ocpp";
 import { readTrace } from "../tck/trace";
-import { readTraceText } from "../trace-format";
+import { readTraceText } from "../packages/trace-format";
 import {
   checkFixtures,
   formatDiagnostics,
   formatResults,
-} from "../trace-format/conformance";
+} from "../packages/trace-format/conformance";
 
 let failures = 0;
 const fail = (what: string, detail: string): void => {
@@ -54,7 +54,7 @@ const fail = (what: string, detail: string): void => {
 /**
  * The fixture corpus, checked by the LIBRARY's own runner.
  *
- * Nothing is re-implemented here: `trace-format/conformance.ts` is what is
+ * Nothing is re-implemented here: `packages/trace-format/conformance.ts` is what is
  * meant to replace `conformance/validate.mjs` upstream, so running anything
  * else from this script would test a third implementation and prove nothing
  * about the one that would ship.

@@ -21,7 +21,7 @@
  * own response.
  */
 
-import { correlate, type Correlatable } from "../trace-format/correlate";
+import { correlate, type Correlatable } from "../packages/trace-format/correlate";
 
 export type Direction = "sent" | "received";
 
@@ -202,7 +202,7 @@ export function findAllCalls(
  * be received, and vice versa) -- never by adjacency in the log.
  *
  * THIS IS THE open-ocpp-trace CORRELATION RULE, and it is not implemented
- * here. `trace-format/correlate.ts` owns it -- three clauses whose failure
+ * here. `packages/trace-format/correlate.ts` owns it -- three clauses whose failure
  * modes are argued in that file's header -- and this function does the two
  * things that ARE local: spell a `Frame` in the format's vocabulary, and turn
  * the whole-trace pairing into the per-call question every assertion asks.

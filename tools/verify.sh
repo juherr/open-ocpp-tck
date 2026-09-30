@@ -86,7 +86,7 @@ run "the readiness gate waits on one thing only" bun tests/csms-readiness-gate.t
 # printable from a shell -- nor is a resolution from an environment that is not
 # this process's.
 run "the simulator argv says what the run was asked to do" bun tests/sim-docker-argv.ts
-# Before trace-frames: trace-format/ reads the FORMAT and tck/trace.ts is this
+# Before trace-frames: packages/trace-format/ reads the FORMAT and tck/trace.ts is this
 # suite's policy over what it found, so a failure here explains a failure
 # there. In-process for the same reason as the four above -- it is a table of
 # records handed to a function.
@@ -156,7 +156,7 @@ run "a red row is red whatever its namespace" bash tests/summary-red-rows.sh
 # The other reader of that table, and the one that mines the archived corpus:
 # an isolated-retry cell has to land in the statistic it stands for.
 run "the flake record reads every retry cell the runner writes" bash tests/flake-report-retry.sh
-# The boundary that makes trace-format/ extractable at all: one import of
+# The boundary that makes packages/trace-format/ extractable at all: one import of
 # ../tck/ turns a library destined for another repository back into an
 # internal module, and every other check here stays green.
 run "the trace reader depends on nothing here" bash tests/trace-format-standalone.sh

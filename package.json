@@ -31,7 +31,7 @@
     "bin/",
     "tck/",
     "features/",
-    "trace-format/",
+    "packages/trace-format/",
     "drivers/steve/",
     "drivers/citrineos/",
     "packages/csms-driver/",
@@ -100,12 +100,12 @@
       "default": "./tck/sim.ts"
     },
     "./trace-format": {
-      "types": "./types/trace-format/index.d.ts",
-      "default": "./trace-format/index.ts"
+      "types": "./types/packages/trace-format/index.d.ts",
+      "default": "./packages/trace-format/index.ts"
     },
     "./trace-format/conformance": {
-      "types": "./types/trace-format/conformance.d.ts",
-      "default": "./trace-format/conformance.ts"
+      "types": "./types/packages/trace-format/conformance.d.ts",
+      "default": "./packages/trace-format/conformance.ts"
     },
     "./runner": {
       "types": "./types/tck/main.d.ts",

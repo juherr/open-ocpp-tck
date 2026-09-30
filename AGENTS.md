@@ -389,7 +389,7 @@ where the format's correlation rule stops agreeing with a reader that forgot
 its last clause, and where every trace with unique ids agrees with both.
 
 That last guard has a limit worth stating, because it is the kind that gets
-assumed away: it cannot tell you `trace-format/validate.ts` still matches the
+assumed away: it cannot tell you `packages/trace-format/validate.ts` still matches the
 schema it transcribes. The schema is not vendored here — `VENDOR.md` is
 single-upstream by construction — so only `tools/trace-conformance.sh` can say
 that, and it needs the network. Run it after changing `validate.ts` or
@@ -465,14 +465,16 @@ its header is now a false claim about what the build checks.
   declaration build includes the module. A standalone consumer example also
   exercises the package export without constructing a scenario.
   (`tests/csms-driver-boundary.sh`, `examples/csms-driver-smoke.ts`)
-- **`trace-format/` depends on nothing in this repository.** Every import and
+- **`packages/trace-format/` depends on nothing in this repository.** Every import and
   re-export specifier under it is relative-and-inward or a `node:` built-in: a
   specifier that climbs out ties a library destined for the
-  `open-ocpp-trace` organisation back to this repository, and a bare one gives
-  it a runtime dependency, in a package that has none. Both compile, typecheck
+  `open-ocpp-trace` organisation back to this repository -- `../csms-driver/x`
+  as much as `../../tck/x`, the sibling being the likelier slip now that both
+  sit under `packages/` -- and a bare one gives it a runtime dependency, in a
+  package that has none. Both compile, typecheck
   and pass every other guard here, and nobody finds out until the day the
   directory is supposed to move. The split it protects is the one worth
-  remembering: `trace-format/` reads the FORMAT, `tck/trace.ts` is this
+  remembering: `packages/trace-format/` reads the FORMAT, `tck/trace.ts` is this
   suite's policy over what it found — which of the library's facts are worth
   refusing a run over, and how a record becomes one of `ocpp.ts`'s frames.
   (`tests/trace-format-standalone.sh`)

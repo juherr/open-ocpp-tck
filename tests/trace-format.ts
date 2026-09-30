@@ -1,5 +1,5 @@
 /**
- * tests/trace-format.ts -- guard over trace-format/, the open-ocpp-trace
+ * tests/trace-format.ts -- guard over packages/trace-format/, the open-ocpp-trace
  * reader.
  *
  * PROPERTY, in six parts.
@@ -59,7 +59,7 @@ import {
   type Diagnostic,
   type DiagnosticCode,
   type TraceRecord,
-} from "../trace-format";
+} from "../packages/trace-format";
 
 let failures = 0;
 const fail = (what: string, detail: string): void => {
@@ -503,6 +503,6 @@ if (failures > 0) {
 }
 
 process.stdout.write(
-  `trace-format/: ${offSchema.length} schema refusals, ${fidelity.length} raw mismatches, ` +
+  `packages/trace-format/: ${offSchema.length} schema refusals, ${fidelity.length} raw mismatches, ` +
     `${silentButUnusable.length} valid-but-unusable records left silent -- OK\n`,
 );

@@ -1,12 +1,12 @@
 #!/usr/bin/env bash
-# Does trace-format/ implement the format it claims to? NETWORK REQUIRED.
+# Does packages/trace-format/ implement the format it claims to? NETWORK REQUIRED.
 #
 # Deliberately NOT part of `bun run verify` or `bun run test`: that gate stays
 # offline and deterministic. This is its network counterpart, the same split as
 # tools/vendor-diff.sh against tests/vendor-integrity.sh -- and, like that
 # pair, the offline half cannot answer this question at all.
 #
-# WHY IT CANNOT BE OFFLINE. trace-format/validate.ts is a TRANSCRIPTION of
+# WHY IT CANNOT BE OFFLINE. packages/trace-format/validate.ts is a TRANSCRIPTION of
 # `schema/trace-v1.schema.json`, hand-written so the library ships no validator
 # dependency to its consumers. A transcription can drift from its source, and
 # the source is not vendored here -- VENDOR.md is single-upstream by
@@ -16,7 +16,7 @@
 # own fixtures. `tests/trace-format.ts` guards the RULES; only this says they
 # are the right rules.
 #
-# RUN IT after changing trace-format/validate.ts or consumer-view.ts. A green
+# RUN IT after changing packages/trace-format/validate.ts or consumer-view.ts. A green
 # `bun run verify` does not cover them.
 #
 # Usage:

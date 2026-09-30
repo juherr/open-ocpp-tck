@@ -246,7 +246,7 @@ jobs:
       # inconclusive one above all -- lands in the statistic it stands for.
       - name: The flake record reads every retry cell the runner writes
         run: bash tests/flake-report-retry.sh
-      # The boundary that makes trace-format/ extractable: one import of
+      # The boundary that makes packages/trace-format/ extractable: one import of
       # ../tck/ would turn a library destined for another repository back into
       # an internal module, and nothing else here would notice.
       - name: The trace reader depends on nothing here

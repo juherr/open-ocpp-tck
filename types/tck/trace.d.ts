@@ -22,10 +22,10 @@
  *    the response's TEXT -- which is how three of this suite's member-order
  *    couplings got written (see issue #44).
  *
- * WHAT IS HERE AND WHAT IS IN `trace-format/`. Reading the FORMAT -- the
+ * WHAT IS HERE AND WHAT IS IN `packages/trace-format/`. Reading the FORMAT -- the
  * schema's members, its two conditionals, `raw` against the members beside it,
  * the normative consumer view -- is not specific to this suite and lives in
- * `trace-format/`, which is destined for the format's own organisation and
+ * `packages/trace-format/`, which is destined for the format's own organisation and
  * depends on nothing here. What is left in this file is the two things that
  * ARE specific to this suite: which of the library's facts are worth refusing
  * a run over, and how a record becomes one of `ocpp.ts`'s frames.
@@ -151,7 +151,7 @@ export declare function recordsToFrames(records: readonly unknown[]): FrameMappi
  * and fail every check in the scenario for a reason that has nothing to do
  * with the CSMS; refusing hands them the log, which is where the frames are.
  *
- * Blank lines are skipped rather than refused -- see `trace-format/jsonl.ts`:
+ * Blank lines are skipped rather than refused -- see `packages/trace-format/jsonl.ts`:
  * a trailing newline is a property of appending to a file, not a malformed
  * record.
  */

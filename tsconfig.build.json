@@ -25,6 +25,6 @@
     "emitDeclarationOnly": true,
     "outDir": "types"
   },
-  "include": ["tck/**/*.ts", "drivers/**/*.ts", "trace-format/**/*.ts", "packages/csms-driver/**/*.ts"],
+  "include": ["tck/**/*.ts", "drivers/**/*.ts", "packages/trace-format/**/*.ts", "packages/csms-driver/**/*.ts"],
   "exclude": ["types"]
 }

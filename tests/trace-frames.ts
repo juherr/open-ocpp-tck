@@ -4,7 +4,7 @@
  *
  * WHAT THIS GUARDS SINCE THE FORMAT READER MOVED OUT. Reading the format --
  * the schema, `raw` against the members beside it, the consumer view -- is
- * `trace-format/`'s, and `tests/trace-format.ts` guards it. What is left here
+ * `packages/trace-format/`'s, and `tests/trace-format.ts` guards it. What is left here
  * is this suite's POLICY over what that reader found, and the mapping onto
  * ocpp.ts's frames. So these rows are not "the library detects X"; they are
  * "this runner refuses over X, and names the refusal correctly".
@@ -91,7 +91,7 @@ import {
   consumerView,
   validateRecords,
   type TraceRecord,
-} from "../trace-format";
+} from "../packages/trace-format";
 import {
   readTrace,
   recordsToFrames,
@@ -261,7 +261,7 @@ if (!frames) {
 
     // And the same pairing the library derives, which is the agreement that
     // makes tools/trace-conformance.sh a statement about this suite and not
-    // just about trace-format/.
+    // just about packages/trace-format/.
     const { records } = validateRecords(reused);
     const view = consumerView(records.filter((r): r is TraceRecord => r !== undefined));
     const fromView = view.records.flatMap((entry, response) =>
