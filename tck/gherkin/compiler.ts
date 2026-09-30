@@ -20,6 +20,7 @@ import {
   assertLineOrder,
   assertNoLineMatches,
   assertNonEmpty,
+  assertNotSent,
   assertResponseStatus,
   assertSent,
 } from "../assert";
@@ -33,6 +34,11 @@ const PILOT_URIS = [
   "../../features/ocpp16/csms/tc003-charging-plugin-first.feature",
   "../../features/ocpp16/csms/tc011-remote-start-stop.feature",
 ] as const;
+const AUTHORIZE_URIS = [
+  "../../features/ocpp16/csms/authorize/tc023-1-invalid.feature",
+  "../../features/ocpp16/csms/authorize/tc023-2-expired.feature",
+  "../../features/ocpp16/csms/authorize/tc023-3-blocked.feature",
+] as const;
 
 type AssertionInstruction =
   | { kind: "sent"; action: string; description: string }
@@ -42,7 +48,10 @@ type AssertionInstruction =
   | { kind: "line"; pattern: RegExp; description: string }
   | { kind: "no-line"; pattern: RegExp; description: string }
   | { kind: "line-order"; before: RegExp; after: RegExp; description: string }
+  | { kind: "request-id-tag"; action: "Authorize"; idTag: string; description: string }
   | { kind: "id-tag-status"; action: string; status: string; description: string }
+  | { kind: "not-sent"; action: string; description: string }
+  | { kind: "transaction-count-id-tag"; idTag: string; expected: number; description: string }
   | { kind: "transaction-id-tag"; idTag: string }
   | { kind: "transaction-closed" }
   | { kind: "operation-result"; action: "RemoteStartTransaction" | "RemoteStopTransaction"; status: string; description: string }
@@ -160,6 +169,8 @@ function compileSteps(steps: readonly GherkinStep[], uri: string): CompiledSteps
   for (const step of steps) {
     const text = step.text;
     const values = table(step, uri);
+    let match: RegExpExecArray | null;
+    if (step.keywordType === "Outcome") assertionPhase = true;
     const unsupported = (): never => {
       throw new Error(`${uri}:${step.location.line}: unsupported step: ${text}`);
     };
@@ -171,6 +182,45 @@ function compileSteps(steps: readonly GherkinStep[], uri: string): CompiledSteps
     if (text === "the simulator scenario completes") {
       if (!assertionPhase || values.size) unsupported();
       result.assertions.push({ kind: "boot-completed" });
+      continue;
+    }
+    if ((match = /^an? "Authorize" request is sent with idTag "([A-Z0-9-]+)"$/.exec(text))) {
+      if (!assertionPhase || values.size) unsupported();
+      result.assertions.push({
+        kind: "request-id-tag",
+        action: "Authorize",
+        idTag: match[1]!,
+        description: `Authorize.req sent with idTag ${match[1]}`,
+      });
+      continue;
+    }
+    if ((match = /^the "Authorize" response idTagInfo status is "(Invalid|Expired|Blocked)"$/.exec(text))) {
+      if (!assertionPhase || values.size) unsupported();
+      result.assertions.push({
+        kind: "id-tag-status",
+        action: "Authorize",
+        status: match[1]!,
+        description: `Authorize.conf idTagInfo.status is ${match[1]}`,
+      });
+      continue;
+    }
+    if (text === 'no "StartTransaction" request is sent') {
+      if (!assertionPhase || values.size) unsupported();
+      result.assertions.push({
+        kind: "not-sent",
+        action: "StartTransaction",
+        description: "no StartTransaction sent (Authorize denied)",
+      });
+      continue;
+    }
+    if ((match = /^no transaction exists for idTag "([A-Z0-9-]+)"$/.exec(text))) {
+      if (!assertionPhase || values.size) unsupported();
+      result.assertions.push({
+        kind: "transaction-count-id-tag",
+        idTag: match[1]!,
+        expected: 0,
+        description: `DB: no transaction row created for ${match[1]} (Authorize denied)`,
+      });
       continue;
     }
     if (text === "no message is blocked by the boot gate") {
@@ -202,7 +252,6 @@ function compileSteps(steps: readonly GherkinStep[], uri: string): CompiledSteps
 
     assertionPhase = true;
     if (values.size) unsupported();
-    let match: RegExpExecArray | null;
     if ((match = /^a "([A-Za-z]+)" request is sent$/.exec(text))) {
       const description = match[1] === "MeterValues"
         ? "MeterValues sent while charging"
@@ -333,7 +382,18 @@ async function runAssertion(
     case "line": assertLineMatches(rec, lines, instruction.pattern, instruction.description); return true;
     case "no-line": assertNoLineMatches(rec, lines, instruction.pattern, instruction.description); return true;
     case "line-order": assertLineOrder(rec, lines, instruction.before, instruction.after, instruction.description); return true;
+    case "request-id-tag": {
+      const escapedIdTag = instruction.idTag.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+      assertLineMatches(
+        rec,
+        lines,
+        new RegExp(`Sent: \\[2,.*"Authorize".*"idTag":"${escapedIdTag}"`),
+        instruction.description,
+      );
+      return true;
+    }
     case "id-tag-status": assertIdTagInfoStatus(rec, frames, instruction.action, instruction.status, instruction.description); return true;
+    case "not-sent": assertNotSent(rec, frames, instruction.action, "sent", instruction.description); return true;
     case "status-payload": {
       const found = frames.some((frame: Frame) => frame.kind === "call" && frame.direction === "sent" && frame.action === "StatusNotification" && (frame.payload as { connectorId?: number; status?: string } | null)?.connectorId === 1 && (frame.payload as { connectorId?: number; status?: string } | null)?.status === instruction.status);
       if (found) rec.pass(instruction.description);
@@ -360,6 +420,11 @@ async function runAssertion(
         return false;
       }
       assertNonEmpty(rec, await context.records.transactionStopTimestamp(txPk), "DB: transaction is closed (stop_timestamp set)");
+      return true;
+    }
+    case "transaction-count-id-tag": {
+      const count = await context.records.transactionCountForIdTag(context.cpId, instruction.idTag);
+      assertEq(rec, count, String(instruction.expected), instruction.description);
       return true;
     }
     case "operation-result": assertResponseStatus(rec, frames, instruction.action, instruction.status, instruction.description); return true;
@@ -394,6 +459,15 @@ export function loadPilotPlans(): GherkinPilotPlan[] {
     return compileFeaturePlanText(readFileSync(path, "utf8"), path);
   });
 }
+
+export function loadAuthorizePlans(): GherkinPilotPlan[] {
+  return AUTHORIZE_URIS.map((relative) => {
+    const path = fileURLToPath(new URL(relative, import.meta.url));
+    return compileFeaturePlanText(readFileSync(path, "utf8"), path);
+  });
+}
+
+export const GHERKIN_AUTHORIZE_PLANS = loadAuthorizePlans();
 
 export function loadPilotSpecs(): ScenarioSpec<void>[] {
   return loadPilotPlans().map((plan) => plan.spec);

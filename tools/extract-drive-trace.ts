@@ -75,7 +75,7 @@ import {
   type StateContext,
   type StateInvocation,
 } from "../tck/states-201";
-import { loadPilotPlans } from "../tck/gherkin/compiler";
+import { loadAuthorizePlans, loadPilotPlans } from "../tck/gherkin/compiler";
 import { GHERKIN_201_PILOT } from "../tck/gherkin/compiler-201";
 
 interface SpecLike {
@@ -434,7 +434,7 @@ out.push("# invisible here while a dropped or retargeted step is not.");
 out.push("# Gherkin plans are printed as well, so waits and declared instruction order are pinned.");
 
 const gherkinPlans = new Map(
-  [...loadPilotPlans(), GHERKIN_201_PILOT].map((plan) => [plan.templateId, plan]),
+  [...loadPilotPlans(), ...loadAuthorizePlans(), GHERKIN_201_PILOT].map((plan) => [plan.templateId, plan]),
 );
 
 for (const [groupName, groupSpecs] of discoverGroups()) {

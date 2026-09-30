@@ -30,9 +30,23 @@ type AssertionInstruction = {
     after: RegExp;
     description: string;
 } | {
+    kind: "request-id-tag";
+    action: "Authorize";
+    idTag: string;
+    description: string;
+} | {
     kind: "id-tag-status";
     action: string;
     status: string;
+    description: string;
+} | {
+    kind: "not-sent";
+    action: string;
+    description: string;
+} | {
+    kind: "transaction-count-id-tag";
+    idTag: string;
+    expected: number;
     description: string;
 } | {
     kind: "transaction-id-tag";
@@ -74,6 +88,8 @@ export interface GherkinPilotPlan {
 export declare function compileFeaturePlanText(source: string, uri?: string): GherkinPilotPlan;
 export declare function compileFeatureText(source: string, uri?: string): ScenarioSpec<void>;
 export declare function loadPilotPlans(): GherkinPilotPlan[];
+export declare function loadAuthorizePlans(): GherkinPilotPlan[];
+export declare const GHERKIN_AUTHORIZE_PLANS: GherkinPilotPlan[];
 export declare function loadPilotSpecs(): ScenarioSpec<void>[];
 export declare const GHERKIN_PILOT_SPECS: ScenarioSpec<void>[];
 export {};

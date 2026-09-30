@@ -56,7 +56,7 @@
 import * as ts from "typescript";
 import { readFileSync, readdirSync } from "node:fs";
 import { join } from "node:path";
-import { loadPilotPlans } from "../tck/gherkin/compiler";
+import { loadAuthorizePlans, loadPilotPlans } from "../tck/gherkin/compiler";
 import { GHERKIN_201_PILOT } from "../tck/gherkin/compiler-201";
 
 const SPECS_DIR = process.argv[2] ?? "runner/specs";
@@ -223,7 +223,7 @@ function literalProp(
 }
 
 const out: string[] = [];
-const gherkin16 = loadPilotPlans();
+const gherkin16 = [...loadPilotPlans(), ...loadAuthorizePlans()];
 const gherkin201 = [GHERKIN_201_PILOT];
 const gherkinIds = new Set([...gherkin16, ...gherkin201].map((plan) => plan.templateId));
 out.push("# ASSERT-INVENTORY -- what each scenario measures.");

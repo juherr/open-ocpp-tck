@@ -90,6 +90,9 @@ jobs:
       - name: Scenario protocol selection and simulator compatibility
         run: bun tests/scenario-version.ts
 
+      - name: Gherkin scenarios compile and preserve assertion behavior
+        run: bun tests/gherkin-pilots.ts
+
       # The other half of that reading, and in-process for the same reason plus
       # one of its own: what it compares a declaration against is the parts
       # `create(env)` returns, which the CLI reaches only by starting a sweep.

@@ -7,6 +7,8 @@ import { REMOTETRIGGER_SMARTCHARGING_SPECS, tc011RemoteStartStopSpec } from "../
 import { compileFeaturePlanText, compileFeatureText, GHERKIN_PILOT_SPECS, loadPilotPlans, loadPilotSpecs } from "../tck/gherkin/compiler";
 import { compile201FeatureText, GHERKIN_201_PILOT } from "../tck/gherkin/compiler-201";
 import { CORE_201_SPECS, TC_B_21_REFERENCE } from "../tck/specs/core-201";
+import { AUTHORIZE_SPECS } from "../tck/specs/authorize";
+import { GHERKIN_AUTHORIZE_PLANS } from "../tck/gherkin/compiler";
 
 const expectedIds = [
   "cert16-tc001-cold-boot",
@@ -336,5 +338,140 @@ async function driveEvents201(spec: ScenarioSpec<void>): Promise<{ waits: number
   return { waits, events };
 }
 assert.deepEqual(await driveEvents201(plan201.spec), await driveEvents201(TC_B_21_REFERENCE));
+
+const authorizePlans = GHERKIN_AUTHORIZE_PLANS;
+const authorizeSpecs = authorizePlans.map((plan) => plan.spec);
+const authorizeIds = [
+  "cert16-tc023-1-authorize-invalid",
+  "cert16-tc023-2-authorize-expired",
+  "cert16-tc023-3-authorize-blocked",
+];
+const authorizeTags = ["CERT023-INV", "CERT023-EXP", "CERT023-BLK"];
+const authorizeStatuses = ["Invalid", "Expired", "Blocked"];
+assert.deepEqual(authorizeSpecs.map((spec) => spec.templateId), authorizeIds);
+assert.deepEqual(authorizeSpecs.map((spec) => spec.description), [
+  "TC_023.1 Authorize Outcome (Invalid): unknown idTag CERT023-INV -> Authorize.conf Invalid, no StartTransaction.",
+  "TC_023.2 Authorize Outcome (Expired): idTag CERT023-EXP has expiry_date in the past -> Authorize.conf Expired, no StartTransaction.",
+  "TC_023.3 Authorize Outcome (Blocked): idTag CERT023-BLK is blocked -> Authorize.conf Blocked, no StartTransaction.",
+]);
+assert.deepEqual(authorizePlans.map((plan) => [plan.ocppVersion, plan.connector, plan.bootWaitSecs, plan.holdSecs]),
+  authorizeIds.map(() => ["OCPP-1.6J", 1, 4, 15]));
+
+const authorizeFrames = (idTag: string, status: string, startTransaction = false): Frame[] => [
+  frame("call", "sent", "authorize", "Authorize", { idTag }),
+  frame("callresult", "received", "authorize", "", { idTagInfo: { status } }),
+  ...(startTransaction ? [frame("call", "sent", "start", "StartTransaction", { idTag })] : []),
+];
+async function authorizeAssertionResults(
+  spec: ScenarioSpec<void>, index: number,
+  { idTag = authorizeTags[index]!, status = authorizeStatuses[index]!, authorizePresent = true, startTransaction = false, completed = true, transactionCount = "0" } = {},
+): Promise<string[]> {
+  const results: string[] = [];
+  const rec = {
+    pass: (description: string) => results.push(`PASS ${description}`),
+    fail: (description: string, reason: string) => results.push(`FAIL ${description} :: ${reason}`),
+    skip: (description: string, reason: string) => results.push(`SKIP ${description} :: ${reason}`),
+  };
+  await spec.assert?.({
+    cpId: "CERTCP1", connector: 1,
+    frames: authorizePresent ? authorizeFrames(idTag, status, startTransaction) : [],
+    lines: [
+      ...(authorizePresent ? [`Sent: [2,"authorize","Authorize",{"idTag":"${idTag}"}]`] : []),
+      ...(completed ? ['{"event":"scenario_completed"}'] : []),
+    ],
+    rec,
+    records: { transactionCountForIdTag: async () => transactionCount },
+    driveState: undefined, fixtures: [],
+  } as unknown as AssertContext<void>);
+  return results;
+}
+for (let index = 0; index < authorizeSpecs.length; index += 1) {
+  const parityCases = [
+    { input: {}, statuses: ["PASS", "PASS", "PASS", "PASS", "PASS"] },
+    { input: { idTag: "WRONG-TAG" }, statuses: ["FAIL", "PASS", "PASS", "PASS", "PASS"] },
+    { input: { status: "Accepted" }, statuses: ["PASS", "FAIL", "PASS", "PASS", "PASS"] },
+    { input: { startTransaction: true }, statuses: ["PASS", "PASS", "FAIL", "PASS", "PASS"] },
+    { input: { completed: false }, statuses: ["PASS", "PASS", "PASS", "FAIL", "PASS"] },
+    { input: { transactionCount: "1" }, statuses: ["PASS", "PASS", "PASS", "PASS", "FAIL"] },
+    { input: { authorizePresent: false }, statuses: ["FAIL", "FAIL", "PASS", "PASS", "PASS"] },
+  ];
+  for (const { input, statuses } of parityCases) {
+    const gherkinResult = await authorizeAssertionResults(authorizeSpecs[index]!, index, input);
+    assert.deepEqual(
+      gherkinResult.map((result) => result.slice(0, 4).trim()),
+      statuses,
+      `authorize ${authorizeIds[index]} reports the expected verdicts for ${JSON.stringify(input)}`,
+    );
+    assert.ok(gherkinResult.every((result) => /^\w+ .+/.test(result)), "authorize reports retain readable descriptions");
+  }
+}
+assert.ok(AUTHORIZE_SPECS.every((spec, index) => spec === authorizeSpecs[index]));
+assert.throws(
+  () => compileFeaturePlanText(
+    readFileSync(new URL("../features/ocpp16/csms/authorize/tc023-1-invalid.feature", import.meta.url), "utf8")
+      .replace('status is "Invalid"', 'status is "Accepted"'),
+    "unsupported-authorize-status.feature",
+  ),
+  /unsupported step/i,
+);
+assert.throws(
+  () => compileFeaturePlanText(
+    readFileSync(new URL("../features/ocpp16/csms/authorize/tc023-1-invalid.feature", import.meta.url), "utf8")
+      .replace('"Authorize" request is sent with idTag', '"MysteryAction" request is sent with idTag'),
+    "unsupported-authorize-action.feature",
+  ),
+  /unsupported step/i,
+);
+assert.throws(
+  () => compileFeaturePlanText(
+    readFileSync(new URL("../features/ocpp16/csms/authorize/tc023-1-invalid.feature", import.meta.url), "utf8")
+      .replace('idTag "CERT023-INV"', 'idTag "bad tag"'),
+    "malformed-authorize-id-tag.feature",
+  ),
+  /unsupported step|invalid idTag/i,
+);
+assert.throws(
+  () => compileFeaturePlanText(
+    readFileSync(new URL("../features/ocpp16/csms/authorize/tc023-1-invalid.feature", import.meta.url), "utf8")
+      .replace("no transaction exists for idTag", "a transaction exists for idTag"),
+    "unknown-authorize-step.feature",
+  ),
+  /unsupported step/i,
+);
+assert.throws(
+  () => compileFeaturePlanText(
+    readFileSync(new URL("../features/ocpp16/csms/authorize/tc023-1-invalid.feature", import.meta.url), "utf8")
+      .replace(
+        'Then an "Authorize" request is sent with idTag "CERT023-INV"',
+        'Then an "Authorize" request is sent with idTag "CERT023-INV"\n      | idTag | CERT023-INV | extra |',
+      ),
+    "invalid-authorize-table.feature",
+  ),
+  /expected a two-column table/i,
+);
+assert.throws(
+  () => compileFeaturePlanText(
+    readFileSync(new URL("../features/ocpp16/csms/authorize/tc023-1-invalid.feature", import.meta.url), "utf8")
+      .replace("@holdSecs:15", "@holdSecs:bad"),
+    "invalid-authorize-metadata.feature",
+  ),
+  /@holdSecs must be a positive integer/i,
+);
+const invalidAuthorizeSource = readFileSync(new URL("../features/ocpp16/csms/authorize/tc023-1-invalid.feature", import.meta.url), "utf8");
+const invalidAuthorizePlan = compileFeaturePlanText(invalidAuthorizeSource, "authorize-mutation-control.feature");
+for (const [before, after] of [
+  ['status is "Invalid"', 'status is "Expired"'],
+  ['idTag "CERT023-INV"', 'idTag "CERT023-EXP"'],
+  ['no "StartTransaction" request is sent', 'a "StartTransaction" request is sent'],
+  ['no transaction exists for idTag "CERT023-INV"', 'no transaction exists for idTag "CERT023-EXP"'],
+]) {
+  const changed = compileFeaturePlanText(invalidAuthorizeSource.replace(before, after), "authorize-mutated.feature");
+  assert.notDeepEqual(changed.assertions, invalidAuthorizePlan.assertions, `canonical assertions change for ${before}`);
+}
+assert.notDeepEqual(
+  compileFeaturePlanText(invalidAuthorizeSource.replace("@holdSecs:15", "@holdSecs:16"), "authorize-mutated-timing.feature"),
+  invalidAuthorizePlan,
+  "canonical plan changes when Gherkin timing changes",
+);
 
 console.log("gherkin-pilots: strict compilation and runtime assertion/drive parity hold");

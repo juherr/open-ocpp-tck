@@ -87,6 +87,15 @@ assert.ok(cli201Rows.every((row) => !("ocppVersion" in row)), "list-scenarios ke
 const legacyCore = await captureCli(["list-scenarios", "--group", "core", "--version", "1.6", "--json"]);
 assert.equal(legacyCore.code, 0);
 assert.ok((JSON.parse(legacyCore.output) as Array<{ templateId: string }>).every((row) => row.templateId.startsWith("cert16-")));
+const authorize16 = await captureCli(["list-scenarios", "--group", "authorize", "--version", "1.6", "--json"]);
+assert.equal(authorize16.code, 0);
+assert.deepEqual(
+  (JSON.parse(authorize16.output) as Array<{ templateId: string }>).map((row) => row.templateId),
+  ["cert16-tc023-1-authorize-invalid", "cert16-tc023-2-authorize-expired", "cert16-tc023-3-authorize-blocked"],
+);
+const authorize201 = await captureCli(["list-scenarios", "--group", "authorize", "--version", "2.0.1", "--json"]);
+assert.equal(authorize201.code, 0);
+assert.deepEqual(JSON.parse(authorize201.output), []);
 const bothCore = await captureCli(["list-scenarios", "--group", "core", "--json"]);
 assert.equal(bothCore.code, 0);
 assert.ok((JSON.parse(bothCore.output) as Array<{ templateId: string }>).some((row) => row.templateId.startsWith("cert16-")));

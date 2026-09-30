@@ -49,7 +49,7 @@ word_to_number() {
     nine) echo 9 ;; ten) echo 10 ;; eleven) echo 11 ;; twelve) echo 12 ;;
     thirteen) echo 13 ;; fourteen) echo 14 ;; fifteen) echo 15 ;;
     sixteen) echo 16 ;; seventeen) echo 17 ;; eighteen) echo 18 ;;
-    nineteen) echo 19 ;; twenty) echo 20 ;; twenty-one) echo 21 ;;
+    nineteen) echo 19 ;; twenty) echo 20 ;; twenty-one) echo 21 ;; twenty-two) echo 22 ;;
     *) echo "" ;;
   esac
 }

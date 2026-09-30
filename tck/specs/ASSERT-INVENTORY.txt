@@ -71,26 +71,6 @@ FILE authlist-reservation.ts
     assertAllAnswered(·, ·, "StatusNotification")
 
 FILE authorize.ts
-  HELPER assertNoTransactionForTag
-    assertEq(·, ·, "0", ·)
-  SPEC cert16-tc023-1-authorize-invalid connector=1 bootWaitSecs=4 holdSecs=15 ocppVersion="OCPP-1.6J"
-    assertLineMatches(·, ·, /Sent: \[2,.*"Authorize".*"idTag":"CERT023-INV"/, "Authorize.req sent with idTag CERT023-INV")
-    assertIdTagInfoStatus(·, ·, "Authorize", "Invalid", "Authorize.conf idTagInfo.status is Invalid")
-    assertNotSent(·, ·, "StartTransaction", "sent", "no StartTransaction sent (Authorize denied)")
-    assertLineMatches(·, ·, /"event":"scenario_completed"/, "scenario ran to completion despite the denied transaction start")
-    assertNoTransactionForTag(·, "CERT023-INV", ·, ·)
-  SPEC cert16-tc023-2-authorize-expired connector=1 bootWaitSecs=4 holdSecs=15 ocppVersion="OCPP-1.6J"
-    assertLineMatches(·, ·, /Sent: \[2,.*"Authorize".*"idTag":"CERT023-EXP"/, "Authorize.req sent with idTag CERT023-EXP")
-    assertIdTagInfoStatus(·, ·, "Authorize", "Expired", "Authorize.conf idTagInfo.status is Expired")
-    assertNotSent(·, ·, "StartTransaction", "sent", "no StartTransaction sent (Authorize denied)")
-    assertLineMatches(·, ·, /"event":"scenario_completed"/, "scenario ran to completion despite the denied transaction start")
-    assertNoTransactionForTag(·, "CERT023-EXP", ·, ·)
-  SPEC cert16-tc023-3-authorize-blocked connector=1 bootWaitSecs=4 holdSecs=15 ocppVersion="OCPP-1.6J"
-    assertLineMatches(·, ·, /Sent: \[2,.*"Authorize".*"idTag":"CERT023-BLK"/, "Authorize.req sent with idTag CERT023-BLK")
-    assertIdTagInfoStatus(·, ·, "Authorize", "Blocked", "Authorize.conf idTagInfo.status is Blocked")
-    assertNotSent(·, ·, "StartTransaction", "sent", "no StartTransaction sent (Authorize denied)")
-    assertLineMatches(·, ·, /"event":"scenario_completed"/, "scenario ran to completion despite the denied transaction start")
-    assertNoTransactionForTag(·, "CERT023-BLK", ·, ·)
 
 FILE core-201.ts
   HELPER assertResponseTimestamp
@@ -1006,6 +986,24 @@ FILE GHERKIN-COMPILED
     ASSERT {"kind":"answered","action":"StartTransaction"}
     ASSERT {"kind":"answered","action":"Authorize"}
     ASSERT {"kind":"transaction-closed"}
+  SPEC cert16-tc023-1-authorize-invalid connector=1 bootWaitSecs=4 holdSecs=15 ocppVersion="OCPP-1.6J" runsSimTemplate=true
+    ASSERT {"kind":"request-id-tag","action":"Authorize","idTag":"CERT023-INV","description":"Authorize.req sent with idTag CERT023-INV"}
+    ASSERT {"kind":"id-tag-status","action":"Authorize","status":"Invalid","description":"Authorize.conf idTagInfo.status is Invalid"}
+    ASSERT {"kind":"not-sent","action":"StartTransaction","description":"no StartTransaction sent (Authorize denied)"}
+    ASSERT {"kind":"boot-completed"}
+    ASSERT {"kind":"transaction-count-id-tag","idTag":"CERT023-INV","expected":0,"description":"DB: no transaction row created for CERT023-INV (Authorize denied)"}
+  SPEC cert16-tc023-2-authorize-expired connector=1 bootWaitSecs=4 holdSecs=15 ocppVersion="OCPP-1.6J" runsSimTemplate=true
+    ASSERT {"kind":"request-id-tag","action":"Authorize","idTag":"CERT023-EXP","description":"Authorize.req sent with idTag CERT023-EXP"}
+    ASSERT {"kind":"id-tag-status","action":"Authorize","status":"Expired","description":"Authorize.conf idTagInfo.status is Expired"}
+    ASSERT {"kind":"not-sent","action":"StartTransaction","description":"no StartTransaction sent (Authorize denied)"}
+    ASSERT {"kind":"boot-completed"}
+    ASSERT {"kind":"transaction-count-id-tag","idTag":"CERT023-EXP","expected":0,"description":"DB: no transaction row created for CERT023-EXP (Authorize denied)"}
+  SPEC cert16-tc023-3-authorize-blocked connector=1 bootWaitSecs=4 holdSecs=15 ocppVersion="OCPP-1.6J" runsSimTemplate=true
+    ASSERT {"kind":"request-id-tag","action":"Authorize","idTag":"CERT023-BLK","description":"Authorize.req sent with idTag CERT023-BLK"}
+    ASSERT {"kind":"id-tag-status","action":"Authorize","status":"Blocked","description":"Authorize.conf idTagInfo.status is Blocked"}
+    ASSERT {"kind":"not-sent","action":"StartTransaction","description":"no StartTransaction sent (Authorize denied)"}
+    ASSERT {"kind":"boot-completed"}
+    ASSERT {"kind":"transaction-count-id-tag","idTag":"CERT023-BLK","expected":0,"description":"DB: no transaction row created for CERT023-BLK (Authorize denied)"}
   SPEC cert201-tcb21-reset-scheduled connector=1 bootWaitSecs=4 holdSecs=12 ocppVersion="OCPP-2.0.1" runsSimTemplate=false states=[{"state":"EnergyTransferStarted","connectorId":1,"idToken":"CE712001"}]
     ASSERT {"kind":"state","state":"EnergyTransferStarted","description":"a transaction was running when the reset was asked for"}
     ASSERT {"kind":"received","action":"Reset","description":"Reset.req received"}
