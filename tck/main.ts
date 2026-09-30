@@ -106,12 +106,12 @@ import {
   assertNoForeignSweep,
 } from "./sim";
 import type {
-  CsmsCapabilities,
   CsmsDriverModule,
   CsmsDriverParts,
   CsmsEnv,
   CsmsOperations201,
   CsmsRecords,
+  CsmsTckCapabilities,
   SimTransportDefaults,
 } from "./driver";
 import {
@@ -2159,7 +2159,7 @@ async function checkDriver(argv: string[]): Promise<number> {
   // where it used to print one sentence.
   let module: CsmsDriverModule;
   let scope: ScopeTable | undefined;
-  let capabilities: CsmsCapabilities | undefined;
+  let capabilities: CsmsTckCapabilities | undefined;
   let expected: ExpectedFailureTable | undefined;
   try {
     module = await driverModule();

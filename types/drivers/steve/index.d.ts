@@ -48,5 +48,5 @@
  * be published to the internet at all. The day those two tickets land, that
  * constraint goes with them.
  */
-import { type CsmsDriverModule } from "../../tck/driver";
+import type { CsmsDriverModule } from "../../tck/driver";
 export declare const csmsDriver: CsmsDriverModule;

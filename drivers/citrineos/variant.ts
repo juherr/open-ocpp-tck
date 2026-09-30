@@ -51,27 +51,18 @@
  * `ocppConnectionName`, which v1.9.1 and the GA share. It takes both facts:
  * see {@link schemaOf}.
  */
-import {
-  CSMS_OPERATION_201_ACTIONS,
-  type CsmsEnv,
-  type CsmsOperation16Action,
-  type CsmsOperation201Action,
-} from "../../tck/driver";
-
-export type CitrineVariant = "v1" | "v2";
-
-/** v2 by default: it is what `drivers/citrineos/compose.yaml` pins, and the
- *  only line with a complete OCPP 1.6 surface. */
-export const DEFAULT_VARIANT: CitrineVariant = "v2";
-
-export function resolveVariant(env: CsmsEnv): CitrineVariant {
-  const raw = env.CITRINE_VARIANT;
-  if (raw === undefined || raw === "") return DEFAULT_VARIANT;
-  if (raw === "v1" || raw === "v2") return raw;
-  throw new Error(
-    `citrineos: CITRINE_VARIANT must be "v1" or "v2", got ${JSON.stringify(raw)}`,
-  );
-}
+import type { CitrineVariant } from "../../packages/csms-driver/citrineos/variant";
+export {
+  DEFAULT_VARIANT,
+  NO_LOCAL_LIST,
+  NO_OCPP_201_ON_V1,
+  NO_RESERVATIONS,
+  resolveVariant,
+  speaksOcpp201,
+  unroutedActions,
+  unroutedActions201,
+} from "../../packages/csms-driver/citrineos/variant";
+export type { CitrineVariant } from "../../packages/csms-driver/citrineos/variant";
 
 /** A Hasura `where` fragment. */
 export type Where = Record<string, unknown>;
@@ -134,7 +125,7 @@ export type CitrineSchema = CitrineVariant | "v2-prerelease";
 
 /**
  * What `Transactions.stationId` is on each line, and how `verify` names it.
- * Keyed by variant, like {@link UNROUTED}, so a third line is one row.
+ * Keyed by variant, like {@link unroutedActions}, so a third line is one row.
  */
 const STATION_ID: Readonly<
   Record<CitrineVariant, { scalar: string; description: string }>
@@ -172,148 +163,6 @@ export function schemaOf(
   return (Object.keys(STATION_ID) as CitrineVariant[]).find(
     (variant) => STATION_ID[variant].scalar === scalar,
   );
-}
-
-/**
- * Why the reservation actions are unrouted, worded ONCE.
- *
- * Both the scope table and the runtime escape have to state this, and they are
- * the two halves a reader compares: a scope row saying one thing and an
- * UnsupportedOperationError saying another is the drift this module exists to
- * prevent. Verified in the sources at v1.9.1, v2.0.0-beta1 and v2.0.0, and
- * against the running v1.9.1, v2.0.0-beta1 and v2.0.0 containers.
- */
-export const NO_RESERVATIONS =
-  "CitrineOS routes no OCPP 1.6 endpoint for ReserveNow or CancelReservation: " +
-  "the 1.6 schemas and the Reservations table exist, but no @AsMessageEndpoint " +
-  "binds either action to OCPPVersion.OCPP1_6 and no 1.6 response handler " +
-  "exists (verified at v1.9.1, v2.0.0-beta1 and v2.0.0), so the path answers 404.";
-
-/** Same, for the local auth list pair, which v1.9.1 alone lacks. */
-export const NO_LOCAL_LIST =
-  "CitrineOS v1.9.1 routes no OCPP 1.6 endpoint for SendLocalList or " +
-  "GetLocalListVersion: the evdriver 1.6 MessageApi gained both only on the v2 " +
-  "line. Measured on the running image -- it advertises 16 /ocpp/1.6/ paths " +
-  "where v2.0.0-beta1 advertises 18. Drivable with CITRINE_VARIANT=v2 against " +
-  "a v2 server.";
-
-/**
- * Operations the 1.6 message API does not route on this variant, with the
- * reason each one is unrouted.
- *
- * ReserveNow and CancelReservation are absent from both lines. The local auth
- * list pair is absent from v1 only -- and absent means the path answers 404,
- * so these must throw UnsupportedOperationError rather than be POSTed.
- *
- * Built once per variant rather than per call: `index.ts` reads it when it
- * resolves `capabilities` and `requests.ts` reads it per operation, and two
- * independent constructions of the same fact is exactly what this module is
- * for.
- */
-const UNROUTED: Readonly<
-  Record<CitrineVariant, ReadonlyMap<CsmsOperation16Action, string>>
-> = {
-  v2: new Map([
-    ["ReserveNow", NO_RESERVATIONS],
-    ["CancelReservation", NO_RESERVATIONS],
-  ]),
-  v1: new Map([
-    ["ReserveNow", NO_RESERVATIONS],
-    ["CancelReservation", NO_RESERVATIONS],
-    ["SendLocalList", NO_LOCAL_LIST],
-    ["GetLocalListVersion", NO_LOCAL_LIST],
-  ]),
-};
-
-/** The unrouted actions for a variant, mapped to why. */
-export function unroutedActions(
-  variant: CitrineVariant,
-): ReadonlyMap<CsmsOperation16Action, string> {
-  return UNROUTED[variant];
-}
-
-/**
- * Whether this driver declares an OCPP 2.0.1 surface for a line.
- *
- * ONE PLACE, TWO READERS -- the capability set and the parts `create()`
- * returns -- for the reason this module exists: a driver whose capabilities
- * claim a protocol its parts cannot drive reports the gap only once a
- * container has started, and `check-driver` cannot catch it because it never
- * calls `create()`. The scope table is the third statement of the same fact
- * and reads {@link CERT_201_SCENARIOS} instead, because what it needs is the
- * rows rather than the answer.
- *
- * v2 ONLY, and that is a statement about what has been MEASURED rather than
- * about what v1.9.1 can do. The 2.0.1 routes were read off the v2 line and the
- * handshake was observed against the pinned v2 image; nobody has pointed a
- * 2.0.1 station at v1.9.1 here. Declaring a surface on the strength of a
- * version number is exactly the "declare, then check" this module refuses.
- */
-export function speaksOcpp201(variant: CitrineVariant): boolean {
-  return variant === "v2";
-}
-
-/** Why a `cert201-` row is NOT_APPLICABLE on v1. Prose rather than a feature
- *  identifier, by tck/scope.ts's rule: nothing here is conditional on a
- *  feature, the whole protocol is undeclared for this line. */
-export const NO_OCPP_201_ON_V1 =
-  "This driver declares no OCPP 2.0.1 surface for the v1.9.1 line: the " +
-  "message-API routes and the handshake were both measured on the v2 line " +
-  "only, so `capabilities.operations201` is absent here and the runner " +
-  "substitutes a stub that throws. Drivable with CITRINE_VARIANT=v2 against a " +
-  "v2 server -- and a v1 measurement, not a version comparison, is what would " +
-  "change this row.";
-
-/**
- * The 2.0.1 counterpart of {@link UNROUTED}, and it exists for what is NOT in
- * it yet.
- *
- * Same shape as the 1.6 table on purpose, so the two cannot drift in style and
- * a reader who has understood one has understood both: declared by SUBTRACTION
- * from the contract's own list in `capabilitiesFor`, and read a second time by
- * `route201` so the declaration and the runtime refusal come from one table
- * rather than two agreeing statements.
- *
- * v2 IS EMPTY TODAY, and empty is the honest answer rather than an oversight:
- * all nine actions the contract defines were read off `@AsMessageEndpoint`
- * decorators on the v2 line, so nothing is owed a row. The union grows eleven
- * more times -- see the header above {@link CsmsOperation201} -- and each arm
- * arrives the same way: `route201`'s `assertNever` turns it into a compile
- * error, and the author then either writes a case pointing at an endpoint they
- * have read, or writes a row HERE saying they have not. Without this table the
- * second option does not exist, so the only way to make the build green is to
- * guess a module/action pair, which compiles, is declared supported, and 404s
- * at run time. That is issue #71, and it is what
- * `drivers/citrineos/index.ts:capabilitiesFor` used to do for the whole
- * constant at once.
- *
- * v1 IS TOTAL, derived rather than spelled, and it changes no declaration:
- * `capabilitiesFor` never reads this row, because the v1 line's answer is
- * ABSENT rather than empty and that is decided one level up by
- * {@link speaksOcpp201}. What it does is make `route201` refuse rather than
- * POST, for the same reason the 1.6 guard clause exists -- so that if anything
- * ever wires the 2.0.1 parts on v1, every action lands NOT APPLICABLE with a
- * measured reason instead of a 404 that reads as a capability gap in the CSMS.
- * The reason is {@link NO_OCPP_201_ON_V1}, shared with the scope rows for the
- * reason {@link NO_RESERVATIONS} is shared: a scope row and an
- * `UnsupportedOperationError` saying different things is the drift this module
- * exists to prevent.
- */
-const UNROUTED_201: Readonly<
-  Record<CitrineVariant, ReadonlyMap<CsmsOperation201Action, string>>
-> = {
-  v2: new Map(),
-  v1: new Map(
-    CSMS_OPERATION_201_ACTIONS.map((action) => [action, NO_OCPP_201_ON_V1]),
-  ),
-};
-
-/** The 2.0.1 actions this variant does not route, mapped to why. The 2.0.1
- *  half of {@link unroutedActions}. */
-export function unroutedActions201(
-  variant: CitrineVariant,
-): ReadonlyMap<CsmsOperation201Action, string> {
-  return UNROUTED_201[variant];
 }
 
 /**

@@ -50,66 +50,35 @@
  * be published to the internet at all. The day those two tickets land, that
  * constraint goes with them.
  */
-import {
-  CSMS_OPERATION_16_ACTIONS,
-  type CsmsCapabilities,
-  type CsmsDriverModule,
-  type CsmsDriverParts,
-  type CsmsEnv,
-  type CsmsOperation16,
-  type CsmsOperations16,
-} from "../../tck/driver";
+import type { CsmsDriverModule, CsmsDriverParts, CsmsEnv } from "../../tck/driver";
+import { createSteveCsmsDriver, STEVE_CAPABILITIES } from "../../packages/csms-driver/steve";
 import { defaultApiConfig } from "./api-client";
-import { cpSelect, toSteveForm } from "./forms";
 import {
   provisionCommand,
   teardownCommand,
   verifyCommand,
 } from "./provision";
 import { SteveRecords } from "./records";
-import { defaultSteveConfig, SteveUiOps, type SteveConfig } from "./ui-client";
+import { defaultSteveConfig } from "./ui-client";
 import { STEVE_SCOPE } from "./scope";
-
-function createOperations(cfg: SteveConfig): CsmsOperations16 {
-  const ui = new SteveUiOps(cfg);
-  return {
-    async execute(cpId: string, op: CsmsOperation16): Promise<string> {
-      const { opPath, fields } = toSteveForm(op);
-      return ui.op(opPath, { chargePointSelectList: cpSelect(cpId), ...fields });
-    },
-  };
-}
-
-const CAPABILITIES: CsmsCapabilities = {
-  // SteVe drives every operation the contract defines -- it is the CSMS the
-  // scenarios were written against.
-  operations16: new Set(CSMS_OPERATION_16_ACTIONS),
-  reservations: true,
-  chargingProfiles: true,
-  // SteVe has connector statuses and no device model, so half of the
-  // capability is there and half cannot be -- and half is not a capability.
-  //
-  // What actually keeps this off the wire is the scope table, which declares
-  // every `cert201-` row NOT_APPLICABLE for the reason NO_OCPP_201 gives. The
-  // stub behind this `false` is a backstop that only converts a throw from
-  // `drive()`, and a device-model read can only happen in `assert()` -- see
-  // the note on CsmsDeviceModelRecords. This is a declaration, not the
-  // mechanism.
-  deviceModel: false,
-};
 
 export const csmsDriver: CsmsDriverModule = {
   id: "steve",
   displayName: "SteVe",
   scope: STEVE_SCOPE,
-  capabilities: CAPABILITIES,
+  capabilities: {
+    ...STEVE_CAPABILITIES,
+    reservations: true,
+    chargingProfiles: true,
+    deviceModel: false,
+  },
   create(env: CsmsEnv): CsmsDriverParts {
     const cfg = defaultSteveConfig(env);
     // `env`, not process.env: the runner owns what a driver may read, and the
     // WebAPI credentials are now on the scenario path, not just provisioning's.
     const records = new SteveRecords(cfg, defaultApiConfig(cfg, env));
     return {
-      operations16: createOperations(cfg),
+      operations16: createSteveCsmsDriver({ config: cfg }).operations16,
       records,
       prepareStation: (cpId) => records.closeStaleTransaction(cpId),
       simTransport: async () => ({

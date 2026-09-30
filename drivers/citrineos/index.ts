@@ -51,18 +51,11 @@
  * client and nothing conditional in the transport.
  */
 import {
-  CSMS_OPERATION_16_ACTIONS,
-  CSMS_OPERATION_201_ACTIONS,
-  type CsmsCapabilities,
   type CsmsDriverModule,
   type CsmsDriverParts,
   type CsmsEnv,
-  type CsmsOperation16,
-  type CsmsOperation201,
-  type CsmsOperations16,
-  type CsmsOperations201,
 } from "../../tck/driver";
-import { CitrineMessageApi } from "./api-client";
+import { createCitrineOsCsmsDriver, citrineOsCapabilities } from "../../packages/csms-driver/citrineos";
 import { DEFAULT_CONNECTORS } from "./device-model";
 import { defaultCitrineConfig } from "./config";
 import {
@@ -73,14 +66,11 @@ import {
 } from "./provision";
 import { citrineosExpectedFailures } from "./expected";
 import { CitrineRecords } from "./records";
-import { toCitrineRequest, toCitrineRequest201 } from "./requests";
+import { profileByRef } from "./profiles";
 import { citrineosScope } from "./scope";
 import {
   resolveVariant,
   speaksOcpp201,
-  unroutedActions,
-  unroutedActions201,
-  type CitrineVariant,
 } from "./variant";
 
 /**
@@ -109,76 +99,6 @@ import {
  * that promise. The runner hands the same env to create(), so the table and
  * the requests cannot describe different servers.
  */
-function capabilitiesFor(variant: CitrineVariant): CsmsCapabilities {
-  const unrouted = unroutedActions(variant);
-  const unrouted201 = unroutedActions201(variant);
-  return {
-    operations16: new Set(
-      CSMS_OPERATION_16_ACTIONS.filter((action) => !unrouted.has(action)),
-    ),
-    // WHETHER at all is the line's to decide, WHICH is the route table's --
-    // and those are two questions, which is what this used to get wrong.
-    //
-    // On v1 the declaration is ABSENT rather than empty, which is the
-    // contract's way of saying "this driver, pointed here, does not speak OCPP
-    // 2.0.1" -- and that is the honest answer: the 2.0.1 surface has never
-    // been measured against the v1.9.1 image, and an empty set would claim it
-    // had been and found nothing.
-    //
-    // On v2 it is DECLARED BY SUBTRACTION, exactly like the 1.6 set above.
-    // `new Set(CSMS_OPERATION_201_ACTIONS)` -- the whole constant -- is what
-    // stood here, and it made every arm added to the contract a supported
-    // operation of this driver at the moment it was added, before any endpoint
-    // had been read off an `@AsMessageEndpoint` decorator. `check-driver`
-    // could not catch it and never will: it compares this declaration to the
-    // core's own list, and an added arm grows both sides in the same commit.
-    // Issue #71. The subtraction gives the next author somewhere to say "not
-    // routed yet" that is not a comment, and requests.ts reads the same table.
-    ...(speaksOcpp201(variant)
-      ? {
-          operations201: new Set(
-            CSMS_OPERATION_201_ACTIONS.filter(
-              (action) => !unrouted201.has(action),
-            ),
-          ),
-        }
-      : {}),
-    // No reservation capability at all, which is structural rather than a gap
-    // in this driver: with nothing able to SEND a 1.6 ReserveNow, the
-    // Reservations table never gets a row for 1.6 to have an opinion about.
-    reservations: false,
-    chargingProfiles: true,
-    // Tied to the SAME line predicate as the vocabulary above, and for a
-    // concrete reason rather than by association: the reader reaches
-    // `VariableAttributes` and `Connectors` through their integer `stationId`
-    // and the `ChargingStation` relationship, a key v1.9.1 does not have --
-    // variant.ts. Declaring it on v1 would be claiming a query nobody has run
-    // against a schema that keys its station differently.
-    deviceModel: speaksOcpp201(variant),
-  };
-}
-
-function createOperations(
-  variant: CitrineVariant,
-  api: CitrineMessageApi,
-  records: CitrineRecords,
-): CsmsOperations16 {
-  return {
-    async execute(cpId: string, op: CsmsOperation16): Promise<string> {
-      // Refs are resolved here rather than inside the mapper so that the
-      // mapper stays a pure function of the operation plus one narrow lookup,
-      // and so the database round-trip only happens for the two operations
-      // that genuinely need it.
-      const request = await toCitrineRequest(
-        op,
-        { ocppTransactionId: (ref) => records.ocppTransactionId(ref) },
-        variant,
-      );
-      return api.send(cpId, request);
-    },
-  };
-}
-
 /**
  * The 2.0.1 half, and it shares the api client rather than getting one of its
  * own: the message API is one HTTP surface with a version segment in the path,
@@ -197,22 +117,19 @@ function createOperations(
  * part, so the runner substitutes its throwing stub and the scenario lands NOT
  * APPLICABLE.
  */
-function createOperations201(
-  variant: CitrineVariant,
-  api: CitrineMessageApi,
-): CsmsOperations201 {
-  return {
-    async execute(cpId: string, op: CsmsOperation201): Promise<string> {
-      return api.send(cpId, toCitrineRequest201(op, variant));
-    },
-  };
-}
-
 export const csmsDriver: CsmsDriverModule = {
   id: "citrineos",
   displayName: "CitrineOS",
   scope: (env) => citrineosScope(resolveVariant(env)),
-  capabilities: (env) => capabilitiesFor(resolveVariant(env)),
+  capabilities: (env) => {
+    const config = defaultCitrineConfig(env);
+    return {
+      ...citrineOsCapabilities(config),
+      reservations: false,
+      chargingProfiles: true,
+      deviceModel: speaksOcpp201(config.variant),
+    };
+  },
   // A function of the environment for the same reason the two above are: which
   // line this driver is pointed at decides which defects it meets. See
   // expected.ts for why the v1 list is empty rather than sixteen rows long.
@@ -220,20 +137,24 @@ export const csmsDriver: CsmsDriverModule = {
   create(env: CsmsEnv): CsmsDriverParts {
     const cfg = defaultCitrineConfig(env);
     const records = new CitrineRecords(cfg);
-    const api = new CitrineMessageApi(cfg);
+    const generic = createCitrineOsCsmsDriver({
+      config: cfg,
+      refs: {
+        ocppTransactionId: (ref) => records.ocppTransactionId(ref),
+        chargingProfileByRef: profileByRef,
+      },
+    });
     // Built once rather than per scenario, and the log is a no-op: a hook that
     // runs before every scenario has nothing to announce, and
     // `driver provision` is where the fixture speaks.
     const topology = new CitrineProvisioner(cfg, () => {});
     return {
-      operations16: createOperations(cfg.variant, api, records),
+      operations16: generic.operations16,
       // Present exactly when `capabilities.operations201` is declared, and the
       // two read the same variant: a driver whose capability set claims a
       // protocol its parts cannot drive would report the gap only at runtime,
       // after a container had started.
-      ...(speaksOcpp201(cfg.variant)
-        ? { operations201: createOperations201(cfg.variant, api) }
-        : {}),
+      ...(generic.operations201 ? { operations201: generic.operations201 } : {}),
       records,
       // TWO WRITES, AND THE SECOND IS NOT RESIDUE-CLEARING. The first closes
       // what a previous scenario left open; the second puts the EVSE and the

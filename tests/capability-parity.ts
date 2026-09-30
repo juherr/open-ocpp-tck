@@ -94,7 +94,7 @@ import {
   SAMPLE_OPERATION_201,
   UnsupportedOperationError,
   driverCapabilities,
-  type CsmsCapabilities,
+  type CsmsTckCapabilities,
   type CsmsDriverModule,
   type CsmsDriverParts,
   type CsmsEnv,
@@ -176,9 +176,9 @@ const CASES: readonly DriverCase[] = [
 // ---------------------------------------------------------------------------
 
 interface OptionalCapability {
-  /** The field on {@link CsmsCapabilities}. */
+  /** The TCK declaration checked against its observation records. */
   readonly field: string;
-  readonly declared: (capabilities: CsmsCapabilities) => boolean;
+  readonly declared: (capabilities: CsmsTckCapabilities) => boolean;
   readonly implemented: (parts: CsmsDriverParts) => boolean;
   /** Where the implementing half lives, for the failure message: a reader who
    *  has to go and find out which of two objects is wrong has been told half

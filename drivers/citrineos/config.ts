@@ -21,16 +21,10 @@
  * and can be pointed at a CitrineOS nobody on this host owns.
  */
 import type { CsmsEnv } from "../../tck/driver";
-import { resolveVariant, type CitrineVariant } from "./variant";
+import { resolveVariant } from "./variant";
+import type { CitrineApiConfig } from "../../packages/csms-driver/citrineos/config";
 
-export interface CitrineConfig {
-  /** Which CitrineOS line the target runs. Everything version-specific is
-   *  derived from it rather than stored beside it -- see variant.ts. */
-  variant: CitrineVariant;
-  /** Message-API base, no trailing slash, e.g. http://localhost:8080 */
-  apiUrl: string;
-  /** Every message-API call carries it; CitrineOS's DEFAULT_TENANT_ID is 1. */
-  tenantId: number;
+export interface CitrineConfig extends CitrineApiConfig {
   /** GraphQL data API base, no trailing slash, e.g. http://localhost:8090.
    *  Hasura, which CitrineOS's own compose runs ungated and whose mutations
    *  its shipped OCPI package uses -- see records.ts. */

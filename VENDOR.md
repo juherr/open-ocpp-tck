@@ -157,6 +157,7 @@ the drivers are native here, and the name now says so.
 | `drivers/steve/records.ts` | `local-native` | `—` | `—` | `—` | `—` |
 | `drivers/steve/api-client.ts` | `local-native` | `—` | `—` | `—` | `—` |
 | `drivers/steve/ui-client.ts` | `local-native` | `—` | `—` | `—` | `—` |
+| `drivers/steve/config.ts` | `local-native` | `—` | `—` | `—` | `—` |
 | `drivers/steve/scope.ts` | `local-native` | `—` | `—` | `—` | `—` |
 | `drivers/steve/provision.ts` | `local-native` | `—` | `—` | `—` | `—` |
 | `drivers/citrineos/index.ts` | `local-native` | `—` | `—` | `—` | `—` |
