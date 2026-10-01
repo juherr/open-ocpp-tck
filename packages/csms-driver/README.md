@@ -79,7 +79,8 @@ Every driver answers the edge cases alike:
 | `update` | throws `ChargePointNotFoundError` | changes only the members it names     |
 | `delete` | resolves                          | deletes                               |
 
-An omitted registration means `Accepted` and omitted security means profile 0.
+An omitted registration means `Accepted` and omitted security means profile 0,
+which a driver that does not declare profile 0 refuses like any other.
 An update's `security` replaces the whole block, so moving a station to
 profile 0 or 3 discards its stored password; `description: null` clears the
 description.

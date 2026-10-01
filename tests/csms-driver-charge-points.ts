@@ -26,24 +26,33 @@
  *     missing id throws `ChargePointNotFoundError` and creates nothing;
  *     `delete` removes, and of a missing id resolves.
  *  3. DEFAULTS, UPDATES, READ-BACK. An omitted registration reads back
- *     `Accepted` and omitted security profile 0; an update applies each member
- *     it names -- registration, description, security -- and leaves the
- *     others alone; a `description: null` clears; the Basic Auth password is
- *     never read back.
+ *     `Accepted`, on whichever profile the driver declares. Omitted security
+ *     IS profile 0: it reads back as 0 where 0 is declared, and is refused
+ *     with `UnsupportedOperationError`, storing nothing, where it is not. An
+ *     update applies each member it names -- registration, description,
+ *     security -- and leaves the others alone; a `description: null` clears.
+ *     No read ever returns a password-named member, whatever its value.
  *  4. THE DECLARATION BINDS. A security profile outside
  *     `capabilities.chargePoints.securityProfiles` is refused with
  *     `UnsupportedOperationError` by `create` and by `update`, and the refused
- *     call changes nothing.
- *  5. NONE OF THE ABOVE IS VACUOUS. A reference driver passes, and for every
- *     entry of `RULE` a copy of it breaking that rule alone is refused FOR
- *     that rule. The bundled factories, which do not opt in yet, satisfy part
- *     1 by absence.
+ *     call changes nothing -- not even the other members its patch named.
+ *  5. NONE OF THE ABOVE IS VACUOUS. A reference driver passes under several
+ *     declarations, and for every entry of `RULE` a copy of it breaking that
+ *     rule alone is refused FOR that rule. The bundled factories, which do
+ *     not opt in yet, satisfy part 1 by absence.
+ *
+ * "Changes nothing" and "leaves the others alone" are checked against the
+ * WHOLE observable record, compared key by key after sorting, on a station
+ * whose every member starts away from its default -- so a rule cannot pass
+ * because the member that moved was the one nobody looked at, or because it
+ * moved to the value it already had.
  *
  * WHAT IT CANNOT CHECK: that a `security` update to profile 0 or 3 discards
  * the stored password, as the contract says. The password is never read back,
- * so no conforming driver can show it either way; the reference does it, and
- * #157's live run is where a station connecting with the old password would
- * be refused.
+ * so no driver can show it through this surface. It is a per-driver fact --
+ * what the driver sends its CSMS, and whether that CSMS honours it -- and
+ * #155 owns it for SteVe, offline against its fake `fetch` and live against
+ * the pinned image.
  */
 
 import {
@@ -83,7 +92,9 @@ const RULE = {
   deleteMissingResolves: "delete of a missing id resolves",
   defaultRegistration: "an omitted registration reads back Accepted",
   defaultSecurity: "omitted security reads back profile 0",
-  passwordWriteOnly: "the Basic Auth password is never read back",
+  omittedSecurityNeedsProfile0: "create with omitted security throws UnsupportedOperationError when profile 0 is not declared",
+  refusedDefaultStoresNothing: "a create refused for its omitted security stores nothing",
+  passwordWriteOnly: "no read returns a password-named member",
   createRefusesUndeclared: "create with an undeclared security profile throws UnsupportedOperationError",
   refusedCreateStoresNothing: "a refused create stores nothing",
   updateRefusesUndeclared: "update to an undeclared security profile throws UnsupportedOperationError",
@@ -92,7 +103,9 @@ const RULE = {
 type Rule = (typeof RULE)[keyof typeof RULE];
 
 const ALL_PROFILES: readonly ChargePointSecurityProfile[] = [0, 1, 2, 3];
-const DECLARED_PROFILES: ReadonlySet<ChargePointSecurityProfile> = new Set([0, 1]);
+/** The declaration the flawed copies run under unless they say otherwise:
+ *  the default profile, and one that carries a password. */
+const DECLARED_PROFILES: readonly ChargePointSecurityProfile[] = [0, 1];
 
 const failures: string[] = [];
 
@@ -108,6 +121,23 @@ function securityFor(profile: ChargePointSecurityProfile): ChargePointSecurity {
   return profile === 1 || profile === 2
     ? { profile, basicAuthPassword: "conformance-secret" }
     : { profile };
+}
+
+/** The whole observable record, keys sorted at every level, so two reads
+ *  compare equal exactly when nothing a consumer can see differs. */
+function observable(value: unknown): string {
+  return JSON.stringify(value, (_key, member: unknown) =>
+    member !== null && typeof member === "object" && !Array.isArray(member)
+      ? Object.fromEntries(Object.entries(member).sort(([a], [b]) => a.localeCompare(b)))
+      : member,
+  );
+}
+
+/** Any member named like a password, at any depth, whatever its value -- a
+ *  masked `"***"` is still the contract returning authentication material. */
+function exposesPassword(value: unknown): boolean {
+  return value !== null && typeof value === "object" &&
+    Object.entries(value).some(([key, member]) => /password/i.test(key) || exposesPassword(member));
 }
 
 /** Every rule `driver` breaks; empty when it conforms. */
@@ -138,88 +168,133 @@ async function exerciseLifecycle(
   profiles: ReadonlySet<ChargePointSecurityProfile>,
   expect: (condition: boolean, rule: Rule) => void,
 ): Promise<void> {
-  // Part 2, on a profile the driver declares.
-  const [profile, otherProfile] = [...profiles];
+  // Every read is also a check that no password escapes it.
+  const read = async (cpId: string): Promise<ChargePointDetails | null> => {
+    const details = await admin.get(cpId);
+    expect(!exposesPassword(details), RULE.passwordWriteOnly);
+    return details;
+  };
+  // A station that must exist at this point; its absence is a violation
+  // reported elsewhere, so it ends the lifecycle rather than cascading.
+  const mustRead = async (cpId: string): Promise<ChargePointDetails> => {
+    const details = await read(cpId);
+    if (details === null) throw new Error(`station ${cpId} vanished`);
+    return details;
+  };
+  const same = (a: unknown, b: unknown): boolean => observable(a) === observable(b);
+
+  // Every member away from its default: a non-zero profile where one is
+  // declared, a non-Accepted registration, a description.
+  const declared = [...profiles];
+  const profile = declared.find((candidate) => candidate !== 0) ?? declared[0];
   if (profile === undefined) return;
+  const otherProfile = declared.find((candidate) => candidate !== profile);
+
+  // Part 2.
   const station: ChargePointDefinition = {
     id: "CONFORMANCE-1",
     registration: "Rejected",
     security: securityFor(profile),
     description: "first",
   };
-  expect(await admin.get(station.id) === null, RULE.getMissingIsNull);
+  expect(await read(station.id) === null, RULE.getMissingIsNull);
   await admin.create(station);
-  const created = await admin.get(station.id);
+  const created = await mustRead(station.id);
   expect(
-    created?.registration === "Rejected" && created.security.profile === profile && created.description === "first",
+    created.registration === "Rejected" && created.security.profile === profile && created.description === "first",
     RULE.createStores,
   );
   expect(
-    await rejectsWith(() => admin.create({ ...station, description: "second" }), ChargePointAlreadyExistsError),
+    await rejectsWith(
+      () => admin.create({
+        id: station.id,
+        registration: "Accepted",
+        security: securityFor(otherProfile ?? profile),
+        description: "second",
+      }),
+      ChargePointAlreadyExistsError,
+    ),
     RULE.createExistingThrows,
   );
-  expect((await admin.get(station.id))?.description === "first", RULE.createExistingChangesNothing);
+  expect(same(await read(station.id), created), RULE.createExistingChangesNothing);
 
-  // Part 3: an update applies what it names and nothing else.
+  // Part 3: an update applies what it names and nothing else, each step
+  // compared with the whole record before it.
+  let before = await mustRead(station.id);
   await admin.update(station.id, { registration: "Pending" });
-  let read = await admin.get(station.id);
-  expect(read?.registration === "Pending", RULE.updateAppliesRegistration);
-  expect(read?.description === "first" && read.security.profile === profile, RULE.updateKeepsUnnamed);
+  let after = await mustRead(station.id);
+  expect(after.registration === "Pending", RULE.updateAppliesRegistration);
+  expect(same(after, { ...before, registration: "Pending" }), RULE.updateKeepsUnnamed);
+
+  before = after;
   await admin.update(station.id, { description: "second" });
-  expect((await admin.get(station.id))?.description === "second", RULE.updateAppliesDescription);
-  await admin.update(station.id, { description: null });
-  read = await admin.get(station.id);
-  expect(read !== null && read.description === undefined, RULE.nullDescriptionClears);
+  after = await mustRead(station.id);
+  expect(after.description === "second", RULE.updateAppliesDescription);
+  expect(same(after, { ...before, description: "second" }), RULE.updateKeepsUnnamed);
+
   if (otherProfile !== undefined) {
+    before = after;
     await admin.update(station.id, { security: securityFor(otherProfile) });
-    read = await admin.get(station.id);
-    expect(read?.security.profile === otherProfile, RULE.updateAppliesSecurity);
-    expect(read?.registration === "Pending", RULE.securityUpdateKeepsUnnamed);
+    after = await mustRead(station.id);
+    expect(after.security.profile === otherProfile, RULE.updateAppliesSecurity);
+    expect(same(after, { ...before, security: { profile: otherProfile } }), RULE.securityUpdateKeepsUnnamed);
   }
+
+  before = after;
+  await admin.update(station.id, { description: null });
+  after = await mustRead(station.id);
+  const { description: _cleared, ...withoutDescription } = before;
+  expect(after.description === undefined, RULE.nullDescriptionClears);
+  expect(same(after, withoutDescription), RULE.updateKeepsUnnamed);
 
   expect(
     await rejectsWith(() => admin.update("CONFORMANCE-MISSING", { registration: "Accepted" }), ChargePointNotFoundError),
     RULE.updateMissingThrows,
   );
-  expect(await admin.get("CONFORMANCE-MISSING") === null, RULE.updateMissingCreatesNothing);
+  expect(await read("CONFORMANCE-MISSING") === null, RULE.updateMissingCreatesNothing);
 
   await admin.delete(station.id);
-  expect(await admin.get(station.id) === null, RULE.deleteRemoves);
+  expect(await read(station.id) === null, RULE.deleteRemoves);
   expect(await admin.delete(station.id).then(() => true, () => false), RULE.deleteMissingResolves);
 
-  // Part 3, defaults -- where the default profile is one the driver declares.
+  // Part 3, defaults. The registration default does not depend on profile 0.
+  await admin.create({ id: "CONFORMANCE-2", security: securityFor(profile) });
+  expect((await read("CONFORMANCE-2"))?.registration === "Accepted", RULE.defaultRegistration);
+  await admin.delete("CONFORMANCE-2");
+  // The security default IS profile 0, so it is only as available as 0 is.
   if (profiles.has(0)) {
-    await admin.create({ id: "CONFORMANCE-2" });
-    const defaults = await admin.get("CONFORMANCE-2");
-    expect(defaults?.registration === "Accepted", RULE.defaultRegistration);
-    expect(defaults?.security.profile === 0, RULE.defaultSecurity);
-    await admin.delete("CONFORMANCE-2");
+    await admin.create({ id: "CONFORMANCE-3" });
+    expect((await read("CONFORMANCE-3"))?.security.profile === 0, RULE.defaultSecurity);
+  } else {
+    expect(
+      await rejectsWith(() => admin.create({ id: "CONFORMANCE-3" }), UnsupportedOperationError),
+      RULE.omittedSecurityNeedsProfile0,
+    );
+    expect(await read("CONFORMANCE-3") === null, RULE.refusedDefaultStoresNothing);
   }
+  await admin.delete("CONFORMANCE-3");
 
-  // Part 3, the password is write-only wherever a profile carries one.
-  const basicAuth = ([1, 2] as const).find((candidate) => profiles.has(candidate));
-  if (basicAuth !== undefined) {
-    await admin.create({ id: "CONFORMANCE-3", security: securityFor(basicAuth) });
-    const details = await admin.get("CONFORMANCE-3");
-    expect(details !== null && !JSON.stringify(details).includes("conformance-secret"), RULE.passwordWriteOnly);
-    await admin.delete("CONFORMANCE-3");
-  }
-
-  // Part 4: an undeclared profile is refused, and the refusal changes nothing.
+  // Part 4: an undeclared profile is refused, and the refusal changes
+  // nothing -- including the members the refused patch named beside it.
   const undeclared = ALL_PROFILES.find((candidate) => !profiles.has(candidate));
   if (undeclared !== undefined) {
     expect(
       await rejectsWith(() => admin.create({ id: "CONFORMANCE-4", security: securityFor(undeclared) }), UnsupportedOperationError),
       RULE.createRefusesUndeclared,
     );
-    expect(await admin.get("CONFORMANCE-4") === null, RULE.refusedCreateStoresNothing);
+    expect(await read("CONFORMANCE-4") === null, RULE.refusedCreateStoresNothing);
     await admin.delete("CONFORMANCE-4");
-    await admin.create({ id: "CONFORMANCE-5", security: securityFor(profile) });
+
+    await admin.create({ id: "CONFORMANCE-5", registration: "Rejected", security: securityFor(profile), description: "kept" });
+    before = await mustRead("CONFORMANCE-5");
     expect(
-      await rejectsWith(() => admin.update("CONFORMANCE-5", { security: securityFor(undeclared) }), UnsupportedOperationError),
+      await rejectsWith(
+        () => admin.update("CONFORMANCE-5", { registration: "Accepted", description: "changed", security: securityFor(undeclared) }),
+        UnsupportedOperationError,
+      ),
       RULE.updateRefusesUndeclared,
     );
-    expect((await admin.get("CONFORMANCE-5"))?.security.profile === profile, RULE.refusedUpdateChangesNothing);
+    expect(same(await read("CONFORMANCE-5"), before), RULE.refusedUpdateChangesNothing);
     await admin.delete("CONFORMANCE-5");
   }
 }
@@ -287,11 +362,16 @@ interface Reference {
   /** The same store, accepting every profile whatever the declaration says. */
   readonly lax: CsmsChargePointAdmin;
   readonly store: Store;
+  readonly declared: ReadonlySet<ChargePointSecurityProfile>;
 }
 
 /** One rule broken, and the rule the copy must be refused FOR -- a copy
- *  refused for some other reason would leave its own rule unguarded. */
-type FlawCase = { readonly refusedFor: Rule } & (
+ *  refused for some other reason would leave its own rule unguarded. Runs
+ *  under `declares`, or `DECLARED_PROFILES`. */
+type FlawCase = {
+  readonly refusedFor: Rule;
+  readonly declares?: readonly ChargePointSecurityProfile[];
+} & (
   | { readonly admin: (reference: Reference) => Partial<CsmsChargePointAdmin> }
   | { readonly driver: (driver: CsmsDriver) => CsmsDriver }
 );
@@ -312,16 +392,37 @@ const appliesAnyway = <A extends unknown[]>(strict: (...args: A) => Promise<void
       throw error;
     }
   };
+/** A flaw whose duplicate `create` rewrites one member before refusing. */
+const rewritesOnDuplicate = (pick: (definition: ChargePointDefinition) => ChargePointUpdate) =>
+  ({ strict }: Reference): Partial<CsmsChargePointAdmin> => ({
+    create: async (definition) => {
+      if ((await strict.get(definition.id)) !== null) {
+        await strict.update(definition.id, pick(definition));
+        throw new ChargePointAlreadyExistsError(definition.id);
+      }
+      await strict.create(definition);
+    },
+  });
+/** A flaw whose refused `update` applies one member of its patch first. */
+const appliesBeforeRefusing = (pick: (patch: ChargePointUpdate) => ChargePointUpdate) =>
+  ({ strict, lax, declared }: Reference): Partial<CsmsChargePointAdmin> => ({
+    update: async (cpId, patch) => {
+      if (patch.security && !declared.has(patch.security.profile)) await lax.update(cpId, pick(patch));
+      await strict.update(cpId, patch);
+    },
+  });
 
-function memoryDriver(flaw?: FlawCase): CsmsDriver {
+function memoryDriver(flaw?: FlawCase, declares: readonly ChargePointSecurityProfile[] = DECLARED_PROFILES): CsmsDriver {
   const store: Store = new Map();
+  const declared = new Set(flaw?.declares ?? declares);
   const reference: Reference = {
-    strict: memoryAdmin(store, DECLARED_PROFILES),
+    strict: memoryAdmin(store, declared),
     lax: memoryAdmin(store, new Set(ALL_PROFILES)),
     store,
+    declared,
   };
   const driver: CsmsDriver = {
-    capabilities: { operations16: new Set(), chargePoints: { securityProfiles: DECLARED_PROFILES } },
+    capabilities: { operations16: new Set(), chargePoints: { securityProfiles: declared } },
     operations16: { execute: async () => "" },
     chargePoints: { ...reference.strict, ...(flaw && "admin" in flaw ? flaw.admin(reference) : {}) },
   };
@@ -365,16 +466,17 @@ const FLAWS: Readonly<Record<string, FlawCase>> = {
       },
     }),
   },
-  "create-existing-overwrites-then-throws": {
+  "duplicate-create-rewrites-registration": {
     refusedFor: RULE.createExistingChangesNothing,
-    admin: ({ strict }) => ({
-      create: async (definition) => {
-        const existed = (await strict.get(definition.id)) !== null;
-        await strict.delete(definition.id);
-        await strict.create(definition);
-        if (existed) throw new ChargePointAlreadyExistsError(definition.id);
-      },
-    }),
+    admin: rewritesOnDuplicate((definition) => ({ registration: definition.registration })),
+  },
+  "duplicate-create-rewrites-description": {
+    refusedFor: RULE.createExistingChangesNothing,
+    admin: rewritesOnDuplicate((definition) => ({ description: definition.description })),
+  },
+  "duplicate-create-rewrites-security": {
+    refusedFor: RULE.createExistingChangesNothing,
+    admin: rewritesOnDuplicate((definition) => ({ security: definition.security })),
   },
   "update-missing-creates": {
     refusedFor: RULE.updateMissingThrows,
@@ -410,18 +512,39 @@ const FLAWS: Readonly<Record<string, FlawCase>> = {
       },
     }),
   },
-  // Part 3.
+  // Part 3. The registration default is caught on a declaration WITHOUT
+  // profile 0, which is the case a check nested under it used to skip.
   "default-registration-pending": {
     refusedFor: RULE.defaultRegistration,
+    declares: [1],
     admin: defining((definition) => ({ registration: "Pending", ...definition })),
   },
   "default-security-not-0": {
     refusedFor: RULE.defaultSecurity,
     admin: defining((definition) => ({ security: securityFor(1), ...definition })),
   },
+  "omitted-security-accepted-without-0": {
+    refusedFor: RULE.omittedSecurityNeedsProfile0,
+    declares: [1],
+    admin: ({ strict, lax }) => ({
+      create: (definition) => (definition.security ? strict : lax).create(definition),
+    }),
+  },
+  "omitted-security-refused-but-stored": {
+    refusedFor: RULE.refusedDefaultStoresNothing,
+    declares: [1],
+    admin: ({ strict, lax }) => ({
+      create: (definition) =>
+        definition.security ? strict.create(definition) : appliesAnyway(strict.create, lax.create)(definition),
+    }),
+  },
   "update-ignores-registration": {
     refusedFor: RULE.updateAppliesRegistration,
     admin: patching(({ registration: _registration, ...patch }) => patch),
+  },
+  "registration-update-changes-security": {
+    refusedFor: RULE.updateKeepsUnnamed,
+    admin: patching((patch) => (patch.registration ? { ...patch, security: { profile: 0 } } : patch)),
   },
   "update-clears-unnamed-description": {
     refusedFor: RULE.updateKeepsUnnamed,
@@ -443,9 +566,22 @@ const FLAWS: Readonly<Record<string, FlawCase>> = {
     refusedFor: RULE.securityUpdateKeepsUnnamed,
     admin: patching((patch) => (patch.security ? { ...patch, registration: "Accepted" } : patch)),
   },
+  "security-update-clears-description": {
+    refusedFor: RULE.securityUpdateKeepsUnnamed,
+    admin: patching((patch) => (patch.security ? { ...patch, description: null } : patch)),
+  },
   "password-read-back": {
     refusedFor: RULE.passwordWriteOnly,
     admin: ({ store }) => ({ get: async (cpId) => store.get(cpId) ?? null }),
+  },
+  "password-read-back-masked": {
+    refusedFor: RULE.passwordWriteOnly,
+    admin: ({ strict }) => ({
+      get: async (cpId) => {
+        const details = await strict.get(cpId);
+        return details && ({ ...details, security: { ...details.security, basicAuthPassword: "***" } } as ChargePointDetails);
+      },
+    }),
   },
   // Part 4.
   "create-accepts-undeclared": {
@@ -460,14 +596,36 @@ const FLAWS: Readonly<Record<string, FlawCase>> = {
     refusedFor: RULE.updateRefusesUndeclared,
     admin: ({ lax }) => ({ update: lax.update }),
   },
-  "refused-update-changes": {
+  "refused-update-applies-registration": {
     refusedFor: RULE.refusedUpdateChangesNothing,
-    admin: ({ strict, lax }) => ({ update: appliesAnyway(strict.update, lax.update) }),
+    admin: appliesBeforeRefusing((patch) => ({ registration: patch.registration })),
+  },
+  "refused-update-applies-description": {
+    refusedFor: RULE.refusedUpdateChangesNothing,
+    admin: appliesBeforeRefusing((patch) => ({ description: patch.description })),
+  },
+  "refused-update-applies-security": {
+    refusedFor: RULE.refusedUpdateChangesNothing,
+    admin: appliesBeforeRefusing((patch) => ({ security: patch.security })),
   },
 };
 
-const reference = await chargePointAdminViolations(memoryDriver());
-check(reference.length === 0, `the reference driver conforms (violations: ${reference.join("; ")})`);
+// The reference conforms under every shape of declaration the checks branch
+// on: with and without profile 0, with and without a second profile, with and
+// without an undeclared one.
+const REFERENCE_DECLARATIONS: readonly (readonly ChargePointSecurityProfile[])[] = [
+  DECLARED_PROFILES,
+  [1],
+  [0],
+  ALL_PROFILES,
+];
+for (const declares of REFERENCE_DECLARATIONS) {
+  const violations = await chargePointAdminViolations(memoryDriver(undefined, declares));
+  check(
+    violations.length === 0,
+    `the reference driver conforms declaring profiles ${declares.join(",")} (violations: ${violations.join("; ")})`,
+  );
+}
 const covered = new Set<string>(Object.values(FLAWS).map((flaw) => flaw.refusedFor));
 for (const rule of Object.values(RULE)) {
   check(covered.has(rule), `the rule "${rule}" has a flawed copy that breaks it`);
@@ -503,8 +661,8 @@ if (failures.length > 0) {
   process.exitCode = 1;
 } else {
   console.log(
-    `Charge-point administration: the reference driver conforms, and each of its ${Object.values(RULE).length} ` +
-      `rules has a flawed copy refused for it (${Object.keys(FLAWS).length} copies); the bundled factories declare ` +
-      "what they implement.",
+    `Charge-point administration: the reference driver conforms under ${REFERENCE_DECLARATIONS.length} declarations, ` +
+      `and each of its ${Object.values(RULE).length} rules has a flawed copy refused for it ` +
+      `(${Object.keys(FLAWS).length} copies); the bundled factories declare what they implement.`,
   );
 }

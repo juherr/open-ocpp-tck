@@ -27,7 +27,7 @@ export interface ChargePointDefinition {
     readonly id: string;
     /** Omitted means `Accepted`. */
     readonly registration?: ChargePointRegistration;
-    /** Omitted means profile 0. */
+    /** Omitted means profile 0, so a driver that does not declare 0 refuses it. */
     readonly security?: ChargePointSecurity;
     readonly description?: string;
 }
