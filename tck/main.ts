@@ -57,6 +57,7 @@ import {
   UnsupportedOperationError,
 } from "./driver";
 import { loadDriverModule } from "./driver-registry";
+import { csmsServerCommand } from "./csms-server";
 import {
   expectedFailureCoverage,
   expectedFailureFor,
@@ -1850,6 +1851,7 @@ const VERBS = [
   "check-driver",
   "print-sim-image",
   "driver",
+  "csms-server",
 ] as const;
 
 async function printUsage(): Promise<void> {
@@ -1865,6 +1867,7 @@ async function printUsage(): Promise<void> {
       "       ocpp-tck check-driver [--driver SPEC] [--json]\n" +
       "       ocpp-tck print-sim-image\n" +
       "       ocpp-tck driver <verb> [args...]\n" +
+      "       ocpp-tck csms-server [--host 127.0.0.1] [--port 8787] [--timeout-ms 60000]\n" +
       "\n" +
       "--group is upstream's historical grouping, --version the protocol a " +
       "scenario declares, --tag what it is about; given together they " +
@@ -1873,6 +1876,10 @@ async function printUsage(): Promise<void> {
       "check-driver is fully offline: it reads the driver MODULE (never " +
       "create()), so it needs no CSMS, no docker, no network and no " +
       "credentials.\n" +
+      "\n" +
+      "csms-server serves the CSMS_DRIVER driver over HTTP/JSON -- charge-point " +
+      "administration and OCPP 1.6 operations -- for clients in any language. " +
+      "See packages/csms-driver/server/README.md.\n" +
       "\n" +
       "--retry-failed-isolated: after a parallel sweep, re-run any " +
       "FAIL/ERROR scenario once more, sequentially and isolated, and report " +
@@ -2608,6 +2615,7 @@ export async function cli(argv: string[]): Promise<number> {
   if (verb === "list-scenarios") return listScenarios(argv.slice(1));
   if (verb === "check-driver") return checkDriver(argv.slice(1));
   if (verb === "driver") return runDriverCommand(argv.slice(1));
+  if (verb === "csms-server") return csmsServerCommand(argv.slice(1), ENV);
 
   let args: CliArgs;
   try {

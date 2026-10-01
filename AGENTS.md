@@ -481,8 +481,10 @@ its header is now a false claim about what the build checks.
   skipped. (`tests/generic-core.sh`)
 - **The reusable CSMS library depends on no TCK adapter.** Its imports point
   only within `packages/csms-driver`; the TCK adapts it from above, and the
-  declaration build includes the module. A standalone consumer example also
-  exercises the package export without constructing a scenario.
+  declaration build includes the module. Its HTTP daemon, `server/`, is a
+  transport adapter over the generic contract and imports no bundled driver.
+  A standalone consumer example also exercises the package export without
+  constructing a scenario.
   (`tests/csms-driver-boundary.sh`, `examples/csms-driver-smoke.ts`)
 - **`packages/trace-format/` depends on nothing in this repository.** Every import and
   re-export specifier under it is relative-and-inward or a `node:` built-in: a

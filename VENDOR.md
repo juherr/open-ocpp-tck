@@ -135,6 +135,7 @@ the drivers are native here, and the name now says so.
 | `tck/driver.ts` | `local-native` | `—` | `—` | `—` | `—` |
 | `tck/index.ts` | `local-native` | `—` | `—` | `—` | `—` |
 | `tck/driver-registry.ts` | `local-native` | `—` | `—` | `—` | `—` |
+| `tck/csms-server.ts` | `local-native` | `—` | `—` | `—` | `—` |
 | `tck/capabilities.ts` | `local-native` | `—` | `—` | `—` | `—` |
 | `tck/scope.ts` | `local-native` | `—` | `—` | `—` | `—` |
 | `tck/expected.ts` | `local-native` | `—` | `—` | `—` | `—` |

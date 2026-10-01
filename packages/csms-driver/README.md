@@ -91,5 +91,11 @@ definition is undecidable, and the `get`-then-`create`-or-`update` idiom above
 is how a caller provisions idempotently. Neither bundled driver implements the
 surface yet.
 
+## Over HTTP
+
+`ocpp-tck csms-server` serves a driver over HTTP/JSON for applications in any
+language, and `open-ocpp-tck/csms-driver/server` exports the handler behind it.
+See [`server/README.md`](server/README.md).
+
 The existing `open-ocpp-tck/driver` import remains available for driver modules
 that implement the TCK lifecycle contract.
