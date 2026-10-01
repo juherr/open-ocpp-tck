@@ -26,7 +26,9 @@ Released as `0.3.0`. The documented install ref already points at that tag, so
   Both members are optional, so existing drivers are unaffected; neither
   bundled driver implements the surface yet. A TCK driver module returns it as
   `CsmsDriverParts.chargePoints`, held to its declaration by the capability
-  parity guard like the other optional halves.
+  parity guard like the other optional halves: `CsmsDriverParts` now extends
+  the library's `CsmsDriver` minus `capabilities` rather than restating its
+  members, so a surface added there reaches TCK drivers without a second edit.
 - **Scenarios carry functional tags, and `--tag <name>` selects on them**
   (#34), beside `--group` and `--version` and intersecting with both. `--group`
   stays upstream's historical grouping, `--version` the protocol; a tag says

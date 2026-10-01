@@ -55,12 +55,12 @@ export interface ChargePointUpdate {
  * The optional administration surface of a `CsmsDriver`, present exactly when
  * `capabilities.chargePoints` is declared.
  *
- * | call     | missing id                        | existing id                            |
- * |----------|-----------------------------------|----------------------------------------|
- * | `create` | creates                           | throws {@link ChargePointAlreadyExistsError} |
- * | `get`    | `null`                            | its details                            |
- * | `update` | throws {@link ChargePointNotFoundError} | applies the patch                |
- * | `delete` | resolves                          | deletes                                |
+ * | call     | missing id                                | existing id                                  |
+ * |----------|-------------------------------------------|----------------------------------------------|
+ * | `create` | creates                                   | throws {@link ChargePointAlreadyExistsError} |
+ * | `get`    | `null`                                    | its details, never the password              |
+ * | `update` | throws {@link ChargePointNotFoundError}   | changes only the members it names            |
+ * | `delete` | resolves                                  | deletes                                      |
  *
  * A security profile outside `capabilities.chargePoints.securityProfiles` is
  * refused with `UnsupportedOperationError`, by `create` and by `update`.
