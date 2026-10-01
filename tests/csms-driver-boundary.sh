@@ -23,6 +23,7 @@ fi
 
 bun tests/csms-driver-contract-exports.ts
 bun tests/csms-driver-factories.ts
+bun tests/csms-driver-charge-points.ts
 bun examples/csms-driver-smoke.ts
 
 echo "CSMS library dependency boundary holds."

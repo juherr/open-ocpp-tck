@@ -12,6 +12,21 @@ Released as `0.3.0`. The documented install ref already points at that tag, so
 
 ### Added
 
+- **`open-ocpp-tck/csms-driver` gains an optional charge-point administration
+  surface** (#154): `CsmsDriver.chargePoints` creates, reads, updates and
+  deletes a station's registration with the CSMS — its OCPP identity,
+  registration status, security profile with the HTTP Basic password, and a
+  description — and `CsmsCapabilities.chargePoints` declares it, naming the
+  security profiles it accepts, so a consumer can detect support without
+  knowing the CSMS. The edge cases are part of the contract: `create` of an
+  existing id throws `ChargePointAlreadyExistsError`, `update` of a missing one
+  throws `ChargePointNotFoundError`, `get` of a missing one answers `null`,
+  `delete` of a missing one resolves, the password is never read back, and an
+  update to profile 0 or 3 discards it.
+  Both members are optional, so existing drivers are unaffected; neither
+  bundled driver implements the surface yet. A TCK driver module returns it as
+  `CsmsDriverParts.chargePoints`, held to its declaration by the capability
+  parity guard like the other optional halves.
 - **Scenarios carry functional tags, and `--tag <name>` selects on them**
   (#34), beside `--group` and `--version` and intersecting with both. `--group`
   stays upstream's historical grouping, `--version` the protocol; a tag says

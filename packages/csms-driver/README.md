@@ -47,5 +47,48 @@ await driver.operations201?.execute("station-1", {
 });
 ```
 
+## Charge-point administration
+
+Registering a station with the CSMS before it connects is administrative
+provisioning, not an OCPP message, so it is a surface of its own:
+`driver.chargePoints`. It is optional. A consumer detects it from the
+capabilities alone, without knowing which CSMS is behind the driver:
+
+```ts
+const profiles = driver.capabilities.chargePoints?.securityProfiles;
+if (driver.chargePoints && profiles?.has(1)) {
+  const existing = await driver.chargePoints.get("CP-1");
+  const security = { profile: 1, basicAuthPassword: "secret" } as const;
+  if (existing === null) {
+    await driver.chargePoints.create({ id: "CP-1", registration: "Accepted", security });
+  } else {
+    await driver.chargePoints.update("CP-1", { registration: "Accepted", security });
+  }
+}
+```
+
+The model names what OCPP defines (the station identity, its registration
+status, security profiles 0 to 3 and the HTTP Basic password profiles 1 and 2
+carry) and an optional description; CSMS form fields stay inside each driver.
+Every driver answers the edge cases alike:
+
+| call     | missing id                        | existing id                           |
+|----------|-----------------------------------|---------------------------------------|
+| `create` | creates                           | throws `ChargePointAlreadyExistsError` |
+| `get`    | `null`                            | its details, never the password       |
+| `update` | throws `ChargePointNotFoundError` | changes only the members it names     |
+| `delete` | resolves                          | deletes                               |
+
+An omitted registration means `Accepted` and omitted security means profile 0.
+An update's `security` replaces the whole block, so moving a station to
+profile 0 or 3 discards its stored password; `description: null` clears the
+description.
+A profile outside `capabilities.chargePoints.securityProfiles` is refused with
+`UnsupportedOperationError`. `create` is deliberately not an upsert: the
+password cannot be read back, so whether an existing station matches a
+definition is undecidable, and the `get`-then-`create`-or-`update` idiom above
+is how a caller provisions idempotently. Neither bundled driver implements the
+surface yet.
+
 The existing `open-ocpp-tck/driver` import remains available for driver modules
 that implement the TCK lifecycle contract.

@@ -2,7 +2,7 @@
 import type { ExpectedFailureTable } from "./expected";
 import type { ScopeTable } from "./scope";
 import type { ScenarioOcppVersion } from "./spec-types";
-import type { CsmsCapabilities, CsmsEnv, CsmsOperations16, CsmsOperations201, CsmsSessionApi, CsmsConnectorApi, ChargingProfileRef, ReservationRef, TransactionRef } from "../packages/csms-driver";
+import type { CsmsCapabilities, CsmsChargePointAdmin, CsmsEnv, CsmsOperations16, CsmsOperations201, CsmsSessionApi, CsmsConnectorApi, ChargingProfileRef, ReservationRef, TransactionRef } from "../packages/csms-driver";
 export * from "../packages/csms-driver";
 /** TCK-only observations exposed by a driver's assertion record adapters. */
 export interface CsmsTckCapabilities extends CsmsCapabilities {
@@ -53,6 +53,8 @@ export interface CsmsDriverParts {
     /** Generic typed reads are available to non-TCK consumers as well. */
     sessions?: CsmsSessionApi;
     connectors?: CsmsConnectorApi;
+    /** Present exactly when `capabilities.chargePoints` is declared. */
+    chargePoints?: CsmsChargePointAdmin;
     prepareStation?(cpId: string): Promise<void>;
     simTransport?(cpId: string): Promise<SimTransportDefaults>;
     close?(): Promise<void>;

@@ -18,8 +18,8 @@
  * PROPERTY, in 5 parts:
  *  1. AN OPTIONAL CAPABILITY IS DECLARED EXACTLY WHEN IT IS IMPLEMENTED, both
  *     directions, for every environment a bundled driver's declarations are a
- *     function of. `capabilities.operations201` against `operations201` on the
- *     parts; `reservations`, `chargingProfiles` and `deviceModel` against
+ *     function of. `capabilities.operations201` and `capabilities.chargePoints`
+ *     against the parts of the same name; `reservations`, `chargingProfiles` and `deviceModel` against
  *     `records.*`. Declared-and-missing is a scenario that starts a container
  *     to discover a gap the pre-flight already knew; implemented-and-
  *     undeclared is a capability the run report denies the CSMS has.
@@ -192,6 +192,12 @@ const OPTIONAL: readonly OptionalCapability[] = [
     declared: (capabilities) => capabilities.operations201 !== undefined,
     implemented: (parts) => parts.operations201 !== undefined,
     part: "operations201 on the parts create() returns",
+  },
+  {
+    field: "chargePoints",
+    declared: (capabilities) => capabilities.chargePoints !== undefined,
+    implemented: (parts) => parts.chargePoints !== undefined,
+    part: "chargePoints on the parts create() returns",
   },
   {
     field: "reservations",
