@@ -9,7 +9,7 @@ cd "$repo_root"
 source_dir=packages/csms-driver
 [ -d "$source_dir" ] || { echo "FAIL: $source_dir is missing." >&2; exit 1; }
 
-imports="$(grep -R -n -E 'from.*(tck/|drivers/)|import\(.*(tck/|drivers/)' "$source_dir" --include='*.ts' || true)"
+imports="$(grep -R -n -E "(from|import)[[:space:]]*\(?[[:space:]]*[\"'][^\"']*(tck/|drivers/)" "$source_dir" --include='*.ts' || true)"
 if [ -n "$imports" ]; then
   echo "FAIL: the reusable CSMS library imports its TCK adapter layer:" >&2
   printf '%s\n' "$imports" >&2
