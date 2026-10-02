@@ -67,8 +67,9 @@
  * AUTO_REGISTER_UNKNOWN_STATIONS=true, so the roster registers itself on first
  * BootNotification. There is no REST endpoint for them
  * (steve-community/steve#2068), but the driver's `chargePoints` surface can
- * register one through the manager UI (#155); moving the roster onto it is
- * #157.
+ * register one through the manager UI (#155), and
+ * tools/steve-provisioned-reset.ts proves that path end to end (#157); moving
+ * the roster onto it is #163.
  *
  * Everything is idempotent. Re-running provision on a provisioned environment
  * must be a no-op that still exits 0, because CI reruns it and an operator

@@ -6,10 +6,10 @@ on:
   pull_request:
   workflow_dispatch:
 
-# Read-only, for both jobs. Neither pushes anything -- the checkout steps
+# Read-only, for every job. None pushes anything -- the checkout steps
 # already drop the token with `persist-credentials: false` -- so the only
 # scope either needs is the one that fetches the code. Declared here rather
-# than per job so a third job starts locked down instead of inheriting the
+# than per job so a new job starts locked down instead of inheriting the
 # repository default.
 permissions:
   contents: read
@@ -19,7 +19,7 @@ concurrency:
   cancel-in-progress: true
 
 env:
-  # One declaration for both jobs. Two literals let a bump land on the offline
+  # One declaration for every job. Two literals let a bump land on the offline
   # checks while the e2e sweep quietly keeps running the old runtime.
   BUN_VERSION: "1.3.14"
 
@@ -29,7 +29,7 @@ jobs:
     steps:
       - uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09 # v5.1.0
         with:
-          # Neither job pushes anything, so the token has no reason to stay
+          # No job pushes anything, so the token has no reason to stay
           # in .git/config where every later step -- install scripts, the
           # sweep, the containers it spawns -- could read it.
           persist-credentials: false
@@ -240,6 +240,11 @@ jobs:
       # chosen to fail, so the pump takes its streams and the guard closes them.
       - name: A simulator that exited rejects its pending waits
         run: bun tests/sim-exit-rejects-waits.ts
+
+      # In-process because the cases are TCP segmentations a CSMS on loopback
+      # never produces on demand, so the guard plays the CSMS on a socket.
+      - name: The live tools' handshake probe reads a status line however it is segmented
+        run: bun tests/ocpp-handshake.ts
 
       - name: Core names no CSMS
         run: bash tests/generic-core.sh
@@ -601,3 +606,52 @@ jobs:
       - name: Tear down
         if: always()
         run: docker compose -f drivers/${{ matrix.driver }}/compose.yaml down -v
+
+  # EXPLICIT PROVISIONING, END TO END (#157): the one flow the csms-driver
+  # library exists for, against a SteVe that registers no stranger. The e2e
+  # job cannot carry it -- its stack auto-registers the roster, and on such a
+  # stack a station boots whether or not anything provisioned it. So this job
+  # brings up the override that turns that off, and the tool's first check is
+  # that it did: an unprovisioned station must be refused before anything else
+  # is asked. One CSMS, one station, a couple of minutes on top of the boot.
+  provisioning:
+    runs-on: ubuntu-latest
+    needs: check
+    timeout-minutes: 20
+    env:
+      # Every compose call below sees the override, so none can forget it.
+      COMPOSE_FILE: drivers/steve/compose.yaml:drivers/steve/compose.no-autoregister.yaml
+      # localhost for the tool, as in the e2e job; the simulator keeps the
+      # driver's in-network endpoint.
+      STEVE_URL: http://localhost:8180/steve/manager
+    steps:
+      - uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09 # v5.1.0
+        with:
+          persist-credentials: false
+
+      # Without --wait for the same reason as the e2e job: the pull and the
+      # cold boot overlap the toolchain install.
+      - name: Start SteVe without auto-registration
+        run: docker compose up -d
+
+      - uses: oven-sh/setup-bun@0c5077e51419868618aeaa5fe8019c62421857d6 # v2.2.0
+        with:
+          bun-version: ${{ env.BUN_VERSION }}
+
+      - run: bun install --frozen-lockfile
+
+      - name: Wait for it to be healthy
+        run: docker compose up -d --wait
+
+      - name: Provision, boot, Reset through SteVe
+        run: bun tools/steve-provisioned-reset.ts --yes-isolated
+
+      # The tool prints the station's side of the wire on a failure; this is
+      # the CSMS's side, which is where a refused handshake says why.
+      - name: SteVe log
+        if: failure()
+        run: docker compose logs --no-color --timestamps steve | tail -n 300
+
+      - name: Tear down
+        if: always()
+        run: docker compose down -v

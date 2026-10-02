@@ -119,15 +119,19 @@ const escapeRegExp = (s: string): string => s.replace(/[.*+?^${}()|[\]\\]/g, "\\
 
 /**
  * The wire spelling of a response to `uniqueId`: `Received: [3,"<id>"` or
- * `[4,`. The id is matched as the line carries it -- JSON-encoded, quotes
- * included -- because `parseLogLine` DEcodes it and a raw id with a `"` or a
- * `\` in it would otherwise be a pattern for a line that never comes. OCPP-J
- * leaves the id's alphabet open; the pinned station's are UUIDs, and nothing
- * here is allowed to depend on that.
+ * `[4,` -- `Sent:` for the station's answer to a CSMS's CALL. The id is
+ * matched as the line carries it -- JSON-encoded, quotes included -- because
+ * `parseLogLine` DEcodes it and a raw id with a `"` or a `\` in it would
+ * otherwise be a pattern for a line that never comes. OCPP-J leaves the id's
+ * alphabet open; the pinned station's are UUIDs, and nothing here is allowed
+ * to depend on that.
  */
-function responsePattern(uniqueIds: readonly string[]): RegExp {
+export function responsePattern(
+  uniqueIds: readonly string[],
+  logged: "Received" | "Sent" = "Received",
+): RegExp {
   const ids = uniqueIds.map((id) => escapeRegExp(JSON.stringify(id))).join("|");
-  return new RegExp(`Received: \\[[34],(?:${ids})`);
+  return new RegExp(`${logged}: \\[[34],(?:${ids})`);
 }
 
 /** What {@link awaitBootQuiet} needs beyond the station. */
@@ -242,6 +246,42 @@ export async function awaitBootQuiet(
     }
   }
 }
+
+/**
+ * How long the boot quiet gate holds a scenario's first CSMS dispatch for the
+ * station's boot-time CALLs to be answered, when they are not. Here rather
+ * than in the runner so a station started outside a scenario waits by the
+ * same numbers.
+ *
+ * THREE NUMBERS UNDER IT, ALL THE PINNED CSMS'S. 20 s is the TTL on the
+ * CSMS's in-progress entry for a station's CALL: past it, a dispatch is no
+ * longer refused, so any budget above 20 s ends the 1 ms retry loop that #119
+ * measured. 60 s is its database pool's acquire timeout, i.e. how long the
+ * stall that leaves those CALLs unanswered lasts: a budget above it lets the
+ * pool drain before the first dispatch arrives, instead of landing the
+ * dispatch on a CSMS still queueing for a connection. 30 s is the margin
+ * BOOT_GATE_TIMEOUT_MS below already allows on BootNotification.conf. In the
+ * healthy case the answers arrive ~300 ms after the CALLs, inside
+ * `bootWaitSecs`, and the gate returns without waiting -- the budget is spent
+ * only on a station whose CALLs the CSMS has stopped answering, which is the
+ * stall itself.
+ */
+export const BOOT_QUIET_TIMEOUT_MS = 90_000;
+/** How long every CALL still open must have been outstanding before the quiet
+ *  gate gives up on it: the CSMS's 20 s in-progress TTL, plus a margin for the
+ *  gate seeing the CALL a beat after the CSMS did. Without it the budget is
+ *  measured from the first wait alone, and a Heartbeat the station sends at
+ *  t=89s is dispatched over at t=90s with nineteen seconds of entry left. */
+export const BOOT_QUIET_STALE_MS = 25_000;
+/** The quiet gate's terminal bound. Each new unanswered CALL can extend the
+ *  gate by BOOT_QUIET_STALE_MS, and nothing enforces that a station sends
+ *  them less often than that -- so the budget plus one 60 s heartbeat
+ *  interval, past which the gate answers `unsettled` if a CALL is still
+ *  inside the window and the scenario is aborted rather than dispatched. */
+export const BOOT_QUIET_CAP_MS = 150_000;
+/** The boot gate's own budget on BootNotification.conf, unchanged from the
+ *  fork: a soft 30 s, warn and go on. */
+export const BOOT_GATE_TIMEOUT_MS = 30_000;
 
 /**
  * {@link settleBoot}'s answer: the quiet gate's, and whether the boot gate saw

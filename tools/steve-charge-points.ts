@@ -38,18 +38,20 @@
  * boot in 2 is the provisioning working and not SteVe registering a stranger:
  *
  *   TCK_SUFFIX=-cp STEVE_PORT=18255 docker compose -f drivers/steve/compose.yaml \
- *     -f <override setting AUTO_REGISTER_UNKNOWN_STATIONS=false> up -d --wait
+ *     -f drivers/steve/compose.no-autoregister.yaml up -d --wait
  *   STEVE_URL=http://127.0.0.1:18255/steve/manager \
- *   STEVE_WS_URL=ws://127.0.0.1:18255/steve/websocket/CentralSystemService \
  *     bun tools/steve-charge-points.ts --yes-isolated
+ *
+ * Its stations dial the OCPP endpoint on STEVE_URL's host and port, which
+ * SteVe shares with the manager UI.
  */
-import { connect } from "node:net";
 import { createSteveCsmsDriver } from "../packages/csms-driver/steve";
 import { unknowablePassword } from "../packages/csms-driver/steve/charge-points";
 import { chargeBoxPkOf, STEVE_CHARGE_POINT_PAGES } from "../packages/csms-driver/steve/forms";
 import { SteveUiOps } from "../packages/csms-driver/steve/ui-client";
 import { defaultSteveConfig } from "../drivers/steve/ui-client";
 import { chargePointAdminViolations, clearConformanceStations } from "../tests/lib/charge-point-conformance";
+import { handshakeStatus, onManagerHost } from "./lib/ocpp-handshake";
 
 const USAGE = `Usage: bun tools/steve-charge-points.ts --yes-isolated
 
@@ -57,8 +59,7 @@ const USAGE = `Usage: bun tools/steve-charge-points.ts --yes-isolated
                   else is using: this creates, rewrites and deletes charge
                   points and opens OCPP connections. Bring one up with a
                   distinct TCK_SUFFIX and STEVE_PORT -- workspaces on this
-                  machine share one docker daemon. STEVE_WS_URL must be the
-                  OCPP endpoint as reachable from THIS host.
+                  machine share one docker daemon.
 `;
 
 if (!process.argv.slice(2).includes("--yes-isolated")) {
@@ -67,6 +68,7 @@ if (!process.argv.slice(2).includes("--yes-isolated")) {
 }
 
 const cfg = defaultSteveConfig(process.env);
+const wsBaseUrl = onManagerHost(cfg.wsBaseUrl, cfg.baseUrl);
 const driver = createSteveCsmsDriver({ config: cfg });
 const admin = driver.chargePoints;
 if (!admin) throw new Error("the SteVe factory has no chargePoints surface");
@@ -84,23 +86,7 @@ function observe(what: string, observed: unknown, expected: unknown): void {
 
 /** The status line SteVe answers an OCPP WebSocket upgrade with: 101, or why not. */
 function handshake(cpId: string, basicAuthPassword?: string): Promise<number> {
-  const url = new URL(`${cfg.wsBaseUrl}/${cpId}`);
-  const key = btoa(String.fromCharCode(...crypto.getRandomValues(new Uint8Array(16))));
-  const auth = basicAuthPassword === undefined ? "" : `Authorization: Basic ${btoa(`${cpId}:${basicAuthPassword}`)}\r\n`;
-  return new Promise((resolve, reject) => {
-    const socket = connect(Number(url.port || 80), url.hostname, () => {
-      socket.write(
-        `GET ${url.pathname} HTTP/1.1\r\nHost: ${url.host}\r\nConnection: Upgrade\r\nUpgrade: websocket\r\n` +
-          `Sec-WebSocket-Version: 13\r\nSec-WebSocket-Key: ${key}\r\nSec-WebSocket-Protocol: ocpp1.6\r\n${auth}\r\n`,
-      );
-    });
-    socket.setTimeout(10_000, () => socket.destroy(new Error("handshake timed out")));
-    socket.once("data", (chunk) => {
-      resolve(Number(/^HTTP\/1\.1 (\d{3})/.exec(chunk.toString())?.[1] ?? 0));
-      socket.destroy();
-    });
-    socket.once("error", reject);
-  });
+  return handshakeStatus(wsBaseUrl, cpId, basicAuthPassword);
 }
 
 /**
@@ -109,7 +95,7 @@ function handshake(cpId: string, basicAuthPassword?: string): Promise<number> {
  */
 async function station(cpId: string, basicAuthPassword: string, answer: object) {
   const calls: string[] = [];
-  const ws = new WebSocket(`${cfg.wsBaseUrl}/${cpId}`, {
+  const ws = new WebSocket(`${wsBaseUrl}/${cpId}`, {
     protocols: ["ocpp1.6"],
     headers: { authorization: `Basic ${btoa(`${cpId}:${basicAuthPassword}`)}` },
   });

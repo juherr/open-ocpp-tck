@@ -24,7 +24,7 @@ error.
 ## The gate
 
 `bun run verify` is every check CI runs before it starts a container —
-typecheck, committed declarations, three driver scope checks, twenty-four in-process
+typecheck, committed declarations, three driver scope checks, twenty-five in-process
 guards and twenty shell guards — with one exit code, and every step runs even
 after one fails, where CI enumerates them and stops at the first.
 
@@ -71,6 +71,7 @@ bun tests/request-shape-201.ts
 bun tests/template-once.ts
 bun tests/boot-quiet.ts
 bun tests/sim-exit-rejects-waits.ts
+bun tests/ocpp-handshake.ts
 bash tests/csms-driver-boundary.sh  # module boundary, exports, charge-point
                                     # contract + consumer example
 bash tests/cert201-declares-its-version.sh
@@ -83,8 +84,11 @@ bash tests/trace-format-standalone.sh
 then `bun run verify` once before committing.
 
 Everything above is offline: no CSMS, no container, no credentials. The live
-counterparts are `ocpp-tck driver selftest` (seconds, needs a running CSMS) and
-`bun run e2e` (a full sweep, needs docker).
+counterparts are `ocpp-tck driver selftest` (seconds, needs a running CSMS),
+`bun run e2e` (a full sweep, needs docker), and
+`tools/steve-provisioned-reset.ts` (provision, boot and Reset against a SteVe
+that registers no stranger -- CI's `provisioning` job; its header has the
+recipe for an isolated stack).
 
 ## Vendored files: re-pin before verifying
 
@@ -145,7 +149,7 @@ There is no unit-test framework and no `*.test.ts`. `tests/` holds offline
 guards, each with a header stating the property it protects. `bun run test`
 chains them — note `bun test` is Bun's own runner and finds nothing here.
 
-Shell is the default, and the twenty-four TypeScript ones are TypeScript because
+Shell is the default, and the twenty-five TypeScript ones are TypeScript because
 what they assert is unreachable through the CLI. `driver-env-scope.ts`: a
 driver's declarations follow the env they are *resolved* with, where the CLI
 can only ever pass `process.env`. `capability-parity.ts`: the same reason and
@@ -384,6 +388,16 @@ timeout as the only rejection, which is what tells the rows from a pump that
 rejects everything. Its budgets are seconds, not `startSim`'s, so a row that
 fails by falling through to its timeout fails while someone is still
 watching.
+`ocpp-handshake.ts`: the one whose subject is a byte stream, and the only one
+guarding a file under `tools/`. The two live SteVe tools decide on the status
+line a CSMS answers a WebSocket upgrade with, and the probe that reads it once
+took the first TCP segment for the whole line: a `101` split across two read
+as status 0 -- a refusal, the very answer the provisioning test's control
+wants -- and a peer closing before any line left the probe pending for good.
+Neither is a case a CSMS on loopback produces when asked, so the guard is that
+CSMS, on a socket of its own, writing the segments apart with Nagle off. Its
+last rows hold the other half of the probe's contract: TLS is refused up front
+rather than dialled in clear.
 `scenario-tags.ts`: a tag is a declaration on a spec object, and most of what
 the guard holds is read off the objects -- every registered scenario carries a
 valid tag, every tag is carried by some scenario -- or off `scopeByTag`, a pure

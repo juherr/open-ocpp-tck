@@ -42,10 +42,12 @@ services:
       # The scenarios never assert that an unknown station is rejected, and no
       # REST endpoint can register one (SteVe's WebAPI exposes ocppTags and
       # transactions only; the driver's manager-UI `chargePoints` surface can,
-      # and moving the roster onto it is #157). So the roster registers itself
+      # and moving the roster onto it is #163). So the roster registers itself
       # on first BootNotification instead of being seeded. runScenario waits for
       # BootNotification.conf before drive(), so a station is always known by
       # the time the driver posts an operation for it.
+      # compose.no-autoregister.yaml is the stack on which a boot proves
+      # provisioning instead (#157).
       - AUTO_REGISTER_UNKNOWN_STATIONS=true
     ports:
       # Published because the driver runs on the HOST (it reaches MariaDB via
