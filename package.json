@@ -55,6 +55,10 @@
       "types": "./types/packages/csms-driver/index.d.ts",
       "default": "./packages/csms-driver/index.ts"
     },
+    "./csms-driver/server": {
+      "types": "./types/packages/csms-driver/server/index.d.ts",
+      "default": "./packages/csms-driver/server/index.ts"
+    },
     "./scope": {
       "types": "./types/tck/scope.d.ts",
       "default": "./tck/scope.ts"

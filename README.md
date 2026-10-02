@@ -240,6 +240,7 @@ selection metadata: like groups, they are absent from the pinned
 | `ocpp-tck print-sim-image` | nothing | The pinned simulator image digest |
 | `ocpp-tck driver selftest [--with-writes]` | CSMS | Every `CsmsRecords` method once, in seconds: does this driver answer the contract? `--with-writes` adds the `prepareStation` hook |
 | `ocpp-tck driver <verb>` | driver-defined | A bootstrap verb your driver contributes |
+| `ocpp-tck csms-server [--host H] [--port N] [--timeout-ms N]` | CSMS | Serves the driver over HTTP/JSON, for applications in any language: charge-point administration and OCPP 1.6 operations. See [`packages/csms-driver/server/README.md`](packages/csms-driver/server/README.md) |
 
 Working in a clone, `bun run verify` runs everything CI checks before it starts
 a container — typecheck, declarations, every driver scope check and every
@@ -351,6 +352,12 @@ loading the TCK runner; the existing `open-ocpp-tck/driver` entry point remains
 the API for TCK-specific scope, lifecycle hooks and assertion records. See
 [`packages/csms-driver/README.md`](packages/csms-driver/README.md) and its
 standalone example.
+
+An application that is not written in TypeScript reaches the same drivers
+through `ocpp-tck csms-server`, a small HTTP/JSON daemon over the driver
+`CSMS_DRIVER` names. Its API, with example requests, responses and the error
+codes, is in
+[`packages/csms-driver/server/README.md`](packages/csms-driver/server/README.md).
 
 ## Provenance
 
