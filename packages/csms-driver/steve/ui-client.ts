@@ -14,6 +14,7 @@
  * is that the CHARGE POINT produces the answer.
  */
 import { CsmsNotDispatchedError, type FetchLike } from "../contracts";
+import { pageErrors, readForm } from "./html-form";
 
 const DEFAULT_TIMEOUT_MS = 10_000;
 
@@ -75,11 +76,12 @@ function extractCsrf(html: string): string {
  * SteVe manager-UI client: login, CSRF, form POST -- one cookie jar per
  * instance. It is SteVe-specific and cannot drive any other CSMS.
  *
- * Two callers, each with an instance and therefore a session of its own: the
- * operations path (index.ts) and provisioning (provision.ts, which posts the
- * charging-profile form -- the one manager form with no REST equivalent, since
- * SteVe exposes REST controllers for OCPP tags, transactions and operations
- * but none for stored charging profiles).
+ * Two instances, and therefore two sessions: the driver's (index.ts), which
+ * posts operations and administers charge points (charge-points.ts) through
+ * one session, and provisioning's (provision.ts, which posts the
+ * charging-profile form). Both of the latter are manager forms with no REST
+ * equivalent: SteVe exposes REST controllers for OCPP tags, transactions and
+ * operations, but none for stored charging profiles or charge points.
  *
  * ONE SESSION, SHARED BY EVERY LANE, AND THEREFORE LOCKED. `tck/main.ts` loads
  * the driver once per process, so the operations instance is a singleton that
@@ -105,7 +107,7 @@ function extractCsrf(html: string): string {
 export class SteveUiOps {
   private cookies = new Map<string, string>();
 
-  /** Tail of the queue of `postForm` calls. Never rejects -- see serialise(). */
+  /** Tail of the queue of public calls. Never rejects -- see serialise(). */
   private gate: Promise<void> = Promise.resolve();
 
   constructor(
@@ -233,11 +235,13 @@ export class SteveUiOps {
 
   /**
    * NOT SERIALISED, and neither are isLoggedIn() or login() -- which is why all
-   * three are private. They run only from postFormExclusive(), which already
-   * holds the gate, so taking it again here would deadlock on the first call.
-   * The invariant is "postForm is the only entry point", and `private` is what
-   * enforces it: a second door into the session is not a wrong answer that some
-   * guard could catch, it is a caller no guard ever sees.
+   * three are private. They run only inside the bodies the public methods hand
+   * serialise(), which already hold the gate, so taking it again here would
+   * deadlock on the first call.
+   * The invariant is "every public method goes through serialise()", and
+   * `private` is what enforces it: a second door into the session is not a
+   * wrong answer that some guard could catch, it is a caller no guard ever
+   * sees.
    */
   private async ensureLogin(deadline: AbortSignal): Promise<void> {
     if (await this.isLoggedIn(deadline)) return;
@@ -292,29 +296,82 @@ export class SteveUiOps {
       body: form.toString(),
     });
     this.absorbSetCookie(res);
+    return redirectOrRefusal(res, path, (body) => body.slice(0, 300));
+  }
 
-    const location = res.headers.get("location");
-    if (!location) {
-      const body = await res.text().catch(() => "<unreadable body>");
-      const detail = `status ${res.status}: ${body.slice(0, 300)}`;
-      // Any error status -- 4xx refused, 5xx failed -- means the form never
-      // became an OCPP CALL, so nothing downstream can be a finding about the
-      // CSMS. 5xx belongs here and not on the line below, which is the easy
-      // one to get wrong: SteVe answers the operation form with a redirect to
-      // the task it created, so a handler that threw created nothing to
-      // redirect to and asked no charge point anything. Sending it down the
-      // warn-and-continue path is the failure #77 was.
-      //
-      // A 2xx with no Location IS the CSMS answering: the form came back
-      // carrying validation errors, which is a finding about the CSMS.
-      if (res.status >= 400) {
-        throw new CsmsNotDispatchedError(path, detail);
+  /**
+   * GET a manager page and return its body -- for reading what SteVe stores
+   * where no REST endpoint serves it. Serialised like every other entry point:
+   * it may log in, which replaces the session another lane is posting with.
+   */
+  async page(path: string): Promise<string> {
+    return this.serialise(async () => {
+      const deadline = AbortSignal.timeout(SECTION_TIMEOUT_MS);
+      await this.ensureLogin(deadline);
+      const res = await this.request(path, deadline, {
+        headers: { cookie: this.cookieHeader() },
+      });
+      this.absorbSetCookie(res);
+      if (res.status !== 200) {
+        throw new CsmsNotDispatchedError(path, `GET was answered ${res.status}`);
       }
-      throw new Error(
-        `steve postForm: no redirect Location header for ${path} (${detail})`,
-      );
-    }
-    return location;
+      return res.text();
+    });
+  }
+
+  /**
+   * Load `path`, read the form on it that posts to `action` exactly as a
+   * browser would submit it with its `submitter` button, let `fill` change
+   * what the caller means to change, and post the rest back untouched.
+   * Returns the redirect `Location`, like {@link postForm}.
+   *
+   * For the forms {@link postForm} cannot drive: the ones whose action is not
+   * a page (`chargepoints/add/single` is only ever POSTed), and the ones that
+   * overwrite every field they are sent -- html-form.ts says why posting a
+   * partial one erases the rest.
+   *
+   * A refusal carries the page's error text and nothing else of the body: the
+   * re-rendered form echoes what was posted, a password among it.
+   */
+  async submitForm(
+    path: string,
+    action: string,
+    submitter: string | undefined,
+    fill: (fields: URLSearchParams) => void,
+  ): Promise<string> {
+    return this.serialise(async () => {
+      const deadline = AbortSignal.timeout(SECTION_TIMEOUT_MS);
+      await this.ensureLogin(deadline);
+
+      let res = await this.request(path, deadline, {
+        headers: { cookie: this.cookieHeader() },
+      });
+      this.absorbSetCookie(res);
+      if (res.status !== 200) {
+        throw new CsmsNotDispatchedError(path, `GET was answered ${res.status}`);
+      }
+      const html = await res.text();
+      const form = readForm(html, action, submitter);
+      if (!form) {
+        throw new Error(
+          `steve: ${path} has no form posting to ${action}` +
+            ` (${pageErrors(html) ?? "no error on the page"})`,
+        );
+      }
+      if (!form.has("_csrf")) form.set("_csrf", extractCsrf(html));
+      fill(form);
+
+      res = await this.request(action, deadline, {
+        method: "POST",
+        headers: {
+          "content-type": "application/x-www-form-urlencoded",
+          cookie: this.cookieHeader(),
+        },
+        body: form.toString(),
+      });
+      this.absorbSetCookie(res);
+      return redirectOrRefusal(res, action, (body) => pageErrors(body) ?? "no error on the page");
+    });
   }
 
   /**
@@ -326,4 +383,35 @@ export class SteveUiOps {
   async op(opPath: string, fields: Record<string, string>): Promise<string> {
     return this.postForm(`operations/${opPath}`, fields);
   }
+}
+
+/**
+ * A manager form's answer: the redirect `Location`, which is how SteVe says it
+ * accepted, or a throw. `detail` is what of the body may go into the message.
+ */
+async function redirectOrRefusal(
+  res: Response,
+  path: string,
+  detail: (body: string) => string,
+): Promise<string> {
+  const location = res.headers.get("location");
+  if (location) return location;
+  const body = await res.text().catch(() => "<unreadable body>");
+  const refusal = `status ${res.status}: ${detail(body)}`;
+  // Any error status -- 4xx refused, 5xx failed -- means the form never
+  // became an OCPP CALL, so nothing downstream can be a finding about the
+  // CSMS. 5xx belongs here and not on the line below, which is the easy
+  // one to get wrong: SteVe answers the operation form with a redirect to
+  // the task it created, so a handler that threw created nothing to
+  // redirect to and asked no charge point anything. Sending it down the
+  // warn-and-continue path is the failure #77 was.
+  //
+  // A 2xx with no Location IS the CSMS answering: the form came back
+  // carrying validation errors, which is a finding about the CSMS.
+  if (res.status >= 400) {
+    throw new CsmsNotDispatchedError(path, refusal);
+  }
+  throw new Error(
+    `steve: no redirect Location header for ${path} (${refusal})`,
+  );
 }

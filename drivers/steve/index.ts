@@ -78,8 +78,10 @@ export const csmsDriver: CsmsDriverModule = {
     // `env`, not process.env: the runner owns what a driver may read, and the
     // WebAPI credentials are now on the scenario path, not just provisioning's.
     const records = new SteveRecords(cfg, defaultApiConfig(cfg, env));
+    const csms = createSteveCsmsDriver({ config: cfg });
     return {
-      operations16: createSteveCsmsDriver({ config: cfg }).operations16,
+      operations16: csms.operations16,
+      chargePoints: csms.chargePoints,
       records,
       prepareStation: (cpId) => records.closeStaleTransaction(cpId),
       simTransport: async () => ({

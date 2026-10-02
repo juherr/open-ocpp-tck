@@ -23,12 +23,23 @@ Released as `0.3.0`. The documented install ref already points at that tag, so
   throws `ChargePointNotFoundError`, `get` of a missing one answers `null`,
   `delete` of a missing one resolves, the password is never read back, and an
   update to profile 0 or 3 discards it.
-  Both members are optional, so existing drivers are unaffected; neither
-  bundled driver implements the surface yet. A TCK driver module returns it as
+  Both members are optional, so existing drivers are unaffected. A TCK driver module returns it as
   `CsmsDriverParts.chargePoints`, held to its declaration by the capability
   parity guard like the other optional halves: `CsmsDriverParts` now extends
   the library's `CsmsDriver` minus `capabilities` rather than restating its
   members, so a surface added there reaches TCK drivers without a second edit.
+- **The SteVe driver implements charge-point administration** (#155), through
+  the manager UI, since SteVe has no REST endpoint for charge points
+  (steve-community/steve#2068). A station can now be registered, with its
+  registration status, security profile and password, before it ever
+  connects, without `AUTO_REGISTER_UNKNOWN_STATIONS`. `STEVE_CAPABILITIES`
+  declares profiles 0 to 3, `createSteveCsmsDriver` returns the surface on the
+  same manager-UI session as `operations16`, and `ocpp-tck csms-server` serves
+  it for `CSMS_DRIVER=steve` with no further setting. SteVe has no way to clear
+  a stored password, so a move to profile 0 or 3 replaces it with a random one
+  nobody holds. A refusal SteVe renders on the page is a plain `Error` carrying
+  its error text and never the posted form. `bun tools/steve-charge-points.ts
+  --yes-isolated` re-checks all of it against a live SteVe.
 - **`ocpp-tck csms-server` serves a CSMS driver over HTTP/JSON** (#156), so an
   application in any language can provision a charge point and send an OCPP
   1.6 remote operation through the CSMS without importing TypeScript. It loads

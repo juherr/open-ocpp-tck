@@ -5,6 +5,7 @@ import { CSMS_OPERATION_16_ACTIONS, type CsmsCapabilities, type CsmsOperation16 
 import type { FetchLike } from "../contracts";
 import type { CsmsDriver } from "../models";
 import type { CsmsConnectorApi, CsmsSessionApi } from "../models";
+import { STEVE_CHARGE_POINT_PROFILES, steveChargePoints } from "./charge-points";
 import { cpSelect, toSteveForm } from "./forms";
 import { SteveUiOps, type SteveUiConfig } from "./ui-client";
 
@@ -17,15 +18,20 @@ export interface SteveCsmsDriverOptions {
 
 export const STEVE_CAPABILITIES: CsmsCapabilities = {
   operations16: new Set(CSMS_OPERATION_16_ACTIONS),
+  chargePoints: { securityProfiles: STEVE_CHARGE_POINT_PROFILES },
 };
 
-/** Creates the reusable SteVe operation surface without TCK lifecycle hooks. */
+/**
+ * Creates the reusable SteVe operation and charge-point administration
+ * surfaces, without TCK lifecycle hooks. Both share one manager-UI session.
+ */
 export function createSteveCsmsDriver(options: SteveCsmsDriverOptions): CsmsDriver {
   const ui = new SteveUiOps(options.config, options.fetch);
   return {
     capabilities: STEVE_CAPABILITIES,
     ...(options.sessions ? { sessions: options.sessions } : {}),
     ...(options.connectors ? { connectors: options.connectors } : {}),
+    chargePoints: steveChargePoints(ui),
     operations16: {
       async execute(cpId: string, operation: CsmsOperation16): Promise<string> {
         const { opPath, fields } = toSteveForm(operation);

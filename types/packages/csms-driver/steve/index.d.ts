@@ -10,7 +10,10 @@ export interface SteveCsmsDriverOptions {
     readonly connectors?: CsmsConnectorApi;
 }
 export declare const STEVE_CAPABILITIES: CsmsCapabilities;
-/** Creates the reusable SteVe operation surface without TCK lifecycle hooks. */
+/**
+ * Creates the reusable SteVe operation and charge-point administration
+ * surfaces, without TCK lifecycle hooks. Both share one manager-UI session.
+ */
 export declare function createSteveCsmsDriver(options: SteveCsmsDriverOptions): CsmsDriver;
 export * from "./api-client";
 export * from "./forms";

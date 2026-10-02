@@ -88,8 +88,18 @@ A profile outside `capabilities.chargePoints.securityProfiles` is refused with
 `UnsupportedOperationError`. `create` is deliberately not an upsert: the
 password cannot be read back, so whether an existing station matches a
 definition is undecidable, and the `get`-then-`create`-or-`update` idiom above
-is how a caller provisions idempotently. Neither bundled driver implements the
-surface yet.
+is how a caller provisions idempotently.
+
+The SteVe driver implements the surface, on every security profile, through
+the manager UI: SteVe has no REST endpoint for charge points
+([steve-community/steve#2068](https://github.com/steve-community/steve/issues/2068)).
+Three things follow from that UI. A refusal (a password outside SteVe's 16 to
+20 characters, say) is a plain `Error` carrying the page's error text. SteVe
+cannot clear a stored password, so a move to profile 0 or 3 replaces it with
+a random one nobody holds. And a security change on a station that is
+connected is pushed to it as `ChangeConfiguration`; if the station refuses,
+`update` throws although the record has changed. The CitrineOS driver does not
+implement the surface yet.
 
 ## Over HTTP
 

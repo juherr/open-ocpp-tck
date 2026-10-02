@@ -41,11 +41,12 @@ export declare const CSRF_RE: RegExp;
  * SteVe manager-UI client: login, CSRF, form POST -- one cookie jar per
  * instance. It is SteVe-specific and cannot drive any other CSMS.
  *
- * Two callers, each with an instance and therefore a session of its own: the
- * operations path (index.ts) and provisioning (provision.ts, which posts the
- * charging-profile form -- the one manager form with no REST equivalent, since
- * SteVe exposes REST controllers for OCPP tags, transactions and operations
- * but none for stored charging profiles).
+ * Two instances, and therefore two sessions: the driver's (index.ts), which
+ * posts operations and administers charge points (charge-points.ts) through
+ * one session, and provisioning's (provision.ts, which posts the
+ * charging-profile form). Both of the latter are manager forms with no REST
+ * equivalent: SteVe exposes REST controllers for OCPP tags, transactions and
+ * operations, but none for stored charging profiles or charge points.
  *
  * ONE SESSION, SHARED BY EVERY LANE, AND THEREFORE LOCKED. `tck/main.ts` loads
  * the driver once per process, so the operations instance is a singleton that
@@ -72,7 +73,7 @@ export declare class SteveUiOps {
     private readonly cfg;
     private readonly fetchImpl;
     private cookies;
-    /** Tail of the queue of `postForm` calls. Never rejects -- see serialise(). */
+    /** Tail of the queue of public calls. Never rejects -- see serialise(). */
     private gate;
     constructor(cfg: SteveUiConfig, fetchImpl?: FetchLike);
     /**
@@ -104,11 +105,13 @@ export declare class SteveUiOps {
     private login;
     /**
      * NOT SERIALISED, and neither are isLoggedIn() or login() -- which is why all
-     * three are private. They run only from postFormExclusive(), which already
-     * holds the gate, so taking it again here would deadlock on the first call.
-     * The invariant is "postForm is the only entry point", and `private` is what
-     * enforces it: a second door into the session is not a wrong answer that some
-     * guard could catch, it is a caller no guard ever sees.
+     * three are private. They run only inside the bodies the public methods hand
+     * serialise(), which already hold the gate, so taking it again here would
+     * deadlock on the first call.
+     * The invariant is "every public method goes through serialise()", and
+     * `private` is what enforces it: a second door into the session is not a
+     * wrong answer that some guard could catch, it is a caller no guard ever
+     * sees.
      */
     private ensureLogin;
     /**
@@ -128,6 +131,27 @@ export declare class SteveUiOps {
     postForm(path: string, fields: Record<string, string>): Promise<string>;
     /** {@link postForm}'s body, which assumes it already holds the lock. */
     private postFormExclusive;
+    /**
+     * GET a manager page and return its body -- for reading what SteVe stores
+     * where no REST endpoint serves it. Serialised like every other entry point:
+     * it may log in, which replaces the session another lane is posting with.
+     */
+    page(path: string): Promise<string>;
+    /**
+     * Load `path`, read the form on it that posts to `action` exactly as a
+     * browser would submit it with its `submitter` button, let `fill` change
+     * what the caller means to change, and post the rest back untouched.
+     * Returns the redirect `Location`, like {@link postForm}.
+     *
+     * For the forms {@link postForm} cannot drive: the ones whose action is not
+     * a page (`chargepoints/add/single` is only ever POSTed), and the ones that
+     * overwrite every field they are sent -- html-form.ts says why posting a
+     * partial one erases the rest.
+     *
+     * A refusal carries the page's error text and nothing else of the body: the
+     * re-rendered form echoes what was posted, a password among it.
+     */
+    submitForm(path: string, action: string, submitter: string | undefined, fill: (fields: URLSearchParams) => void): Promise<string>;
     /**
      * steve_op OP_PATH FIELDS equivalent. POSTs one CSMS operation,
      * form-encoded, exactly like the manager UI would. Returns the redirect
