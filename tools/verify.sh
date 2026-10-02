@@ -149,6 +149,10 @@ run "the boot gate holds the first dispatch until the station's boot-time CALLs 
 # result, and reaching it from the CLI means a docker daemon and an image chosen
 # to fail -- so the pump takes its streams, and the guard closes them itself.
 run "a simulator that exited rejects its pending waits" bun tests/sim-exit-rejects-waits.ts
+# In-process because the cases are TCP segmentations a CSMS on loopback never
+# produces on demand -- a status line split across segments, a close before
+# one -- so the guard plays the CSMS on a socket and writes the bytes itself.
+run "the live tools' handshake probe reads a status line however it is segmented" bun tests/ocpp-handshake.ts
 run "core is CSMS-neutral" bash tests/generic-core.sh
 run "CSMS library boundary and consumer example" bash tests/csms-driver-boundary.sh
 # The one reading in this repository that lives in the workflow rather than in

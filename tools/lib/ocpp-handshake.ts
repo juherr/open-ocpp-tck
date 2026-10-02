@@ -7,9 +7,18 @@
  * reports every refusal as the same opaque error event.
  *
  * `wsBaseUrl` is the OCPP endpoint as reachable from THIS host; the charge
- * point id is appended as the last path segment.
+ * point id is appended as the last path segment. Plain `ws:` only: the probe
+ * speaks TCP, not TLS, and every CSMS these tools are run against is served
+ * in clear, so a `wss:` endpoint is refused rather than dialled in clear.
+ *
+ * The status line is read whole however TCP segments it, and a peer that
+ * closes before sending one rejects -- a split `101` once read as status 0,
+ * which every caller takes for a refusal. tests/ocpp-handshake.ts holds both.
  */
 import { connect } from "node:net";
+
+/** Past this, a first line with no CRLF is not an HTTP status line. */
+const STATUS_LINE_LIMIT = 1024;
 
 export function handshakeStatus(
   wsBaseUrl: string,
@@ -17,9 +26,13 @@ export function handshakeStatus(
   basicAuthPassword?: string,
 ): Promise<number> {
   const url = new URL(`${wsBaseUrl}/${cpId}`);
+  if (url.protocol !== "ws:") {
+    return Promise.reject(new Error(`${url.protocol} is not supported: this probe speaks plain WebSocket, not TLS`));
+  }
   const key = btoa(String.fromCharCode(...crypto.getRandomValues(new Uint8Array(16))));
   const auth = basicAuthPassword === undefined ? "" : `Authorization: Basic ${btoa(`${cpId}:${basicAuthPassword}`)}\r\n`;
   return new Promise((resolve, reject) => {
+    let received = "";
     const socket = connect(Number(url.port || 80), url.hostname, () => {
       socket.write(
         `GET ${url.pathname} HTTP/1.1\r\nHost: ${url.host}\r\nConnection: Upgrade\r\nUpgrade: websocket\r\n` +
@@ -27,11 +40,22 @@ export function handshakeStatus(
       );
     });
     socket.setTimeout(10_000, () => socket.destroy(new Error("handshake timed out")));
-    socket.once("data", (chunk) => {
-      resolve(Number(/^HTTP\/1\.1 (\d{3})/.exec(chunk.toString())?.[1] ?? 0));
+    socket.on("data", (chunk: Buffer) => {
+      received += chunk.toString("latin1");
+      const end = received.indexOf("\r\n");
+      if (end === -1 && received.length <= STATUS_LINE_LIMIT) return;
+      const line = end === -1 ? received : received.slice(0, end);
+      const status = /^HTTP\/\d\.\d (\d{3})(?: |$)/.exec(line);
+      if (status) resolve(Number(status[1]));
+      else reject(new Error(`not an HTTP status line: ${JSON.stringify(line.slice(0, 80))}`));
       socket.destroy();
     });
     socket.once("error", reject);
+    // Settled already on every path but one: the peer closed before a whole
+    // status line arrived, which would otherwise leave this pending for good.
+    socket.once("close", () =>
+      reject(new Error(`connection closed before a status line${received ? `, after ${JSON.stringify(received)}` : ""}`)),
+    );
   });
 }
 
@@ -40,12 +64,19 @@ export function handshakeStatus(
  * For a CSMS that publishes its UI and its OCPP endpoint on one port, that is
  * the endpoint as reachable from wherever `managerUrl` is -- so a tool on the
  * host derives it from the URL it already reaches the UI by, and `wsBaseUrl`
- * keeps meaning what the simulator container dials.
+ * keeps meaning what the simulator container dials. An https manager URL is
+ * refused, since {@link handshakeStatus} cannot dial the `wss:` it implies.
  */
 export function onManagerHost(wsBaseUrl: string, managerUrl: string): string {
   const ws = new URL(wsBaseUrl);
   const manager = new URL(managerUrl);
-  ws.protocol = manager.protocol === "https:" ? "wss:" : "ws:";
-  ws.host = manager.host;
+  if (manager.protocol !== "http:") {
+    throw new Error(`${managerUrl}: these live tools reach the CSMS over plain HTTP and WebSocket only`);
+  }
+  ws.protocol = "ws:";
+  // hostname and port apart: assigning `host` from a URL without a port
+  // keeps this one's.
+  ws.hostname = manager.hostname;
+  ws.port = manager.port;
   return ws.toString();
 }

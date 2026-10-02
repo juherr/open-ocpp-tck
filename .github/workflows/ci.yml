@@ -241,6 +241,11 @@ jobs:
       - name: A simulator that exited rejects its pending waits
         run: bun tests/sim-exit-rejects-waits.ts
 
+      # In-process because the cases are TCP segmentations a CSMS on loopback
+      # never produces on demand, so the guard plays the CSMS on a socket.
+      - name: The live tools' handshake probe reads a status line however it is segmented
+        run: bun tests/ocpp-handshake.ts
+
       - name: Core names no CSMS
         run: bash tests/generic-core.sh
 
