@@ -77,6 +77,12 @@ export declare function chargePointFromForm(fields: URLSearchParams): ChargePoin
  * The `chargeBoxPk` the list page links `cpId` to. Matched on the link text
  * EXACTLY: the query page filters with LIKE, so asking for `CP-1` also lists
  * `CP-10`.
+ *
+ * Compared RAW first: the pinned image's chargepoints.jsp writes
+ * `${cp.chargeBoxId}` unescaped, and an id its validator accepts may look
+ * like markup -- `CP&amp;01` is listed as `CP&amp;01`, which decoded is
+ * another id. The decoded text is a fallback for a SteVe that escapes the
+ * list, and is consulted only when no link matches raw.
  */
 export declare function chargeBoxPkOf(listHtml: string, cpId: string): number | undefined;
 export declare function toSteveForm(op: CsmsOperation16): {

@@ -15,7 +15,9 @@
  *  - an update overwrites every column with what was posted, so a member the
  *    form left out is erased -- EXCEPT the password, which an empty field
  *    leaves unchanged, and which nothing clears;
- *  - the list query matches with LIKE, so `CP-1` lists `CP-10`;
+ *  - the list query matches with LIKE, so `CP-1` lists `CP-10`, and renders
+ *    the id unescaped where the details form escapes it -- `CP&amp;01` is
+ *    listed as `CP&amp;01` and rendered `CP&amp;amp;01` on its details page;
  *  - a request without an authenticated session is redirected to sign-in;
  *  - the handshake checks the password under profiles 1 and 2 only.
  * Markup follows Spring's form tags as the pinned image renders them. The
@@ -282,7 +284,9 @@ export function fakeSteveManager(options: FakeSteveOptions = {}): FakeSteveManag
         const rows = [...stations.values()]
           .filter((station) => station.chargeBoxId.includes(filter))
           .map((station) =>
-            `<tr><td><a href="${CONTEXT}/chargepoints/details/${station.pk}">${esc(station.chargeBoxId)}</a></td>` +
+            // Unescaped: chargepoints.jsp writes `${cp.chargeBoxId}` raw, while
+            // the details page's form tag escapes the same id.
+            `<tr><td><a href="${CONTEXT}/chargepoints/details/${station.pk}">${station.chargeBoxId}</a></td>` +
             `<td><form id="command" action="${CONTEXT}/chargepoints/delete/${station.pk}" method="post">` +
             `<input type="submit" class="redSubmit" value="Delete">${csrfInput(session.token)}</form></td></tr>`,
           );

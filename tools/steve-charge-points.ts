@@ -30,6 +30,9 @@
  *     downgrade that posted an EMPTY password does revive it (101). If this
  *     one stops answering 101, SteVe changed the rule and the adapter's
  *     reason to overwrite should be re-read, not the other way round.
+ *  6. An id SteVe's validator accepts that looks like markup (`LIVE&amp;155`)
+ *     reads back, and the list renders it RAW -- which the fake models and
+ *     the adapter's exact match depends on.
  *
  * Run it against a stack with unknown-station auto-registration OFF, so the
  * boot in 2 is the provisioning working and not SteVe registering a stranger:
@@ -69,6 +72,8 @@ const admin = driver.chargePoints;
 if (!admin) throw new Error("the SteVe factory has no chargePoints surface");
 const operator = new SteveUiOps(cfg);
 const STATION = "LIVE-155";
+/** An id the validator accepts that reads as markup: listed raw, escaped on its details page. */
+const MARKUP_STATION = "LIVE&amp;155";
 
 const mismatches: string[] = [];
 function observe(what: string, observed: unknown, expected: unknown): void {
@@ -145,6 +150,7 @@ async function operatorSetsProfile(cpId: string, profile: string): Promise<void>
 
 await clearConformanceStations(admin);
 await admin.delete(STATION);
+await admin.delete(MARKUP_STATION);
 
 // 1. The conformance check.
 const violations = await chargePointAdminViolations(driver);
@@ -182,6 +188,14 @@ observe("control: old password after an EMPTY-password downgrade and a switch-ba
 
 await admin.delete(STATION);
 observe("station after delete", await admin.get(STATION), null);
+
+// 6. An id that looks like markup round-trips through the list and the details page.
+await admin.create({ id: MARKUP_STATION, registration: "Pending" });
+observe(`${MARKUP_STATION} read back`, (await admin.get(MARKUP_STATION))?.id, MARKUP_STATION);
+const listed = await operator.page(STEVE_CHARGE_POINT_PAGES.query(MARKUP_STATION));
+observe(`${MARKUP_STATION} as the list renders it`, listed.includes(`>${MARKUP_STATION}</a>`) ? "raw" : "escaped", "raw");
+await admin.delete(MARKUP_STATION);
+observe(`${MARKUP_STATION} after delete`, await admin.get(MARKUP_STATION), null);
 
 if (mismatches.length > 0) {
   console.error(`\n${mismatches.length} observation(s) differ from what the offline guard's fake assumes.`);

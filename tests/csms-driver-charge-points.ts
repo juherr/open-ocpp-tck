@@ -60,7 +60,8 @@
  *     when a concurrent create wins the race past that check; a POST bounced
  *     to sign-in is a non-dispatch that changed nothing, not an acceptance; a create that cannot be
  *     read back, and an update whose members do not read back as written,
- *     are not a success; `CP-1` is not `CP-10`, which SteVe's LIKE
+ *     are not a success; an id that looks like markup (`CP&amp;01`) is found
+ *     although the list writes it raw and the details form escapes it; `CP-1` is not `CP-10`, which SteVe's LIKE
  *     query lists beside it; and the details form goes back whole, because
  *     SteVe's update erases whatever it is not sent.
  *
@@ -652,6 +653,20 @@ await row("the read-back row", async () => {
 });
 
 // The list query matches with LIKE: CP-10 is not CP-1.
+// An id SteVe's validator accepts may look like markup: the list writes it
+// raw, the details form escapes it, and it must be found under both.
+await row("the entity-like id row", async () => {
+  const fake = fakeSteveManager();
+  const admin = steveAdmin(fake);
+  const id = "CP&amp;01";
+  await admin.create({ id, registration: "Pending" });
+  check((await admin.get(id))?.id === id, `get finds ${id}, which the list renders unescaped`);
+  await admin.update(id, { registration: "Rejected" });
+  check(fake.stations.get(id)?.registrationStatus === "REJECTED", `update applies to ${id}`);
+  await admin.delete(id);
+  check(!fake.stations.has(id), `delete removes ${id}`);
+});
+
 await row("the LIKE row", async () => {
   const fake = fakeSteveManager();
   const admin = steveAdmin(fake);
