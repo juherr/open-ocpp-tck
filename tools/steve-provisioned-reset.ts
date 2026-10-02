@@ -52,6 +52,7 @@
  *     bun tools/steve-provisioned-reset.ts --yes-isolated
  */
 import { csmsDriver } from "../drivers/steve/index";
+import type { CsmsChargePointAdmin } from "../packages/csms-driver";
 import { defaultSteveConfig } from "../drivers/steve/ui-client";
 import { AssertRecorder, assertResponseStatus } from "../tck/assert";
 import {
@@ -91,15 +92,11 @@ const CONTROL = `E2E-UNPROVISIONED-${crypto.randomUUID().slice(0, 8)}`;
 const SIM_TEMPLATE = "provisioned-reset";
 
 const env = process.env;
-const steve = defaultSteveConfig(env);
-/** The OCPP endpoint as reachable from this host, for the two handshakes. */
-const wsBaseUrl = onManagerHost(steve.wsBaseUrl, steve.baseUrl);
-const parts = await csmsDriver.create(env);
-const admin = parts.chargePoints;
-if (!admin) throw new Error("the SteVe driver has no chargePoints surface");
 
 let phase: Phase = "environment";
 let sim: SimProcess | undefined;
+/** Set once the driver is built; the cleanup deletes through it. */
+let admin: CsmsChargePointAdmin | undefined;
 
 function ok(evidence: string): void {
   console.log(`ok   [${phase}] ${evidence}`);
@@ -129,6 +126,15 @@ function simTail(): string {
 let exitCode = 0;
 try {
   // -- environment ----------------------------------------------------------
+  // Setup is inside the phase, so a STEVE_URL the tools cannot use or a driver
+  // without the surface is a FAIL [environment] line like any other.
+  const steve = defaultSteveConfig(env);
+  /** The OCPP endpoint as reachable from this host, for the two handshakes. */
+  const wsBaseUrl = onManagerHost(steve.wsBaseUrl, steve.baseUrl);
+  const parts = await csmsDriver.create(env);
+  if (!parts.chargePoints) fail("the SteVe driver has no chargePoints surface");
+  const chargePoints = parts.chargePoints;
+  admin = chargePoints;
   const status = await handshakeStatus(wsBaseUrl, CONTROL);
   if (status === 101) {
     fail(
@@ -138,16 +144,16 @@ try {
     );
   }
   ok(`${CONTROL}, never provisioned, is refused at the handshake (HTTP ${status})`);
-  if ((await admin.get(CONTROL)) !== null) fail(`SteVe holds a row for ${CONTROL} after refusing it`);
+  if ((await chargePoints.get(CONTROL)) !== null) fail(`SteVe holds a row for ${CONTROL} after refusing it`);
   ok(`SteVe holds no row for ${CONTROL}`);
 
   // -- provisioning ---------------------------------------------------------
   phase = "provisioning";
-  await admin.delete(TARGET);
-  if ((await admin.get(TARGET)) !== null) fail(`${TARGET} is still present after delete`);
+  await chargePoints.delete(TARGET);
+  if ((await chargePoints.get(TARGET)) !== null) fail(`${TARGET} is still present after delete`);
   ok(`${TARGET} is absent`);
-  await admin.create({ id: TARGET, registration: "Accepted", description: "tools/steve-provisioned-reset.ts" });
-  const row = await admin.get(TARGET);
+  await chargePoints.create({ id: TARGET, registration: "Accepted", description: "tools/steve-provisioned-reset.ts" });
+  const row = await chargePoints.get(TARGET);
   if (row === null) {
     fail(`${TARGET} is absent before the simulator starts: nothing provisioned it, and this stack will refuse it`);
   }
@@ -217,7 +223,7 @@ try {
 } finally {
   await sim?.stop();
   for (const cpId of [TARGET, CONTROL]) {
-    await admin.delete(cpId).catch((error: unknown) => {
+    await admin?.delete(cpId).catch((error: unknown) => {
       console.error(`WARN: could not delete ${cpId}: ${messageOf(error)}`);
     });
   }
