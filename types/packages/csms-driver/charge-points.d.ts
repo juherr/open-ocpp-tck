@@ -43,8 +43,9 @@ export interface ChargePointDetails {
 /**
  * A partial update: an omitted member is left unchanged. `security` replaces
  * the whole block, because the password belongs to the profile -- so a
- * `security` of profile 0 or 3 discards any stored Basic Auth password. A
- * `description` of `null` clears it.
+ * `security` of profile 0 or 3 discards any stored Basic Auth password: it no
+ * longer authenticates the station, even if the station is later moved back
+ * to a profile that checks one. A `description` of `null` clears it.
  */
 export interface ChargePointUpdate {
     readonly registration?: ChargePointRegistration;

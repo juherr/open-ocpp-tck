@@ -9,10 +9,16 @@
  * them. Now it is what it always was -- one CSMS's serialisation, owned by the
  * driver for that CSMS.
  */
+import type {
+  ChargePointDetails,
+  ChargePointRegistration,
+  ChargePointSecurityProfile,
+} from "../charge-points";
 import {
   assertNever,
   type CsmsOperation16,
 } from "../contracts";
+import { decodeHtml } from "./html-form";
 
 /**
  * SteVe's ReserveNow `expiry` and UpdateFirmware `retrieveDateTime` inputs
@@ -73,6 +79,90 @@ export function chargingProfileForm(
     "schedulePeriods[0].powerLimit": String(profile.limitW),
     add: "Add",
   };
+}
+
+/**
+ * The manager pages and form actions behind charge-point administration.
+ * SteVe has no REST controller for charge points (steve-community/steve#2068),
+ * so these are the only way in.
+ */
+export const STEVE_CHARGE_POINT_PAGES = {
+  add: "chargepoints/add",
+  addAction: "chargepoints/add/single",
+  query: (cpId: string): string => `chargepoints/query?chargeBoxId=${encodeURIComponent(cpId)}`,
+  details: (chargeBoxPk: number): string => `chargepoints/details/${chargeBoxPk}`,
+  updateAction: "chargepoints/update",
+  deleteAction: (chargeBoxPk: number): string => `chargepoints/delete/${chargeBoxPk}`,
+} as const;
+
+const REGISTRATION_STATUS: Readonly<Record<ChargePointRegistration, string>> = {
+  Accepted: "ACCEPTED",
+  Pending: "PENDING",
+  Rejected: "REJECTED",
+};
+
+/** What a charge-point form is asked to change; an absent member is left as the page rendered it. */
+export interface ChargePointFormChange {
+  readonly chargeBoxId?: string;
+  readonly registration?: ChargePointRegistration;
+  /** `authPassword` empty leaves SteVe's stored password unchanged -- it is never a way to clear it. */
+  readonly security?: { readonly profile: ChargePointSecurityProfile; readonly authPassword: string };
+  /** `null` posts an empty description, which SteVe stores as none. */
+  readonly description?: string | null;
+}
+
+/** Applies `change` to a charge-point form read off the add or details page. */
+export function fillChargePointForm(fields: URLSearchParams, change: ChargePointFormChange): void {
+  if (change.chargeBoxId !== undefined) fields.set("chargeBoxId", change.chargeBoxId);
+  if (change.registration !== undefined) fields.set("registrationStatus", REGISTRATION_STATUS[change.registration]);
+  if (change.security !== undefined) {
+    fields.set("securityProfile", `Profile_${change.security.profile}`);
+    fields.set("authPassword", change.security.authPassword);
+  }
+  if (change.description !== undefined) fields.set("description", change.description ?? "");
+}
+
+/** A description as SteVe stores what it was posted: trimmed, and empty as none. */
+export function steveStoredDescription(description: string | null | undefined): string | undefined {
+  return description?.trim() || undefined;
+}
+
+/**
+ * A charge point as its details form renders it, or `undefined` when a
+ * member reads as nothing this mapping knows -- a SteVe that renamed one.
+ */
+export function chargePointFromForm(fields: URLSearchParams): ChargePointDetails | undefined {
+  const id = fields.get("chargeBoxId");
+  const registration = (Object.keys(REGISTRATION_STATUS) as ChargePointRegistration[]).find(
+    (status) => REGISTRATION_STATUS[status] === fields.get("registrationStatus"),
+  );
+  const profile = /^Profile_([0-3])$/.exec(fields.get("securityProfile") ?? "")?.[1];
+  if (!id || registration === undefined || profile === undefined) return undefined;
+  const description = steveStoredDescription(fields.get("description"));
+  return {
+    id,
+    registration,
+    security: { profile: Number(profile) as ChargePointSecurityProfile },
+    ...(description === undefined ? {} : { description }),
+  };
+}
+
+/**
+ * The `chargeBoxPk` the list page links `cpId` to. Matched on the link text
+ * EXACTLY: the query page filters with LIKE, so asking for `CP-1` also lists
+ * `CP-10`.
+ *
+ * Compared RAW first: the pinned image's chargepoints.jsp writes
+ * `${cp.chargeBoxId}` unescaped, and an id its validator accepts may look
+ * like markup -- `CP&amp;01` is listed as `CP&amp;01`, which decoded is
+ * another id. The decoded text is a fallback for a SteVe that escapes the
+ * list, and is consulted only when no link matches raw.
+ */
+export function chargeBoxPkOf(listHtml: string, cpId: string): number | undefined {
+  const links = [...listHtml.matchAll(/<a href="[^"]*\/chargepoints\/details\/(\d+)">([^<]*)<\/a>/g)];
+  const link = links.find((candidate) => candidate[2] === cpId) ??
+    links.find((candidate) => decodeHtml(candidate[2]) === cpId);
+  return link === undefined ? undefined : Number(link[1]);
 }
 
 export function toSteveForm(op: CsmsOperation16): {

@@ -7,6 +7,7 @@
  * them. Now it is what it always was -- one CSMS's serialisation, owned by the
  * driver for that CSMS.
  */
+import type { ChargePointDetails, ChargePointRegistration, ChargePointSecurityProfile } from "../charge-points";
 import { type CsmsOperation16 } from "../contracts";
 /**
  * SteVe's ReserveNow `expiry` and UpdateFirmware `retrieveDateTime` inputs
@@ -38,6 +39,52 @@ export interface ChargingProfileFields {
  * which would age out of validity between runs.
  */
 export declare function chargingProfileForm(profile: ChargingProfileFields): Record<string, string>;
+/**
+ * The manager pages and form actions behind charge-point administration.
+ * SteVe has no REST controller for charge points (steve-community/steve#2068),
+ * so these are the only way in.
+ */
+export declare const STEVE_CHARGE_POINT_PAGES: {
+    readonly add: "chargepoints/add";
+    readonly addAction: "chargepoints/add/single";
+    readonly query: (cpId: string) => string;
+    readonly details: (chargeBoxPk: number) => string;
+    readonly updateAction: "chargepoints/update";
+    readonly deleteAction: (chargeBoxPk: number) => string;
+};
+/** What a charge-point form is asked to change; an absent member is left as the page rendered it. */
+export interface ChargePointFormChange {
+    readonly chargeBoxId?: string;
+    readonly registration?: ChargePointRegistration;
+    /** `authPassword` empty leaves SteVe's stored password unchanged -- it is never a way to clear it. */
+    readonly security?: {
+        readonly profile: ChargePointSecurityProfile;
+        readonly authPassword: string;
+    };
+    /** `null` posts an empty description, which SteVe stores as none. */
+    readonly description?: string | null;
+}
+/** Applies `change` to a charge-point form read off the add or details page. */
+export declare function fillChargePointForm(fields: URLSearchParams, change: ChargePointFormChange): void;
+/** A description as SteVe stores what it was posted: trimmed, and empty as none. */
+export declare function steveStoredDescription(description: string | null | undefined): string | undefined;
+/**
+ * A charge point as its details form renders it, or `undefined` when a
+ * member reads as nothing this mapping knows -- a SteVe that renamed one.
+ */
+export declare function chargePointFromForm(fields: URLSearchParams): ChargePointDetails | undefined;
+/**
+ * The `chargeBoxPk` the list page links `cpId` to. Matched on the link text
+ * EXACTLY: the query page filters with LIKE, so asking for `CP-1` also lists
+ * `CP-10`.
+ *
+ * Compared RAW first: the pinned image's chargepoints.jsp writes
+ * `${cp.chargeBoxId}` unescaped, and an id its validator accepts may look
+ * like markup -- `CP&amp;01` is listed as `CP&amp;01`, which decoded is
+ * another id. The decoded text is a fallback for a SteVe that escapes the
+ * list, and is consulted only when no link matches raw.
+ */
+export declare function chargeBoxPkOf(listHtml: string, cpId: string): number | undefined;
 export declare function toSteveForm(op: CsmsOperation16): {
     opPath: string;
     fields: Record<string, string>;

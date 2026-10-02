@@ -63,10 +63,12 @@
  * All of these sit under the #1000 "Meta - API Endpoint" umbrella, which is
  * the one link to follow when wondering why a TCK needs database access.
  *
- * Charge points are not provisioned here on purpose: there is no REST endpoint
- * for them either (steve-community/steve#2068), and compose.yaml sets
- * AUTO_REGISTER_UNKNOWN_STATIONS=true so the roster registers itself on first
- * BootNotification.
+ * Charge points are not provisioned here: compose.yaml sets
+ * AUTO_REGISTER_UNKNOWN_STATIONS=true, so the roster registers itself on first
+ * BootNotification. There is no REST endpoint for them
+ * (steve-community/steve#2068), but the driver's `chargePoints` surface can
+ * register one through the manager UI (#155); moving the roster onto it is
+ * #157.
  *
  * Everything is idempotent. Re-running provision on a provisioned environment
  * must be a no-op that still exits 0, because CI reruns it and an operator

@@ -41,8 +41,9 @@ services:
       - AUTH_PASSWORD=1234
       # The scenarios never assert that an unknown station is rejected, and no
       # REST endpoint can register one (SteVe's WebAPI exposes ocppTags and
-      # transactions only). So the roster registers itself on first
-      # BootNotification instead of being seeded. runScenario waits for
+      # transactions only; the driver's manager-UI `chargePoints` surface can,
+      # and moving the roster onto it is #157). So the roster registers itself
+      # on first BootNotification instead of being seeded. runScenario waits for
       # BootNotification.conf before drive(), so a station is always known by
       # the time the driver posts an operation for it.
       - AUTO_REGISTER_UNKNOWN_STATIONS=true
