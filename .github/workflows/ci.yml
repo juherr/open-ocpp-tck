@@ -614,12 +614,11 @@ jobs:
     needs: check
     timeout-minutes: 20
     env:
-      # The tool runs on the host and the simulator in the compose network,
-      # so each gets the endpoint as it can reach it -- the e2e job's
-      # asymmetry, plus the OCPP endpoint the control handshake dials.
+      # Every compose call below sees the override, so none can forget it.
+      COMPOSE_FILE: drivers/steve/compose.yaml:drivers/steve/compose.no-autoregister.yaml
+      # localhost for the tool, as in the e2e job; the simulator keeps the
+      # driver's in-network endpoint.
       STEVE_URL: http://localhost:8180/steve/manager
-      STEVE_WS_URL: ws://localhost:8180/steve/websocket/CentralSystemService
-      SIM_WS_URL: ws://steve:8180/steve/websocket/CentralSystemService/
     steps:
       - uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09 # v5.1.0
         with:
@@ -628,7 +627,7 @@ jobs:
       # Without --wait for the same reason as the e2e job: the pull and the
       # cold boot overlap the toolchain install.
       - name: Start SteVe without auto-registration
-        run: docker compose -f drivers/steve/compose.yaml -f drivers/steve/compose.no-autoregister.yaml up -d
+        run: docker compose up -d
 
       - uses: oven-sh/setup-bun@0c5077e51419868618aeaa5fe8019c62421857d6 # v2.2.0
         with:
@@ -637,7 +636,7 @@ jobs:
       - run: bun install --frozen-lockfile
 
       - name: Wait for it to be healthy
-        run: docker compose -f drivers/steve/compose.yaml -f drivers/steve/compose.no-autoregister.yaml up -d --wait
+        run: docker compose up -d --wait
 
       - name: Provision, boot, Reset through SteVe
         run: bun tools/steve-provisioned-reset.ts --yes-isolated
@@ -646,8 +645,8 @@ jobs:
       # the CSMS's side, which is where a refused handshake says why.
       - name: SteVe log
         if: failure()
-        run: docker compose -f drivers/steve/compose.yaml logs --no-color --timestamps steve | tail -n 300
+        run: docker compose logs --no-color --timestamps steve | tail -n 300
 
       - name: Tear down
         if: always()
-        run: docker compose -f drivers/steve/compose.yaml -f drivers/steve/compose.no-autoregister.yaml down -v
+        run: docker compose down -v

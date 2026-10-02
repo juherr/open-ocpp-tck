@@ -40,8 +40,10 @@
  *   TCK_SUFFIX=-cp STEVE_PORT=18255 docker compose -f drivers/steve/compose.yaml \
  *     -f drivers/steve/compose.no-autoregister.yaml up -d --wait
  *   STEVE_URL=http://127.0.0.1:18255/steve/manager \
- *   STEVE_WS_URL=ws://127.0.0.1:18255/steve/websocket/CentralSystemService \
  *     bun tools/steve-charge-points.ts --yes-isolated
+ *
+ * Its stations dial the OCPP endpoint on STEVE_URL's host and port, which
+ * SteVe shares with the manager UI.
  */
 import { createSteveCsmsDriver } from "../packages/csms-driver/steve";
 import { unknowablePassword } from "../packages/csms-driver/steve/charge-points";
@@ -49,7 +51,7 @@ import { chargeBoxPkOf, STEVE_CHARGE_POINT_PAGES } from "../packages/csms-driver
 import { SteveUiOps } from "../packages/csms-driver/steve/ui-client";
 import { defaultSteveConfig } from "../drivers/steve/ui-client";
 import { chargePointAdminViolations, clearConformanceStations } from "../tests/lib/charge-point-conformance";
-import { handshakeStatus } from "./lib/ocpp-handshake";
+import { handshakeStatus, onManagerHost } from "./lib/ocpp-handshake";
 
 const USAGE = `Usage: bun tools/steve-charge-points.ts --yes-isolated
 
@@ -57,8 +59,7 @@ const USAGE = `Usage: bun tools/steve-charge-points.ts --yes-isolated
                   else is using: this creates, rewrites and deletes charge
                   points and opens OCPP connections. Bring one up with a
                   distinct TCK_SUFFIX and STEVE_PORT -- workspaces on this
-                  machine share one docker daemon. STEVE_WS_URL must be the
-                  OCPP endpoint as reachable from THIS host.
+                  machine share one docker daemon.
 `;
 
 if (!process.argv.slice(2).includes("--yes-isolated")) {
@@ -67,6 +68,7 @@ if (!process.argv.slice(2).includes("--yes-isolated")) {
 }
 
 const cfg = defaultSteveConfig(process.env);
+const wsBaseUrl = onManagerHost(cfg.wsBaseUrl, cfg.baseUrl);
 const driver = createSteveCsmsDriver({ config: cfg });
 const admin = driver.chargePoints;
 if (!admin) throw new Error("the SteVe factory has no chargePoints surface");
@@ -84,7 +86,7 @@ function observe(what: string, observed: unknown, expected: unknown): void {
 
 /** The status line SteVe answers an OCPP WebSocket upgrade with: 101, or why not. */
 function handshake(cpId: string, basicAuthPassword?: string): Promise<number> {
-  return handshakeStatus(cfg.wsBaseUrl, cpId, basicAuthPassword);
+  return handshakeStatus(wsBaseUrl, cpId, basicAuthPassword);
 }
 
 /**
@@ -93,7 +95,7 @@ function handshake(cpId: string, basicAuthPassword?: string): Promise<number> {
  */
 async function station(cpId: string, basicAuthPassword: string, answer: object) {
   const calls: string[] = [];
-  const ws = new WebSocket(`${cfg.wsBaseUrl}/${cpId}`, {
+  const ws = new WebSocket(`${wsBaseUrl}/${cpId}`, {
     protocols: ["ocpp1.6"],
     headers: { authorization: `Basic ${btoa(`${cpId}:${basicAuthPassword}`)}` },
   });

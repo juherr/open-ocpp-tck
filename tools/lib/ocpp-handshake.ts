@@ -34,3 +34,18 @@ export function handshakeStatus(
     socket.once("error", reject);
   });
 }
+
+/**
+ * The OCPP endpoint `wsBaseUrl` names, at the host and port of `managerUrl`.
+ * For a CSMS that publishes its UI and its OCPP endpoint on one port, that is
+ * the endpoint as reachable from wherever `managerUrl` is -- so a tool on the
+ * host derives it from the URL it already reaches the UI by, and `wsBaseUrl`
+ * keeps meaning what the simulator container dials.
+ */
+export function onManagerHost(wsBaseUrl: string, managerUrl: string): string {
+  const ws = new URL(wsBaseUrl);
+  const manager = new URL(managerUrl);
+  ws.protocol = manager.protocol === "https:" ? "wss:" : "ws:";
+  ws.host = manager.host;
+  return ws.toString();
+}
