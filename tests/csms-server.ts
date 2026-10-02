@@ -61,6 +61,8 @@
  *     decided before routing, so neither calls the driver -- a body-less
  *     operation included. A JSON media type with parameters, in any case, is
  *     accepted, and DELETE, which a browser always preflights, needs none.
+ *     The Origin rule holds for every method, because a DNS-rebinding page
+ *     is same-origin and preflights nothing.
  */
 
 import { resolve } from "node:path";
@@ -655,6 +657,12 @@ const BROWSER_REFUSALS: [string, number, string, string, string, unknown, Record
     { "content-type": "application/json", origin: "null" }],
   ["a cross-origin read", 403, "forbidden_origin", "GET", "/v1/driver", undefined, { origin: EVIL }],
   ["an Origin on a path no route has", 403, "forbidden_origin", "POST", "/v1/nowhere", {}, { origin: EVIL }],
+  // A DNS-rebinding page is same-origin, so it needs no preflight -- but a
+  // browser still sends Origin on every method but GET and HEAD.
+  ["a rebinding page's DELETE", 403, "forbidden_origin", "DELETE", "/v1/charge-points/CP-9", undefined,
+    { origin: "http://rebind.example:8787" }],
+  ["a rebinding page's JSON PATCH", 403, "forbidden_origin", "PATCH", "/v1/charge-points/CP-9",
+    { registration: "Rejected" }, { "content-type": "application/json", origin: "http://rebind.example:8787" }],
   // A browser that sent no Origin still cannot send a JSON type without a preflight.
   ["a text/plain POST", 415, "unsupported_media_type", "POST", RESET, { type: "Hard" },
     { "content-type": "text/plain" }],

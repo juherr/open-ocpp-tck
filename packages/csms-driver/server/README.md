@@ -73,10 +73,29 @@ So a client must send `Content-Type: application/json` on every `POST` and
 To drive the daemon from a browser application, put your own authenticated
 backend in front of it.
 
-One gap remains, and it only concerns reads: a DNS-rebinding page that
-reaches the daemon under its own host name can send a `GET` without an
-`Origin`. It could read `/v1/driver` and a charge point's registration, which
-carry no credentials. It cannot change anything.
+One gap remains, and it is accepted on purpose: reads. A page using DNS
+rebinding reaches the daemon under its own host name, so to the browser its
+`GET` requests are same-origin and carry no `Origin`. Such a page can read
+everything the two `GET` routes return:
+
+- `GET /v1/driver`: the driver's id and display name, its protocols, the
+  operations it supports and the security profiles it accepts;
+- `GET /v1/charge-points/{id}`, for an id it already knows or guesses (there
+  is no route that lists stations): that station's registration status, its
+  security profile number and its `description`.
+
+None of this is a credential: passwords are never read back, and the driver's
+own credentials never leave it. But `description` is free text, and whatever
+an operator writes there (a site address, an internal note) is exposed this
+way. Do not put anything in it you would not show to a web page.
+
+Such a page still cannot write. Browsers send `Origin` on every request whose
+method is not `GET` or `HEAD`, same-origin ones included (as `null` under a
+`no-referrer` policy), and the daemon refuses any request that carries it.
+
+The daemon does not check the `Host` header. That would close the read gap,
+but it would also refuse clients that address the daemon by another name,
+and nothing it serves today is worth that.
 
 ## The API
 
