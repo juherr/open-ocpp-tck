@@ -21,7 +21,8 @@
  *     present-and-empty is a driver that can provision nothing, which no
  *     honest declaration is.
  *  2. THE LIFECYCLE TABLE. `get` of a missing id is `null`; `create` stores
- *     what it is given; `create` of an existing id throws
+ *     what it is given, and `get` reads it back under the id it was created
+ *     with -- the stable key, not a CSMS-side one; `create` of an existing id throws
  *     `ChargePointAlreadyExistsError` and changes nothing; `update` of a
  *     missing id throws `ChargePointNotFoundError` and creates nothing;
  *     `delete` removes, and of a missing id resolves.
@@ -30,7 +31,10 @@
  *     IS profile 0: it reads back as 0 where 0 is declared, and is refused
  *     with `UnsupportedOperationError`, storing nothing, where it is not. An
  *     update applies each member it names -- registration, description,
- *     security -- and leaves the others alone; a `description: null` clears.
+ *     security -- and leaves the others alone; a security update to any
+ *     declared profile resolves, including the one the station already has,
+ *     so a single-profile declaration is exercised too; a `description: null`
+ *     clears.
  *     No read ever returns a password-named member, whatever its value.
  *  4. THE DECLARATION BINDS. A security profile outside
  *     `capabilities.chargePoints.securityProfiles` is refused with
@@ -78,6 +82,7 @@ const RULE = {
   declaresAProfile: "a declared admin surface names at least one security profile",
   getMissingIsNull: "get of a missing id is null",
   createStores: "create stores the registration, security profile and description it is given",
+  readBackKeepsId: "get returns the id the station was created with",
   createExistingThrows: "create of an existing id throws ChargePointAlreadyExistsError",
   createExistingChangesNothing: "create of an existing id leaves the station unchanged",
   updateAppliesRegistration: "update applies the registration it names",
@@ -86,6 +91,7 @@ const RULE = {
   nullDescriptionClears: "a description of null clears it",
   updateAppliesSecurity: "update applies the security it names",
   securityUpdateKeepsUnnamed: "a security update leaves the members it does not name unchanged",
+  declaredSecurityUpdateResolves: "a security update to a declared profile resolves",
   updateMissingThrows: "update of a missing id throws ChargePointNotFoundError",
   updateMissingCreatesNothing: "update of a missing id creates nothing",
   deleteRemoves: "delete removes the station",
@@ -204,6 +210,7 @@ async function exerciseLifecycle(
     created.registration === "Rejected" && created.security.profile === profile && created.description === "first",
     RULE.createStores,
   );
+  expect(created.id === station.id, RULE.readBackKeepsId);
   expect(
     await rejectsWith(
       () => admin.create({
@@ -231,6 +238,17 @@ async function exerciseLifecycle(
   after = await mustRead(station.id);
   expect(after.description === "second", RULE.updateAppliesDescription);
   expect(same(after, { ...before, description: "second" }), RULE.updateKeepsUnnamed);
+
+  // A security update the declaration allows resolves even when there is
+  // only one profile to move to -- the one the station already has. The
+  // password it replaces is not observable here; #155 owns that per driver.
+  before = after;
+  expect(
+    await admin.update(station.id, { security: securityFor(profile) }).then(() => true, () => false),
+    RULE.declaredSecurityUpdateResolves,
+  );
+  after = await mustRead(station.id);
+  expect(same(after, before), RULE.securityUpdateKeepsUnnamed);
 
   if (otherProfile !== undefined) {
     before = after;
@@ -457,6 +475,15 @@ const FLAWS: Readonly<Record<string, FlawCase>> = {
     refusedFor: RULE.createStores,
     admin: defining(({ description: _description, ...definition }) => definition),
   },
+  "read-back-vendor-id": {
+    refusedFor: RULE.readBackKeepsId,
+    admin: ({ strict }) => ({
+      get: async (cpId) => {
+        const details = await strict.get(cpId);
+        return details && { ...details, id: `vendor:${details.id}` };
+      },
+    }),
+  },
   "create-overwrites": {
     refusedFor: RULE.createExistingThrows,
     admin: ({ strict }) => ({
@@ -565,6 +592,21 @@ const FLAWS: Readonly<Record<string, FlawCase>> = {
   "security-update-resets-registration": {
     refusedFor: RULE.securityUpdateKeepsUnnamed,
     admin: patching((patch) => (patch.security ? { ...patch, registration: "Accepted" } : patch)),
+  },
+  // On a single-profile declaration, the case a check nested under a second
+  // profile used to skip.
+  "refuses-same-profile-security-update": {
+    refusedFor: RULE.declaredSecurityUpdateResolves,
+    declares: [1],
+    admin: ({ strict }) => ({
+      update: async (cpId, patch) => {
+        const current = await strict.get(cpId);
+        if (patch.security && patch.security.profile === current?.security.profile) {
+          throw new UnsupportedOperationError("chargePoints.update", "security is already set");
+        }
+        await strict.update(cpId, patch);
+      },
+    }),
   },
   "security-update-clears-description": {
     refusedFor: RULE.securityUpdateKeepsUnnamed,
