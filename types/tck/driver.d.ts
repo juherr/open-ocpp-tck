@@ -2,7 +2,7 @@
 import type { ExpectedFailureTable } from "./expected";
 import type { ScopeTable } from "./scope";
 import type { ScenarioOcppVersion } from "./spec-types";
-import type { CsmsCapabilities, CsmsEnv, CsmsOperations16, CsmsOperations201, CsmsSessionApi, CsmsConnectorApi, ChargingProfileRef, ReservationRef, TransactionRef } from "../packages/csms-driver";
+import type { CsmsCapabilities, CsmsDriver, CsmsEnv, ChargingProfileRef, ReservationRef, TransactionRef } from "../packages/csms-driver";
 export * from "../packages/csms-driver";
 /** TCK-only observations exposed by a driver's assertion record adapters. */
 export interface CsmsTckCapabilities extends CsmsCapabilities {
@@ -42,17 +42,18 @@ export interface SimTransportDefaults {
 }
 export type CsmsDriverCommand = (argv: string[]) => Promise<number>;
 export type EnvDependent<T> = T | ((env: CsmsEnv) => T);
-export interface CsmsDriverParts {
-    operations16: CsmsOperations16;
-    operations201?: CsmsOperations201;
+/**
+ * The library's driver surface minus its declaration -- which the TCK module
+ * states itself, offline -- plus what only the TCK needs. Extending rather
+ * than restating it is what lets a surface added to `CsmsDriver` reach a TCK
+ * driver without a second edit here.
+ */
+export interface CsmsDriverParts extends Omit<CsmsDriver, "capabilities"> {
     records: Omit<CsmsRecords, "reservations" | "chargingProfiles" | "deviceModel"> & {
         reservations?: CsmsReservationRecords;
         chargingProfiles?: CsmsChargingProfileRecords;
         deviceModel?: CsmsDeviceModelRecords;
     };
-    /** Generic typed reads are available to non-TCK consumers as well. */
-    sessions?: CsmsSessionApi;
-    connectors?: CsmsConnectorApi;
     prepareStation?(cpId: string): Promise<void>;
     simTransport?(cpId: string): Promise<SimTransportDefaults>;
     close?(): Promise<void>;

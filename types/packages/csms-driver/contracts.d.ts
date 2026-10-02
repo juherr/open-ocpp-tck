@@ -2,6 +2,7 @@
  * CSMS-neutral OCPP operation contracts, capabilities, and dispatch errors.
  * TCK-specific driver lifecycle and assertion records live under tck/.
  */
+import type { CsmsChargePointCapabilities } from "./charge-points";
 export type TransactionRef = string;
 /** A CSMS-side reservation handle. `""` = none. */
 export type ReservationRef = string;
@@ -729,5 +730,11 @@ export interface CsmsCapabilities {
      * opening a connection.
      */
     readonly operations201?: ReadonlySet<CsmsOperation201Action>;
+    /**
+     * Charge-point administration, `CsmsDriver.chargePoints`. ABSENT means the
+     * driver has no admin surface, with the same opt-in shape as the field
+     * above; present, it names the security profiles that surface accepts.
+     */
+    readonly chargePoints?: CsmsChargePointCapabilities;
 }
 export type CsmsEnv = Readonly<Record<string, string | undefined>>;

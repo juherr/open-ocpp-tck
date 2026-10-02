@@ -1,3 +1,4 @@
+import type { CsmsChargePointAdmin } from "./charge-points";
 import type { TransactionRef } from "./contracts";
 /** A typed, CSMS-side charging session. */
 export interface CsmsSession {
@@ -32,5 +33,7 @@ export interface CsmsDriver {
     readonly operations201?: import("./contracts").CsmsOperations201;
     readonly sessions?: CsmsSessionApi;
     readonly connectors?: CsmsConnectorApi;
+    /** Present exactly when `capabilities.chargePoints` is declared. */
+    readonly chargePoints?: CsmsChargePointAdmin;
     readonly capabilities: import("./contracts").CsmsCapabilities;
 }

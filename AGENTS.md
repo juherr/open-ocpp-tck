@@ -71,7 +71,8 @@ bun tests/request-shape-201.ts
 bun tests/template-once.ts
 bun tests/boot-quiet.ts
 bun tests/sim-exit-rejects-waits.ts
-bash tests/csms-driver-boundary.sh  # module boundary, exports + consumer example
+bash tests/csms-driver-boundary.sh  # module boundary, exports, charge-point
+                                    # contract + consumer example
 bash tests/cert201-declares-its-version.sh
 bash tests/cert201-scope-rows.sh       # both read tck/specs/ASSERT-INVENTORY.txt,
                                        # so a NEW scenario reaches them only once
@@ -539,7 +540,7 @@ its header is now a false claim about what the build checks.
   `create(env)` returns — and `check-driver` reads only the first. It cannot
   read the second by design: a declaration must be readable without
   credentials. So the guard holds the two to each other for every env a bundled
-  driver's declarations are a function of, both directions, over the four
+  driver's declarations are a function of, both directions, over the five
   omissible halves; requires a present `operations201` to be non-empty, since
   absent and empty are different claims and only one of them is ever honest
   here; and pushes `SAMPLE_OPERATION_201`, one well-formed operation per
