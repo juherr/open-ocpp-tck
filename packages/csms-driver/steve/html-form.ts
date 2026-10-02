@@ -31,7 +31,10 @@ export function decodeHtml(text: string): string {
   return text.replace(/&(#x[0-9a-f]+|#[0-9]+|[a-z]+);/gi, (entity, body: string) => {
     if (body[0] === "#") {
       const code = body[1] === "x" || body[1] === "X" ? parseInt(body.slice(2), 16) : parseInt(body.slice(1), 10);
-      return String.fromCodePoint(code);
+      // Past U+10FFFF no character answers, and fromCodePoint would throw:
+      // kept as written, since SteVe lists a charge-box id unescaped and its
+      // validator lets `CP&#999999999;` through.
+      return code <= 0x10ffff ? String.fromCodePoint(code) : entity;
     }
     return ENTITIES[body.toLowerCase()] ?? entity;
   });

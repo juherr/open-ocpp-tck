@@ -61,7 +61,9 @@
  *     to sign-in is a non-dispatch that changed nothing, not an acceptance; a create that cannot be
  *     read back, and an update whose members do not read back as written,
  *     are not a success; an id that looks like markup (`CP&amp;01`) is found
- *     although the list writes it raw and the details form escapes it; `CP-1` is not `CP-10`, which SteVe's LIKE
+ *     although the list writes it raw and the details form escapes it, and
+ *     one holding a reference no code point answers (`CP&#999999999;`)
+ *     neither throws nor hides another station from a lookup; `CP-1` is not `CP-10`, which SteVe's LIKE
  *     query lists beside it; and the details form goes back whole, because
  *     SteVe's update erases whatever it is not sent.
  *
@@ -665,6 +667,23 @@ await row("the entity-like id row", async () => {
   check(fake.stations.get(id)?.registrationStatus === "REJECTED", `update applies to ${id}`);
   await admin.delete(id);
   check(!fake.stations.has(id), `delete removes ${id}`);
+});
+
+// A numeric reference past U+10FFFF is an id SteVe accepts and lists raw.
+// The decoded fallback must not throw on it -- `get("CP")` decodes every
+// link the LIKE query returned, and this one is among them.
+await row("the out-of-range entity row", async () => {
+  const fake = fakeSteveManager();
+  const admin = steveAdmin(fake);
+  const id = "CP&#999999999;";
+  await admin.create({ id });
+  check((await admin.get(id))?.id === id, `get finds ${id}, whose reference is preserved rather than decoded`);
+  let found: unknown;
+  const thrown = await caught(admin.get("CP").then((value) => { found = value; }));
+  check(
+    thrown === undefined && found === null,
+    `get of CP is null, though the list it reads holds ${id} (threw ${String(thrown)})`,
+  );
 });
 
 await row("the LIKE row", async () => {
