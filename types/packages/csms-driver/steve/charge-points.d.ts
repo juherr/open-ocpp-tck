@@ -44,4 +44,9 @@ import type { SteveUiOps } from "./ui-client";
 /** Every profile SteVe's form offers. 2 and 3 need TLS on the OCPP endpoint,
  *  which is the deployment's concern; the record accepts them regardless. */
 export declare const STEVE_CHARGE_POINT_PROFILES: ReadonlySet<ChargePointSecurityProfile>;
+/**
+ * A password nobody holds: 15 random bytes, base64url, so 20 characters --
+ * the top of the 16-to-20 range SteVe's form validates.
+ */
+export declare function unknowablePassword(): string;
 export declare function steveChargePoints(ui: SteveUiOps): CsmsChargePointAdmin;

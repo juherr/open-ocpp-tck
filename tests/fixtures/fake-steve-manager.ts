@@ -51,7 +51,7 @@ export interface FakeSteveManager {
   /** By chargeBoxId. */
   readonly stations: Map<string, FakeStation>;
   /** Whether a WebSocket handshake for `cpId` with this Basic Auth password would be accepted. */
-  authenticates(cpId: string, password: string | undefined): boolean;
+  authenticates(cpId: string, password: string): boolean;
 }
 
 export interface FakeSteveOptions {
@@ -105,7 +105,7 @@ function select(name: string, values: readonly string[], selected: string | null
 
 /** The fields a charge-point form posts, as Spring binds them: trimmed, empty is null. */
 interface Bound {
-  readonly values: Map<string, string | null>;
+  value(key: string): string | null;
   readonly insertFlag: boolean | null;
 }
 
@@ -117,16 +117,22 @@ function bind(fields: URLSearchParams): Bound {
     : fields.has("_insertConnectorStatusAfterTransactionMsg")
       ? false
       : null;
-  return { values, insertFlag };
+  return { value: (key) => values.get(key) ?? null, insertFlag };
 }
 
+/** The two charge-point forms: where each posts, and what its button and its error say. */
+const FORMS = {
+  add: { action: "chargepoints/add/single", submit: "add", label: "Add", details: false },
+  update: { action: "chargepoints/update", submit: "update", label: "Update", details: true },
+} as const;
+type FormKind = keyof typeof FORMS;
+
 function chargePointForm(
-  action: string,
-  submit: string,
+  kind: FormKind,
   token: string,
   station: Partial<FakeStation> & { echoedPassword?: string | null },
-  details: boolean,
 ): string {
+  const { action, submit, label, details } = FORMS[kind];
   const address = station.address ?? {};
   return (
     `<form id="chargePointForm" action="${CONTEXT}/${action}" method="post">` +
@@ -149,7 +155,7 @@ function chargePointForm(
     `\n<input id="description" name="description" type="text" value="${esc(station.description)}"/>\n` +
     `<input id="adminAddress" name="adminAddress" type="text" value="${esc(station.adminAddress)}"/>\n` +
     `<textarea id="note" name="note">\n${esc(station.note)}</textarea>\n` +
-    `<input type="submit" name="${submit}" value="${submit === "add" ? "Add" : "Update"}">\n` +
+    `<input type="submit" name="${submit}" value="${label}">\n` +
     `<input type="submit" name="backToOverview" value="Back to Overview">\n` +
     `</table>${csrfInput(token)}</form>`
   );
@@ -166,7 +172,7 @@ export function fakeSteveManager(options: FakeSteveOptions = {}): FakeSteveManag
 
   const validate = (bound: Bound, existing: FakeStation | undefined): string[] => {
     const errors: string[] = [];
-    const value = (key: string): string | null => bound.values.get(key) ?? null;
+    const { value } = bound;
     if (value("chargeBoxId") === null) errors.push("ChargeBox ID is required");
     if (!REGISTRATION.includes(value("registrationStatus") as never)) errors.push("Registration status is required");
     if (bound.insertFlag === null) errors.push("must not be null");
@@ -183,14 +189,13 @@ export function fakeSteveManager(options: FakeSteveOptions = {}): FakeSteveManag
   };
 
   const rerender = (
-    action: string,
-    submit: string,
+    kind: FormKind,
     token: string,
     bound: Bound,
     errors: string[],
     existing: FakeStation | undefined,
   ): Response => {
-    const value = (key: string): string | null => bound.values.get(key) ?? null;
+    const { value } = bound;
     const echoed: Partial<FakeStation> & { echoedPassword?: string | null } = {
       ...existing,
       chargeBoxId: value("chargeBoxId") ?? "",
@@ -202,17 +207,16 @@ export function fakeSteveManager(options: FakeSteveOptions = {}): FakeSteveManag
       insertConnectorStatusAfterTransactionMsg: bound.insertFlag === true,
       echoedPassword: value("authPassword"),
     };
-    const verb = submit === "add" ? "add" : "update";
     return html(
-      `<div class="error" id="singleError">\n        Error while trying to ${verb} a charge point:\n        <ul>\n` +
+      `<div class="error" id="singleError">\n        Error while trying to ${kind} a charge point:\n        <ul>\n` +
         errors.map((error) => `            <li>${esc(error)}</li>\n`).join("") +
         `            </ul>\n    </div>` +
-        chargePointForm(action, submit, token, echoed, submit === "update"),
+        chargePointForm(kind, token, echoed),
     );
   };
 
   const apply = (station: FakeStation, bound: Bound): void => {
-    const value = (key: string): string | null => bound.values.get(key) ?? null;
+    const { value } = bound;
     station.registrationStatus = value("registrationStatus") ?? station.registrationStatus;
     station.securityProfile = value("securityProfile") ?? station.securityProfile;
     station.insertConnectorStatusAfterTransactionMsg = bound.insertFlag ?? false;
@@ -256,7 +260,7 @@ export function fakeSteveManager(options: FakeSteveOptions = {}): FakeSteveManag
         return html(
           `<form id="batchChargePointForm" action="${CONTEXT}/chargepoints/add/batch" method="post">` +
             `<textarea id="idList" name="idList">\n</textarea><input type="submit" value="Add All">${csrfInput(session.token)}</form>` +
-            chargePointForm("chargepoints/add/single", "add", session.token, {}, false),
+            chargePointForm("add", session.token, {}),
         );
       }
       if (path === "chargepoints/query") {
@@ -274,7 +278,7 @@ export function fakeSteveManager(options: FakeSteveOptions = {}): FakeSteveManag
       if (details) {
         const station = byPk(Number(details[1]));
         if (!station) return exceptionPage("de.rwth.idsg.steve.SteveException: Charge point not found");
-        return html(chargePointForm("chargepoints/update", "update", session.token, station, true));
+        return html(chargePointForm("update", session.token, station));
       }
       return new Response("not found", { status: 404 });
     }
@@ -290,10 +294,10 @@ export function fakeSteveManager(options: FakeSteveOptions = {}): FakeSteveManag
         );
       }
       const bound = bind(fields);
-      const chargeBoxId = bound.values.get("chargeBoxId") ?? null;
+      const chargeBoxId = bound.value("chargeBoxId");
       const existing = chargeBoxId === null ? undefined : stations.get(chargeBoxId);
       const errors = validate(bound, existing);
-      if (errors.length > 0) return rerender("chargepoints/add/single", "add", session.token, bound, errors, undefined);
+      if (errors.length > 0) return rerender("add", session.token, bound, errors, undefined);
       if (existing) {
         return exceptionPage(
           `de.rwth.idsg.steve.SteveException: Failed to add the charge point with chargeBoxId '${chargeBoxId}'`,
@@ -322,9 +326,9 @@ export function fakeSteveManager(options: FakeSteveOptions = {}): FakeSteveManag
     if (path === "chargepoints/update") {
       if (!fields.has("update")) return new Response("forbidden", { status: 403 });
       const bound = bind(fields);
-      const station = byPk(Number(bound.values.get("chargeBoxPk")));
+      const station = byPk(Number(bound.value("chargeBoxPk")));
       const errors = validate(bound, station);
-      if (errors.length > 0) return rerender("chargepoints/update", "update", session.token, bound, errors, station);
+      if (errors.length > 0) return rerender("update", session.token, bound, errors, station);
       // An unknown chargeBoxPk updates no row and redirects all the same.
       if (station && !options.forgetUpdates) apply(station, bound);
       return redirect(`${CONTEXT}/chargepoints`);

@@ -66,6 +66,8 @@ export interface ChargePointFormChange {
 }
 /** Applies `change` to a charge-point form read off the add or details page. */
 export declare function fillChargePointForm(fields: URLSearchParams, change: ChargePointFormChange): void;
+/** A description as SteVe stores what it was posted: trimmed, and empty as none. */
+export declare function steveStoredDescription(description: string | null | undefined): string | undefined;
 /**
  * A charge point as its details form renders it, or `undefined` when a
  * member reads as nothing this mapping knows -- a SteVe that renamed one.

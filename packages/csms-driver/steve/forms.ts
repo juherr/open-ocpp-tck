@@ -122,6 +122,11 @@ export function fillChargePointForm(fields: URLSearchParams, change: ChargePoint
   if (change.description !== undefined) fields.set("description", change.description ?? "");
 }
 
+/** A description as SteVe stores what it was posted: trimmed, and empty as none. */
+export function steveStoredDescription(description: string | null | undefined): string | undefined {
+  return description?.trim() || undefined;
+}
+
 /**
  * A charge point as its details form renders it, or `undefined` when a
  * member reads as nothing this mapping knows -- a SteVe that renamed one.
@@ -133,12 +138,12 @@ export function chargePointFromForm(fields: URLSearchParams): ChargePointDetails
   );
   const profile = /^Profile_([0-3])$/.exec(fields.get("securityProfile") ?? "")?.[1];
   if (!id || registration === undefined || profile === undefined) return undefined;
-  const description = fields.get("description") ?? "";
+  const description = steveStoredDescription(fields.get("description"));
   return {
     id,
     registration,
     security: { profile: Number(profile) as ChargePointSecurityProfile },
-    ...(description === "" ? {} : { description }),
+    ...(description === undefined ? {} : { description }),
   };
 }
 

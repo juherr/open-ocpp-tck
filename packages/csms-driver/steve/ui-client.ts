@@ -276,27 +276,12 @@ export class SteveUiOps {
   ): Promise<string> {
     const deadline = AbortSignal.timeout(SECTION_TIMEOUT_MS);
     await this.ensureLogin(deadline);
-
-    let res = await this.request(path, deadline, {
-      headers: { cookie: this.cookieHeader() },
-    });
-    this.absorbSetCookie(res);
-    const csrf = extractCsrf(await res.text());
+    const csrf = extractCsrf(await this.getExclusive(path, deadline));
 
     const form = new URLSearchParams();
     for (const [key, value] of Object.entries(fields)) form.set(key, value);
     form.set("_csrf", csrf);
-
-    res = await this.request(path, deadline, {
-      method: "POST",
-      headers: {
-        "content-type": "application/x-www-form-urlencoded",
-        cookie: this.cookieHeader(),
-      },
-      body: form.toString(),
-    });
-    this.absorbSetCookie(res);
-    return redirectOrRefusal(res, path, (body) => body.slice(0, 300));
+    return this.postExclusive(path, form, deadline);
   }
 
   /**
@@ -308,14 +293,7 @@ export class SteveUiOps {
     return this.serialise(async () => {
       const deadline = AbortSignal.timeout(SECTION_TIMEOUT_MS);
       await this.ensureLogin(deadline);
-      const res = await this.request(path, deadline, {
-        headers: { cookie: this.cookieHeader() },
-      });
-      this.absorbSetCookie(res);
-      if (res.status !== 200) {
-        throw new CsmsNotDispatchedError(path, `GET was answered ${res.status}`);
-      }
-      return res.text();
+      return this.getExclusive(path, deadline);
     });
   }
 
@@ -329,49 +307,60 @@ export class SteveUiOps {
    * a page (`chargepoints/add/single` is only ever POSTed), and the ones that
    * overwrite every field they are sent -- html-form.ts says why posting a
    * partial one erases the rest.
-   *
-   * A refusal carries the page's error text and nothing else of the body: the
-   * re-rendered form echoes what was posted, a password among it.
    */
   async submitForm(
     path: string,
     action: string,
-    submitter: string | undefined,
-    fill: (fields: URLSearchParams) => void,
+    { submitter, fill }: { submitter?: string; fill?: (fields: URLSearchParams) => void } = {},
   ): Promise<string> {
     return this.serialise(async () => {
       const deadline = AbortSignal.timeout(SECTION_TIMEOUT_MS);
       await this.ensureLogin(deadline);
-
-      let res = await this.request(path, deadline, {
-        headers: { cookie: this.cookieHeader() },
-      });
-      this.absorbSetCookie(res);
-      if (res.status !== 200) {
-        throw new CsmsNotDispatchedError(path, `GET was answered ${res.status}`);
-      }
-      const html = await res.text();
+      const html = await this.getExclusive(path, deadline);
       const form = readForm(html, action, submitter);
       if (!form) {
         throw new Error(
-          `steve: ${path} has no form posting to ${action}` +
-            ` (${pageErrors(html) ?? "no error on the page"})`,
+          `steve: ${path} has no form posting to ${action} (${pageErrors(html) ?? "no error on the page"})`,
         );
       }
       if (!form.has("_csrf")) form.set("_csrf", extractCsrf(html));
-      fill(form);
-
-      res = await this.request(action, deadline, {
-        method: "POST",
-        headers: {
-          "content-type": "application/x-www-form-urlencoded",
-          cookie: this.cookieHeader(),
-        },
-        body: form.toString(),
-      });
-      this.absorbSetCookie(res);
-      return redirectOrRefusal(res, action, (body) => pageErrors(body) ?? "no error on the page");
+      fill?.(form);
+      return this.postExclusive(action, form, deadline);
     });
+  }
+
+  /**
+   * A manager page's body. Anything but a 200 means no page was served -- a
+   * bounce to sign-in, an error status -- so nothing that follows was asked of
+   * the CSMS. Assumes the lock and a logged-in session.
+   */
+  private async getExclusive(path: string, deadline: AbortSignal): Promise<string> {
+    const res = await this.request(path, deadline, {
+      headers: { cookie: this.cookieHeader() },
+    });
+    this.absorbSetCookie(res);
+    if (res.status !== 200) {
+      throw new CsmsNotDispatchedError(path, `GET was answered ${res.status}`);
+    }
+    return res.text();
+  }
+
+  /** POST a form and read SteVe's answer. Assumes the lock and a logged-in session. */
+  private async postExclusive(
+    path: string,
+    form: URLSearchParams,
+    deadline: AbortSignal,
+  ): Promise<string> {
+    const res = await this.request(path, deadline, {
+      method: "POST",
+      headers: {
+        "content-type": "application/x-www-form-urlencoded",
+        cookie: this.cookieHeader(),
+      },
+      body: form.toString(),
+    });
+    this.absorbSetCookie(res);
+    return redirectOrRefusal(res, path);
   }
 
   /**
@@ -387,17 +376,17 @@ export class SteveUiOps {
 
 /**
  * A manager form's answer: the redirect `Location`, which is how SteVe says it
- * accepted, or a throw. `detail` is what of the body may go into the message.
+ * accepted, or a throw. The message carries the page's error text and nothing
+ * else of an HTML body: a re-rendered form echoes what was posted, and a
+ * password or an `AuthorizationKey` is among what gets posted. A body with no
+ * error text is quoted only on an error status, which is not a SteVe page.
  */
-async function redirectOrRefusal(
-  res: Response,
-  path: string,
-  detail: (body: string) => string,
-): Promise<string> {
+async function redirectOrRefusal(res: Response, path: string): Promise<string> {
   const location = res.headers.get("location");
   if (location) return location;
   const body = await res.text().catch(() => "<unreadable body>");
-  const refusal = `status ${res.status}: ${detail(body)}`;
+  const detail = pageErrors(body) ?? (res.status >= 400 ? body.slice(0, 300) : "no error on the page");
+  const refusal = `status ${res.status}: ${detail}`;
   // Any error status -- 4xx refused, 5xx failed -- means the form never
   // became an OCPP CALL, so nothing downstream can be a finding about the
   // CSMS. 5xx belongs here and not on the line below, which is the easy

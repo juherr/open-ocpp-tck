@@ -10,7 +10,9 @@
  * A module of its own so that a LIVE caller can import it without running the
  * guard: `tools/steve-charge-points.ts` asks it of the pinned SteVe. The
  * stations it creates use the fixed ids in {@link CONFORMANCE_IDS}, which a
- * crashed run leaves behind, so a live caller deletes them first.
+ * crashed run leaves behind, so a live caller runs
+ * {@link clearConformanceStations} first. Not the check itself: a flawed copy
+ * whose `delete` throws would then fail before its own rule is asked.
  */
 import {
   ChargePointAlreadyExistsError,
@@ -24,7 +26,7 @@ import {
   type CsmsDriver,
 } from "open-ocpp-tck/csms-driver";
 
-/** Every station id the lifecycle may create. */
+/** Every station id the lifecycle may create, and the one it must never find. */
 export const CONFORMANCE_IDS = [
   "CONFORMANCE-1",
   "CONFORMANCE-2",
@@ -33,6 +35,12 @@ export const CONFORMANCE_IDS = [
   "CONFORMANCE-5",
   "CONFORMANCE-MISSING",
 ] as const;
+const [STATION_1, STATION_2, STATION_3, STATION_4, STATION_5, MISSING] = CONFORMANCE_IDS;
+
+/** Deletes what a crashed run may have left behind; a live caller runs it first. */
+export async function clearConformanceStations(admin: CsmsChargePointAdmin): Promise<void> {
+  for (const id of CONFORMANCE_IDS) await admin.delete(id);
+}
 
 /** Every rule the conformance check asks about. Typed, so a check cannot ask
  *  about a rule part 5 does not hold a flawed copy to. */
@@ -149,7 +157,7 @@ async function exerciseLifecycle(
 
   // Part 2.
   const station: ChargePointDefinition = {
-    id: "CONFORMANCE-1",
+    id: STATION_1,
     registration: "Rejected",
     security: securityFor(profile),
     description: "first",
@@ -217,53 +225,53 @@ async function exerciseLifecycle(
   expect(same(after, withoutDescription), RULE.updateKeepsUnnamed);
 
   expect(
-    await rejectsWith(() => admin.update("CONFORMANCE-MISSING", { registration: "Accepted" }), ChargePointNotFoundError),
+    await rejectsWith(() => admin.update(MISSING, { registration: "Accepted" }), ChargePointNotFoundError),
     RULE.updateMissingThrows,
   );
-  expect(await read("CONFORMANCE-MISSING") === null, RULE.updateMissingCreatesNothing);
+  expect(await read(MISSING) === null, RULE.updateMissingCreatesNothing);
 
   await admin.delete(station.id);
   expect(await read(station.id) === null, RULE.deleteRemoves);
   expect(await admin.delete(station.id).then(() => true, () => false), RULE.deleteMissingResolves);
 
   // Part 3, defaults. The registration default does not depend on profile 0.
-  await admin.create({ id: "CONFORMANCE-2", security: securityFor(profile) });
-  expect((await read("CONFORMANCE-2"))?.registration === "Accepted", RULE.defaultRegistration);
-  await admin.delete("CONFORMANCE-2");
+  await admin.create({ id: STATION_2, security: securityFor(profile) });
+  expect((await read(STATION_2))?.registration === "Accepted", RULE.defaultRegistration);
+  await admin.delete(STATION_2);
   // The security default IS profile 0, so it is only as available as 0 is.
   if (profiles.has(0)) {
-    await admin.create({ id: "CONFORMANCE-3" });
-    expect((await read("CONFORMANCE-3"))?.security.profile === 0, RULE.defaultSecurity);
+    await admin.create({ id: STATION_3 });
+    expect((await read(STATION_3))?.security.profile === 0, RULE.defaultSecurity);
   } else {
     expect(
-      await rejectsWith(() => admin.create({ id: "CONFORMANCE-3" }), UnsupportedOperationError),
+      await rejectsWith(() => admin.create({ id: STATION_3 }), UnsupportedOperationError),
       RULE.omittedSecurityNeedsProfile0,
     );
-    expect(await read("CONFORMANCE-3") === null, RULE.refusedDefaultStoresNothing);
+    expect(await read(STATION_3) === null, RULE.refusedDefaultStoresNothing);
   }
-  await admin.delete("CONFORMANCE-3");
+  await admin.delete(STATION_3);
 
   // Part 4: an undeclared profile is refused, and the refusal changes
   // nothing -- including the members the refused patch named beside it.
   const undeclared = ALL_PROFILES.find((candidate) => !profiles.has(candidate));
   if (undeclared !== undefined) {
     expect(
-      await rejectsWith(() => admin.create({ id: "CONFORMANCE-4", security: securityFor(undeclared) }), UnsupportedOperationError),
+      await rejectsWith(() => admin.create({ id: STATION_4, security: securityFor(undeclared) }), UnsupportedOperationError),
       RULE.createRefusesUndeclared,
     );
-    expect(await read("CONFORMANCE-4") === null, RULE.refusedCreateStoresNothing);
-    await admin.delete("CONFORMANCE-4");
+    expect(await read(STATION_4) === null, RULE.refusedCreateStoresNothing);
+    await admin.delete(STATION_4);
 
-    await admin.create({ id: "CONFORMANCE-5", registration: "Rejected", security: securityFor(profile), description: "kept" });
-    before = await mustRead("CONFORMANCE-5");
+    await admin.create({ id: STATION_5, registration: "Rejected", security: securityFor(profile), description: "kept" });
+    before = await mustRead(STATION_5);
     expect(
       await rejectsWith(
-        () => admin.update("CONFORMANCE-5", { registration: "Accepted", description: "changed", security: securityFor(undeclared) }),
+        () => admin.update(STATION_5, { registration: "Accepted", description: "changed", security: securityFor(undeclared) }),
         UnsupportedOperationError,
       ),
       RULE.updateRefusesUndeclared,
     );
-    expect(same(await read("CONFORMANCE-5"), before), RULE.refusedUpdateChangesNothing);
-    await admin.delete("CONFORMANCE-5");
+    expect(same(await read(STATION_5), before), RULE.refusedUpdateChangesNothing);
+    await admin.delete(STATION_5);
   }
 }

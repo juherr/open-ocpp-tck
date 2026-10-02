@@ -49,9 +49,8 @@ function attributes(tag: string): Map<string, string> {
 const CONTROL = /<input\b[^>]*>|<select\b[^>]*>[\s\S]*?<\/select>|<textarea\b[^>]*>[\s\S]*?<\/textarea>/gi;
 const SKIPPED_INPUTS = new Set(["submit", "button", "image", "reset", "file"]);
 
-function controlValues(control: string): string[] {
-  const open = /^<[^>]*>/.exec(control)?.[0] ?? control;
-  const attrs = attributes(open);
+/** What one control submits; `open` is its start tag and `attrs` its attributes. */
+function controlValues(control: string, open: string, attrs: Map<string, string>): string[] {
   if (/^<input/i.test(control)) {
     const type = attrs.get("type")?.toLowerCase() ?? "text";
     if (SKIPPED_INPUTS.has(type)) return [];
@@ -91,7 +90,7 @@ export function readForm(html: string, action: string, submitter?: string): URLS
       const attrs = attributes(open);
       const name = attrs.get("name");
       if (!name || attrs.has("disabled")) continue;
-      for (const value of controlValues(control[0])) fields.append(name, value);
+      for (const value of controlValues(control[0], open, attrs)) fields.append(name, value);
       if (name === submitter && attrs.get("type")?.toLowerCase() === "submit") {
         fields.append(name, attrs.get("value") ?? "");
       }

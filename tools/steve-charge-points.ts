@@ -16,19 +16,20 @@
  * `drivers/steve/compose.yaml` moves. It prints what it observed beside what
  * the fake assumes, and exits 1 on any difference.
  *
- * WHAT IT ASKS.
+ * WHAT IT ASKS, in the order it asks it.
  *  1. The whole conformance check, on the real image.
- *  2. The password rule (#155), end to end over the OCPP endpoint: a station
- *     provisioned under profile 1 connects with its password and boots; after
- *     a downgrade through the adapter, an operator switching it back to
+ *  2. A station provisioned under profile 1 refuses a handshake without its
+ *     password, and connects and boots with it.
+ *  3. What a CONNECTED station sees of a downgrade: SteVe pushes
+ *     ChangeConfiguration to it, and a station refusing it makes `update`
+ *     throw with the row already changed -- which the adapter's header states.
+ *  4. The password rule (#155), over the OCPP endpoint: after that downgrade
+ *     through the adapter, an operator switching the station back to
  *     profile 1 without typing a password does NOT revive the old one (401).
- *  3. The control that makes 2 mean something: the same switch-back after a
+ *  5. The control that makes 4 mean something: the same switch-back after a
  *     downgrade that posted an EMPTY password does revive it (101). If this
  *     one stops answering 101, SteVe changed the rule and the adapter's
  *     reason to overwrite should be re-read, not the other way round.
- *  4. What a CONNECTED station sees of a downgrade: SteVe pushes
- *     ChangeConfiguration to it, and a station refusing it makes `update`
- *     throw with the row already changed -- which the adapter's header states.
  *
  * Run it against a stack with unknown-station auto-registration OFF, so the
  * boot in 2 is the provisioning working and not SteVe registering a stranger:
@@ -41,10 +42,11 @@
  */
 import { connect } from "node:net";
 import { createSteveCsmsDriver } from "../packages/csms-driver/steve";
-import { STEVE_CHARGE_POINT_PAGES } from "../packages/csms-driver/steve/forms";
+import { unknowablePassword } from "../packages/csms-driver/steve/charge-points";
+import { chargeBoxPkOf, STEVE_CHARGE_POINT_PAGES } from "../packages/csms-driver/steve/forms";
 import { SteveUiOps } from "../packages/csms-driver/steve/ui-client";
 import { defaultSteveConfig } from "../drivers/steve/ui-client";
-import { chargePointAdminViolations, CONFORMANCE_IDS } from "../tests/lib/charge-point-conformance";
+import { chargePointAdminViolations, clearConformanceStations } from "../tests/lib/charge-point-conformance";
 
 const USAGE = `Usage: bun tools/steve-charge-points.ts --yes-isolated
 
@@ -73,10 +75,6 @@ function observe(what: string, observed: unknown, expected: unknown): void {
   const ok = observed === expected;
   console.log(`${ok ? "ok  " : "DIFF"} ${what}: ${String(observed)}${ok ? "" : ` (the fake assumes ${String(expected)})`}`);
   if (!ok) mismatches.push(what);
-}
-
-function password(): string {
-  return btoa(String.fromCharCode(...crypto.getRandomValues(new Uint8Array(15))));
 }
 
 /** The status line SteVe answers an OCPP WebSocket upgrade with: 101, or why not. */
@@ -134,28 +132,33 @@ async function station(cpId: string, basicAuthPassword: string, answer: object) 
 
 /** What an operator does in the manager UI: open the details page, set the profile, leave the password empty. */
 async function operatorSetsProfile(cpId: string, profile: string): Promise<void> {
-  const pk = /details\/(\d+)">/.exec(await operator.page(STEVE_CHARGE_POINT_PAGES.query(cpId)))?.[1];
-  await operator.submitForm(STEVE_CHARGE_POINT_PAGES.details(Number(pk)), STEVE_CHARGE_POINT_PAGES.updateAction, "update", (fields) => {
-    fields.set("securityProfile", profile);
-    fields.set("authPassword", "");
+  const pk = chargeBoxPkOf(await operator.page(STEVE_CHARGE_POINT_PAGES.query(cpId)), cpId);
+  if (pk === undefined) throw new Error(`${cpId} is not listed`);
+  await operator.submitForm(STEVE_CHARGE_POINT_PAGES.details(pk), STEVE_CHARGE_POINT_PAGES.updateAction, {
+    submitter: "update",
+    fill: (fields) => {
+      fields.set("securityProfile", profile);
+      fields.set("authPassword", "");
+    },
   });
 }
 
-for (const id of [...CONFORMANCE_IDS, STATION]) await admin.delete(id);
+await clearConformanceStations(admin);
+await admin.delete(STATION);
 
 // 1. The conformance check.
 const violations = await chargePointAdminViolations(driver);
 observe("conformance violations", violations.length === 0 ? "none" : violations.join("; "), "none");
 
-// 2. The password rule, over the OCPP endpoint.
-const original = password();
+// 2. The provisioned station connects with its password, and only with it.
+const original = unknowablePassword();
 await admin.create({ id: STATION, security: { profile: 1, basicAuthPassword: original } });
 observe("handshake without a password, profile 1", await handshake(STATION), 401);
 const booted = await station(STATION, original, { status: "Accepted" });
 observe("BootNotification of the provisioned station", booted.status, "Accepted");
 booted.close();
 
-// 4. A downgrade while the station is connected and refuses what it is told.
+// 3. A downgrade while the station is connected and refuses what it is told.
 const connected = await station(STATION, original, { status: "Rejected" });
 const outcome = await admin.update(STATION, { security: { profile: 0 } }).then(
   () => "resolved",
@@ -166,11 +169,12 @@ console.log(`     a connected station was sent: ${connected.calls.join(" | ") ||
 observe("update of a connected station that refuses", outcome.startsWith("threw"), true);
 observe("the row after that refused update", (await admin.get(STATION))?.security.profile, 0);
 
+// 4. The operator switches it back to profile 1 without typing a password.
 await operatorSetsProfile(STATION, "Profile_1");
 observe("old password after an adapter downgrade and an operator switch-back", await handshake(STATION, original), 401);
 
-// 3. The control: an empty password on the downgrade keeps the old one.
-const kept = password();
+// 5. The control: an empty password on the downgrade keeps the old one.
+const kept = unknowablePassword();
 await admin.update(STATION, { security: { profile: 1, basicAuthPassword: kept } });
 await operatorSetsProfile(STATION, "Profile_0");
 await operatorSetsProfile(STATION, "Profile_1");

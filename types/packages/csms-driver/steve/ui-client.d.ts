@@ -147,11 +147,19 @@ export declare class SteveUiOps {
      * a page (`chargepoints/add/single` is only ever POSTed), and the ones that
      * overwrite every field they are sent -- html-form.ts says why posting a
      * partial one erases the rest.
-     *
-     * A refusal carries the page's error text and nothing else of the body: the
-     * re-rendered form echoes what was posted, a password among it.
      */
-    submitForm(path: string, action: string, submitter: string | undefined, fill: (fields: URLSearchParams) => void): Promise<string>;
+    submitForm(path: string, action: string, { submitter, fill }?: {
+        submitter?: string;
+        fill?: (fields: URLSearchParams) => void;
+    }): Promise<string>;
+    /**
+     * A manager page's body. Anything but a 200 means no page was served -- a
+     * bounce to sign-in, an error status -- so nothing that follows was asked of
+     * the CSMS. Assumes the lock and a logged-in session.
+     */
+    private getExclusive;
+    /** POST a form and read SteVe's answer. Assumes the lock and a logged-in session. */
+    private postExclusive;
     /**
      * steve_op OP_PATH FIELDS equivalent. POSTs one CSMS operation,
      * form-encoded, exactly like the manager UI would. Returns the redirect

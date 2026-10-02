@@ -90,7 +90,6 @@ import {
   ChargePointNotFoundError,
   createCitrineOsCsmsDriver,
   createSteveCsmsDriver,
-  CsmsNotDispatchedError,
   UnsupportedOperationError,
   type ChargePointDefinition,
   type ChargePointDetails,
@@ -99,7 +98,6 @@ import {
   type ChargePointUpdate,
   type CsmsChargePointAdmin,
   type CsmsDriver,
-  type FetchLike,
 } from "open-ocpp-tck/csms-driver";
 
 /** The declaration the flawed copies run under unless they say otherwise:
@@ -490,19 +488,19 @@ const operatorPosts = (fake: FakeSteveManager, cpId: string, profile: string, au
   new SteveUiOps(STEVE_CONFIG, fake.fetch).submitForm(
     STEVE_CHARGE_POINT_PAGES.details(fake.stations.get(cpId)?.pk ?? -1),
     STEVE_CHARGE_POINT_PAGES.updateAction,
-    "update",
-    (fields) => {
-      fields.set("securityProfile", profile);
-      fields.set("authPassword", authPassword);
+    {
+      submitter: "update",
+      fill: (fields) => {
+        fields.set("securityProfile", profile);
+        fields.set("authPassword", authPassword);
+      },
     },
   );
 const OLD_PASSWORD = "provisioned-secret-1";
-const isPlainError = (error: unknown): error is Error =>
-  error instanceof Error &&
-  !(error instanceof ChargePointAlreadyExistsError) &&
-  !(error instanceof ChargePointNotFoundError) &&
-  !(error instanceof UnsupportedOperationError) &&
-  !(error instanceof CsmsNotDispatchedError);
+/** An `Error` of no subclass: the CSMS answered, and refused. */
+const isPlainError = (error: unknown): error is Error => error instanceof Error && error.constructor === Error;
+/** What `promise` rejects with, or `undefined` when it resolves. */
+const caught = (promise: Promise<unknown>): Promise<unknown> => promise.then(() => undefined, (thrown: unknown) => thrown);
 
 /** One row: a throw is that row failing, named, rather than the guard crashing. */
 async function row(name: string, body: () => Promise<void>): Promise<void> {
@@ -513,13 +511,12 @@ async function row(name: string, body: () => Promise<void>): Promise<void> {
   }
 }
 
-const fetch: FetchLike = async () => new Response("unexpected request", { status: 500 });
 const bundled: Record<string, CsmsDriver> = {
   steve: createSteveCsmsDriver({ config: STEVE_CONFIG, fetch: fakeSteveManager().fetch }),
   citrineos: createCitrineOsCsmsDriver({
     config: { variant: "v2", apiUrl: "http://citrine/api", tenantId: 1 },
     refs: { ocppTransactionId: async () => 1 },
-    fetch,
+    fetch: async () => new Response("unexpected request", { status: 500 }),
   }),
 };
 for (const [name, driver] of Object.entries(bundled)) {
@@ -576,9 +573,7 @@ await row("control", async () => {
 await row("the refusal row", async () => {
   const fake = fakeSteveManager();
   const tooLong = "far-too-long-to-be-a-steve-password";
-  const error = await steveAdmin(fake)
-    .create({ id: "CP-LONG", security: { profile: 1, basicAuthPassword: tooLong } })
-    .then(() => undefined, (thrown: unknown) => thrown);
+  const error = await caught(steveAdmin(fake).create({ id: "CP-LONG", security: { profile: 1, basicAuthPassword: tooLong } }));
   check(isPlainError(error), `a create SteVe refuses is a plain Error (got ${String(error)})`);
   const message = error instanceof Error ? error.message : "";
   check(message.includes("between 16 and 20 characters"), `the refusal names SteVe's reason (${message})`);
@@ -604,9 +599,7 @@ await row("the duplicate row", async () => {
 // SteVe redirects whether or not a row was written, so a create that cannot
 // be read back is not a success.
 await row("the read-back row", async () => {
-  const error = await steveAdmin(fakeSteveManager({ forgetAdds: true }))
-    .create({ id: "CP-LOST" })
-    .then(() => undefined, (thrown: unknown) => thrown);
+  const error = await caught(steveAdmin(fakeSteveManager({ forgetAdds: true })).create({ id: "CP-LOST" }));
   check(isPlainError(error) && /read back/.test(error.message), `a create that cannot be read back throws (got ${String(error)})`);
   const fake = fakeSteveManager({ forgetUpdates: true });
   const admin = steveAdmin(fake);
@@ -616,7 +609,7 @@ await row("the read-back row", async () => {
     ["security", { security: { profile: 1, basicAuthPassword: OLD_PASSWORD } }],
     ["description", { description: "changed" }],
   ] as const) {
-    const unchanged = await admin.update("CP-STILL", patch).then(() => undefined, (thrown: unknown) => thrown);
+    const unchanged = await caught(admin.update("CP-STILL", patch));
     check(
       isPlainError(unchanged) && /does not read back/.test(unchanged.message),
       `an update whose ${what} does not read back throws (got ${String(unchanged)})`,

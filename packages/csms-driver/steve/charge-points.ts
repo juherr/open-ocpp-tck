@@ -55,6 +55,7 @@ import {
   chargePointFromForm,
   fillChargePointForm,
   STEVE_CHARGE_POINT_PAGES as PAGES,
+  steveStoredDescription,
   type ChargePointFormChange,
 } from "./forms";
 import { readForm } from "./html-form";
@@ -68,15 +69,24 @@ export const STEVE_CHARGE_POINT_PROFILES: ReadonlySet<ChargePointSecurityProfile
  * A password nobody holds: 15 random bytes, base64url, so 20 characters --
  * the top of the 16-to-20 range SteVe's form validates.
  */
-function unknowablePassword(): string {
+export function unknowablePassword(): string {
   const bytes = crypto.getRandomValues(new Uint8Array(15));
   return btoa(String.fromCharCode(...bytes)).replace(/\+/g, "-").replace(/\//g, "_");
 }
 
-function steveSecurity(security: ChargePointSecurity): NonNullable<ChargePointFormChange["security"]> {
-  return "basicAuthPassword" in security
-    ? { profile: security.profile, authPassword: security.basicAuthPassword }
-    : { profile: security.profile, authPassword: unknowablePassword() };
+/**
+ * The form's security fields. A profile without a password posts
+ * `withoutPassword()`: nothing on a new row, which has none to discard, and a
+ * password nobody holds on an existing one, which may.
+ */
+function steveSecurity(
+  security: ChargePointSecurity,
+  withoutPassword: () => string,
+): NonNullable<ChargePointFormChange["security"]> {
+  return {
+    profile: security.profile,
+    authPassword: "basicAuthPassword" in security ? security.basicAuthPassword : withoutPassword(),
+  };
 }
 
 export function steveChargePoints(ui: SteveUiOps): CsmsChargePointAdmin {
@@ -102,22 +112,16 @@ export function steveChargePoints(ui: SteveUiOps): CsmsChargePointAdmin {
   /**
    * SteVe redirects an update that matched no row exactly as it redirects one
    * that did, so a write is only done when the members it set read back.
-   * `description` is compared as SteVe stores it: trimmed, and empty as none.
    */
-  const readBack = async (
-    cpId: string,
-    method: string,
-    expected: { registration?: string; profile?: ChargePointSecurityProfile; description?: string | null },
-  ): Promise<void> => {
-    const read = await get(cpId);
+  const readBack = async (cpId: string, method: string, change: ChargePointFormChange, chargeBoxPk?: number): Promise<void> => {
+    const read = chargeBoxPk === undefined ? await get(cpId) : await details(cpId, chargeBoxPk);
     if (read === null) {
       throw new Error(`steve: chargePoints.${method} of ${cpId} was accepted, but the station cannot be read back`);
     }
-    const description = expected.description === undefined ? undefined : expected.description?.trim() || undefined;
     const differs =
-      (expected.registration !== undefined && read.registration !== expected.registration) ||
-      (expected.profile !== undefined && read.security.profile !== expected.profile) ||
-      (expected.description !== undefined && read.description !== description);
+      (change.registration !== undefined && read.registration !== change.registration) ||
+      (change.security !== undefined && read.security.profile !== change.security.profile) ||
+      (change.description !== undefined && read.description !== steveStoredDescription(change.description));
     if (differs) {
       throw new Error(`steve: chargePoints.${method} of ${cpId} was accepted, but the station does not read back as written`);
     }
@@ -131,47 +135,37 @@ export function steveChargePoints(ui: SteveUiOps): CsmsChargePointAdmin {
       const security = definition.security ?? { profile: 0 };
       refuseUndeclared("create", security.profile);
       if ((await pkOf(definition.id)) !== undefined) throw new ChargePointAlreadyExistsError(definition.id);
-      await ui.submitForm(PAGES.add, PAGES.addAction, "add", (fields) =>
-        fillChargePointForm(fields, {
-          chargeBoxId: definition.id,
-          registration: definition.registration ?? "Accepted",
-          // A new row has no password to discard, so none is invented for it.
-          security: {
-            profile: security.profile,
-            authPassword: "basicAuthPassword" in security ? security.basicAuthPassword : "",
-          },
-          description: definition.description ?? null,
-        }),
-      );
-      await readBack(definition.id, "create", {
+      const change: ChargePointFormChange = {
+        chargeBoxId: definition.id,
         registration: definition.registration ?? "Accepted",
-        profile: security.profile,
+        security: steveSecurity(security, () => ""),
         description: definition.description ?? null,
-      });
+      };
+      await ui.submitForm(PAGES.add, PAGES.addAction, { submitter: "add", fill: (fields) => fillChargePointForm(fields, change) });
+      await readBack(definition.id, "create", change);
     },
 
     async update(cpId, patch) {
       if (patch.security) refuseUndeclared("update", patch.security.profile);
       const chargeBoxPk = await pkOf(cpId);
       if (chargeBoxPk === undefined) throw new ChargePointNotFoundError(cpId);
-      await ui.submitForm(PAGES.details(chargeBoxPk), PAGES.updateAction, "update", (fields) =>
-        fillChargePointForm(fields, {
-          registration: patch.registration,
-          security: patch.security && steveSecurity(patch.security),
-          description: patch.description,
-        }),
-      );
-      await readBack(cpId, "update", {
+      const change: ChargePointFormChange = {
         registration: patch.registration,
-        profile: patch.security?.profile,
+        security: patch.security && steveSecurity(patch.security, unknowablePassword),
         description: patch.description,
+      };
+      if (Object.values(change).every((member) => member === undefined)) return;
+      await ui.submitForm(PAGES.details(chargeBoxPk), PAGES.updateAction, {
+        submitter: "update",
+        fill: (fields) => fillChargePointForm(fields, change),
       });
+      await readBack(cpId, "update", change, chargeBoxPk);
     },
 
     async delete(cpId) {
       const chargeBoxPk = await pkOf(cpId);
       if (chargeBoxPk === undefined) return;
-      await ui.submitForm(PAGES.query(cpId), PAGES.deleteAction(chargeBoxPk), undefined, () => {});
+      await ui.submitForm(PAGES.query(cpId), PAGES.deleteAction(chargeBoxPk));
       if ((await pkOf(cpId)) !== undefined) {
         throw new Error(`steve: chargePoints.delete of ${cpId} was accepted, but the station is still listed`);
       }
