@@ -23,6 +23,12 @@
  *     `chargePoints` method once, with the decoded argument; an operation
  *     reaches `operations16.execute` once, with the `CsmsOperation16` the
  *     body describes -- dates as `Date`, an omitted member still omitted.
+ *     EVERY ARM is held to that, through a table keyed by action: a body
+ *     naming every member, with values no two members of the arm share,
+ *     decodes to exactly the operation it describes, and a body naming only
+ *     the required members decodes to exactly those. The decoder is written
+ *     by hand, so a member read from its neighbour's key compiles, satisfies
+ *     the strictness check, and is caught here or nowhere.
  *  3. THE OPERATION PATHS ARE ONE TABLE. Every 1.6 action has exactly one
  *     kebab-case path, the issue's four (`reset`, `unlock`, `remote-start`,
  *     `remote-stop`) among them, and no path names two actions.
@@ -322,6 +328,115 @@ const JSON_REQUEST = { "content-type": "application/json" };
       !("status" in (op.localAuthorizationList[1] ?? {})),
     `send-local-list decodes its entries: ${JSON.stringify(op)}`,
   );
+}
+
+// Every arm, both ways. Values are chosen so that no two members of one arm
+// could be swapped unnoticed: distinct integers, distinct strings, distinct
+// instants, and the less common member of each enumeration.
+const T1 = "2031-03-04T05:06:07Z";
+const T2 = "2032-08-09T10:11:12+02:00";
+const ARMS: Record<CsmsOperation16Action, { full: [unknown, CsmsOperation16]; minimal: [unknown, CsmsOperation16] }> = {
+  Reset: {
+    full: [{ type: "Soft" }, { action: "Reset", type: "Soft" }],
+    minimal: [{ type: "Hard" }, { action: "Reset", type: "Hard" }],
+  },
+  UnlockConnector: {
+    full: [{ connectorId: 3 }, { action: "UnlockConnector", connectorId: 3 }],
+    minimal: [{ connectorId: 0 }, { action: "UnlockConnector", connectorId: 0 }],
+  },
+  ClearCache: {
+    full: [{}, { action: "ClearCache" }],
+    minimal: [undefined, { action: "ClearCache" }],
+  },
+  ChangeAvailability: {
+    full: [{ connectorId: 3, type: "Inoperative" }, { action: "ChangeAvailability", connectorId: 3, type: "Inoperative" }],
+    minimal: [{ connectorId: 0, type: "Operative" }, { action: "ChangeAvailability", connectorId: 0, type: "Operative" }],
+  },
+  GetConfiguration: {
+    full: [{ keys: ["HeartbeatInterval", "MeterValueSampleInterval"] },
+      { action: "GetConfiguration", keys: ["HeartbeatInterval", "MeterValueSampleInterval"] }],
+    minimal: [{}, { action: "GetConfiguration" }],
+  },
+  ChangeConfiguration: {
+    full: [{ key: "HeartbeatInterval", value: "300" }, { action: "ChangeConfiguration", key: "HeartbeatInterval", value: "300" }],
+    minimal: [{ key: "K", value: "" }, { action: "ChangeConfiguration", key: "K", value: "" }],
+  },
+  RemoteStartTransaction: {
+    full: [{ idTag: "TAG-START", connectorId: 3, chargingProfile: "profile-7" },
+      { action: "RemoteStartTransaction", idTag: "TAG-START", connectorId: 3, chargingProfile: "profile-7" }],
+    minimal: [{ idTag: "TAG-START" }, { action: "RemoteStartTransaction", idTag: "TAG-START" }],
+  },
+  RemoteStopTransaction: {
+    full: [{ transaction: "tx-41" }, { action: "RemoteStopTransaction", transaction: "tx-41" }],
+    minimal: [{ transaction: "tx-41" }, { action: "RemoteStopTransaction", transaction: "tx-41" }],
+  },
+  TriggerMessage: {
+    full: [{ requestedMessage: "StatusNotification", connectorId: 3 },
+      { action: "TriggerMessage", requestedMessage: "StatusNotification", connectorId: 3 }],
+    minimal: [{ requestedMessage: "Heartbeat" }, { action: "TriggerMessage", requestedMessage: "Heartbeat" }],
+  },
+  SetChargingProfile: {
+    full: [{ connectorId: 3, chargingProfile: "profile-7", transaction: "tx-41" },
+      { action: "SetChargingProfile", connectorId: 3, chargingProfile: "profile-7", transaction: "tx-41" }],
+    minimal: [{ connectorId: 3, chargingProfile: "profile-7" },
+      { action: "SetChargingProfile", connectorId: 3, chargingProfile: "profile-7" }],
+  },
+  GetCompositeSchedule: {
+    full: [{ connectorId: 3, duration: 900, chargingRateUnit: "W" },
+      { action: "GetCompositeSchedule", connectorId: 3, duration: 900, chargingRateUnit: "W" }],
+    minimal: [{ connectorId: 3, duration: 900 }, { action: "GetCompositeSchedule", connectorId: 3, duration: 900 }],
+  },
+  ClearChargingProfile: {
+    full: [{ chargingProfile: "profile-7", connectorId: 3, purpose: "TxProfile", stackLevel: 6 },
+      { action: "ClearChargingProfile", chargingProfile: "profile-7", connectorId: 3, purpose: "TxProfile", stackLevel: 6 }],
+    minimal: [{}, { action: "ClearChargingProfile" }],
+  },
+  UpdateFirmware: {
+    full: [{ location: "ftp://fw.example/image.bin", retrieveDate: T1, retries: 4, retryInterval: 45 },
+      { action: "UpdateFirmware", location: "ftp://fw.example/image.bin", retrieveDate: new Date(T1), retries: 4, retryInterval: 45 }],
+    minimal: [{ location: "ftp://fw.example/image.bin", retrieveDate: T1 },
+      { action: "UpdateFirmware", location: "ftp://fw.example/image.bin", retrieveDate: new Date(T1) }],
+  },
+  GetDiagnostics: {
+    full: [{ location: "ftp://diag.example/", startTime: T1, stopTime: T2, retries: 4, retryInterval: 45 },
+      { action: "GetDiagnostics", location: "ftp://diag.example/", startTime: new Date(T1), stopTime: new Date(T2),
+        retries: 4, retryInterval: 45 }],
+    minimal: [{ location: "ftp://diag.example/" }, { action: "GetDiagnostics", location: "ftp://diag.example/" }],
+  },
+  GetLocalListVersion: {
+    full: [{}, { action: "GetLocalListVersion" }],
+    minimal: [undefined, { action: "GetLocalListVersion" }],
+  },
+  SendLocalList: {
+    full: [{ listVersion: 11, updateType: "Differential",
+      localAuthorizationList: [{ idTag: "TAG-A", status: "Blocked", expiryDate: T1, parentIdTag: "TAG-PARENT" }, { idTag: "TAG-B" }] },
+    { action: "SendLocalList", listVersion: 11, updateType: "Differential",
+      localAuthorizationList: [{ idTag: "TAG-A", status: "Blocked", expiryDate: new Date(T1), parentIdTag: "TAG-PARENT" },
+        { idTag: "TAG-B" }] }],
+    minimal: [{ listVersion: 11, updateType: "Full" }, { action: "SendLocalList", listVersion: 11, updateType: "Full" }],
+  },
+  ReserveNow: {
+    full: [{ connectorId: 3, idTag: "TAG-RESERVE", expiryDate: T2, parentIdTag: "TAG-PARENT", reservation: "res-9" },
+      { action: "ReserveNow", connectorId: 3, idTag: "TAG-RESERVE", expiryDate: new Date(T2), parentIdTag: "TAG-PARENT",
+        reservation: "res-9" }],
+    minimal: [{ connectorId: 3, idTag: "TAG-RESERVE", expiryDate: T2 },
+      { action: "ReserveNow", connectorId: 3, idTag: "TAG-RESERVE", expiryDate: new Date(T2) }],
+  },
+  CancelReservation: {
+    full: [{ reservation: "res-9" }, { action: "CancelReservation", reservation: "res-9" }],
+    minimal: [{ reservation: "res-9" }, { action: "CancelReservation", reservation: "res-9" }],
+  },
+};
+for (const action of CSMS_OPERATION_16_ACTIONS) {
+  for (const shape of ["full", "minimal"] as const) {
+    const [body, expected] = ARMS[action][shape];
+    const ex = await exchange("POST", `/v1/charge-points/CP-1/operations/${OPERATION_16_PATHS[action]}`, body);
+    const op = ex.seen.executes[0]?.op;
+    check(
+      ex.status === 202 && ex.seen.executes.length === 1 && Bun.deepEquals(op, expected, true),
+      `${action} (${shape}) decodes to exactly ${JSON.stringify(expected)}: got ${ex.status} ${JSON.stringify(op)} ${ex.text}`,
+    );
+  }
 }
 
 const DEFINITION = {
