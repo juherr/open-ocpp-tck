@@ -100,6 +100,7 @@ import {
   type Shard,
 } from "./shard";
 import { settleBoot } from "./boot-quiet";
+import { mergeSimTransport } from "./sim-transport";
 import { loadTemplateOnce, runLoadedTemplate } from "./template-once";
 import { readTrace } from "./trace";
 import {
@@ -108,7 +109,6 @@ import {
   simConfigForScenario,
   traceRequested,
   startSim,
-  type SimConfig,
   assertNoForeignSweep,
 } from "./sim";
 import type {
@@ -118,7 +118,6 @@ import type {
   CsmsOperations201,
   CsmsRecords,
   CsmsTckCapabilities,
-  SimTransportDefaults,
 } from "./driver";
 import {
   AUTHLIST_RESERVATION_SPECS,
@@ -613,52 +612,6 @@ function withOperationStubs201(parts: CsmsDriverParts): CsmsOperations201 {
     parts.operations201 ??
     unsupportedOperations201("this driver declares no OCPP 2.0.1 operations")
   );
-}
-
-/**
- * Driver transport defaults under operator overrides.
- *
- * Precedence is explicit `SIM_*` environment > driver default > harness
- * default, and it is enforced by only filling a field the environment left
- * unset. An operator who exported SIM_WS_URL to chase a handshake problem must
- * not have it silently replaced by what the driver believes the URL should be.
- *
- * THE ORDERING ABOVE IS THIS FUNCTION'S, NOT ALL OF `SimConfig`'S. Exactly one
- * field has a fourth source that outranks the environment, and it is not one
- * this function sees: `ocppVersion`, which a SCENARIO may declare. The
- * exception is stated at the call site, where the scenario is in scope; the
- * rule here is unchanged for every field a driver contributes, which is what
- * this function is about. A field added here with a scenario-level opinion
- * belongs in both places or in neither.
- */
-function mergeSimTransport(
-  base: SimConfig,
-  fromDriver: SimTransportDefaults | undefined,
-  env: CsmsEnv = process.env,
-): SimConfig {
-  if (!fromDriver) return base;
-  const keep = <T>(envVar: string, driverValue: T | undefined, current: T): T =>
-    env[envVar] ? current : (driverValue ?? current);
-  return {
-    ...base,
-    wsUrl: keep("SIM_WS_URL", fromDriver.wsUrl, base.wsUrl),
-    network: keep("SIM_NETWORK", fromDriver.network, base.network),
-    appendCpIdToWsPath: keep(
-      "SIM_WS_APPEND_CP_ID",
-      fromDriver.appendCpIdToWsPath,
-      base.appendCpIdToWsPath,
-    ),
-    basicAuthUser: keep(
-      "SIM_WS_BASIC_USER",
-      fromDriver.basicAuthUser,
-      base.basicAuthUser,
-    ),
-    basicAuthPass: keep(
-      "SIM_WS_BASIC_PASS",
-      fromDriver.basicAuthPass,
-      base.basicAuthPass,
-    ),
-  };
 }
 
 async function runScenario<D>(

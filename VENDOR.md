@@ -153,6 +153,7 @@ the drivers are native here, and the name now says so.
 | `tck/states-201.ts` | `local-native` | `—` | `—` | `—` | `—` |
 | `tck/template-once.ts` | `local-native` | `—` | `—` | `—` | `—` |
 | `tck/boot-quiet.ts` | `local-native` | `—` | `—` | `—` | `—` |
+| `tck/sim-transport.ts` | `local-native` | `—` | `—` | `—` | `—` |
 | `tck/gherkin/compiler.ts` | `local-native` | `—` | `—` | `—` | `—` |
 | `tck/gherkin/compiler-201.ts` | `local-native` | `—` | `—` | `—` | `—` |
 | `bin/ocpp-tck.ts` | `local-native` | `—` | `—` | `—` | `—` |
