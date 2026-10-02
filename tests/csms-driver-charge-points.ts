@@ -56,7 +56,9 @@
  *     rows stand on. The rest of the adapter's claims are rows too: a
  *     refusal SteVe renders is a plain `Error` carrying its error text and
  *     never the posted password, which the re-rendered form echoes; a
- *     duplicate is refused before anything is posted; a create that cannot be
+ *     duplicate is refused before anything is posted, and still reads as one
+ *     when a concurrent create wins the race past that check; a POST bounced
+ *     to sign-in is a non-dispatch that changed nothing, not an acceptance; a create that cannot be
  *     read back, and an update whose members do not read back as written,
  *     are not a success; `CP-1` is not `CP-10`, which SteVe's LIKE
  *     query lists beside it; and the details form goes back whole, because
@@ -90,6 +92,7 @@ import {
   ChargePointNotFoundError,
   createCitrineOsCsmsDriver,
   createSteveCsmsDriver,
+  CsmsNotDispatchedError,
   UnsupportedOperationError,
   type ChargePointDefinition,
   type ChargePointDetails,
@@ -594,6 +597,37 @@ await row("the duplicate row", async () => {
     "a duplicate create throws ChargePointAlreadyExistsError",
   );
   check(fake.posts.length === before, "a duplicate create posts nothing");
+
+  // Two creates of one id racing past the existence check: the one that loses
+  // gets SteVe's duplicate page, and must still read as the contract's error.
+  const raced = await Promise.allSettled([admin.create({ id: "CP-RACE" }), admin.create({ id: "CP-RACE" })]);
+  const lost = raced.filter((outcome) => outcome.status === "rejected");
+  check(
+    raced.some((outcome) => outcome.status === "fulfilled") &&
+      lost.length === 1 &&
+      lost[0].status === "rejected" &&
+      lost[0].reason instanceof ChargePointAlreadyExistsError,
+    `of two concurrent creates of one id, one succeeds and the other throws ChargePointAlreadyExistsError ` +
+      `(got ${raced.map((outcome) => (outcome.status === "fulfilled" ? "ok" : String(outcome.reason))).join(", ")})`,
+  );
+});
+
+// A session that expired between a form's GET and its POST is bounced to
+// sign-in -- a redirect, which is how SteVe also says "accepted". A password
+// cannot be read back, so a password-only update would pass the read-back:
+// the bounce itself has to be the failure, and a non-dispatch, since nothing
+// was applied.
+await row("the sign-in bounce row", async () => {
+  const fake = fakeSteveManager();
+  const admin = steveAdmin(fake);
+  await admin.create({ id: "CP-BOUNCE", security: { profile: 1, basicAuthPassword: OLD_PASSWORD } });
+  fake.expireSessionBeforeNextPost();
+  const error = await caught(admin.update("CP-BOUNCE", { security: { profile: 1, basicAuthPassword: "rotated-secret-0002" } }));
+  check(
+    error instanceof CsmsNotDispatchedError,
+    `a form POST bounced to sign-in throws CsmsNotDispatchedError (got ${String(error)})`,
+  );
+  check(fake.stations.get("CP-BOUNCE")?.authPassword === OLD_PASSWORD, "the bounced update changed nothing");
 });
 
 // SteVe redirects whether or not a row was written, so a create that cannot

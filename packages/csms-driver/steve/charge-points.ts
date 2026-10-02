@@ -13,10 +13,12 @@
  * SteVe answers a refused form with a 200 page rather than a status: a
  * validation list, or the exception its controller advice rendered. Those
  * become plain `Error`s carrying the page's error text, since the CSMS did
- * answer. Two of them are the contract's own errors instead, decided before
- * anything is posted: a duplicate id (`get` first, because SteVe's duplicate
- * page is a constraint-violation trace, not a stable signal) and an update of
- * an id it does not have. Every write is read back and compared with what it
+ * answer. Two of them are the contract's own errors instead: a duplicate id,
+ * decided before anything is posted and again after a refused add (another
+ * create may have won the race in between -- SteVe's duplicate page is a
+ * constraint-violation trace, not a stable signal, so the list is asked), and
+ * an update of an id it does not have. A POST bounced to sign-in is a
+ * non-dispatch, not an acceptance (ui-client.ts). Every write is read back and compared with what it
  * set, because SteVe redirects the same way whether or not a row changed.
  *
  * THE PASSWORD IS OVERWRITTEN, NOT CLEARED. The contract says a security
@@ -49,7 +51,7 @@ import {
   type ChargePointSecurityProfile,
   type CsmsChargePointAdmin,
 } from "../charge-points";
-import { UnsupportedOperationError } from "../contracts";
+import { CsmsNotDispatchedError, UnsupportedOperationError } from "../contracts";
 import {
   chargeBoxPkOf,
   chargePointFromForm,
@@ -141,7 +143,17 @@ export function steveChargePoints(ui: SteveUiOps): CsmsChargePointAdmin {
         security: steveSecurity(security, () => ""),
         description: definition.description ?? null,
       };
-      await ui.submitForm(PAGES.add, PAGES.addAction, { submitter: "add", fill: (fields) => fillChargePointForm(fields, change) });
+      try {
+        await ui.submitForm(PAGES.add, PAGES.addAction, { submitter: "add", fill: (fields) => fillChargePointForm(fields, change) });
+      } catch (error) {
+        // Refused, and the id exists now: another create won the race past
+        // the check above. Asked of the list rather than of the refusal page,
+        // whose duplicate is a constraint-violation trace.
+        if (!(error instanceof CsmsNotDispatchedError) && (await pkOf(definition.id)) !== undefined) {
+          throw new ChargePointAlreadyExistsError(definition.id);
+        }
+        throw error;
+      }
       await readBack(definition.id, "create", change);
     },
 

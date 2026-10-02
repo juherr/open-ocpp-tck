@@ -383,6 +383,16 @@ export class SteveUiOps {
  */
 async function redirectOrRefusal(res: Response, path: string): Promise<string> {
   const location = res.headers.get("location");
+  // A bounce to sign-in is a redirect too, and SteVe says "accepted" with
+  // nothing else: the session expired between the form's GET and its POST,
+  // so nothing was applied -- and a write the caller cannot read back, a
+  // password, would otherwise pass for done.
+  if (location && /\/signin\b/.test(location)) {
+    throw new CsmsNotDispatchedError(
+      path,
+      `bounced to ${location}: the session ended before the form was posted, so nothing was applied`,
+    );
+  }
   if (location) return location;
   const body = await res.text().catch(() => "<unreadable body>");
   const detail = pageErrors(body) ?? (res.status >= 400 ? body.slice(0, 300) : "no error on the page");

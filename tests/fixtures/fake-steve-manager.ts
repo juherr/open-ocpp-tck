@@ -16,6 +16,7 @@
  *    form left out is erased -- EXCEPT the password, which an empty field
  *    leaves unchanged, and which nothing clears;
  *  - the list query matches with LIKE, so `CP-1` lists `CP-10`;
+ *  - a request without an authenticated session is redirected to sign-in;
  *  - the handshake checks the password under profiles 1 and 2 only.
  * Markup follows Spring's form tags as the pinned image renders them. The
  * model is this fixture's one assumption; `tools/steve-charge-points.ts`
@@ -52,6 +53,14 @@ export interface FakeSteveManager {
   readonly stations: Map<string, FakeStation>;
   /** Whether a WebSocket handshake for `cpId` with this Basic Auth password would be accepted. */
   authenticates(cpId: string, password: string): boolean;
+  /**
+   * Let the session expire between the next form's GET and its POST, which is
+   * then bounced to sign-in with a 302 -- a redirect, like an acceptance.
+   * (Spring may refuse such a POST with a 403 for its CSRF token instead,
+   * which the client already reports as a non-dispatch; the redirect is the
+   * answer that looks like success.)
+   */
+  expireSessionBeforeNextPost(): void;
 }
 
 export interface FakeSteveOptions {
@@ -166,6 +175,7 @@ export function fakeSteveManager(options: FakeSteveOptions = {}): FakeSteveManag
   const stations = new Map<string, FakeStation>();
   const posts: { action: string; fields: URLSearchParams }[] = [];
   let nextSession = 0;
+  let expireBeforePost = false;
   let nextPk = 1;
 
   const byPk = (pk: number): FakeStation | undefined => [...stations.values()].find((station) => station.pk === pk);
@@ -251,6 +261,10 @@ export function fakeSteveManager(options: FakeSteveOptions = {}): FakeSteveManag
       if (!session || fields.get("_csrf") !== session.token) return new Response("forbidden", { status: 403 });
       session.authenticated = true;
       return redirect("/steve/");
+    }
+    if (expireBeforePost && method === "POST" && session) {
+      expireBeforePost = false;
+      session.authenticated = false;
     }
     if (!session?.authenticated) return redirect(`${CONTEXT}/signin`);
     if (path === "home" && method === "GET") return html("home");
@@ -353,6 +367,9 @@ export function fakeSteveManager(options: FakeSteveOptions = {}): FakeSteveManag
       if (!station) return false;
       if (station.securityProfile !== "Profile_1" && station.securityProfile !== "Profile_2") return true;
       return station.authPassword !== null && password === station.authPassword;
+    },
+    expireSessionBeforeNextPost() {
+      expireBeforePost = true;
     },
   };
 }
