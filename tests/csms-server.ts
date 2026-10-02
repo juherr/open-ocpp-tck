@@ -46,6 +46,15 @@
  *  7. THE DESCRIPTION IS DECLARATIVE. `GET /v1/driver` reports identity and
  *     capabilities and nothing else, and only an admin surface that is both
  *     declared and present.
+ *  8. A BROWSER CANNOT DRIVE IT. The daemon has no authentication, so a page
+ *     the operator visits must not be able to reach it: a request carrying an
+ *     `Origin` header -- which a browser sends on every cross-origin POST,
+ *     `no-cors` and form posts included -- answers 403 `forbidden_origin`, and
+ *     a POST or PATCH that is not `Content-Type: application/json` answers 415
+ *     `unsupported_media_type`, a type no "simple" request can carry. Both are
+ *     decided before routing, so neither calls the driver -- a body-less
+ *     operation included. A JSON media type with parameters, in any case, is
+ *     accepted, and DELETE, which a browser always preflights, needs none.
  */
 
 import { resolve } from "node:path";
@@ -163,6 +172,8 @@ async function exchange(
   body?: unknown,
   fake: FakeOptions = {},
   options: Partial<CsmsHttpOptions> = {},
+  /** Default: `content-type: application/json` on POST and PATCH, as every client in the README sends. */
+  headers?: Record<string, string>,
 ): Promise<Exchange> {
   const { driver, seen } = fakeDriver(fake);
   const log: string[] = [];
@@ -171,7 +182,10 @@ async function exchange(
     log: (line) => log.push(line),
     ...options,
   });
-  const init: RequestInit = { method };
+  const init: RequestInit = {
+    method,
+    headers: headers ?? (method === "POST" || method === "PATCH" ? { "content-type": "application/json" } : {}),
+  };
   if (body !== undefined) init.body = typeof body === "string" ? body : JSON.stringify(body);
   const res = await handler(new Request(`http://daemon${path}`, init));
   const text = await res.text();
@@ -219,6 +233,7 @@ async function expectError(
 }
 
 const RESET = "/v1/charge-points/CP-1/operations/reset";
+const JSON_REQUEST = { "content-type": "application/json" };
 
 // ---------------------------------------------------------------------------
 // Part 3 -- the path table.
@@ -511,6 +526,46 @@ await expectError("a wrong method on a driver without chargePoints", 405, "metho
 }
 
 // ---------------------------------------------------------------------------
+// Part 8 -- a browser cannot drive it.
+// ---------------------------------------------------------------------------
+
+const EVIL = "https://evil.example";
+const BROWSER_REFUSALS: [string, number, string, string, string, unknown, Record<string, string>][] = [
+  // What a page can send with no preflight: POST, text/plain, an Origin.
+  ["a cross-origin simple POST", 403, "forbidden_origin", "POST", RESET, { type: "Hard" },
+    { "content-type": "text/plain;charset=UTF-8", origin: EVIL }],
+  ["a cross-origin JSON POST, had a preflight been skipped", 403, "forbidden_origin", "POST", RESET, { type: "Hard" },
+    { "content-type": "application/json", origin: EVIL }],
+  ["a sandboxed page's opaque origin", 403, "forbidden_origin", "POST", RESET, { type: "Hard" },
+    { "content-type": "application/json", origin: "null" }],
+  ["a cross-origin read", 403, "forbidden_origin", "GET", "/v1/driver", undefined, { origin: EVIL }],
+  ["an Origin on a path no route has", 403, "forbidden_origin", "POST", "/v1/nowhere", {}, { origin: EVIL }],
+  // A browser that sent no Origin still cannot send a JSON type without a preflight.
+  ["a text/plain POST", 415, "unsupported_media_type", "POST", RESET, { type: "Hard" },
+    { "content-type": "text/plain" }],
+  ["a body-less operation as text/plain", 415, "unsupported_media_type", "POST",
+    "/v1/charge-points/CP-1/operations/clear-cache", undefined, { "content-type": "text/plain" }],
+  ["a form post that provisions", 415, "unsupported_media_type", "POST", "/v1/charge-points",
+    "id=CP-9", { "content-type": "application/x-www-form-urlencoded" }],
+  ["a POST with no content type", 415, "unsupported_media_type", "POST", RESET, { type: "Hard" }, {}],
+  ["a text/plain PATCH", 415, "unsupported_media_type", "PATCH", "/v1/charge-points/CP-9",
+    { registration: "Rejected" }, { "content-type": "text/plain" }],
+  ["a JSON look-alike", 415, "unsupported_media_type", "POST", RESET, { type: "Hard" },
+    { "content-type": "application/jsonp" }],
+];
+for (const [label, status, code, method, path, body, headers] of BROWSER_REFUSALS) {
+  await expectError(label, status, code, () => exchange(method, path, body, {}, {}, headers), false);
+}
+for (const contentType of ["application/json; charset=utf-8", "Application/JSON"]) {
+  const ex = await exchange("POST", RESET, { type: "Hard" }, {}, {}, { "content-type": contentType });
+  check(ex.status === 202 && ex.seen.executes.length === 1, `'${contentType}' is accepted, got ${ex.status} (${ex.text})`);
+}
+{
+  const ex = await exchange("DELETE", "/v1/charge-points/CP-9", undefined, {}, {}, {});
+  check(ex.status === 204, `DELETE needs no content type, got ${ex.status} (${ex.text})`);
+}
+
+// ---------------------------------------------------------------------------
 // Part 1 -- the daemon, through the registry and a real port.
 // ---------------------------------------------------------------------------
 
@@ -545,6 +600,7 @@ await expectError("a wrong method on a driver without chargePoints", 405, "metho
 
     const created = await fetch(`${server.url}/v1/charge-points`, {
       method: "POST",
+      headers: JSON_REQUEST,
       body: JSON.stringify({ id: "CP-1", registration: "Pending" }),
     });
     const readBack = await fetch(`${server.url}/v1/charge-points/CP-1`);
@@ -556,7 +612,7 @@ await expectError("a wrong method on a driver without chargePoints", 405, "metho
       `the provisioned station reads back through the daemon: ${JSON.stringify(readBackBody)}`,
     );
 
-    const reset = await fetch(`${server.url}${RESET}`, { method: "POST", body: JSON.stringify({ type: "Soft" }) });
+    const reset = await fetch(`${server.url}${RESET}`, { method: "POST", headers: JSON_REQUEST, body: JSON.stringify({ type: "Soft" }) });
     check(reset.status === 202, `the daemon dispatches through the loaded driver, got ${reset.status}`);
     check(
       JSON.stringify(fixture.calls) === JSON.stringify([{ cpId: "CP-1", op: { action: "Reset", type: "Soft" } }]),
@@ -565,6 +621,7 @@ await expectError("a wrong method on a driver without chargePoints", 405, "metho
 
     const refused = await fetch(`${server.url}/v1/charge-points/CP-1/operations/change-configuration`, {
       method: "POST",
+      headers: JSON_REQUEST,
       body: JSON.stringify({ key: "HeartbeatInterval", value: "30" }),
     });
     const refusedText = await refused.text();

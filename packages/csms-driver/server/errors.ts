@@ -16,6 +16,8 @@ export type CsmsErrorCode =
   | "invalid_input"
   | "not_found"
   | "method_not_allowed"
+  | "forbidden_origin"
+  | "unsupported_media_type"
   | "conflict"
   | "unsupported_capability"
   | "transport_failure"

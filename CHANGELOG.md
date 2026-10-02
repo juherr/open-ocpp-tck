@@ -39,9 +39,13 @@ Released as `0.3.0`. The documented install ref already points at that tag, so
   request makes at most one driver call. A capability the driver does not
   declare answers `501`, and every failure has one stable code in a
   `{"error":{"code","message"}}` envelope: `invalid_input`, `not_found`,
-  `method_not_allowed`, `conflict`, `unsupported_capability`,
-  `transport_failure`, `csms_rejected`, `timeout`, `internal`. Credentials are never returned or logged. It listens on
-  `127.0.0.1` by default, because it has no authentication of its own. The
+  `forbidden_origin`, `method_not_allowed`, `unsupported_media_type`,
+  `conflict`, `unsupported_capability`, `transport_failure`, `csms_rejected`,
+  `timeout`, `internal`. Credentials are never returned or logged. It listens
+  on `127.0.0.1` by default, because it has no authentication of its own, and
+  refuses browser-originated requests for the same reason: a request carrying
+  an `Origin` header, and a `POST` or `PATCH` that is not
+  `Content-Type: application/json`, never reach the driver. The
   handler is also a library, `open-ocpp-tck/csms-driver/server`. See
   `packages/csms-driver/server/README.md`.
 - **Scenarios carry functional tags, and `--tag <name>` selects on them**

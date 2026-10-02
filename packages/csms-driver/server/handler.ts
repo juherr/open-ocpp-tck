@@ -17,6 +17,16 @@
  *   PATCH  /v1/charge-points/{id}                       chargePoints.update
  *   DELETE /v1/charge-points/{id}                       chargePoints.delete
  *   POST   /v1/charge-points/{id}/operations/{path}     operations16.execute
+ *
+ * NO AUTHENTICATION, SO NO BROWSER. The daemon listens on loopback, and a page
+ * the operator has open can reach loopback: a cross-origin "simple" request --
+ * POST, `text/plain`, no preflight -- is delivered, and its response being
+ * opaque does not undo a Reset. Local Network Access prompts are not in every
+ * browser, so the refusal is ours, made before routing: a request carrying an
+ * `Origin` (sent by a browser on every cross-origin POST, form posts and
+ * `no-cors` included) is refused, and a POST or PATCH must be
+ * `application/json`, which no simple request can be. DELETE needs no such
+ * rule: a browser preflights it, and the daemon answers no preflight.
  */
 import { ChargePointNotFoundError, type ChargePointSecurity } from "../charge-points";
 import { CSMS_OPERATION_16_ACTIONS } from "../contracts";
@@ -65,6 +75,24 @@ function methodNotAllowed(allowed: string): never {
 
 function notFound(what: string): never {
   throw new CsmsHttpError(404, "not_found", what);
+}
+
+/** The browser rule in the header above. Checked before routing, so it holds
+ *  for every route, body-less operations included, and never reaches a driver. */
+function refuseBrowserRequests(request: Request): void {
+  if (request.headers.has("origin")) {
+    throw new CsmsHttpError(
+      403,
+      "forbidden_origin",
+      "requests from a browser page are refused: this daemon has no authentication",
+    );
+  }
+  if (request.method === "POST" || request.method === "PATCH") {
+    const mediaType = (request.headers.get("content-type") ?? "").split(";")[0]!.trim().toLowerCase();
+    if (mediaType !== "application/json") {
+      throw new CsmsHttpError(415, "unsupported_media_type", "a POST or PATCH must be Content-Type: application/json");
+    }
+  }
 }
 
 async function readBody(request: Request): Promise<unknown> {
@@ -125,6 +153,7 @@ export function createCsmsHttpHandler(driver: CsmsDriver, options: CsmsHttpOptio
     let response: Response;
     let code = "";
     try {
+      refuseBrowserRequests(request);
       response = await route(request, url, secrets);
     } catch (err) {
       const failure = classify(err, false);

@@ -1,4 +1,4 @@
-export type CsmsErrorCode = "invalid_input" | "not_found" | "method_not_allowed" | "conflict" | "unsupported_capability" | "transport_failure" | "csms_rejected" | "timeout" | "internal";
+export type CsmsErrorCode = "invalid_input" | "not_found" | "method_not_allowed" | "forbidden_origin" | "unsupported_media_type" | "conflict" | "unsupported_capability" | "transport_failure" | "csms_rejected" | "timeout" | "internal";
 /** A failure the daemon decides itself, before or instead of a driver call. */
 export declare class CsmsHttpError extends Error {
     readonly status: number;

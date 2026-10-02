@@ -47,6 +47,37 @@ A driver's built-in default credential, which is not in the environment, is
 not known to the daemon. Neither is a password the CSMS echoes back escaped or
 truncated.
 
+### Browsers cannot call it
+
+Listening on loopback keeps other machines out, but not a web page open on
+the same machine: a page can send a cross-origin "simple" request (a `POST`
+with a `text/plain` body) to `127.0.0.1` without a CORS preflight. The page
+never reads the response, but the operation still happens. Browser
+protections for local addresses (Local Network Access) are not available in
+every browser, so the daemon refuses these requests itself, before routing
+and before any driver call:
+
+- a request carrying an `Origin` header answers `403 forbidden_origin`.
+  Browsers send it on every cross-origin `POST`, including form posts and
+  `no-cors` requests, and native HTTP clients do not;
+- a `POST` or `PATCH` whose `Content-Type` is not `application/json` (with or
+  without parameters such as `; charset=utf-8`) answers
+  `415 unsupported_media_type`. This applies to operations without a body,
+  such as `clear-cache`, too. A page cannot send this type without a
+  preflight, and the daemon answers no preflight.
+
+So a client must send `Content-Type: application/json` on every `POST` and
+`PATCH`; `curl -d` does not do it by default, so add
+`-H 'content-type: application/json'`. `DELETE` needs no content type.
+
+To drive the daemon from a browser application, put your own authenticated
+backend in front of it.
+
+One gap remains, and it only concerns reads: a DNS-rebinding page that
+reaches the daemon under its own host name can send a `GET` without an
+`Origin`. It could read `/v1/driver` and a charge point's registration, which
+carry no credentials. It cannot change anything.
+
 ## The API
 
 All routes are under `/v1`. Bodies are JSON. Decoding is strict: a missing or
@@ -216,7 +247,9 @@ may change.
 |---|---|---|
 | 400 | `invalid_input` | The body is not valid JSON, or does not match the model. The driver was not called. |
 | 404 | `not_found` | No such route or operation path, or no such charge point. |
+| 403 | `forbidden_origin` | The request carries an `Origin` header, so it comes from a browser page. See [Browsers cannot call it](#browsers-cannot-call-it). The driver was not called. |
 | 405 | `method_not_allowed` | The route exists but does not serve this method. The `allow` header names the methods it does serve. |
+| 415 | `unsupported_media_type` | A `POST` or `PATCH` without `Content-Type: application/json`. The driver was not called. |
 | 409 | `conflict` | `create` of an id that already exists. Nothing was changed. |
 | 501 | `unsupported_capability` | The driver does not declare the operation, has no charge-point administration, does not accept the security profile, or refused the request as something it cannot express. |
 | 502 | `transport_failure` | The request never reached the CSMS as an operation: the connection failed, the CSMS refused the driver's credentials, or it refused the request before dispatching it. The driver contract has no separate class for an authentication failure, so this code covers it. |
