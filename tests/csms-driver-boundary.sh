@@ -16,11 +16,14 @@ if [ -n "$imports" ]; then
   exit 1
 fi
 
-# The daemon is a transport adapter over the generic contract, so it may not
-# reach for a bundled driver's implementation (issue #156).
-server_imports="$(grep -R -n -E "(from|import)[[:space:]]*\(?[[:space:]]*[\"'][^\"']*\.\./(steve|citrineos)" "$source_dir/server" --include='*.ts' || true)"
+# The daemon is a transport adapter over the generic contract (issue #156): an
+# allowlist rather than a list of drivers, so a third bundled driver is covered
+# the day it is added. Every relative specifier under server/ is a sibling or
+# one of the contract modules.
+server_imports="$(grep -R -n -E "(from|import)[[:space:]]*\(?[[:space:]]*[\"']\.\.?/" "$source_dir/server" --include='*.ts' \
+  | grep -v -E "[\"'](\./[^/\"']+|\.\./(contracts|models|charge-points))[\"']" || true)"
 if [ -n "$server_imports" ]; then
-  echo "FAIL: the CSMS daemon imports a concrete driver:" >&2
+  echo "FAIL: the CSMS daemon imports beyond the generic contract:" >&2
   printf '%s\n' "$server_imports" >&2
   exit 1
 fi

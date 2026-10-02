@@ -53,6 +53,20 @@ export class ObjectReader {
     throw new InvalidInputError(`${this.where}.${name} must be ${expected}`);
   }
 
+  /** `read` when the member is present. An absent one needs no marking:
+   *  `done()` only refuses members that ARE there. */
+  private opt<T>(name: string, read: (name: string) => T): T | undefined {
+    return this.has(name) ? read(name) : undefined;
+  }
+
+  /** Decodes one nested object through its own reader, which refuses its own unknown members. */
+  private nested<T>(value: unknown, where: string, each: (reader: ObjectReader) => T): T {
+    const reader = new ObjectReader(value, where);
+    const decoded = each(reader);
+    reader.done();
+    return decoded;
+  }
+
   string(name: string): string {
     const value = this.take(name);
     if (typeof value !== "string") this.fail(name, "a string");
@@ -60,7 +74,7 @@ export class ObjectReader {
   }
 
   optString(name: string): string | undefined {
-    return this.has(name) ? this.string(name) : (this.take(name), undefined);
+    return this.opt(name, (n) => this.string(n));
   }
 
   int(name: string): number {
@@ -70,7 +84,7 @@ export class ObjectReader {
   }
 
   optInt(name: string): number | undefined {
-    return this.has(name) ? this.int(name) : (this.take(name), undefined);
+    return this.opt(name, (n) => this.int(n));
   }
 
   oneOf<U extends string | number>(name: string, members: readonly U[]): U {
@@ -80,7 +94,7 @@ export class ObjectReader {
   }
 
   optOneOf<U extends string | number>(name: string, members: readonly U[]): U | undefined {
-    return this.has(name) ? this.oneOf(name, members) : (this.take(name), undefined);
+    return this.opt(name, (n) => this.oneOf(n, members));
   }
 
   /**
@@ -115,7 +129,7 @@ export class ObjectReader {
   }
 
   optDate(name: string): Date | undefined {
-    return this.has(name) ? this.date(name) : (this.take(name), undefined);
+    return this.opt(name, (n) => this.date(n));
   }
 
   strings(name: string): string[] {
@@ -127,28 +141,21 @@ export class ObjectReader {
   }
 
   optStrings(name: string): string[] | undefined {
-    return this.has(name) ? this.strings(name) : (this.take(name), undefined);
+    return this.opt(name, (n) => this.strings(n));
   }
 
   /** Each element of an array member, through its own reader. */
   optObjects<T>(name: string, each: (reader: ObjectReader) => T): T[] | undefined {
-    if (!this.has(name)) return (this.take(name), undefined);
-    const value = this.take(name);
-    if (!Array.isArray(value)) this.fail(name, "an array");
-    return value.map((item, index) => {
-      const reader = new ObjectReader(item, `${this.where}.${name}[${index}]`);
-      const decoded = each(reader);
-      reader.done();
-      return decoded;
+    return this.opt(name, (n) => {
+      const value = this.take(n);
+      if (!Array.isArray(value)) this.fail(n, "an array");
+      return value.map((item, index) => this.nested(item, `${this.where}.${n}[${index}]`, each));
     });
   }
 
   /** A nested object member, through its own reader. */
-  object<T>(name: string, each: (reader: ObjectReader) => T): T {
-    const reader = new ObjectReader(this.take(name), `${this.where}.${name}`);
-    const decoded = each(reader);
-    reader.done();
-    return decoded;
+  optObject<T>(name: string, each: (reader: ObjectReader) => T): T | undefined {
+    return this.opt(name, (n) => this.nested(this.take(n), `${this.where}.${n}`, each));
   }
 
   /** The raw member, for a caller that decides its type itself. */

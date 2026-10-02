@@ -11,11 +11,7 @@
  * library's `CsmsDriver`; routing, decoding and error translation are
  * `packages/csms-driver/server`, which knows nothing about the TCK.
  */
-import {
-  createCsmsHttpHandler,
-  DEFAULT_TIMEOUT_MS,
-  MAX_TIMEOUT_MS,
-} from "../packages/csms-driver/server";
+import { createCsmsHttpHandler, MAX_TIMEOUT_MS } from "../packages/csms-driver/server";
 import {
   CSMS_OPERATION_16_ACTIONS,
   driverCapabilities,
@@ -44,8 +40,8 @@ export interface CsmsServer {
   stop(): Promise<void>;
 }
 
-export const DEFAULT_HOST = "127.0.0.1";
-export const DEFAULT_PORT = 8787;
+const DEFAULT_HOST = "127.0.0.1";
+const DEFAULT_PORT = 8787;
 
 /** Environment variable names whose values are credentials. Matched on a
  *  whole `_`-separated word of the name, so a driver adding `FOO_PASS` is
@@ -56,7 +52,7 @@ const SECRET_NAME = /(^|_)(PASS|PASSWD|PASSWORD|SECRET|TOKEN|KEY|CREDENTIALS?)(_
  *  turn every `1` in every message -- status codes included -- into noise. */
 const MIN_SECRET_LENGTH = 4;
 
-export function secretsOf(env: CsmsEnv): string[] {
+function secretsOf(env: CsmsEnv): string[] {
   return Object.entries(env)
     .filter(([name, value]) => SECRET_NAME.test(name) && value !== undefined && value.length >= MIN_SECRET_LENGTH)
     .map(([, value]) => value as string);
@@ -76,31 +72,47 @@ export async function startCsmsServer(options: CsmsServerOptions): Promise<CsmsS
   }
 }
 
+/**
+ * Every surface of the library's `CsmsDriver` besides its declaration. Keyed
+ * by the type, so a surface added to `CsmsDriver` stops this file compiling
+ * until the daemon carries it -- rather than being dropped from it in silence,
+ * which an optional member otherwise would be.
+ */
+const SURFACES = {
+  operations16: true,
+  operations201: true,
+  sessions: true,
+  connectors: true,
+  chargePoints: true,
+} as const satisfies Record<Exclude<keyof CsmsDriver, "capabilities">, true>;
+
+/**
+ * The `CsmsDriver` a TCK driver module amounts to: its declaration resolved
+ * for `env`, and the surfaces `create(env)` returned. Copied member by member,
+ * not spread: `{...parts}` drops every method of a driver built as a class
+ * instance (see `withCapabilityStubs` in main.ts).
+ *
+ * A module that declares nothing still has the compulsory 1.6 vocabulary; its
+ * own switch refuses what it cannot express, and the daemon reports that
+ * refusal as `unsupported_capability` all the same.
+ */
+function libraryDriver(module: CsmsDriverModule, parts: CsmsDriverParts, env: CsmsEnv): CsmsDriver {
+  const capabilities: CsmsCapabilities = driverCapabilities(module, env) ?? {
+    operations16: new Set(CSMS_OPERATION_16_ACTIONS),
+  };
+  const surfaces = (Object.keys(SURFACES) as (keyof typeof SURFACES)[])
+    .filter((key) => parts[key] !== undefined)
+    .map((key) => [key, parts[key]]);
+  return { ...Object.fromEntries(surfaces), capabilities } as CsmsDriver;
+}
+
 function serve(module: CsmsDriverModule, parts: CsmsDriverParts, options: CsmsServerOptions): CsmsServer {
   const { env } = options;
-  // A module that declares nothing still has the compulsory 1.6 surface; the
-  // driver's own switch refuses what it cannot express, and the daemon
-  // reports that refusal as `unsupported_capability` all the same.
-  const declared = driverCapabilities(module, env);
-  const capabilities: CsmsCapabilities = {
-    operations16: declared?.operations16 ?? new Set(CSMS_OPERATION_16_ACTIONS),
-    ...(declared?.operations201 ? { operations201: declared.operations201 } : {}),
-    ...(declared?.chargePoints ? { chargePoints: declared.chargePoints } : {}),
-  };
-  const driver: CsmsDriver = {
-    capabilities,
-    operations16: parts.operations16,
-    ...(parts.operations201 ? { operations201: parts.operations201 } : {}),
-    ...(parts.sessions ? { sessions: parts.sessions } : {}),
-    ...(parts.connectors ? { connectors: parts.connectors } : {}),
-    ...(parts.chargePoints ? { chargePoints: parts.chargePoints } : {}),
-  };
-  const protocols = driverProtocols(module, env);
-  const handler = createCsmsHttpHandler(driver, {
-    about: { id: module.id, displayName: module.displayName, ...(protocols ? { protocols } : {}) },
-    timeoutMs: options.timeoutMs ?? DEFAULT_TIMEOUT_MS,
+  const handler = createCsmsHttpHandler(libraryDriver(module, parts, env), {
+    about: { id: module.id, displayName: module.displayName, protocols: driverProtocols(module, env) },
+    timeoutMs: options.timeoutMs,
     secrets: secretsOf(env),
-    ...(options.log ? { log: options.log } : {}),
+    log: options.log,
   });
   const server = Bun.serve({
     hostname: options.host ?? DEFAULT_HOST,
@@ -151,13 +163,7 @@ export async function csmsServerCommand(argv: string[], env: CsmsEnv): Promise<n
   }
 
   const log = (line: string) => process.stderr.write(`csms-server: ${line}\n`);
-  const server = await startCsmsServer({
-    env,
-    log,
-    ...(host !== undefined ? { host } : {}),
-    ...(port !== undefined ? { port } : {}),
-    ...(timeoutMs !== undefined ? { timeoutMs } : {}),
-  });
+  const server = await startCsmsServer({ env, log, host, port, timeoutMs });
   process.stderr.write(`csms-server: listening on ${server.url}\n`);
   await new Promise<void>((resolve) => {
     process.once("SIGINT", () => resolve());

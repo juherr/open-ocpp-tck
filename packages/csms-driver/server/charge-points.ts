@@ -41,7 +41,7 @@ export function decodeChargePointDefinition(body: unknown): ChargePointDefinitio
   const definition: ChargePointDefinition = present({
     id,
     registration: r.optOneOf("registration", REGISTRATIONS),
-    security: r.has("security") ? r.object("security", security) : undefined,
+    security: r.optObject("security", security),
     description: r.optString("description"),
   });
   r.done();
@@ -50,12 +50,11 @@ export function decodeChargePointDefinition(body: unknown): ChargePointDefinitio
 
 export function decodeChargePointUpdate(body: unknown): ChargePointUpdate {
   const r = new ObjectReader(body, "body");
-  let description: string | null | undefined;
-  if (r.has("description") && r.raw("description") === null) description = null;
-  else description = r.optString("description");
+  const description =
+    r.has("description") && r.raw("description") === null ? null : r.optString("description");
   const update: ChargePointUpdate = present({
     registration: r.optOneOf("registration", REGISTRATIONS),
-    security: r.has("security") ? r.object("security", security) : undefined,
+    security: r.optObject("security", security),
     description,
   });
   r.done();

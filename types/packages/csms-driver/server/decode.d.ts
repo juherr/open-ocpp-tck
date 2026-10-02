@@ -24,6 +24,11 @@ export declare class ObjectReader {
     has(name: string): boolean;
     private take;
     private fail;
+    /** `read` when the member is present. An absent one needs no marking:
+     *  `done()` only refuses members that ARE there. */
+    private opt;
+    /** Decodes one nested object through its own reader, which refuses its own unknown members. */
+    private nested;
     string(name: string): string;
     optString(name: string): string | undefined;
     int(name: string): number;
@@ -44,7 +49,7 @@ export declare class ObjectReader {
     /** Each element of an array member, through its own reader. */
     optObjects<T>(name: string, each: (reader: ObjectReader) => T): T[] | undefined;
     /** A nested object member, through its own reader. */
-    object<T>(name: string, each: (reader: ObjectReader) => T): T;
+    optObject<T>(name: string, each: (reader: ObjectReader) => T): T | undefined;
     /** The raw member, for a caller that decides its type itself. */
     raw(name: string): unknown;
     /** Refuses every member nothing asked for. */

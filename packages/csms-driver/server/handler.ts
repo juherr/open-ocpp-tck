@@ -49,9 +49,13 @@ export type CsmsHttpHandler = (request: Request) => Promise<Response>;
 
 export const DEFAULT_TIMEOUT_MS = 60_000;
 
+/** The largest delay `setTimeout` honours. Beyond it the timer fires at once,
+ *  and every dispatched operation would be answered `timeout`. */
+export const MAX_TIMEOUT_MS = 2_147_483_647;
+
 const JSON_HEADERS = { "content-type": "application/json; charset=utf-8" };
 
-function json(status: number, body: unknown, headers: Record<string, string> = {}): Response {
+function json(status: number, body: unknown, headers: Readonly<Record<string, string>> = {}): Response {
   return new Response(JSON.stringify(body), { status, headers: { ...JSON_HEADERS, ...headers } });
 }
 
@@ -63,9 +67,31 @@ function notFound(what: string): never {
   throw new CsmsHttpError(404, "not_found", what);
 }
 
-/** The largest delay `setTimeout` honours. Beyond it the timer fires at once,
- *  and every dispatched operation would be answered `timeout`. */
-export const MAX_TIMEOUT_MS = 2_147_483_647;
+async function readBody(request: Request): Promise<unknown> {
+  const text = await request.text();
+  if (text.trim() === "") return {};
+  try {
+    return JSON.parse(text);
+  } catch {
+    throw new InvalidInputError("body is not valid JSON");
+  }
+}
+
+/** The declaration binds before the driver is asked: a profile it does not
+ *  accept is refused here, whatever the driver would have done. */
+function checkProfile(profile: number | undefined, declared: ReadonlySet<number>): void {
+  if (profile !== undefined && !declared.has(profile)) {
+    throw new CsmsHttpError(
+      501,
+      "unsupported_capability",
+      `security profile ${profile} is not one this driver accepts (${[...declared].join(", ")})`,
+    );
+  }
+}
+
+function rememberPassword(security: ChargePointSecurity | undefined, secrets: string[]): void {
+  if (security && "basicAuthPassword" in security) secrets.push(security.basicAuthPassword);
+}
 
 export function createCsmsHttpHandler(driver: CsmsDriver, options: CsmsHttpOptions): CsmsHttpHandler {
   const timeoutMs = options.timeoutMs ?? DEFAULT_TIMEOUT_MS;
@@ -77,6 +103,21 @@ export function createCsmsHttpHandler(driver: CsmsDriver, options: CsmsHttpOptio
   }
   const log = options.log ?? (() => {});
   const capabilities = driver.capabilities;
+  // Both halves: a declaration without the surface is a capability nobody can
+  // use, and reporting it would only move the 501 to the next request.
+  const admin =
+    driver.chargePoints && capabilities.chargePoints
+      ? { chargePoints: driver.chargePoints, declared: capabilities.chargePoints.securityProfiles }
+      : undefined;
+  const description = {
+    id: options.about.id,
+    displayName: options.about.displayName,
+    protocols: options.about.protocols ?? null,
+    operations16: CSMS_OPERATION_16_ACTIONS.filter((action) => capabilities.operations16.has(action)).map(
+      (action) => ({ operation: OPERATION_16_PATHS[action], action }),
+    ),
+    chargePoints: admin ? { securityProfiles: [...admin.declared].sort((a, b) => a - b) } : null,
+  };
 
   return async (request) => {
     const url = new URL(request.url);
@@ -91,7 +132,7 @@ export function createCsmsHttpHandler(driver: CsmsDriver, options: CsmsHttpOptio
       response = json(
         failure.status,
         { error: { code: failure.code, message: redact(failure.message, secrets) } },
-        { ...failure.headers },
+        failure.headers,
       );
     }
     log(redact(`${request.method} ${url.pathname} -> ${response.status}${code}`, secrets));
@@ -115,39 +156,11 @@ export function createCsmsHttpHandler(driver: CsmsDriver, options: CsmsHttpOptio
     }
   }
 
-  async function readBody(request: Request): Promise<unknown> {
-    const text = await request.text();
-    if (text.trim() === "") return {};
-    try {
-      return JSON.parse(text);
-    } catch {
-      throw new InvalidInputError("body is not valid JSON");
-    }
-  }
-
-  // Both halves, here and in describe(): a declaration without the surface is
-  // a capability nobody can use, and reporting it would only move the 501.
-  function admin() {
-    if (!driver.chargePoints || !capabilities.chargePoints) {
+  function requireAdmin(): NonNullable<typeof admin> {
+    if (!admin) {
       throw new CsmsHttpError(501, "unsupported_capability", "this driver has no charge-point administration");
     }
-    return { chargePoints: driver.chargePoints, declared: capabilities.chargePoints };
-  }
-
-  /** The declaration binds before the driver is asked: a profile it does not
-   *  accept is refused here, whatever the driver would have done. */
-  function checkProfile(profile: number | undefined, declared: ReadonlySet<number>): void {
-    if (profile !== undefined && !declared.has(profile)) {
-      throw new CsmsHttpError(
-        501,
-        "unsupported_capability",
-        `security profile ${profile} is not one this driver accepts (${[...declared].join(", ")})`,
-      );
-    }
-  }
-
-  function rememberPassword(security: ChargePointSecurity | undefined, secrets: string[]): void {
-    if (security && "basicAuthPassword" in security) secrets.push(security.basicAuthPassword);
+    return admin;
   }
 
   async function route(request: Request, url: URL, secrets: string[]): Promise<Response> {
@@ -157,53 +170,51 @@ export function createCsmsHttpHandler(driver: CsmsDriver, options: CsmsHttpOptio
     } catch {
       throw new InvalidInputError("the path is not valid percent-encoding");
     }
+    const noRoute = (): never => notFound(`no route ${url.pathname}`);
     const method = request.method;
     const [version, collection, cpId, sub, operationPath, ...rest] = segments;
-    if (version !== "v1" || rest.length > 0) notFound(`no route ${url.pathname}`);
+    if (version !== "v1" || rest.length > 0) noRoute();
 
     if (collection === "driver" && cpId === undefined) {
       if (method !== "GET") methodNotAllowed("GET");
-      return json(200, describe());
+      return json(200, description);
     }
-    if (collection !== "charge-points") notFound(`no route ${url.pathname}`);
+    if (collection !== "charge-points") noRoute();
 
     if (cpId === undefined) {
       if (method !== "POST") methodNotAllowed("POST");
-      const { chargePoints, declared } = admin();
+      const { chargePoints, declared } = requireAdmin();
       const definition = decodeChargePointDefinition(await readBody(request));
       rememberPassword(definition.security, secrets);
       // An omitted security is profile 0, and profile 0 is a profile too.
-      checkProfile(definition.security?.profile ?? 0, declared.securityProfiles);
+      checkProfile(definition.security?.profile ?? 0, declared);
       await call(() => chargePoints.create(definition));
       const location = `/v1/charge-points/${encodeURIComponent(definition.id)}`;
       return json(201, { id: definition.id }, { location });
     }
-    if (cpId === "") notFound(`no route ${url.pathname}`);
+    if (cpId === "") noRoute();
 
     if (sub === undefined) {
+      // 405 before 501: a method this route never serves is wrong whatever the driver.
+      if (method !== "GET" && method !== "PATCH" && method !== "DELETE") methodNotAllowed("GET, PATCH, DELETE");
+      const { chargePoints, declared } = requireAdmin();
       if (method === "GET") {
-        const { chargePoints } = admin();
         const details = await call(() => chargePoints.get(cpId));
         if (!details) throw new ChargePointNotFoundError(cpId);
         return json(200, encodeChargePointDetails(details));
       }
       if (method === "PATCH") {
-        const { chargePoints, declared } = admin();
         const update = decodeChargePointUpdate(await readBody(request));
         rememberPassword(update.security, secrets);
-        checkProfile(update.security?.profile, declared.securityProfiles);
+        checkProfile(update.security?.profile, declared);
         await call(() => chargePoints.update(cpId, update));
         return new Response(null, { status: 204 });
       }
-      if (method === "DELETE") {
-        const { chargePoints } = admin();
-        await call(() => chargePoints.delete(cpId));
-        return new Response(null, { status: 204 });
-      }
-      methodNotAllowed("GET, PATCH, DELETE");
+      await call(() => chargePoints.delete(cpId));
+      return new Response(null, { status: 204 });
     }
 
-    if (sub !== "operations" || operationPath === undefined) notFound(`no route ${url.pathname}`);
+    if (sub !== "operations" || operationPath === undefined) noRoute();
     const action = operation16ForPath(operationPath);
     if (!action) notFound(`no OCPP 1.6 operation is served at '${operationPath}'`);
     if (method !== "POST") methodNotAllowed("POST");
@@ -215,18 +226,5 @@ export function createCsmsHttpHandler(driver: CsmsDriver, options: CsmsHttpOptio
     // response body -- and the contract reserves it for logs.
     await call(() => driver.operations16.execute(cpId, operation));
     return json(202, { chargePointId: cpId, operation: operationPath, action, status: "dispatched" });
-  }
-
-  function describe(): Record<string, unknown> {
-    const chargePoints = driver.chargePoints ? capabilities.chargePoints : undefined;
-    return {
-      id: options.about.id,
-      displayName: options.about.displayName,
-      protocols: options.about.protocols ?? null,
-      operations16: CSMS_OPERATION_16_ACTIONS.filter((action) => capabilities.operations16.has(action)).map(
-        (action) => ({ operation: OPERATION_16_PATHS[action], action }),
-      ),
-      chargePoints: chargePoints ? { securityProfiles: [...chargePoints.securityProfiles].sort((a, b) => a - b) } : null,
-    };
   }
 }

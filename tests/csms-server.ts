@@ -15,7 +15,10 @@
  *     `CSMS_DRIVER` like the TCK does, describes it from its module, serves
  *     it on a port, provisions a station and routes an operation through it
  *     -- the issue's acceptance flow, with no TypeScript on the client side --
- *     and `stop` closes the driver's parts.
+ *     and `stop` closes the driver's parts -- as does a start that fails
+ *     after `create(env)`, which leaves the caller no server to stop. A
+ *     module that declares nothing is served the compulsory 1.6 vocabulary
+ *     and no admin surface.
  *  2. ONE REQUEST, ONE DRIVER CALL. A lifecycle request reaches the matching
  *     `chargePoints` method once, with the decoded argument; an operation
  *     reaches `operations16.execute` once, with the `CsmsOperation16` the
@@ -453,6 +456,10 @@ await expectError("an unversioned path", 404, "not_found", () => exchange("GET",
     () => exchange("GET", RESET), false);
   check(ex.headers.get("allow") === "POST", `405 names the allowed method: ${ex.headers.get("allow")}`);
 }
+// A method the route never serves is wrong whatever the driver, so it is
+// answered before the capability is.
+await expectError("a wrong method on a driver without chargePoints", 405, "method_not_allowed",
+  () => exchange("POST", "/v1/charge-points/CP-9", {}, { admin: false }), false);
 
 // ---------------------------------------------------------------------------
 // Part 6 -- secrets in driver errors.
@@ -563,11 +570,50 @@ await expectError("an unversioned path", 404, "not_found", () => exchange("GET",
     const refusedText = await refused.text();
     check(refused.status === 502, `the loaded driver's refusal is translated, got ${refused.status}`);
     check(!refusedText.includes("pw-from-env-77"), `a credential from the environment is redacted: ${refusedText}`);
+    // A second daemon on the same port cannot listen, and must not leak the
+    // parts its create(env) opened.
+    let secondRefused = false;
+    try {
+      const second = await startCsmsServer({
+        env: { CSMS_DRIVER: fixturePath },
+        host: "127.0.0.1",
+        port: Number(new URL(server.url).port),
+      });
+      await second.stop();
+    } catch {
+      secondRefused = true;
+    }
+    check(secondRefused, "a daemon on a port already taken does not start");
+    check(
+      JSON.stringify(fixture.closed) === JSON.stringify(["closed"]),
+      `a start that fails closes the parts it created: ${JSON.stringify(fixture.closed)}`,
+    );
     check(log.length === 5, `the daemon logs one line per request: ${JSON.stringify(log)}`);
   } finally {
     await server.stop();
   }
-  check(JSON.stringify(fixture.closed) === JSON.stringify(["closed"]), "stop closes the driver's parts");
+  check(JSON.stringify(fixture.closed) === JSON.stringify(["closed", "closed"]), "stop closes the driver's parts");
+}
+
+{
+  const server = await startCsmsServer({
+    env: { CSMS_DRIVER: resolve(import.meta.dir, "fixtures/undeclared-csms-driver.ts") },
+    host: "127.0.0.1",
+    port: 0,
+  });
+  try {
+    const about = (await (await fetch(`${server.url}/v1/driver`)).json()) as {
+      operations16: { action: string }[];
+      chargePoints: unknown;
+    };
+    check(
+      JSON.stringify(about.operations16.map((entry) => entry.action)) === JSON.stringify(CSMS_OPERATION_16_ACTIONS) &&
+        about.chargePoints === null,
+      `a module that declares nothing is served the 1.6 vocabulary and no admin: ${JSON.stringify(about)}`,
+    );
+  } finally {
+    await server.stop();
+  }
 }
 
 if (failures.length > 0) {
