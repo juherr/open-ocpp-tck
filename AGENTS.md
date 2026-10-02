@@ -480,7 +480,9 @@ its header is now a false claim about what the build checks.
   table in the guard, and a driver missing from it is reported rather than
   skipped. (`tests/generic-core.sh`)
 - **The reusable CSMS library depends on no TCK adapter.** Its imports point
-  only within `packages/csms-driver`; the TCK adapts it from above, and the
+  only within `packages/csms-driver`, and never through its own package name,
+  which `package.json#exports` would resolve into the TCK; the TCK adapts it
+  from above, and the
   declaration build includes the module. Its HTTP daemon, `server/`, is a
   transport adapter over the generic contract and imports no bundled driver.
   A standalone consumer example also exercises the package export without

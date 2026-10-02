@@ -16,6 +16,20 @@ if [ -n "$imports" ]; then
   exit 1
 fi
 
+# A self-reference resolves through package.json#exports, so it reaches the
+# TCK without spelling a path: `import "open-ocpp-tck"` is tck/index.ts, and
+# the subpaths only matched the rule above by the accident of the package's
+# name containing `tck/`. Every specifier naming this package is refused --
+# the library reaches its own modules relatively, and nothing else of it.
+package_name="$(sed -n 's/^  "name": "\([^"]*\)",$/\1/p' package.json)"
+[ -n "$package_name" ] || { echo "FAIL: could not read the package name from package.json." >&2; exit 1; }
+self_refs="$(grep -R -n -E "(from|import)[[:space:]]*\(?[[:space:]]*[\"']${package_name}[/\"']" "$source_dir" --include='*.ts' || true)"
+if [ -n "$self_refs" ]; then
+  echo "FAIL: the reusable CSMS library imports its own package by name:" >&2
+  printf '%s\n' "$self_refs" >&2
+  exit 1
+fi
+
 # The daemon is a transport adapter over the generic contract (issue #156): an
 # allowlist rather than a list of drivers, so a third bundled driver is covered
 # the day it is added. Every relative specifier under server/ is a sibling or
