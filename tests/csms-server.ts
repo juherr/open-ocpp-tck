@@ -18,7 +18,13 @@
  *     and `stop` closes the driver's parts -- as does a start that fails
  *     after `create(env)`, which leaves the caller no server to stop. A
  *     module that declares nothing is served the compulsory 1.6 vocabulary
- *     and no admin surface.
+ *     and no admin surface. The `csms-server` command listens for SIGINT and
+ *     SIGTERM BEFORE startup begins: a signal received while the driver is
+ *     still being created stops the daemon -- server stopped, parts closed --
+ *     as soon as it is up, instead of killing the process past its cleanup;
+ *     and the command leaves no listener behind, whether it stopped or its
+ *     start failed. The signal source is the command's argument, so the
+ *     ordering is driven by promises rather than by a timer.
  *  2. ONE REQUEST, ONE DRIVER CALL. A lifecycle request reaches the matching
  *     `chargePoints` method once, with the decoded argument; an operation
  *     reaches `operations16.execute` once, with the `CsmsOperation16` the
@@ -65,6 +71,7 @@
  *     is same-origin and preflights nothing.
  */
 
+import { EventEmitter } from "node:events";
 import { resolve } from "node:path";
 import { pathToFileURL } from "node:url";
 import {
@@ -794,6 +801,51 @@ for (const contentType of ["application/json; charset=utf-8", "Application/JSON"
   } finally {
     await server.stop();
   }
+}
+
+// The command's signal lifecycle. A held create(env) puts the signal inside
+// startup by construction; the race against a timer only ends a run whose
+// command never stops, which would otherwise hang the guard instead of failing it.
+async function settlesWithin<T>(promise: Promise<T>, ms: number): Promise<{ value?: T; error?: unknown; settled: boolean }> {
+  let timer: ReturnType<typeof setTimeout> | undefined;
+  const expired = new Promise<{ settled: false }>((done) => (timer = setTimeout(() => done({ settled: false }), ms)));
+  try {
+    return await Promise.race([
+      promise.then((value) => ({ value, settled: true }), (error: unknown) => ({ error, settled: true })),
+      expired,
+    ]);
+  } finally {
+    clearTimeout(timer);
+  }
+}
+const listening = (signals: EventEmitter) => signals.listenerCount("SIGINT") + signals.listenerCount("SIGTERM");
+{
+  const fixturePath = resolve(import.meta.dir, "fixtures/fake-csms-driver.ts");
+  const fixture = (await import(pathToFileURL(fixturePath).href)) as typeof import("./fixtures/fake-csms-driver");
+  const closedBefore = fixture.closed.length;
+  const signals = new EventEmitter();
+  const command = csmsServerCommand(
+    ["--port", "0"],
+    { CSMS_DRIVER: fixturePath, FAKE_CSMS_HOLD_CREATE: "1" },
+    signals,
+  );
+  await fixture.createEntered;
+  check(listening(signals) === 2, `csms-server listens for SIGINT and SIGTERM before startup completes: ${listening(signals)}`);
+  signals.emit("SIGTERM");
+  fixture.releaseCreate();
+  const outcome = await settlesWithin(command, 5_000);
+  check(outcome.settled && outcome.value === 0, `a signal received during startup stops the daemon once it is up: ${JSON.stringify(outcome)}`);
+  check(fixture.closed.length === closedBefore + 1, "a signal received during startup still closes the driver's parts");
+  check(listening(signals) === 0, `csms-server leaves no signal listener behind after stopping: ${listening(signals)}`);
+}
+{
+  const signals = new EventEmitter();
+  const outcome = await settlesWithin(
+    csmsServerCommand(["--port", "0"], { CSMS_DRIVER: resolve(import.meta.dir, "fixtures/no-such-driver.ts") }, signals),
+    5_000,
+  );
+  check(outcome.settled && outcome.error !== undefined, `a start that fails rejects: ${JSON.stringify(outcome)}`);
+  check(listening(signals) === 0, `csms-server leaves no signal listener behind after a failed start: ${listening(signals)}`);
 }
 
 if (failures.length > 0) {

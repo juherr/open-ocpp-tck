@@ -9,7 +9,9 @@
  * refused with a message carrying `FAKE_CSMS_PASS`, which is how the guard
  * checks that a credential from the environment never leaves the daemon.
  * Its charge-point store is enough of the admin surface to provision a
- * station and read it back.
+ * station and read it back. With `FAKE_CSMS_HOLD_CREATE` set, `create(env)`
+ * resolves only when the guard calls `releaseCreate()`, which is how it puts
+ * a signal inside startup without timing anything.
  */
 import {
   ChargePointAlreadyExistsError,
@@ -23,6 +25,11 @@ import {
 
 export const calls: { cpId: string; op: CsmsOperation16 }[] = [];
 export const closed: string[] = [];
+let entered: () => void = () => {};
+/** Settles once a held `create(env)` has been entered. */
+export const createEntered = new Promise<void>((resolve) => (entered = resolve));
+/** Lets a held `create(env)` resolve. */
+export let releaseCreate: () => void = () => {};
 const stations = new Map<string, ChargePointDetails>();
 
 export const csmsDriver: CsmsDriverModule = {
@@ -36,7 +43,15 @@ export const csmsDriver: CsmsDriverModule = {
     deviceModel: false,
     chargePoints: { securityProfiles: new Set([0]) },
   },
-  create(env: CsmsEnv): CsmsDriverParts {
+  create(env: CsmsEnv): CsmsDriverParts | Promise<CsmsDriverParts> {
+    const parts = createParts(env);
+    if (!env.FAKE_CSMS_HOLD_CREATE) return parts;
+    entered();
+    return new Promise((resolve) => (releaseCreate = () => resolve(parts)));
+  },
+};
+
+function createParts(env: CsmsEnv): CsmsDriverParts {
     return {
       operations16: {
         async execute(cpId, op) {
@@ -78,8 +93,7 @@ export const csmsDriver: CsmsDriverModule = {
         closed.push("closed");
       },
     };
-  },
-};
+}
 
 async function unsupported(): Promise<never> {
   throw new UnsupportedOperationError("records", "the fake CSMS keeps none");

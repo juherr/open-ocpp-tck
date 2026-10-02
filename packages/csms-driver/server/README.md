@@ -30,7 +30,9 @@ STEVE_URL=http://localhost:8180/steve/manager STEVE_PASS=... \
 | `--port` | `8787` | `0` picks a free port; the chosen URL is printed. |
 | `--timeout-ms` | `60000` | How long one driver call may take before the daemon answers `504 timeout`. From 1 to 2147483647: a deadline that expires before any driver can answer would report every dispatched operation as `timeout`, so it is refused rather than clamped. |
 
-The daemon stops on SIGINT or SIGTERM. It logs one line per request to stderr
+The daemon stops on SIGINT or SIGTERM, closing the driver after any request
+still in flight. A signal received while it is still starting stops it as soon
+as it is up; send the same signal again to abort a startup that hangs. It logs one line per request to stderr
 (method, path, status, error code) and never logs a body.
 
 Credentials are never returned: `GET /v1/driver` reports declarations only,

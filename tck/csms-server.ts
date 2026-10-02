@@ -144,8 +144,18 @@ function parseInteger(raw: string, flag: string, min: number, max: number): numb
   return n;
 }
 
+/** Where the command hears SIGINT and SIGTERM: `process`, or a test's emitter. */
+export interface SignalSource {
+  once(signal: "SIGINT" | "SIGTERM", listener: () => void): unknown;
+  off(signal: "SIGINT" | "SIGTERM", listener: () => void): unknown;
+}
+
 /** `ocpp-tck csms-server [--host H] [--port N] [--timeout-ms N]`. Serves until SIGINT or SIGTERM. */
-export async function csmsServerCommand(argv: string[], env: CsmsEnv): Promise<number> {
+export async function csmsServerCommand(
+  argv: string[],
+  env: CsmsEnv,
+  signals: SignalSource = process,
+): Promise<number> {
   let host: string | undefined;
   let port: number | undefined;
   let timeoutMs: number | undefined;
@@ -163,13 +173,33 @@ export async function csmsServerCommand(argv: string[], env: CsmsEnv): Promise<n
   }
 
   const log = (line: string) => process.stderr.write(`csms-server: ${line}\n`);
-  const server = await startCsmsServer({ env, log, host, port, timeoutMs });
-  process.stderr.write(`csms-server: listening on ${server.url}\n`);
-  await new Promise<void>((resolve) => {
-    process.once("SIGINT", () => resolve());
-    process.once("SIGTERM", () => resolve());
-  });
-  await server.stop();
-  process.stderr.write("csms-server: stopped\n");
-  return 0;
+  // Listening BEFORE startup: a signal that lands while the driver is being
+  // created would otherwise end the process past every cleanup below. Such a
+  // signal is honoured once the server is up -- stopped, parts closed -- and
+  // because each listener is `once`, the same signal sent again meets the
+  // default handler and aborts a startup that hangs.
+  let started = false;
+  let stopRequested = false;
+  let wake = () => {};
+  const onSignal = () => {
+    stopRequested = true;
+    if (!started) log("stopping as soon as startup completes; send the signal again to abort");
+    wake();
+  };
+  signals.once("SIGINT", onSignal);
+  signals.once("SIGTERM", onSignal);
+  try {
+    const server = await startCsmsServer({ env, log, host, port, timeoutMs });
+    started = true;
+    if (!stopRequested) {
+      process.stderr.write(`csms-server: listening on ${server.url}\n`);
+      await new Promise<void>((resolve) => (wake = resolve));
+    }
+    await server.stop();
+    process.stderr.write("csms-server: stopped\n");
+    return 0;
+  } finally {
+    signals.off("SIGINT", onSignal);
+    signals.off("SIGTERM", onSignal);
+  }
 }

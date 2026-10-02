@@ -14,5 +14,10 @@ export interface CsmsServer {
     stop(): Promise<void>;
 }
 export declare function startCsmsServer(options: CsmsServerOptions): Promise<CsmsServer>;
+/** Where the command hears SIGINT and SIGTERM: `process`, or a test's emitter. */
+export interface SignalSource {
+    once(signal: "SIGINT" | "SIGTERM", listener: () => void): unknown;
+    off(signal: "SIGINT" | "SIGTERM", listener: () => void): unknown;
+}
 /** `ocpp-tck csms-server [--host H] [--port N] [--timeout-ms N]`. Serves until SIGINT or SIGTERM. */
-export declare function csmsServerCommand(argv: string[], env: CsmsEnv): Promise<number>;
+export declare function csmsServerCommand(argv: string[], env: CsmsEnv, signals?: SignalSource): Promise<number>;
