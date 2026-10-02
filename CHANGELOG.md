@@ -59,6 +59,18 @@ Released as `0.3.0`. The documented install ref already points at that tag, so
   `Content-Type: application/json`, never reach the driver. The
   handler is also a library, `open-ocpp-tck/csms-driver/server`. See
   `packages/csms-driver/server/README.md`.
+- **CI proves explicit provisioning end to end against a live SteVe** (#157).
+  A new `provisioning` job brings SteVe up with unknown-station
+  auto-registration off (`drivers/steve/compose.no-autoregister.yaml`, a
+  compose override) and runs `tools/steve-provisioned-reset.ts`: it provisions
+  a charge point through `chargePoints` before the simulator exists, boots the
+  simulator under that id, sends `Reset(Soft)` through `operations16`, and
+  checks on the station's wire that SteVe sent the request and the station
+  answered `Accepted`. It first checks that a station nothing provisioned is
+  refused, so the job fails if the stack falls back to auto-registration,
+  and each failure names the phase that broke: environment, provisioning,
+  connection/boot or remote operation. The sweep's roster still registers
+  itself; moving it onto `chargePoints` is #163.
 - **Scenarios carry functional tags, and `--tag <name>` selects on them**
   (#34), beside `--group` and `--version` and intersecting with both. `--group`
   stays upstream's historical grouping, `--version` the protocol; a tag says

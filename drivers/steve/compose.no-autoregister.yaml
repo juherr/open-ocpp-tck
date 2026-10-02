@@ -1,0 +1,19 @@
+# Copyright 2026 Julien Herr
+# SPDX-License-Identifier: Apache-2.0
+#
+# SteVe with unknown-station auto-registration OFF, as a compose OVERRIDE:
+#
+#   docker compose -f drivers/steve/compose.yaml \
+#                  -f drivers/steve/compose.no-autoregister.yaml up -d --wait
+#
+# compose.yaml turns auto-registration on so the sweep's roster registers
+# itself on first BootNotification. On such a stack a boot proves nothing
+# about provisioning: SteVe would have accepted the station anyway. This file
+# is the stack on which it does -- a station connects only if something
+# created it first, which is what tools/steve-provisioned-reset.ts and
+# tools/steve-charge-points.ts are run against. Compose merges `environment`
+# by key, so only this one variable changes.
+services:
+  steve:
+    environment:
+      - AUTO_REGISTER_UNKNOWN_STATIONS=false

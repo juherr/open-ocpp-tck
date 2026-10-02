@@ -83,8 +83,11 @@ bash tests/trace-format-standalone.sh
 then `bun run verify` once before committing.
 
 Everything above is offline: no CSMS, no container, no credentials. The live
-counterparts are `ocpp-tck driver selftest` (seconds, needs a running CSMS) and
-`bun run e2e` (a full sweep, needs docker).
+counterparts are `ocpp-tck driver selftest` (seconds, needs a running CSMS),
+`bun run e2e` (a full sweep, needs docker), and
+`tools/steve-provisioned-reset.ts` (provision, boot and Reset against a SteVe
+that registers no stranger -- CI's `provisioning` job; its header has the
+recipe for an isolated stack).
 
 ## Vendored files: re-pin before verifying
 
