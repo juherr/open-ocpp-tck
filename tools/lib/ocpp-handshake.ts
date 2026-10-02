@@ -17,7 +17,8 @@
  */
 import { connect } from "node:net";
 
-/** Past this, a first line with no CRLF is not an HTTP status line. */
+/** The longest first line, CRLF excluded, read as a status line; a longer
+ *  one is refused whether or not it is terminated. */
 const STATUS_LINE_LIMIT = 1024;
 
 export function handshakeStatus(
@@ -43,12 +44,17 @@ export function handshakeStatus(
     socket.on("data", (chunk: Buffer) => {
       received += chunk.toString("latin1");
       const end = received.indexOf("\r\n");
-      if (end === -1 && received.length <= STATUS_LINE_LIMIT) return;
-      const line = end === -1 ? received : received.slice(0, end);
+      // + 1: a line of exactly the limit may still be waiting for its LF.
+      if (end === -1 && received.length <= STATUS_LINE_LIMIT + 1) return;
+      socket.destroy();
+      if (end === -1 || end > STATUS_LINE_LIMIT) {
+        reject(new Error(`no status line within ${STATUS_LINE_LIMIT} bytes: ${JSON.stringify(received.slice(0, 80))}...`));
+        return;
+      }
+      const line = received.slice(0, end);
       const status = /^HTTP\/\d\.\d (\d{3})(?: |$)/.exec(line);
       if (status) resolve(Number(status[1]));
       else reject(new Error(`not an HTTP status line: ${JSON.stringify(line.slice(0, 80))}`));
-      socket.destroy();
     });
     socket.once("error", reject);
     // Settled already on every path but one: the peer closed before a whole

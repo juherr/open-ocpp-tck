@@ -19,7 +19,9 @@
  *   3. a peer that closes before a status line rejects, never hangs, and
  *      never resolves -- with nothing sent, and after half a line;
  *   4. a first line that is not an HTTP status line rejects rather than
- *      reading as status 0;
+ *      reading as status 0 -- and so does one longer than the probe's
+ *      1024-byte maximum, terminated or not, even when it starts like one;
+ *      a line of exactly the maximum is still read, its CRLF split or not;
  *   5. TLS is refused up front, in both functions, because the probe speaks
  *      plain TCP: a `wss:` endpoint would otherwise be dialled in clear on
  *      port 80, and an https manager URL would turn into that endpoint.
@@ -123,6 +125,12 @@ expectRejected(
 
 // 4. Not HTTP at all.
 expectRejected("a first line that is not an HTTP status line", await probe(segments("SSH-2.0-OpenSSH_9.6\r\n")));
+const LIMIT = 1024;
+const overlong = "HTTP/1.1 101 " + "x".repeat(LIMIT);
+expectRejected("an over-long first line with no CRLF that starts like a status line", await probe(segments(overlong)));
+expectRejected("an over-long status line whose CRLF arrives past the maximum", await probe(segments(`${overlong}\r\n\r\n`)));
+const atLimit = "HTTP/1.1 101 " + "x".repeat(LIMIT - "HTTP/1.1 101 ".length);
+expectStatus("a status line of exactly the maximum, its CRLF split", await probe(segments(`${atLimit}\r`, "\n\r\n")), 101);
 
 // 5. TLS, refused up front.
 // Dialled at a loopback port that WOULD answer 101 in clear, so only a refusal
