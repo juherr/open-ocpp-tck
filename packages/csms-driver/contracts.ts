@@ -281,8 +281,9 @@ export const CSMS_OPERATION_16_ACTIONS = everyOneOf<CsmsOperation16Action>()([
 // tck/specs/OCA-201-OPERATIONS.txt puts ChangeAvailability first among the
 // tranches -- nine of the selected cases need it and no other operation -- and
 // reading those nine in Part 6 found SIX writable against the pinned image.
-// The other three ask for a station-side event that image hard-codes (issue
-// #114), so they stay declined with that reason in their slice rows rather
+// The other three ask for a station-side event this suite does not yet make the
+// image send (issue #114: its transaction_event command takes the members, no
+// scenario uses them), so they stay declined with that reason in their slice rows rather
 // than with this arm's absence. One operation, six cases; the tranche is what
 // makes that trade legible before the code is written.
 //

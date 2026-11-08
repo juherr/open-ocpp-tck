@@ -574,8 +574,9 @@ const AUTHORIZED: StateDefinition<"Authorized"> = {
        * ONE SEGMENT, AND THE REFERENCE HAS A BRANCH THIS CANNOT CARRY. Part 6's
        * `Authorized` varies a FIELD of the transaction-opening request -- not
        * which steps run -- according to whether `EVConnectedPreSession`
-       * preceded it. The pinned simulator hard-codes that field, so the branch
-       * is not expressible here and issue #114 is what would make it so.
+       * preceded it. The pinned simulator takes that field as a `start_transaction`
+       * parameter (`triggerReason`, since 0.7.10), but no scenario here sends
+       * it, so the branch is not expressed and issue #114 is what would make it so.
        * Modelling it as a second, unreachable segment was considered and
        * rejected: `EVConnectedPreSession` is itself planned, so the guard would
        * be a row that can never be selected -- machinery standing in for a
@@ -631,13 +632,15 @@ const ENERGY_TRANSFER_STARTED: StateDefinition<"EnergyTransferStarted"> = {
     {
       // Already connected -- the reference reaches charging by a change of
       // charging state inside a transaction that is already open. The pinned
-      // simulator's 2.0.1 TransactionEvent builder hard-codes triggerReason,
-      // stoppedReason and chargingState, so it cannot be asked for one.
+      // simulator's `transaction_event` command takes triggerReason,
+      // stoppedReason and chargingState (since 0.7.10), but no reach here
+      // sends one.
       run: null,
       planned:
         "the station must report a change of charging state inside an open " +
-        "transaction, and the pinned simulator's 2.0.1 TransactionEvent " +
-        "builder hard-codes chargingState and triggerReason -- issue #114.",
+        "transaction, which the pinned simulator's transaction_event command " +
+        "can send (chargingState and triggerReason are parameters since " +
+        "0.7.10) and no reach here does -- issue #114.",
     },
   ],
 };
