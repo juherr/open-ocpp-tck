@@ -324,6 +324,8 @@ the kind of breakage the mechanism exists to catch.
 | `OCPP_TCK_DRIVERS_DIR` | `./drivers` | Only used to list candidates in an error message. |
 | `SIM_WS_URL` | driver-supplied | CSMS OCPP endpoint. |
 | `SIM_IMAGE` | pinned digest | Simulator image override. |
+| `SIM_LAUNCH` | `src` for the pinned image, `auto` for any other `SIM_IMAGE` | How the simulator CLI is started inside the image: `src` (`bun src/cli/main.ts`), `dist` (`bun dist-cli/main.js`), `image` (the image's own entrypoint, flags first) or `auto` (look inside the image once and pick). See [Simulator image contract](#simulator-image-contract). |
+| `SIM_ENTRYPOINT`, `SIM_COMMAND` | from `SIM_LAUNCH` | The same argv spelled by hand, taken verbatim (`SIM_ENTRYPOINT=` empty keeps the image's entrypoint). Mutually exclusive with `SIM_LAUNCH`. |
 | `SIM_NETWORK`, `SIM_WS_APPEND_CP_ID`, `SIM_WS_BASIC_USER`, `SIM_WS_BASIC_PASS` | driver-supplied | Transport. |
 | `SIM_OCPP_VERSION` | unset | Optional compatibility assertion. It must match every selected scenario; unset lets each scenario choose its declared protocol. |
 | `SIM_FORCE_OCPP_VERSION` | unset | Explicit diagnostic override for cross-version experiments. It takes precedence over scenario declarations; any `SIM_OCPP_VERSION` assertion or `SIM_EXTRA_ARGS --ocpp-version` must match it. |
@@ -335,6 +337,39 @@ scenario uses the requested protocol and never overrides the scenario.
 `SIM_FORCE_OCPP_VERSION` is the deliberately named diagnostic exception; it
 overrides the scenario declaration and should be used only for cross-version
 experiments.
+
+### Simulator image contract
+
+The charge point is [`shiv3/ocpp-cp-simulator`](https://github.com/shiv3/ocpp-cp-simulator)
+run as `docker run -i --rm … <image> <launch> --ws-url … --cp-id … --json
+--ocpp-version …`, in its JSON Lines mode: commands on stdin, one JSON object
+per line plus the wire log on stdout, EOF on stdin ends it. What the runner
+expects of an image, and how it finds out:
+
+- **The pinned image** (0.7.12) ships `src/cli/main.ts`, and its own entrypoint
+  would start the daemon and web console instead of JSON mode, so the runner
+  bypasses it: `--entrypoint bun <image> src/cli/main.ts` (`SIM_LAUNCH=src`).
+  Nothing is probed.
+- **Any other `SIM_IMAGE`** is inspected once per run with a throwaway
+  `docker run --entrypoint sh <image> -c 'test -f …'` and launched as `src` if
+  `src/cli/main.ts` exists (0.8.0, 0.9.0, or a later image that keeps it as a
+  shim), else as `dist` if `dist-cli/main.js` exists (an image built from
+  simulator main after #590, which ships only the bundle), else as `image`,
+  the image's own entrypoint with the flags first. That last shape needs an
+  entrypoint that passes straight through when its first argument is a flag
+  (the simulator side has agreed to add this); an entrypoint that appends the
+  daemon flags again would not produce JSON mode, and the run would time out
+  waiting for the first frame. If the probe itself fails (no `sh`, docker
+  error, a pull that takes over three minutes) the runner warns and assumes
+  `src`.
+- **`SIM_LAUNCH` skips the probe** when you know the shape, and
+  `SIM_ENTRYPOINT` / `SIM_COMMAND` replace the whole prefix.
+
+Whatever the shape, the CLI must accept `--ws-url`, `--cp-id`, `--json`,
+`--ocpp-version` (and `--trace-output`, `--basic-auth-user/-pass` when used),
+read the JSONL commands `tck/` sends, and exit 0 on stdin EOF. Moving the
+pinned digest is still a deliberate act (`VENDOR.md`); this contract only
+means a newer image no longer needs `SIM_ENTRYPOINT`/`SIM_COMMAND` to run.
 
 ## TypeScript
 

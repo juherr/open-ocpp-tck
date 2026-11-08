@@ -20,6 +20,14 @@
  * at v0.7.12 and observed live on the pinned digest). The entrypoint is
  * therefore overridden back to `bun src/cli/main.ts`, which runs the very
  * same embedded sources in true JSON Lines mode.
+ *
+ * That run shape is a fact about the image, and images differ -- see
+ * {@link SimLaunch}. 0.7.12 (the pin) through 0.9.0 ship `src/cli/main.ts`; an
+ * image built from simulator main after shiv3/ocpp-cp-simulator#590 ships only
+ * `dist-cli/main.js`; and the simulator side has agreed to keep
+ * `src/cli/main.ts` as a shim and to make its entrypoint pass straight through
+ * when the first argument is a flag. What this module expects of an image is
+ * stated in the README ("Simulator image contract").
  */
 
 import { basename, dirname } from "node:path";
@@ -57,9 +65,35 @@ const TRACE_MOUNT = "/trace";
 export const DEFAULT_SIM_IMAGE =
   "ghcr.io/shiv3/ocpp-cp-simulator@sha256:b94ee6c78e3976943a268ce68e6095564db1f048d049ea020cb204b2d826504b";
 
-/** What the entrypoint override runs inside the image (WorkingDir /app). */
-const DEFAULT_SIM_ENTRYPOINT = "bun";
-const DEFAULT_SIM_COMMAND = ["src/cli/main.ts"];
+/**
+ * How the CLI is started inside an image (WorkingDir /app). Three shapes
+ * exist, and an image is exactly one of them as far as this runner can tell:
+ *
+ *  - `src`   -- `--entrypoint bun <image> src/cli/main.ts <flags>`. The shape
+ *               of 0.7.12 (the pin) through 0.9.0, and of any later image that
+ *               keeps `src/cli/main.ts` as a shim.
+ *  - `dist`  -- `--entrypoint bun <image> dist-cli/main.js <flags>`. An image
+ *               built from simulator main after #590, which ships only the
+ *               bundle.
+ *  - `image` -- the image's own entrypoint, `<image> <flags>`. Only valid for
+ *               an image whose entrypoint passes through when its first
+ *               argument is a flag; the pinned image's does not (it appends
+ *               the daemon flag bundle), which is why the other two exist.
+ */
+export const SIM_LAUNCHES = ["src", "dist", "image"] as const;
+export type SimLaunch = (typeof SIM_LAUNCHES)[number];
+
+const LAUNCH_SHAPES: Readonly<
+  Record<SimLaunch, { entrypoint: string | undefined; command: string[] }>
+> = {
+  src: { entrypoint: "bun", command: ["src/cli/main.ts"] },
+  dist: { entrypoint: "bun", command: ["dist-cli/main.js"] },
+  image: { entrypoint: undefined, command: [] },
+};
+
+/** The shape the pinned image has, and the one assumed when nothing says
+ *  otherwise and nothing can be probed. */
+const FALLBACK_LAUNCH: SimLaunch = "src";
 
 /** Replaces a secret in any human-visible rendering of the docker argv. */
 const REDACTED = "<redacted>";
@@ -191,6 +225,15 @@ export interface SimConfig {
    *  (`SIM_WS_BASIC_PASS`). NEVER rendered in a trace -- see
    *  {@link renderDockerArgs}. */
   basicAuthPass?: string;
+  /**
+   * Which run shape {@link entrypoint} and {@link command} came from.
+   * `custom` is an operator's own `SIM_ENTRYPOINT` / `SIM_COMMAND`, taken
+   * verbatim. `auto` is an image this module has no recorded shape for
+   * (anything but {@link DEFAULT_SIM_IMAGE}): `entrypoint` and `command` hold
+   * the pinned shape as a fallback and {@link startSim} replaces them with
+   * what the image turns out to ship, once per image per process.
+   */
+  launch: SimLaunch | "auto" | "custom";
   /** Container entrypoint override. See this module's header for why the
    *  image's own entrypoint is bypassed; `SIM_ENTRYPOINT` restores it (pass
    *  an empty string to use the image default). */
@@ -274,12 +317,152 @@ function resolveOcppVersion(
   );
 }
 
+/**
+ * `SIM_LAUNCH`, or what its absence means for this image.
+ *
+ *  - `SIM_ENTRYPOINT` / `SIM_COMMAND` set: `custom`, the operator's argv
+ *    verbatim (this is what the pair always meant). Setting `SIM_LAUNCH` as
+ *    well is REFUSED: two statements of the same fact that can disagree.
+ *  - the pinned image: `src`, its known shape, with nothing probed.
+ *  - any other image with no `SIM_LAUNCH`: `auto`.
+ *
+ * Refused by name when it is not one of {@link SIM_LAUNCHES} (or `auto`), for
+ * the reason {@link resolveOcppVersion} gives.
+ */
+function resolveLaunch(
+  env: NodeJS.ProcessEnv,
+  image: string,
+): SimLaunch | "auto" | "custom" {
+  const custom = env.SIM_ENTRYPOINT !== undefined || env.SIM_COMMAND !== undefined;
+  const raw = env.SIM_LAUNCH;
+  if (raw === undefined || raw === "") {
+    if (custom) return "custom";
+    return image === DEFAULT_SIM_IMAGE ? FALLBACK_LAUNCH : "auto";
+  }
+  if (custom) {
+    throw new Error(
+      `SIM_LAUNCH=${raw} cannot be combined with SIM_ENTRYPOINT / SIM_COMMAND: ` +
+        "they spell the same argv by hand. Set one or the other.",
+    );
+  }
+  if (raw === "auto") return "auto";
+  const known = SIM_LAUNCHES.find((launch) => launch === raw);
+  if (known) return known;
+  throw new Error(
+    `SIM_LAUNCH=${raw} is not a run shape this runner knows. ` +
+      `Use one of: ${[...SIM_LAUNCHES, "auto"].join(", ")}.`,
+  );
+}
+
+/**
+ * What a probe's stdout says about an image. The probe prints `src` when
+ * `src/cli/main.ts` exists, else `dist` when `dist-cli/main.js` does, else
+ * anything else -- an image with neither file is one whose only way in is its
+ * own entrypoint, so it is launched as `image`. `src` wins over `dist` because
+ * an image with both (the shim) keeps the shape every pin so far has used.
+ */
+export function parseLaunchProbe(stdout: string): SimLaunch {
+  const word = stdout.trim().split(/\s+/).pop();
+  if (word === "src" || word === "dist") return word;
+  return "image";
+}
+
+/** The shell the probe runs inside the image, as one `sh -c` argument. */
+const LAUNCH_PROBE_SCRIPT =
+  "if [ -f src/cli/main.ts ]; then echo src; " +
+  "elif [ -f dist-cli/main.js ]; then echo dist; else echo none; fi";
+
+/** The time a probe may take. An image this machine has never seen is pulled
+ *  by the `docker run` itself, so this is a pull budget, not a shell one. */
+const LAUNCH_PROBE_TIMEOUT_MS = 180_000;
+
+/**
+ * A detector of an image's run shape that asks `probe` at most once per image.
+ * `probe` resolves to the probe script's stdout and rejects on any failure; a
+ * rejection is answered with {@link FALLBACK_LAUNCH} and one warning, never
+ * thrown, because the run that follows will fail with docker's own message,
+ * which names the real problem better than a guess made here would.
+ *
+ * The seam exists because the alternative is a docker daemon and an image
+ * chosen to look like each shape (`tests/sim-docker-argv.ts`).
+ */
+export function createLaunchDetector(
+  probe: (image: string) => Promise<string>,
+  warn: (message: string) => void = (message) =>
+    process.stderr.write(`[runner] ${message}\n`),
+): (image: string) => Promise<SimLaunch> {
+  const memo = new Map<string, Promise<SimLaunch>>();
+  return (image) => {
+    let found = memo.get(image);
+    if (!found) {
+      found = probe(image).then(parseLaunchProbe, (error: unknown) => {
+        warn(
+          `could not inspect ${image} for its run shape (${
+            error instanceof Error ? error.message : String(error)
+          }); assuming '${FALLBACK_LAUNCH}'. Set SIM_LAUNCH to skip the probe.`,
+        );
+        return FALLBACK_LAUNCH;
+      });
+      memo.set(image, found);
+    }
+    return found;
+  };
+}
+
+async function probeImageLaunch(image: string): Promise<string> {
+  const proc = Bun.spawn(
+    ["docker", "run", "--rm", "--entrypoint", "sh", image, "-c", LAUNCH_PROBE_SCRIPT],
+    { stdout: "pipe", stderr: "pipe" },
+  );
+  const timer = setTimeout(() => proc.kill(), LAUNCH_PROBE_TIMEOUT_MS);
+  try {
+    const [out, err, code] = await Promise.all([
+      new Response(proc.stdout).text(),
+      new Response(proc.stderr).text(),
+      proc.exited,
+    ]);
+    if (code !== 0) {
+      throw new Error(`exit ${code}: ${err.trim().split("\n").pop() ?? ""}`);
+    }
+    return out;
+  } finally {
+    clearTimeout(timer);
+  }
+}
+
+const detectImageLaunch = createLaunchDetector(probeImageLaunch);
+
+/**
+ * `cfg` with its `auto` launch replaced by the shape `detect` finds in the
+ * image; every other `launch` is returned as it is. Exported with `detect` as
+ * a parameter for the same seam reason as {@link createLaunchDetector}.
+ */
+export async function resolveAutoLaunch(
+  cfg: SimConfig,
+  detect: (image: string) => Promise<SimLaunch> = detectImageLaunch,
+): Promise<SimConfig> {
+  if (cfg.launch !== "auto") return cfg;
+  const launch = await detect(cfg.image);
+  const shape = LAUNCH_SHAPES[launch];
+  return {
+    ...cfg,
+    launch,
+    entrypoint: shape.entrypoint,
+    command: [...shape.command],
+  };
+}
+
 export function defaultSimConfig(
   env: NodeJS.ProcessEnv = process.env,
 ): SimConfig {
-  const entrypoint = env.SIM_ENTRYPOINT ?? DEFAULT_SIM_ENTRYPOINT;
+  const image = env.SIM_IMAGE ?? DEFAULT_SIM_IMAGE;
+  const launch = resolveLaunch(env, image);
+  const shape =
+    LAUNCH_SHAPES[launch === "auto" || launch === "custom" ? FALLBACK_LAUNCH : launch];
+  const entrypoint = env.SIM_ENTRYPOINT ?? shape.entrypoint ?? "";
   return {
-    image: env.SIM_IMAGE ?? DEFAULT_SIM_IMAGE,
+    image,
+    launch,
     wsUrl: env.SIM_WS_URL ?? "ws://localhost:8080/ocpp/",
     network: env.SIM_NETWORK || undefined,
     appendCpIdToWsPath: env.SIM_WS_APPEND_CP_ID !== "0",
@@ -289,7 +472,7 @@ export function defaultSimConfig(
     command:
       env.SIM_COMMAND !== undefined
         ? splitArgs(env.SIM_COMMAND)
-        : [...DEFAULT_SIM_COMMAND],
+        : [...shape.command],
     ocppVersion: resolveOcppVersion(
       env.SIM_FORCE_OCPP_VERSION ?? env.SIM_OCPP_VERSION,
       env.SIM_FORCE_OCPP_VERSION === undefined
@@ -930,7 +1113,11 @@ export async function startSim(
   // run with the same name (mirrors lib.sh's sim_start).
   await runDocker(["rm", "-f", container]).catch(() => {});
 
-  const dockerArgs = buildDockerArgs(cpId, container, cfg);
+  const dockerArgs = buildDockerArgs(
+    cpId,
+    container,
+    await resolveAutoLaunch(cfg),
+  );
   const argv = renderDockerArgs(dockerArgs);
   process.stderr.write(`[runner] ${argv}\n`);
 

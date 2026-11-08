@@ -809,6 +809,20 @@ Released as `0.3.0`. The documented install ref already points at that tag, so
 
 ### Fixed
 
+- **The simulator launch shape follows the image, so a newer simulator image
+  runs without hand-spelled overrides.** The runner always started
+  `bun src/cli/main.ts` under an `--entrypoint bun` override. Since
+  shiv3/ocpp-cp-simulator#590 (unreleased after v0.9.0) the image ships only
+  `dist-cli/main.js`, so the next pin bump would have failed every scenario
+  with a missing file. `SimConfig` gains `launch`, resolved from the new
+  `SIM_LAUNCH` (`src`, `dist`, `image` or `auto`): the pinned image is `src`
+  exactly as before, and any other `SIM_IMAGE` is inspected once per run for
+  `src/cli/main.ts`, then `dist-cli/main.js`, else launched through its own
+  entrypoint; a failed inspection warns and keeps `src`. `SIM_ENTRYPOINT` and
+  `SIM_COMMAND` keep working verbatim, and refuse to be combined with
+  `SIM_LAUNCH`. The argv for the pinned image is unchanged.
+  `tests/sim-docker-argv.ts` holds the shapes, the probe's verdicts and the
+  once-per-image rule, and the README states what the runner expects of an image.
 - **An isolated retry against a CSMS that had stopped answering read
   "confirmed".** On a collapsed shard, `--retry-failed-isolated` re-ran each
   failure against a CSMS that no longer accepted the station's

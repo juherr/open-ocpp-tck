@@ -20,6 +20,14 @@
  * at v0.7.12 and observed live on the pinned digest). The entrypoint is
  * therefore overridden back to `bun src/cli/main.ts`, which runs the very
  * same embedded sources in true JSON Lines mode.
+ *
+ * That run shape is a fact about the image, and images differ -- see
+ * {@link SimLaunch}. 0.7.12 (the pin) through 0.9.0 ship `src/cli/main.ts`; an
+ * image built from simulator main after shiv3/ocpp-cp-simulator#590 ships only
+ * `dist-cli/main.js`; and the simulator side has agreed to keep
+ * `src/cli/main.ts` as a shim and to make its entrypoint pass straight through
+ * when the first argument is a flag. What this module expects of an image is
+ * stated in the README ("Simulator image contract").
  */
 import type { ScenarioOcppVersion } from "./spec-types";
 /**
@@ -37,6 +45,23 @@ import type { ScenarioOcppVersion } from "./spec-types";
  * file, nothing can ever make the two agree again.
  */
 export declare const DEFAULT_SIM_IMAGE = "ghcr.io/shiv3/ocpp-cp-simulator@sha256:b94ee6c78e3976943a268ce68e6095564db1f048d049ea020cb204b2d826504b";
+/**
+ * How the CLI is started inside an image (WorkingDir /app). Three shapes
+ * exist, and an image is exactly one of them as far as this runner can tell:
+ *
+ *  - `src`   -- `--entrypoint bun <image> src/cli/main.ts <flags>`. The shape
+ *               of 0.7.12 (the pin) through 0.9.0, and of any later image that
+ *               keeps `src/cli/main.ts` as a shim.
+ *  - `dist`  -- `--entrypoint bun <image> dist-cli/main.js <flags>`. An image
+ *               built from simulator main after #590, which ships only the
+ *               bundle.
+ *  - `image` -- the image's own entrypoint, `<image> <flags>`. Only valid for
+ *               an image whose entrypoint passes through when its first
+ *               argument is a flag; the pinned image's does not (it appends
+ *               the daemon flag bundle), which is why the other two exist.
+ */
+export declare const SIM_LAUNCHES: readonly ["src", "dist", "image"];
+export type SimLaunch = (typeof SIM_LAUNCHES)[number];
 /** What the CLI writes back for a command that carried an `id`
  *  (`toJsonResponse` in the pinned image's `src/cli/output.ts`). */
 export type SimResponse = {
@@ -97,6 +122,15 @@ export interface SimConfig {
      *  (`SIM_WS_BASIC_PASS`). NEVER rendered in a trace -- see
      *  {@link renderDockerArgs}. */
     basicAuthPass?: string;
+    /**
+     * Which run shape {@link entrypoint} and {@link command} came from.
+     * `custom` is an operator's own `SIM_ENTRYPOINT` / `SIM_COMMAND`, taken
+     * verbatim. `auto` is an image this module has no recorded shape for
+     * (anything but {@link DEFAULT_SIM_IMAGE}): `entrypoint` and `command` hold
+     * the pinned shape as a fallback and {@link startSim} replaces them with
+     * what the image turns out to ship, once per image per process.
+     */
+    launch: SimLaunch | "auto" | "custom";
     /** Container entrypoint override. See this module's header for why the
      *  image's own entrypoint is bypassed; `SIM_ENTRYPOINT` restores it (pass
      *  an empty string to use the image default). */
@@ -147,6 +181,31 @@ export interface SimConfig {
  *  overriding a default, and wrong -- silently -- when what it overrides is a
  *  certification case's own version. See the refusal in main.ts. */
 export declare function namesFlag(extraArgs: readonly string[], flag: string): boolean;
+/**
+ * What a probe's stdout says about an image. The probe prints `src` when
+ * `src/cli/main.ts` exists, else `dist` when `dist-cli/main.js` does, else
+ * anything else -- an image with neither file is one whose only way in is its
+ * own entrypoint, so it is launched as `image`. `src` wins over `dist` because
+ * an image with both (the shim) keeps the shape every pin so far has used.
+ */
+export declare function parseLaunchProbe(stdout: string): SimLaunch;
+/**
+ * A detector of an image's run shape that asks `probe` at most once per image.
+ * `probe` resolves to the probe script's stdout and rejects on any failure; a
+ * rejection is answered with {@link FALLBACK_LAUNCH} and one warning, never
+ * thrown, because the run that follows will fail with docker's own message,
+ * which names the real problem better than a guess made here would.
+ *
+ * The seam exists because the alternative is a docker daemon and an image
+ * chosen to look like each shape (`tests/sim-docker-argv.ts`).
+ */
+export declare function createLaunchDetector(probe: (image: string) => Promise<string>, warn?: (message: string) => void): (image: string) => Promise<SimLaunch>;
+/**
+ * `cfg` with its `auto` launch replaced by the shape `detect` finds in the
+ * image; every other `launch` is returned as it is. Exported with `detect` as
+ * a parameter for the same seam reason as {@link createLaunchDetector}.
+ */
+export declare function resolveAutoLaunch(cfg: SimConfig, detect?: (image: string) => Promise<SimLaunch>): Promise<SimConfig>;
 export declare function defaultSimConfig(env?: NodeJS.ProcessEnv): SimConfig;
 /** Resolve simulator settings for one scenario. SIM_OCPP_VERSION is an
  *  assertion; SIM_FORCE_OCPP_VERSION is the explicit diagnostic escape hatch. */

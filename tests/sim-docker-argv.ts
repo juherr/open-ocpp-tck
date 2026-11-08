@@ -4,7 +4,7 @@
  * tests/sim-docker-argv.ts -- what the operator asked for is what the container
  * gets.
  *
- * PROPERTY, in five parts:
+ * PROPERTY, in six parts:
  *   1. an empty environment produces the argv this runner has always produced,
  *      plus an explicit `--ocpp-version OCPP-1.6J` -- the CLI's own default, so
  *      the 47 `cert16-` scenarios drive exactly what they drove before;
@@ -23,7 +23,15 @@
  *      unreachable through this runner in the first place;
  *   5. `SIM_TRACE=0`, and only that value, says no to a trace at all. It
  *      resolves in `tck/sim.ts` with the rest of the `SIM_*` namespace, which
- *      is what puts it under this guard instead of under none.
+ *      is what puts it under this guard instead of under none;
+ *   6. the run shape follows the IMAGE, not a constant: the pinned image keeps
+ *      `bun src/cli/main.ts`, `SIM_LAUNCH` picks `dist` (`bun dist-cli/main.js`,
+ *      an image built after shiv3/ocpp-cp-simulator#590) or `image` (its own
+ *      entrypoint, flags first), any other image is `auto` and is probed once,
+ *      a probe that fails falls back to the pinned shape with a warning, and
+ *      `SIM_ENTRYPOINT` / `SIM_COMMAND` stay verbatim and exclusive of
+ *      `SIM_LAUNCH`. The probe's docker call is the seam; its verdicts are
+ *      what the rows hold.
  *
  * WHY THIS IS TYPESCRIPT AND NOT A SHELL GUARD. `buildDockerArgs` is pure and
  * nothing prints its result without starting a container: the one caller that
@@ -46,10 +54,15 @@
 
 import {
   buildDockerArgs,
+  createLaunchDetector,
   DEFAULT_SIM_IMAGE,
   defaultSimConfig,
+  parseLaunchProbe,
+  resolveAutoLaunch,
+  SIM_LAUNCHES,
   SIM_OCPP_VERSIONS,
   type SimConfig,
+  type SimLaunch,
   traceRequested,
 } from "../tck/sim";
 
@@ -310,6 +323,164 @@ for (const [value, wanted] of [
       }`,
       `traceRequested returned ${traceRequested(env)}`,
     );
+  }
+}
+
+// ---------------------------------------------------------------------------
+// 6. The run shape follows the image.
+// ---------------------------------------------------------------------------
+
+const TAIL = [
+  "--ws-url",
+  "ws://localhost:8080/ocpp/CP1",
+  "--cp-id",
+  CP,
+  "--json",
+  "--ocpp-version",
+  "OCPP-1.6J",
+];
+const OTHER_IMAGE = "ghcr.io/example/ocpp-cp-simulator:next";
+const HEAD = ["run", "-i", "--rm", "--name", CONTAINER];
+
+expectArgs(
+  "SIM_LAUNCH=dist runs the bundle under bun",
+  argsFor({ SIM_LAUNCH: "dist" }),
+  [...HEAD, "--entrypoint", "bun", DEFAULT_SIM_IMAGE, "dist-cli/main.js", ...TAIL],
+);
+expectArgs(
+  "SIM_LAUNCH=image uses the image's own entrypoint, flags first",
+  argsFor({ SIM_LAUNCH: "image" }),
+  [...HEAD, DEFAULT_SIM_IMAGE, ...TAIL],
+);
+expectArgs(
+  "SIM_LAUNCH=src is the default shape, spelled",
+  argsFor({ SIM_LAUNCH: "src" }),
+  argsFor({}),
+);
+expectArgs(
+  "SIM_IMAGE keeps working: the image is swapped, the pinned shape stays until probed",
+  argsFor({ SIM_IMAGE: OTHER_IMAGE }),
+  [...HEAD, "--entrypoint", "bun", OTHER_IMAGE, "src/cli/main.ts", ...TAIL],
+);
+expectArgs(
+  "SIM_ENTRYPOINT and SIM_COMMAND stay verbatim",
+  argsFor({ SIM_ENTRYPOINT: "node", SIM_COMMAND: "cli.js --x" }),
+  [...HEAD, "--entrypoint", "node", DEFAULT_SIM_IMAGE, "cli.js", "--x", ...TAIL],
+);
+expectArgs(
+  "SIM_ENTRYPOINT='' restores the image's entrypoint but keeps the command",
+  argsFor({ SIM_ENTRYPOINT: "" }),
+  [...HEAD, DEFAULT_SIM_IMAGE, "src/cli/main.ts", ...TAIL],
+);
+
+for (const [env, launch] of [
+  [{}, "src"],
+  [{ SIM_IMAGE: DEFAULT_SIM_IMAGE }, "src"],
+  [{ SIM_IMAGE: OTHER_IMAGE }, "auto"],
+  [{ SIM_IMAGE: OTHER_IMAGE, SIM_LAUNCH: "auto" }, "auto"],
+  [{ SIM_IMAGE: OTHER_IMAGE, SIM_LAUNCH: "dist" }, "dist"],
+  [{ SIM_IMAGE: OTHER_IMAGE, SIM_COMMAND: "x.js" }, "custom"],
+  [{ SIM_COMMAND: "x.js" }, "custom"],
+] as const) {
+  const got = defaultSimConfig(env).launch;
+  if (got !== launch) {
+    fail(`launch for ${JSON.stringify(env)}`, `expected ${launch}, got ${got}`);
+  }
+}
+
+for (const [what, env, needle] of [
+  ["an unknown SIM_LAUNCH", { SIM_LAUNCH: "dist-cli" }, "dist"],
+  ["SIM_LAUNCH with SIM_ENTRYPOINT", { SIM_LAUNCH: "dist", SIM_ENTRYPOINT: "bun" }, "SIM_ENTRYPOINT"],
+  ["SIM_LAUNCH with SIM_COMMAND", { SIM_LAUNCH: "dist", SIM_COMMAND: "x" }, "SIM_COMMAND"],
+] as const) {
+  try {
+    defaultSimConfig(env);
+    fail(`${what} is refused`, "defaultSimConfig returned");
+  } catch (error) {
+    const message = error instanceof Error ? error.message : String(error);
+    if (!message.includes(needle) || !message.includes("SIM_LAUNCH")) {
+      fail(`${what} is refused by name`, message);
+    }
+  }
+}
+
+// The probe's verdicts. The last row is the one that matters: an image with
+// neither file must not be launched through bun with a path that is not there.
+for (const [stdout, want] of [
+  ["src\n", "src"],
+  ["dist\n", "dist"],
+  ["none\n", "image"],
+  ["", "image"],
+  ["Unable to find image locally\nsrc\n", "src"],
+] as const) {
+  const got = parseLaunchProbe(stdout);
+  if (got !== want) {
+    fail(`probe output ${JSON.stringify(stdout)}`, `expected ${want}, got ${got}`);
+  }
+}
+if (SIM_LAUNCHES.join() !== "src,dist,image") {
+  fail("the run shapes", `${SIM_LAUNCHES.join()} -- a new shape needs its own row above`);
+}
+
+{
+  const asked: string[] = [];
+  const warnings: string[] = [];
+  const answers: Record<string, string | Error> = {
+    "img:src": "src\n",
+    "img:dist": "dist\n",
+    "img:none": "none\n",
+    "img:broken": new Error("exit 125: no such image"),
+  };
+  const detect = createLaunchDetector(
+    async (image) => {
+      asked.push(image);
+      const answer = answers[image];
+      if (answer instanceof Error) throw answer;
+      return answer ?? "";
+    },
+    (message) => warnings.push(message),
+  );
+  const shapeOf = async (image: string): Promise<SimLaunch> => {
+    const resolved = await resolveAutoLaunch(
+      defaultSimConfig({ SIM_IMAGE: image }),
+      detect,
+    );
+    return resolved.launch as SimLaunch;
+  };
+  const wantArgs: Record<string, string[]> = {
+    "img:src": ["--entrypoint", "bun", "img:src", "src/cli/main.ts"],
+    "img:dist": ["--entrypoint", "bun", "img:dist", "dist-cli/main.js"],
+    "img:none": ["img:none"],
+  };
+  for (const image of ["img:src", "img:dist", "img:none"]) {
+    const resolved = await resolveAutoLaunch(
+      defaultSimConfig({ SIM_IMAGE: image }),
+      detect,
+    );
+    expectArgs(
+      `an auto image shaped ${image}`,
+      buildDockerArgs(CP, CONTAINER, resolved).slice(HEAD.length, HEAD.length + wantArgs[image].length),
+      wantArgs[image],
+    );
+  }
+  if ((await shapeOf("img:broken")) !== "src" || warnings.length !== 1) {
+    fail(
+      "a failed probe falls back to the pinned shape with one warning",
+      `warnings=${JSON.stringify(warnings)}`,
+    );
+  }
+  await shapeOf("img:src");
+  await shapeOf("img:broken");
+  if (asked.length !== 4 || new Set(asked).size !== 4) {
+    fail("each image is probed once", `probed ${JSON.stringify(asked)}`);
+  }
+  // An explicit shape and the pinned image never reach the probe.
+  const before = asked.length;
+  await resolveAutoLaunch(defaultSimConfig({}), detect);
+  await resolveAutoLaunch(defaultSimConfig({ SIM_IMAGE: "img:src", SIM_LAUNCH: "dist" }), detect);
+  await resolveAutoLaunch(defaultSimConfig({ SIM_IMAGE: "img:src", SIM_COMMAND: "x" }), detect);
+  if (asked.length !== before) {
+    fail("a known shape is not probed", `probed ${JSON.stringify(asked.slice(before))}`);
   }
 }
 
