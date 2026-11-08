@@ -554,6 +554,18 @@ Released as `0.3.0`. The documented install ref already points at that tag, so
 
 ### Changed
 
+- **Notes that described the simulator wrongly are corrected; nothing runs
+  differently.** Twenty-four `OCA-201-SLICE.txt` rows, three notes in
+  `tck/states-201.ts` and one in the driver contract said the pinned image
+  hard-codes the `TransactionEvent` members `triggerReason`, `chargingState`
+  and `stoppedReason`. It does not: `0.7.10` made them parameters of
+  `start_transaction`, `stop_transaction` and `transaction_event`
+  (shiv3/ocpp-cp-simulator#350), so the pin the rows are written against has
+  them, and what keeps those cases unimplemented is that no scenario here sends
+  them (#114). `tck/template-once.ts` called the simulator's `once` option
+  something "asked for"; it shipped in `v0.8.0` (#352) and the module collapses
+  to one call at a pin that includes it. The run-once sequence, the pin and
+  every assertion are unchanged.
 - **The CitrineOS stack pin moved from `v2.0.0-beta4` to the `v2.0.0` GA, and
   the driver was ported to its schema** ([#143]) —
   `ghcr.io/citrineos/citrineos-server@sha256:c57849f2…`, resolved 2026-09-30.
