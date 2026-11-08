@@ -49,7 +49,7 @@ GROUP core
     OP 201:TriggerMessage [heartbeat]
     -> driveState keys=[]
   SPEC cert201-tcf27-trigger-not-implemented
-    OP 201:TriggerMessage [firmwarestatusnotification]
+    OP 201:TriggerMessage [signcombinedcertificate]
     SIM send {"command":"heartbeat"}
     -> driveState keys=[]
   SPEC cert201-tcg03-evse-inoperative

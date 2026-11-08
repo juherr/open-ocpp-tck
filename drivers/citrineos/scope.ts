@@ -352,7 +352,7 @@ const V2_SCOPE = {
   ),
   "cert201-tcf27-trigger-not-implemented": c(
     "Two questions, and the second is the case's. Does requestedMessage " +
-      "FirmwareStatusNotification reach the wire unchanged -- TC_F_20 " +
+      "SignCombinedCertificate reach the wire unchanged -- TC_F_20 " +
       "established that Heartbeat does, and a value this CSMS cannot act on " +
       "itself is a different path through the same endpoint. And does the " +
       "CSMS go on serving the station after a TriggerMessageResponse of " +
