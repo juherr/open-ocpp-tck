@@ -2270,18 +2270,31 @@ const TC_F_27: ScenarioSpec = {
   // under three-lane CI contention.
   holdSecs: 12,
   async drive({ cpId, sim, csms201 }) {
-    // FirmwareStatusNotification IS A LITERAL AND THE CHOICE IS THE CASE. It
-    // has to be a value the 2.0.1 MessageTriggerEnumType has -- or the CSMS
-    // rejects the request locally and nothing reaches the wire -- AND one the
-    // pinned image does not implement, which is every value outside the four
-    // its handler answers `Accepted` for (BootNotification, Heartbeat,
-    // StatusNotification, MeterValues). Firmware status is the furthest of
-    // those from anything this station does: it has no firmware update to
-    // report on, so the negative check below cannot be satisfied by traffic
-    // that would have happened anyway.
+    // SignCombinedCertificate IS A LITERAL AND THE CHOICE IS THE CASE. It is
+    // the message TC_F_27_CS itself names: the case's Purpose and Prerequisite
+    // are about a station that does NOT support sending a
+    // SignCombinedCertificateRequest when triggered, so the value comes from
+    // the reference rather than from whatever a given simulator happens to
+    // lack. It also has to be a value the 2.0.1 MessageTriggerEnumType has --
+    // or the CSMS rejects the request locally and nothing reaches the wire.
+    //
+    // This used to be FirmwareStatusNotification, and that was a fact about one
+    // simulator release rather than about the case: F06.FR.16 obliges a
+    // station that performs no firmware task to answer that trigger with an
+    // Idle FirmwareStatusNotification, so a simulator that follows the clause
+    // (shiv3/ocpp-cp-simulator#673) turned the same request into `Accepted`
+    // plus a frame, and both the status check and the negative check below went
+    // red for a station that was behaving. The set of triggers a simulator
+    // implements grows with its releases (the SignCertificate pair arrived on
+    // main with #537); SignCombinedCertificate is one the simulator's own
+    // handler lists as staying NotImplemented (F06.FR.08), and the pinned
+    // image answers it so, as it does every value outside the four its handler
+    // accepts. If a future simulator does implement it, this case's own
+    // Prerequisite no longer holds and the scenario should name another
+    // value outside that simulator's set, not weaken the assertions below.
     await csms201.execute(cpId, {
       action: "TriggerMessage",
-      requestedMessage: "FirmwareStatusNotification",
+      requestedMessage: "SignCombinedCertificate",
     });
     // Long enough for the refusal to be answered before the Heartbeat is
     // queued behind it, so `assertLineAfter` below is reading an ordering the
@@ -2301,7 +2314,7 @@ const TC_F_27: ScenarioSpec = {
       frames,
       "received",
       "TriggerMessage",
-      { requestedMessage: "FirmwareStatusNotification" },
+      { requestedMessage: "SignCombinedCertificate" },
       "TriggerMessage.req asks for the message the station does not implement",
     );
     assertResponseStatus(
@@ -2318,9 +2331,9 @@ const TC_F_27: ScenarioSpec = {
     assertNotSent(
       rec,
       frames,
-      "FirmwareStatusNotification",
+      "SignCertificate",
       "sent",
-      "no FirmwareStatusNotification followed the refusal",
+      "no SignCertificate followed the refusal",
     );
     // assertLineAfter rather than a first-match order check, for TC_F_20's
     // reason: the charge point also runs a periodic Heartbeat timer at

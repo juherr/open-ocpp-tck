@@ -809,6 +809,19 @@ Released as `0.3.0`. The documented install ref already points at that tag, so
 
 ### Fixed
 
+- **`cert201-tcf27-trigger-not-implemented` no longer depends on which
+  triggers the simulator implements.** It asked for a
+  `FirmwareStatusNotification`, a value the pinned simulator happens to leave
+  `NotImplemented` but that F06.FR.16 obliges a station without a firmware task
+  to answer with an `Idle` notification; a simulator that follows the clause
+  (shiv3/ocpp-cp-simulator#673) answers `Accepted` and sends the frame, and
+  the case went red for a conformant station. It now asks for
+  `SignCombinedCertificate`, the message `TC_F_27_CS` itself names, and its
+  negative check reads `SignCertificate`. The assertions keep their strength
+  and the CSMS call sequence keeps its shape (one `TriggerMessage`, one
+  `Heartbeat`); `ASSERT-INVENTORY.txt` and `DRIVE-TRACE.txt` move with the
+  literal. Against the pinned image nothing changes on the wire except the
+  requested value.
 - **An isolated retry against a CSMS that had stopped answering read
   "confirmed".** On a collapsed shard, `--retry-failed-isolated` re-ran each
   failure against a CSMS that no longer accepted the station's

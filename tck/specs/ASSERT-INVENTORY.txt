@@ -457,9 +457,9 @@ FILE core-201.ts
     assertAllAnswered(·, ·, "TransactionEvent")
   SPEC cert201-tcf27-trigger-not-implemented connector=1 bootWaitSecs=4 holdSecs=12 ocppVersion="OCPP-2.0.1" runsSimTemplate=false
     assertReceived(·, ·, "TriggerMessage", "TriggerMessage.req received")
-    assertCallPayload(·, ·, "received", "TriggerMessage", {requestedMessage:"FirmwareStatusNotification"}, "TriggerMessage.req asks for the message the station does not implement")
+    assertCallPayload(·, ·, "received", "TriggerMessage", {requestedMessage:"SignCombinedCertificate"}, "TriggerMessage.req asks for the message the station does not implement")
     assertResponseStatus(·, ·, "TriggerMessage", "NotImplemented", "TriggerMessage refused as not implemented", {direction:"received"})
-    assertNotSent(·, ·, "FirmwareStatusNotification", "sent", "no FirmwareStatusNotification followed the refusal")
+    assertNotSent(·, ·, "SignCertificate", "sent", "no SignCertificate followed the refusal")
     assertLineAfter(·, ·, /Received: \[2,.*"TriggerMessage"/, /Sent: \[2,.*"Heartbeat"/, "the station still reaches the CSMS after the refusal")
     assertResponseTimestamp(·, ·, "Heartbeat", "currentTime", "the CSMS answered the station's next request with a current time")
   SPEC cert201-tcj01-clock-aligned-meter-values connector=1 bootWaitSecs=4 holdSecs=10 ocppVersion="OCPP-2.0.1" runsSimTemplate=false
