@@ -356,8 +356,9 @@ expects of an image, and how it finds out:
   shim), else as `dist` if `dist-cli/main.js` exists (an image built from
   simulator main after #590, which ships only the bundle), else as `image`,
   the image's own entrypoint with the flags first. That last shape needs an
-  entrypoint that passes straight through when its first argument is a flag
-  (the simulator side has agreed to add this); an entrypoint that appends the
+  entrypoint that runs the CLI instead of the daemon when `--json` is among its
+  arguments (shiv3/ocpp-cp-simulator#688; a line without `--json` keeps
+  starting the daemon); an entrypoint that appends the
   daemon flags again would not produce JSON mode, and the run would time out
   waiting for the first frame. If the probe itself fails (no `sh`, docker
   error, a pull that takes over three minutes) the runner warns and assumes

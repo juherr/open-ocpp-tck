@@ -25,8 +25,8 @@
  * {@link SimLaunch}. 0.7.12 (the pin) through 0.9.0 ship `src/cli/main.ts`; an
  * image built from simulator main after shiv3/ocpp-cp-simulator#590 ships only
  * `dist-cli/main.js`; and the simulator side has agreed to keep
- * `src/cli/main.ts` as a shim and to make its entrypoint pass straight through
- * when the first argument is a flag. What this module expects of an image is
+ * `src/cli/main.ts` as a shim and to make its entrypoint run the CLI when
+ * `--json` is among the arguments (shiv3/ocpp-cp-simulator#688). What this module expects of an image is
  * stated in the README ("Simulator image contract").
  */
 
