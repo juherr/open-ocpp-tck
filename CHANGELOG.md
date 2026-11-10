@@ -47,6 +47,16 @@ Released as `0.3.0`. The documented install ref already points at that tag, so
   own — not a CALLERROR. Its id names the clause rather than a `TC_NNN` it
   does not trace to; `OCA-COVERAGE.md` lists it, and it adds nothing to the
   OCA obligation counts.
+- `tests/cert16-gap-checks.ts`, the twenty-seventh in-process guard, over the
+  hand-rolled checks `cert16-tc053`, `cert16-tc054` and `spec48` decide on.
+  It hands each helper synthetic frames: a green control, and a red row per
+  way the
+  check must fail — a trigger accepted and never honoured, or honoured only
+  before its answer, on the wrong connector, or answered `NotImplemented`
+  where only the last trigger may; an `Authorize.conf` without the parent, or
+  with another; a `StartTransaction` without the reservation's id; a second
+  start answered with a CALLERROR, the open transaction's id or another
+  status; a resent first start read as the second
 - `createSteveCsmsDriver` takes an optional `ocppTagParent` lookup, which the
   bundled SteVe driver answers from the WebAPI; see the `ReserveNow` fix below.
 - **`open-ocpp-tck/csms-driver` gains an optional charge-point administration
@@ -916,6 +926,18 @@ Released as `0.3.0`. The documented install ref already points at that tag, so
   it got one. The requested parent is now checked against the stored one and
   the operation refused with `UnsupportedOperationError` when they differ, or
   when no `ocppTagParent` lookup was given to check.
+- **A SteVe `ReserveNow` on a tag SteVe does not store fails instead of
+  reading `NOT APPLICABLE`.** The parent lookup answered `null` both for an
+  unknown tag and for a tag stored without a parent, so on a volume provisioned
+  before `CERT053-RES` existed `cert16-tc053` was reported as a capability gap
+  for what is a missing fixture. The lookup now throws an error naming the tag
+  and `ocpp-tck driver provision`; a stored parent that differs from the
+  requested one is still refused as unsupported.
+- **SteVe's `provision` rebuilds group tags before their drifted parent.** It
+  rebuilt a blocked or expired tag by deleting and recreating it, and SteVe
+  refuses that `DELETE` while another tag names it as parent — so
+  provisioning stopped at `CERT053-GRP`. The child tags naming a parent about
+  to be rebuilt are now removed first and recreated after it.
 
 - **`cert16-reservation-basic` reserves the idTag its station presents.** It
   reserved `CERT-TAG-1` and the template then started a transaction with
