@@ -201,10 +201,18 @@ interface OcppTagOverview {
   parentIdTag: string | null;
 }
 
+/** SteVe's OCPP tags by idTag -- the one read of `GET /ocppTags`. */
+async function readOcppTags(
+  api: Pick<SteveWebApi, "getJson">,
+): Promise<Map<string, OcppTagOverview>> {
+  const rows = await api.getJson<OcppTagOverview[]>("/ocppTags");
+  return new Map(rows.map((r) => [r.idTag, r]));
+}
+
 /**
  * The `ocppTagParent` lookup the SteVe driver hands its ReserveNow form
  * mapper: the parent SteVe stores for `idTag`, null for a tag stored without
- * one. The whole list rather than a filter, as `listTags` reads it -- the
+ * one. The whole list rather than a filter, as `readOcppTags` reads it -- the
  * fixture table is a few dozen rows.
  *
  * A tag SteVe does not store at all is a THROW, not null: null means "SteVe
@@ -217,8 +225,7 @@ export function ocppTagParentLookup(
   api: Pick<SteveWebApi, "getJson">,
 ): (idTag: string) => Promise<string | null> {
   return async (idTag) => {
-    const rows = await api.getJson<OcppTagOverview[]>("/ocppTags");
-    const row = rows.find((r) => r.idTag === idTag);
+    const row = (await readOcppTags(api)).get(idTag);
     if (!row) {
       throw new Error(
         `SteVe stores no OCPP tag ${idTag}: the fixtures are missing or stale -- run \`ocpp-tck driver provision\``,
@@ -425,9 +432,8 @@ export class SteveProvisioner {
     );
   }
 
-  private async listTags(): Promise<Map<string, OcppTagOverview>> {
-    const rows = await this.api.getJson<OcppTagOverview[]>("/ocppTags");
-    return new Map(rows.map((r) => [r.idTag, r]));
+  private listTags(): Promise<Map<string, OcppTagOverview>> {
+    return readOcppTags(this.api);
   }
 
   private async createTag(body: Record<string, unknown>): Promise<void> {

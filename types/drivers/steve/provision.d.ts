@@ -17,7 +17,7 @@ interface OcppTagOverview {
 /**
  * The `ocppTagParent` lookup the SteVe driver hands its ReserveNow form
  * mapper: the parent SteVe stores for `idTag`, null for a tag stored without
- * one. The whole list rather than a filter, as `listTags` reads it -- the
+ * one. The whole list rather than a filter, as `readOcppTags` reads it -- the
  * fixture table is a few dozen rows.
  *
  * A tag SteVe does not store at all is a THROW, not null: null means "SteVe
