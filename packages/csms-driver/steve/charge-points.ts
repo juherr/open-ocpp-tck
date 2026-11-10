@@ -53,9 +53,9 @@ import {
 } from "../charge-points";
 import { CsmsNotDispatchedError, UnsupportedOperationError } from "../contracts";
 import {
-  chargeBoxPkOf,
   chargePointFromForm,
   fillChargePointForm,
+  listedChargeBoxes,
   STEVE_CHARGE_POINT_PAGES as PAGES,
   steveStoredDescription,
   type ChargePointFormChange,
@@ -97,8 +97,17 @@ export function steveChargePoints(ui: SteveUiOps): CsmsChargePointAdmin {
       throw new UnsupportedOperationError(`chargePoints.${method}`, `security profile ${profile} is not supported`);
     }
   };
-  const pkOf = async (cpId: string): Promise<number | undefined> =>
-    chargeBoxPkOf(await ui.page(PAGES.query(cpId)), cpId);
+  /** A row listed verbatim is `cpId`; one that matches only decoded is taken once its details form says so. */
+  const pkOf = async (cpId: string): Promise<number | undefined> => {
+    const listed = listedChargeBoxes(await ui.page(PAGES.query(cpId)), cpId);
+    const verbatim = listed.find((row) => row.verbatim);
+    if (verbatim) return verbatim.chargeBoxPk;
+    for (const { chargeBoxPk } of listed) {
+      const form = readForm(await ui.page(PAGES.details(chargeBoxPk)), PAGES.updateAction);
+      if (form?.get("chargeBoxId") === cpId) return chargeBoxPk;
+    }
+    return undefined;
+  };
   const details = async (cpId: string, chargeBoxPk: number): Promise<ChargePointDetails> => {
     const form = readForm(await ui.page(PAGES.details(chargeBoxPk)), PAGES.updateAction);
     const read = form && chargePointFromForm(form);

@@ -73,18 +73,26 @@ export declare function steveStoredDescription(description: string | null | unde
  * member reads as nothing this mapping knows -- a SteVe that renamed one.
  */
 export declare function chargePointFromForm(fields: URLSearchParams): ChargePointDetails | undefined;
+/** A list row naming the id asked for; `verbatim` when its text matched as written. */
+export interface ListedChargeBox {
+    readonly chargeBoxPk: number;
+    readonly verbatim: boolean;
+}
 /**
- * The `chargeBoxPk` the list page links `cpId` to. Matched on the link text
- * EXACTLY: the query page filters with LIKE, so asking for `CP-1` also lists
- * `CP-10`.
+ * The rows of the list page whose link text is `cpId`. Matched EXACTLY: the
+ * query page filters with LIKE -- case-insensitive, `_` and `%` wildcards --
+ * so asking for `CP-1` also lists `CP-10`.
  *
- * Compared RAW first: the pinned image's chargepoints.jsp writes
- * `${cp.chargeBoxId}` unescaped, and an id its validator accepts may look
- * like markup -- `CP&amp;01` is listed as `CP&amp;01`, which decoded is
- * another id. The decoded text is a fallback for a SteVe that escapes the
- * list, and is consulted only when no link matches raw.
+ * `verbatim` rows match the text as written and are `cpId` whichever way the
+ * list renders. The others match only once decoded, and the rendering decides
+ * what that proves. SteVe escapes the list from 3.15.0 on, and there the
+ * decoded text IS the id: `CP&01` is written `CP&amp;01`. Up to 3.14.x it
+ * wrote `${cp.chargeBoxId}` raw, and there a decoded match is another
+ * station: `X&amp;amp;` is listed for `X&amp;` and reads `X&amp;` decoded.
+ * The page does not say which rendering it is, so the caller confirms a
+ * decoded match against the details form, which escapes the id on both.
  */
-export declare function chargeBoxPkOf(listHtml: string, cpId: string): number | undefined;
+export declare function listedChargeBoxes(listHtml: string, cpId: string): ListedChargeBox[];
 export declare function toSteveForm(op: CsmsOperation16): {
     opPath: string;
     fields: Record<string, string>;

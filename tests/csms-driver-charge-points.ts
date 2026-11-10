@@ -60,11 +60,14 @@
  *     when a concurrent create wins the race past that check; a POST bounced
  *     to sign-in is a non-dispatch that changed nothing, not an acceptance; a create that cannot be
  *     read back, and an update whose members do not read back as written,
- *     are not a success; an id that looks like markup (`CP&amp;01`) is found
- *     although the list writes it raw and the details form escapes it, and
+ *     are not a success; an id that looks like markup (`CP&amp;01`, `CP&01`,
+ *     a quote) is found whether the list escapes it, as 3.15.0 does, or writes
+ *     it raw, as 3.14.x did; a station whose DECODED list text is the id asked
+ *     for (`X&amp;amp;` beside `X&amp;` on a raw list) is not taken for it;
  *     one holding a reference no code point answers (`CP&#999999999;`)
- *     neither throws nor hides another station from a lookup; `CP-1` is not `CP-10`, which SteVe's LIKE
- *     query lists beside it; and the details form goes back whole, because
+ *     neither throws nor hides another station from a lookup; `CP-1`, `cp-10`
+ *     and `CP_10` are not `CP-10`, which SteVe's case-insensitive, wildcarded
+ *     LIKE query lists beside them; and the details form goes back whole, because
  *     SteVe's update erases whatever it is not sent.
  *
  * "Changes nothing" and "leaves the others alone" are checked against the
@@ -654,20 +657,49 @@ await row("the read-back row", async () => {
   }
 });
 
-// The list query matches with LIKE: CP-10 is not CP-1.
-// An id SteVe's validator accepts may look like markup: the list writes it
-// raw, the details form escapes it, and it must be found under both.
-await row("the entity-like id row", async () => {
-  const fake = fakeSteveManager();
-  const admin = steveAdmin(fake);
-  const id = "CP&amp;01";
-  await admin.create({ id, registration: "Pending" });
-  check((await admin.get(id))?.id === id, `get finds ${id}, which the list renders unescaped`);
-  await admin.update(id, { registration: "Rejected" });
-  check(fake.stations.get(id)?.registrationStatus === "REJECTED", `update applies to ${id}`);
-  await admin.delete(id);
-  check(!fake.stations.has(id), `delete removes ${id}`);
-});
+// An id SteVe's validator accepts may look like markup. The details form
+// escapes it; the list escapes it from 3.15.0 on and wrote it raw before, and
+// it must be found under both -- whichever character is escaped.
+for (const listRendering of ["escaped", "raw"] as const) {
+  for (const id of ["CP&amp;01", "CP&01", 'CP"01', "CP'01"]) {
+    await row(`the markup-like id row, ${id}, list ${listRendering}`, async () => {
+      const fake = fakeSteveManager({ listRendering });
+      const admin = steveAdmin(fake);
+      await admin.create({ id, registration: "Pending" });
+      check((await admin.get(id))?.id === id, `get finds ${id} (list ${listRendering})`);
+      await admin.update(id, { registration: "Rejected" });
+      check(fake.stations.get(id)?.registrationStatus === "REJECTED", `update applies to ${id} (list ${listRendering})`);
+      await admin.delete(id);
+      check(!fake.stations.has(id), `delete removes ${id} (list ${listRendering})`);
+    });
+  }
+}
+
+// The one listed row whose DECODED text is the id asked for, without being it.
+// A raw list writes `X&amp;amp;` as is, LIKE lists it for `X&amp;`, and decoded
+// it reads `X&amp;` -- so a lookup trusting the decoded text finds a station
+// that does not exist, and an update or a delete lands on its neighbour. An
+// escaping list cannot produce the shape: its text is longer than the id it
+// would have to equal, and LIKE lists only rows containing that id.
+for (const listRendering of ["escaped", "raw"] as const) {
+  await row(`the decoded-shadow row, list ${listRendering}`, async () => {
+    const fake = fakeSteveManager({ listRendering });
+    const admin = steveAdmin(fake);
+    const stored = "X&amp;amp;";
+    const asked = "X&amp;";
+    await admin.create({ id: stored, registration: "Pending" });
+    check((await admin.get(asked)) === null, `get of ${asked} is null beside ${stored} (list ${listRendering})`);
+    check(
+      await rejectsWith(() => admin.update(asked, { registration: "Rejected" }), ChargePointNotFoundError),
+      `update of ${asked} is not found beside ${stored} (list ${listRendering})`,
+    );
+    check(fake.stations.get(stored)?.registrationStatus === "PENDING", `${stored} is left as it was (list ${listRendering})`);
+    await admin.delete(asked);
+    check(fake.stations.has(stored), `delete of ${asked} keeps ${stored} (list ${listRendering})`);
+    await admin.create({ id: asked });
+    check(fake.stations.has(asked), `create of ${asked} is not refused as a duplicate of ${stored} (list ${listRendering})`);
+  });
+}
 
 // A numeric reference past U+10FFFF is an id SteVe accepts and lists raw.
 // The decoded fallback must not throw on it -- `get("CP")` decodes every
@@ -686,10 +718,15 @@ await row("the out-of-range entity row", async () => {
   );
 });
 
+// The list query matches with LIKE -- case-insensitive, `_` a wildcard -- so
+// it lists stations that are not the one asked for.
 await row("the LIKE row", async () => {
   const fake = fakeSteveManager();
   const admin = steveAdmin(fake);
   await admin.create({ id: "CP-10" });
+  for (const neighbour of ["cp-10", "CP_10"]) {
+    check((await admin.get(neighbour)) === null, `get of ${neighbour} does not resolve to CP-10`);
+  }
   check((await admin.get("CP-1")) === null, "get of CP-1 does not resolve to CP-10");
   check(
     await rejectsWith(() => admin.update("CP-1", { registration: "Rejected" }), ChargePointNotFoundError),
