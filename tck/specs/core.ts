@@ -1100,17 +1100,28 @@ export const tc064DataTransferSpec: ScenarioSpec<void> = {
       );
       return;
     }
+    // The accepted set is TC_064_CSMS's: Rejected, UnknownMessageId or
+    // UnknownVendorId, and Accepted tolerated with a warning to the vendor.
+    // §4.3 alone would demand UnknownVendorId for a vendorId the CSMS cannot
+    // know, so this is wider than the spec on purpose -- the README makes the
+    // OCA test case the reference that settles such a disagreement. The
+    // warning is carried in the passing check's wording, since a check here
+    // has no warning outcome.
     const status = (response.payload as { status?: unknown } | null)?.status;
     if (
-      status === "Accepted" ||
       status === "Rejected" ||
+      status === "UnknownMessageId" ||
       status === "UnknownVendorId"
     ) {
       rec.pass(description);
+    } else if (status === "Accepted") {
+      rec.pass(
+        `${description} -- Accepted for an unknown vendorId, which TC_064 tolerates with a warning`,
+      );
     } else {
       rec.fail(
         description,
-        `expected status in (Accepted|Rejected|UnknownVendorId), got ${String(status)}`,
+        `expected status in (Rejected|UnknownMessageId|UnknownVendorId|Accepted), got ${String(status)}`,
       );
     }
   },

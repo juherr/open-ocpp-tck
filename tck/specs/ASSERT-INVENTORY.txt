@@ -808,7 +808,9 @@ FILE core.ts
       OR
         OR
       ·.pass(·)
-      ·.fail(·, ·)
+      IF
+        ·.pass(·)
+        ·.fail(·, ·)
 
 FILE firmware.ts
   SPEC cert16-tc044-1-firmware-update connector=1 bootWaitSecs=4 holdSecs=115 ocppVersion="OCPP-1.6J"
