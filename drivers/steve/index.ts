@@ -52,7 +52,7 @@
  */
 import type { CsmsDriverModule, CsmsDriverParts, CsmsEnv } from "../../tck/driver";
 import { createSteveCsmsDriver, STEVE_CAPABILITIES } from "../../packages/csms-driver/steve";
-import { defaultApiConfig } from "./api-client";
+import { defaultApiConfig, SteveWebApi } from "./api-client";
 import {
   provisionCommand,
   teardownCommand,
@@ -77,8 +77,20 @@ export const csmsDriver: CsmsDriverModule = {
     const cfg = defaultSteveConfig(env);
     // `env`, not process.env: the runner owns what a driver may read, and the
     // WebAPI credentials are now on the scenario path, not just provisioning's.
-    const records = new SteveRecords(cfg, defaultApiConfig(cfg, env));
-    const csms = createSteveCsmsDriver({ config: cfg });
+    const apiCfg = defaultApiConfig(cfg, env);
+    const records = new SteveRecords(cfg, apiCfg);
+    const api = new SteveWebApi(apiCfg);
+    const csms = createSteveCsmsDriver({
+      config: cfg,
+      // What lets cert16-tc053 reserve for a group: SteVe sends the reserved
+      // tag's stored parent, so the form mapper checks the requested one
+      // against it. The whole list rather than a filter, as provision.ts
+      // reads it -- the fixture table is a few dozen rows.
+      ocppTagParent: async (idTag) => {
+        const rows = await api.getJson<{ idTag: string; parentIdTag: string | null }[]>("/ocppTags");
+        return rows.find((row) => row.idTag === idTag)?.parentIdTag ?? null;
+      },
+    });
     return {
       operations16: csms.operations16,
       chargePoints: csms.chargePoints,
