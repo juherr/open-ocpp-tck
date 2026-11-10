@@ -54,6 +54,7 @@ import type { CsmsDriverModule, CsmsDriverParts, CsmsEnv } from "../../tck/drive
 import { createSteveCsmsDriver, STEVE_CAPABILITIES } from "../../packages/csms-driver/steve";
 import { defaultApiConfig, SteveWebApi } from "./api-client";
 import {
+  ocppTagParentLookup,
   provisionCommand,
   teardownCommand,
   verifyCommand,
@@ -84,12 +85,8 @@ export const csmsDriver: CsmsDriverModule = {
       config: cfg,
       // What lets cert16-tc053 reserve for a group: SteVe sends the reserved
       // tag's stored parent, so the form mapper checks the requested one
-      // against it. The whole list rather than a filter, as provision.ts
-      // reads it -- the fixture table is a few dozen rows.
-      ocppTagParent: async (idTag) => {
-        const rows = await api.getJson<{ idTag: string; parentIdTag: string | null }[]>("/ocppTags");
-        return rows.find((row) => row.idTag === idTag)?.parentIdTag ?? null;
-      },
+      // against it.
+      ocppTagParent: ocppTagParentLookup(api),
     });
     return {
       operations16: csms.operations16,

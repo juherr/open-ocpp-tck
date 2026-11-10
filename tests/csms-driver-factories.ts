@@ -5,7 +5,9 @@
  * posted through its authenticated manager-UI flow, and a CitrineOS OCPP 1.6
  * operation must reach the matching route with its station and tenant. A SteVe
  * ReserveNow carrying a parentIdTag is posted only when it is the parent
- * SteVe will send anyway, and refused as unsupported otherwise. The fakes
+ * SteVe will send anyway, and refused as unsupported otherwise -- except for
+ * a reserved tag SteVe does not store, which the driver's wired lookup fails
+ * on as a missing fixture rather than as an unsupported request. The fakes
  * observe the public factory result without starting a CSMS or TCK run.
  */
 
@@ -15,6 +17,7 @@ import {
   UnsupportedOperationError,
 } from "open-ocpp-tck/csms-driver";
 import type { FetchLike } from "open-ocpp-tck/csms-driver";
+import { ocppTagParentLookup } from "../drivers/steve/provision";
 
 const failures: string[] = [];
 
@@ -159,6 +162,61 @@ async function verifySteveReserveNowParent(): Promise<void> {
     "SteVe ReserveNow refuses a parentIdTag other than the reserved tag's stored parent",
   );
   check(wrong.posts.length === 0, "SteVe ReserveNow posts nothing for a parentIdTag SteVe would not send");
+
+  // The lookup the SteVe driver actually wires, over a fake WebAPI. A tag
+  // stored WITHOUT a parent is a real "SteVe would send none", so the refusal
+  // stays UnsupportedOperationError. A tag SteVe does not store is a missing
+  // fixture: answering null for it too turned a broken environment into a
+  // NOT APPLICABLE row, so it has to be an ordinary failure that says how to
+  // fix it.
+  const tags = [
+    { idTag: "TAG-RES", parentIdTag: "TAG-GRP" },
+    { idTag: "TAG-LONE", parentIdTag: null },
+  ];
+  const webApi = { getJson: async <T>(path: string): Promise<T> => (path === "/ocppTags" ? tags : []) as T };
+  const wired = ocppTagParentLookup(webApi);
+
+  const known = harness();
+  const knownErr = await refusal(
+    createSteveCsmsDriver({ config, fetch: known.fetch, ocppTagParent: wired }).operations16.execute("CP-1", {
+      ...reserve,
+      parentIdTag: "TAG-GRP",
+    }),
+  );
+  check(
+    knownErr === undefined && known.posts.length === 1,
+    `SteVe's wired lookup posts a ReserveNow whose parentIdTag is the stored one${knownErr ? ` (threw: ${String(knownErr)})` : ""}`,
+  );
+
+  const lone = harness();
+  const loneErr = await refusal(
+    createSteveCsmsDriver({ config, fetch: lone.fetch, ocppTagParent: wired }).operations16.execute("CP-1", {
+      ...reserve,
+      idTag: "TAG-LONE",
+      parentIdTag: "TAG-GRP",
+    }),
+  );
+  check(
+    loneErr instanceof UnsupportedOperationError && lone.posts.length === 0,
+    "SteVe's wired lookup refuses as unsupported a parentIdTag for a tag stored without a parent",
+  );
+
+  const unknown = harness();
+  const unknownErr = await refusal(
+    createSteveCsmsDriver({ config, fetch: unknown.fetch, ocppTagParent: wired }).operations16.execute("CP-1", {
+      ...reserve,
+      idTag: "TAG-MISSING",
+      parentIdTag: "TAG-GRP",
+    }),
+  );
+  check(
+    unknownErr instanceof Error &&
+      !(unknownErr instanceof UnsupportedOperationError) &&
+      unknownErr.message.includes("TAG-MISSING") &&
+      unknownErr.message.includes("driver provision"),
+    `SteVe's wired lookup fails on a tag SteVe does not store, naming it and \`driver provision\`, rather than reading as unsupported (got: ${String(unknownErr)})`,
+  );
+  check(unknown.posts.length === 0, "SteVe's wired lookup posts nothing for a tag SteVe does not store");
 }
 
 async function verifyCitrine16Factory(): Promise<void> {

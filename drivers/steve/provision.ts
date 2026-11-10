@@ -202,6 +202,33 @@ interface OcppTagOverview {
 }
 
 /**
+ * The `ocppTagParent` lookup the SteVe driver hands its ReserveNow form
+ * mapper: the parent SteVe stores for `idTag`, null for a tag stored without
+ * one. The whole list rather than a filter, as `listTags` reads it -- the
+ * fixture table is a few dozen rows.
+ *
+ * A tag SteVe does not store at all is a THROW, not null: null means "SteVe
+ * would send no parent", which the mapper turns into an
+ * UnsupportedOperationError, and a scenario reads that as NOT APPLICABLE. A
+ * missing fixture -- a volume provisioned before the tag was added -- is a
+ * broken environment, and has to read as one.
+ */
+export function ocppTagParentLookup(
+  api: Pick<SteveWebApi, "getJson">,
+): (idTag: string) => Promise<string | null> {
+  return async (idTag) => {
+    const rows = await api.getJson<OcppTagOverview[]>("/ocppTags");
+    const row = rows.find((r) => r.idTag === idTag);
+    if (!row) {
+      throw new Error(
+        `SteVe stores no OCPP tag ${idTag}: the fixtures are missing or stale -- run \`ocpp-tck driver provision\``,
+      );
+    }
+    return row.parentIdTag;
+  };
+}
+
+/**
  * What "this fixture is still what we seeded" means, spelled once.
  *
  * provision and verify have to agree on it or the environment oscillates:

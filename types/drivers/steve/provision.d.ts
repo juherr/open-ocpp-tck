@@ -1,5 +1,18 @@
-import { type SteveApiConfig } from "./api-client";
+import { SteveWebApi, type SteveApiConfig } from "./api-client";
 import { type SteveConfig } from "./ui-client";
+/**
+ * The `ocppTagParent` lookup the SteVe driver hands its ReserveNow form
+ * mapper: the parent SteVe stores for `idTag`, null for a tag stored without
+ * one. The whole list rather than a filter, as `listTags` reads it -- the
+ * fixture table is a few dozen rows.
+ *
+ * A tag SteVe does not store at all is a THROW, not null: null means "SteVe
+ * would send no parent", which the mapper turns into an
+ * UnsupportedOperationError, and a scenario reads that as NOT APPLICABLE. A
+ * missing fixture -- a volume provisioned before the tag was added -- is a
+ * broken environment, and has to read as one.
+ */
+export declare function ocppTagParentLookup(api: Pick<SteveWebApi, "getJson">): (idTag: string) => Promise<string | null>;
 export declare class SteveProvisioner {
     private readonly cfg;
     private readonly apiCfg;
