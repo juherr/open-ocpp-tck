@@ -106,7 +106,7 @@ so a run shows them — but they cannot pass until the scenario changes.
 
 | scenario | OCA step | obligation | why the request is never sent |
 |---|---|---|---|
-| `cert16-tc001-cold-boot` | TC_001 step 6 | `Heartbeat.conf` | the scenario holds 20s and the CP sends no Heartbeat in that window. TC_054 triggers one explicitly and carries the obligation instead. |
+| `cert16-tc001-cold-boot` | TC_001 step 6 | `Heartbeat.conf` | the case's Heartbeat is periodic, at the interval `BootNotification.conf` returns, and the scenario holds 20 s. Measured on the wire: SteVe returns 14400 s, CitrineOS 60 s, codetics-ev-server-lite 60 s. See below for why the hold is not simply raised. TC_054 triggers a Heartbeat explicitly and carries the obligation instead. |
 | `cert16-tc010-remote-start` | TC_010 step 6 | `Authorize.conf` | remote start: the CSMS supplies the idTag in `RemoteStartTransaction`, so the CP goes straight to `StartTransaction`. |
 | `cert16-tc011-remote-start-stop` | TC_011_1 step 6 | `Authorize.conf` | same |
 | `cert16-tc059-remote-start-with-profile` | TC_059 step 6 | `Authorize.conf` | same |
@@ -116,6 +116,24 @@ plainly: **no remote-start scenario can carry the `Authorize.conf`
 obligation**, because remote start is precisely the flow that skips
 authorization. `TC_003` and `TC_004` are locally driven, do send `Authorize`,
 and do carry it.
+
+The `tc001` row stays open on purpose. Closing it faithfully means a hold
+longer than the interval the CSMS returns, and that cannot be had cleanly for
+every driver:
+
+- **SteVe's interval is a global setting**, in whole minutes (its settings
+  page, `ocppSettings.heartbeat`; 0 means "client default"). Shortening it
+  would be a write to CSMS-wide state that no driver makes today, would apply
+  to every station of every lane, and still has a floor of 60 s.
+- **The simulator's Heartbeat is an idle timer**, re-armed by every CALL the
+  station sends (`HeartbeatService.notifyOutgoingCall` at the pinned 0.10.1).
+  So even at 60 s, the first Heartbeat leaves one interval after the last boot
+  `StatusNotification`: about 70 s of hold for one Heartbeat, about 130 s to
+  see the period the case describes, against 20 s today.
+
+That is a sweep-time cost on every driver and a provisioning change on one, to
+measure a `.conf` that `cert16-tc054` already measures with a Heartbeat it
+triggers itself.
 
 Closing any of these is a change to the scenario -- a longer hold, an extra
 trigger -- not a change to what the checks assert. Until then each shows up as

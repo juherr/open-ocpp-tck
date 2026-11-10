@@ -241,7 +241,9 @@ export const tc001ColdBootSpec: ScenarioSpec<void> = {
     // the CP sends no Heartbeat in that window (measured -- a sweep's log
     // carries BootNotification and StatusNotification only). The obligation is
     // real and unexercised, which is orange; TC_054 triggers a Heartbeat
-    // explicitly and checks it for real.
+    // explicitly and checks it for real. Raising the hold past the interval
+    // the CSMS returns was weighed and declined -- OCA-COVERAGE.md,
+    // "Unexercised obligations", has the per-CSMS intervals and the reason.
     assertAllAnswered(rec, frames, "StatusNotification");
     assertAllAnswered(rec, frames, "Heartbeat");
 
