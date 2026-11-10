@@ -81,8 +81,8 @@ case it comes from. It lives there rather than here because
 `tck/specs/ASSERT-INVENTORY.txt` in both directions — an obligation with no
 check and a check with no obligation are both build failures.
 
-**53 obligations. 46 are the `assertAllAnswered` checks issue #11 added; the
-other 7 were already covered** by `assertResponseStatus`,
+**56 obligations. 49 are `assertAllAnswered` checks -- 46 added by issue #11,
+three by `cert16-tc053` -- and the other 7 were already covered** by `assertResponseStatus`,
 `assertIdTagInfoStatus`, or the hand-rolled block in `cert16-tc064`.
 
 That count used to be stated here as "46 obligations, 46 checks", which was
@@ -186,22 +186,22 @@ something no one can look up.
 `TC_043_2_CS` exists (SUT = Charge Point) and has no `_CSMS` counterpart. There
 is nothing to cover, and nothing to open an issue about.
 
-**29 of the 77 `_CSMS` cases have no scenario at all.** The 47 OCPP 1.6
-scenarios cover 48 cases -- `cert16-tc017-unlock-occupied` answers both `TC_017_1` and
+**28 of the 77 `_CSMS` cases have no scenario at all.** The 48 OCPP 1.6
+scenarios that trace to a case cover 49 cases -- `cert16-tc017-unlock-occupied` answers both `TC_017_1` and
 `TC_017_2`. Uncovered:
 
 ```
 TC_004_2  TC_007    TC_011_2  TC_030    TC_032_1  TC_037_1  TC_037_3  TC_039
-TC_040_1  TC_040_2  TC_045_2  TC_047    TC_049    TC_053    TC_073    TC_074
-TC_075_1  TC_075_2  TC_076    TC_077    TC_078    TC_079    TC_080    TC_081
-TC_083    TC_085    TC_086    TC_087    TC_088
+TC_040_1  TC_040_2  TC_045_2  TC_047    TC_049    TC_073    TC_074    TC_075_1
+TC_075_2  TC_076    TC_077    TC_078    TC_079    TC_080    TC_081    TC_083
+TC_085    TC_086    TC_087    TC_088
 ```
 
 That is a coverage gap in the other direction, and a much larger piece of work
 than issue #11: each needs a charge-point-side scenario template, and the
 templates are not in this repository -- they are baked into the pinned
 `ocpp-cp-simulator` image (`tck/sim.ts`). Stated here so the suite's extent is
-a number rather than an inference from "47 scenarios". The OCPP 2.0.1
+a number rather than an inference from "48 scenarios". The OCPP 2.0.1
 scenarios are counted nowhere on this page: their own selection rule and list
 are `OCA-201-SELECTION.md` and `tck/specs/OCA-201-SLICE.txt`.
 

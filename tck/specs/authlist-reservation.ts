@@ -7,13 +7,16 @@
  * run-all.sh's AUTHLIST_RESERVATION array exactly (13 scenarios). Each spec
  * asserts AT LEAST what its bash predecessor asserted; CALLRESULT status
  * checks are upgraded to uniqueId-paired correlation (assertResponseStatus)
- * instead of the bash version's log-window grep.
+ * instead of the bash version's log-window grep. TC_053 came later and has no
+ * bash predecessor, nor a simulator template: its drive() sends the station's
+ * two commands itself.
  */
 
 import {
   assertAllAnswered,
   assertCallPayload,
   assertEq,
+  assertIdTagInfoStatus,
   assertLineAfter,
   assertLineMatches,
   assertLineOrder,
@@ -21,7 +24,10 @@ import {
   assertReceived,
   assertResponseStatus,
   assertSent,
+  type AssertRecorder,
 } from "../assert";
+import { UnsupportedOperationError } from "../driver";
+import { findAllCalls, findResponseFor, type Frame } from "../ocpp";
 import { warnOpFailed } from "../op-warn";
 import type { ScenarioSpec } from "../spec-types";
 import { inMinutes } from "../time";
@@ -764,6 +770,242 @@ export const tc052CancelReservationRejectedSpec: ScenarioSpec<void> = {
   },
 };
 
+// ---------------------------------------------------------------------------
+// TC_053 Use a reserved Connector with parentIdTag -- the CSMS reserves
+// connector 1 for CERT053-RES with parentIdTag CERT053-GRP, and CERT053-CHILD,
+// another tag of the same group, charges on it.
+// ---------------------------------------------------------------------------
+
+/**
+ * The parent the CSMS put in the idTagInfo answering the first sent `action`
+ * for `idTag`.
+ *
+ * WHY IT IS HERE, and not only implied by the start that follows. OCPP 1.6
+ * §5.13 lets the reserved connector admit a tag whose parent equals the
+ * reservation's, and the station learns a stranger's parent from the
+ * Authorize.conf (§4.1: idTagInfo MAY carry it). A CSMS that leaves it out
+ * makes the station refuse the start, and the checks downstream then say "no
+ * StartTransaction" -- true, and silent about why. This check names the cause
+ * on the row where it happens.
+ *
+ * The arguments are literals at the call site so ASSERT-INVENTORY.txt pins
+ * them -- see the rejected-refactor note beside `assertIdTagInfoStatus` in
+ * assert.ts for why this is not a predicate handed to a generic helper.
+ */
+function assertIdTagInfoParent(
+  rec: AssertRecorder,
+  frames: readonly Frame[],
+  action: string,
+  idTag: string,
+  expectedParent: string,
+  description: string,
+): void {
+  const call = findAllCalls(frames, "sent", action).find(
+    (c) => (c.payload as { idTag?: unknown } | null)?.idTag === idTag,
+  );
+  if (!call) {
+    rec.fail(description, `no sent ${action} for idTag ${idTag}`);
+    return;
+  }
+  const response = findResponseFor(frames, call);
+  if (!response || response.kind === "callerror") {
+    rec.fail(
+      description,
+      !response
+        ? `no response frame found for uniqueId=${call.uniqueId} (${action})`
+        : `expected CALLRESULT, got CALLERROR ${response.errorCode}: ${response.errorDescription}`,
+    );
+    return;
+  }
+  const parent = (
+    response.payload as { idTagInfo?: { parentIdTag?: unknown } } | null
+  )?.idTagInfo?.parentIdTag;
+  if (parent === expectedParent) {
+    rec.pass(description);
+  } else {
+    rec.fail(
+      description,
+      `idTagInfo.parentIdTag is ${parent === undefined ? "absent" : JSON.stringify(parent)}, expected ${expectedParent}`,
+    );
+  }
+}
+
+/**
+ * The StartTransaction.req the station sent for `idTag` names the
+ * reservationId of the ReserveNow.req the CSMS sent.
+ *
+ * A CHARGE-POINT behaviour (§5.13), checked because it is where this case
+ * becomes observable: the station sends the id only when it admitted the tag
+ * to the reservation, which for a tag other than the reserved one is only
+ * through the parent the CSMS supplied. The reservationId is the CSMS's own
+ * allocation, so it is compared to the request rather than written here.
+ */
+function assertStartUsesReservation(
+  rec: AssertRecorder,
+  frames: readonly Frame[],
+  idTag: string,
+  description: string,
+): void {
+  const reserve = findAllCalls(frames, "received", "ReserveNow")[0];
+  const reservationId = (reserve?.payload as { reservationId?: unknown } | null)
+    ?.reservationId;
+  if (reservationId === undefined) {
+    rec.fail(description, "no received ReserveNow carrying a reservationId");
+    return;
+  }
+  const start = findAllCalls(frames, "sent", "StartTransaction").find(
+    (c) => (c.payload as { idTag?: unknown } | null)?.idTag === idTag,
+  );
+  if (!start) {
+    rec.fail(
+      description,
+      `no sent StartTransaction for idTag ${idTag} -- the station refused the start on the connector reserved for another idTag`,
+    );
+    return;
+  }
+  const carried = (start.payload as { reservationId?: unknown }).reservationId;
+  if (carried === reservationId) {
+    rec.pass(description);
+  } else {
+    rec.fail(
+      description,
+      `StartTransaction.reservationId is ${JSON.stringify(carried)}, ReserveNow's was ${JSON.stringify(reservationId)}`,
+    );
+  }
+}
+
+export const tc053ReservedConnectorParentIdTagSpec: ScenarioSpec<void> = {
+  templateId: "cert16-tc053-reserved-connector-parent-idtag",
+  ocppVersion: "OCPP-1.6J",
+  tags: ["reservation", "authorization", "transaction"],
+  description:
+    "TC_053 Use a reserved Connector with parentIdTag: ReserveNow for CERT053-RES with parentIdTag CERT053-GRP accepted; CERT053-CHILD, of the same group, authorizes and charges on it.",
+  // NO TEMPLATE: the pinned image ships none for TC_053, and the station side
+  // is two commands -- start, then stop -- that drive() sends itself.
+  runsSimTemplate: false,
+  connector: 1,
+  bootWaitSecs: 4,
+  // What is left when drive() returns is the StopTransaction it sends last
+  // and its answer, plus the trailing StatusNotifications: one round trip.
+  holdSecs: 12,
+  async drive({ cpId, connector, csms16, sim }) {
+    await sleep(2000);
+    try {
+      // THE PARENT IS NAMED ON THE REQUEST because the case says the CSMS
+      // sends one. A CSMS that derives it instead -- SteVe sends the reserved
+      // tag's stored parent -- can drive this only when the two agree, and its
+      // driver refuses otherwise; that refusal is an UnsupportedOperationError
+      // and is rethrown below, so the row reads NOT APPLICABLE rather than as
+      // a CSMS that never reserved.
+      await csms16.execute(cpId, {
+        action: "ReserveNow",
+        connectorId: 1,
+        idTag: "CERT053-RES",
+        parentIdTag: "CERT053-GRP",
+        expiryDate: inMinutes(10),
+      });
+    } catch (err) {
+      if (err instanceof UnsupportedOperationError) throw err;
+      warnOpFailed("ReserveNow", err);
+    }
+    // Long enough for the ReserveNow.conf and the Reserved StatusNotification
+    // to go out before the station is asked to start.
+    await sleep(3000);
+    // A DIFFERENT TAG OF THE SAME GROUP, which is the case. The station does
+    // not know CERT053-CHILD's parent, so it sends Authorize.req and reads the
+    // parent from the answer before deciding whether the reservation admits it.
+    await sim.send({
+      command: "start_transaction",
+      params: { connector, tagId: "CERT053-CHILD" },
+    });
+    await sleep(8000);
+    // TEARDOWN, not part of the case: `runsSimTemplate: false` moves it here.
+    await sim.send({ command: "stop_transaction", params: { connector } });
+  },
+  async assert({ cpId, frames, lines, rec, records }) {
+    assertCallPayload(
+      rec,
+      frames,
+      "received",
+      "ReserveNow",
+      { connectorId: 1, idTag: "CERT053-RES", parentIdTag: "CERT053-GRP" },
+      "ReserveNow.req names connector 1 (not 0), CERT053-RES and parentIdTag CERT053-GRP",
+    );
+    assertResponseStatus(
+      rec,
+      frames,
+      "ReserveNow",
+      "Accepted",
+      "ReserveNow accepted",
+    );
+    assertLineAfter(
+      rec,
+      lines,
+      /Received: \[2,.*"ReserveNow"/,
+      /Sent: \[2,.*"StatusNotification".*"status":"Reserved"/,
+      "StatusNotification(Reserved) sent after ReserveNow accepted",
+    );
+    assertCallPayload(
+      rec,
+      frames,
+      "sent",
+      "Authorize",
+      { idTag: "CERT053-CHILD" },
+      "Authorize.req sent for CERT053-CHILD, a tag the reservation does not name",
+    );
+    assertIdTagInfoStatus(
+      rec,
+      frames,
+      "Authorize",
+      "Accepted",
+      "Authorize for CERT053-CHILD answered Accepted",
+    );
+    assertIdTagInfoParent(
+      rec,
+      frames,
+      "Authorize",
+      "CERT053-CHILD",
+      "CERT053-GRP",
+      "Authorize.conf for CERT053-CHILD carries parentIdTag CERT053-GRP",
+    );
+    assertStartUsesReservation(
+      rec,
+      frames,
+      "CERT053-CHILD",
+      "StartTransaction for CERT053-CHILD carries the reservation's id",
+    );
+    assertIdTagInfoStatus(
+      rec,
+      frames,
+      "StartTransaction",
+      "Accepted",
+      "StartTransaction on the reservation answered Accepted",
+    );
+    // TC_053 step 4, plus the reusable state "Charging" it executes at step 5
+    // (reference section 3.22): Authorized + StatusNotification.conf x2 +
+    // StartTransaction.conf.
+    assertAllAnswered(rec, frames, "StatusNotification");
+    assertAllAnswered(rec, frames, "Authorize");
+    assertAllAnswered(rec, frames, "StartTransaction");
+
+    const txPk = await records.latestTransaction(cpId);
+    if (!txPk) {
+      rec.fail(
+        `DB: transaction row exists for ${cpId}`,
+        "no transaction found",
+      );
+      return;
+    }
+    rec.pass(`DB: transaction row exists for ${cpId} (pk=${txPk})`);
+    assertEq(
+      rec,
+      await records.transactionIdTag(txPk),
+      "CERT053-CHILD",
+      "DB: id_tag is CERT053-CHILD",
+    );
+  },
+};
+
 // See specs/core.ts's CORE_SPECS comment: ScenarioSpec<D> is effectively
 // invariant in D, so a single array holding specs with different
 // driveState types needs `any` here.
@@ -782,4 +1024,5 @@ export const AUTHLIST_RESERVATION_SPECS: ScenarioSpec<any>[] = [
   tc0484ReserveNowRejectedSpec,
   tc051CancelReservationSpec,
   tc052CancelReservationRejectedSpec,
+  tc053ReservedConnectorParentIdTagSpec,
 ];

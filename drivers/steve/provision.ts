@@ -137,6 +137,23 @@ const VALID_TAGS = [
   // ReserveNow and SendLocalList carry these.
   "CERT-TAG-1",
   "CERT-TAG-2",
+  // TC_053's group: the parent of GROUP_TAGS below, usable in its own right.
+  "CERT053-GRP",
+] as const;
+
+/**
+ * Tags seeded with a parent, for TC_053: the reserved tag and the one that
+ * charges on its reservation through the parent they share.
+ *
+ * ORDER IS FORCED BY THE SCHEMA. `ocpp_tag.parent_id_tag` is a foreign key
+ * onto `ocpp_tag.id_tag`, ON DELETE NO ACTION (migration V0_8_4), so the
+ * parent must exist before a child names it and cannot be deleted while one
+ * still does: provisioning creates VALID_TAGS first, and teardown removes these
+ * before them, keeping the parent whenever a child is kept.
+ */
+const GROUP_TAGS = [
+  { idTag: "CERT053-RES", parentIdTag: "CERT053-GRP" },
+  { idTag: "CERT053-CHILD", parentIdTag: "CERT053-GRP" },
 ] as const;
 
 /** Absent from ocpp_tag entirely -- SteVe answers Invalid for an unknown tag. */
@@ -181,6 +198,7 @@ interface OcppTagOverview {
   expiryDate: string | null;
   blocked: boolean;
   maxActiveTransactionCount: number;
+  parentIdTag: string | null;
 }
 
 /**
@@ -348,6 +366,18 @@ export class SteveProvisioner {
       this.log(`tag: ${idTag} valid`);
     }
 
+    for (const { idTag, parentIdTag } of GROUP_TAGS) {
+      const row = existing.get(idTag);
+      if (row && isUsable(row) && row.parentIdTag === parentIdTag) continue;
+      if (row) await this.deleteTag(row.ocppTagPk);
+      await this.createTag({
+        idTag,
+        parentIdTag,
+        note: "open-ocpp-tck fixture: grouped",
+      });
+      this.log(`tag: ${idTag} valid, parent ${parentIdTag}`);
+    }
+
     const blocked = existing.get(BLOCKED_TAG);
     if (!blocked || !isBlocked(blocked)) {
       if (blocked) await this.deleteTag(blocked.ocppTagPk);
@@ -446,6 +476,20 @@ export class SteveProvisioner {
       }
     }
 
+    for (const { idTag, parentIdTag } of GROUP_TAGS) {
+      const row = tags.get(idTag);
+      if (!row) {
+        problems.push(`${idTag}: missing`);
+        continue;
+      }
+      if (!isUsable(row)) problems.push(`${idTag}: blocked or expiring, expected usable`);
+      if (row.parentIdTag !== parentIdTag) {
+        problems.push(
+          `${idTag}: parent ${row.parentIdTag ?? "<none>"}, expected ${parentIdTag}`,
+        );
+      }
+    }
+
     if (tags.has(INVALID_TAG)) {
       problems.push(`${INVALID_TAG}: present, must be absent for TC_023`);
     }
@@ -515,7 +559,15 @@ export class SteveProvisioner {
    * the volume, which is the only case where it matters.
    */
   async teardown(): Promise<void> {
-    const wanted = [...VALID_TAGS, BLOCKED_TAG, EXPIRED_TAG, INVALID_TAG];
+    // Children first: a parent cannot be deleted while a child names it.
+    const children = GROUP_TAGS.map((tag) => tag.idTag);
+    const wanted = [
+      ...children,
+      ...VALID_TAGS,
+      BLOCKED_TAG,
+      EXPIRED_TAG,
+      INVALID_TAG,
+    ];
 
     // Only tags nothing refers to. `transaction_start.id_tag` and
     // `reservation.id_tag` are ON DELETE CASCADE onto ocpp_tag, so deleting a
@@ -529,11 +581,13 @@ export class SteveProvisioner {
       this.listTags(),
     ]);
     let kept = 0;
+    const keptParents = new Set<string>();
     for (const idTag of wanted) {
       const row = tags.get(idTag);
       if (!row) continue;
-      if (used.has(idTag)) {
+      if (used.has(idTag) || keptParents.has(idTag)) {
         kept += 1;
+        if (row.parentIdTag) keptParents.add(row.parentIdTag);
         continue;
       }
       await this.deleteTag(row.ocppTagPk);

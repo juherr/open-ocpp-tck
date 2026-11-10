@@ -303,6 +303,11 @@ GROUP authlist-reservation
   SPEC cert16-tc052-cancel-reservation-rejected
     OP CancelReservation [99999]
     -> driveState keys=[]
+  SPEC cert16-tc053-reserved-connector-parent-idtag
+    OP ReserveNow [1, <ts>, cert053-grp, cert053-res]
+    SIM send {"command":"start_transaction","params":{"connector":1,"tagId":"CERT053-CHILD"}}
+    SIM send {"command":"stop_transaction","params":{"connector":1}}
+    -> driveState keys=[]
 
 GROUP remotetrigger-smartcharging
   SPEC cert16-tc010-remote-start

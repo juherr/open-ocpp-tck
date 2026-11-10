@@ -7,7 +7,9 @@
  * run-all.sh's AUTHLIST_RESERVATION array exactly (13 scenarios). Each spec
  * asserts AT LEAST what its bash predecessor asserted; CALLRESULT status
  * checks are upgraded to uniqueId-paired correlation (assertResponseStatus)
- * instead of the bash version's log-window grep.
+ * instead of the bash version's log-window grep. TC_053 came later and has no
+ * bash predecessor, nor a simulator template: its drive() sends the station's
+ * two commands itself.
  */
 import type { ScenarioSpec } from "../spec-types";
 export declare const tc0421GetLocalListVersionNotSupportedSpec: ScenarioSpec<void>;
@@ -26,5 +28,6 @@ interface CancelReservationDriveState {
 }
 export declare const tc051CancelReservationSpec: ScenarioSpec<CancelReservationDriveState>;
 export declare const tc052CancelReservationRejectedSpec: ScenarioSpec<void>;
+export declare const tc053ReservedConnectorParentIdTagSpec: ScenarioSpec<void>;
 export declare const AUTHLIST_RESERVATION_SPECS: ScenarioSpec<any>[];
 export {};

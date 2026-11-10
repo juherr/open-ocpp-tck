@@ -3,6 +3,27 @@
 # A diff here means a scenario's checks changed. See the test's header.
 
 FILE authlist-reservation.ts
+  HELPER assertIdTagInfoParent
+    IF
+      ·.fail(·, ·)
+      RETURN
+    IF
+      OR
+      ·.fail(·, ·)
+      RETURN
+    IF
+      ·.pass(·)
+      ·.fail(·, ·)
+  HELPER assertStartUsesReservation
+    IF
+      ·.fail(·, "no received ReserveNow carrying a reservationId")
+      RETURN
+    IF
+      ·.fail(·, ·)
+      RETURN
+    IF
+      ·.pass(·)
+      ·.fail(·, ·)
   SPEC cert16-tc042-1-get-local-list-version-not-supported connector=1 bootWaitSecs=4 holdSecs=12 ocppVersion="OCPP-1.6J"
     assertLineMatches(·, ·, /Received: \[2,.*"GetLocalListVersion"/, "GetLocalListVersion.req received")
     assertLineMatches(·, ·, /"listVersion":-1/, "listVersion -1 returned (local list disabled)")
@@ -69,6 +90,23 @@ FILE authlist-reservation.ts
     assertReceived(·, ·, "CancelReservation", "CancelReservation.req received")
     assertResponseStatus(·, ·, "CancelReservation", "Rejected", "CancelReservation rejected (nonexistent reservationId)")
     assertAllAnswered(·, ·, "StatusNotification")
+  SPEC cert16-tc053-reserved-connector-parent-idtag connector=1 bootWaitSecs=4 holdSecs=12 ocppVersion="OCPP-1.6J" runsSimTemplate=false
+    assertCallPayload(·, ·, "received", "ReserveNow", {connectorId:1,idTag:"CERT053-RES",parentIdTag:"CERT053-GRP"}, "ReserveNow.req names connector 1 (not 0), CERT053-RES and parentIdTag CERT053-GRP")
+    assertResponseStatus(·, ·, "ReserveNow", "Accepted", "ReserveNow accepted")
+    assertLineAfter(·, ·, /Received: \[2,.*"ReserveNow"/, /Sent: \[2,.*"StatusNotification".*"status":"Reserved"/, "StatusNotification(Reserved) sent after ReserveNow accepted")
+    assertCallPayload(·, ·, "sent", "Authorize", {idTag:"CERT053-CHILD"}, "Authorize.req sent for CERT053-CHILD, a tag the reservation does not name")
+    assertIdTagInfoStatus(·, ·, "Authorize", "Accepted", "Authorize for CERT053-CHILD answered Accepted")
+    assertIdTagInfoParent(·, ·, "Authorize", "CERT053-CHILD", "CERT053-GRP", "Authorize.conf for CERT053-CHILD carries parentIdTag CERT053-GRP")
+    assertStartUsesReservation(·, ·, "CERT053-CHILD", "StartTransaction for CERT053-CHILD carries the reservation's id")
+    assertIdTagInfoStatus(·, ·, "StartTransaction", "Accepted", "StartTransaction on the reservation answered Accepted")
+    assertAllAnswered(·, ·, "StatusNotification")
+    assertAllAnswered(·, ·, "Authorize")
+    assertAllAnswered(·, ·, "StartTransaction")
+    IF
+      ·.fail(·, "no transaction found")
+      RETURN
+    ·.pass(·)
+    assertEq(·, ·, "CERT053-CHILD", "DB: id_tag is CERT053-CHILD")
 
 FILE authorize.ts
 

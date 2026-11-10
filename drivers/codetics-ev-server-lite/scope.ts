@@ -129,6 +129,15 @@ export const EVSL_SCOPE: ScopeTable = {
   "cert16-tc052-cancel-reservation-rejected": d(
     `${RESERVE} No server-side check of the id, so the made-up one reaches the station.`,
   ),
+  "cert16-tc053-reserved-connector-parent-idtag": {
+    status: "NOT_APPLICABLE",
+    reason:
+      "No token can carry a parent: the charging-token entity has no parent " +
+      "or group field (models/entities/ChargingTokenEntity.kt), nor does " +
+      "POST /api/v1/tokens's body (models/tokens/ChargingTokenInput.kt), so " +
+      "CERT053-RES and CERT053-CHILD cannot be seeded as one group and no " +
+      "Authorize.conf can name CERT053-GRP.",
+  },
 
   // --- Remote trigger / remote control -------------------------------------
   "cert16-tc010-remote-start": d(COMMAND),
