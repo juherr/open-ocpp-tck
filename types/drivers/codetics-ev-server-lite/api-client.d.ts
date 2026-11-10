@@ -21,12 +21,16 @@
  * level, keyed by server and account, and shared by every client in the
  * process, in-flight attempt included.
  *
- * A REFUSED LOGIN IS CACHED TOO; A TRANSPORT FAILURE IS NOT. If `fetch` threw,
- * the server never counted the attempt (or never answered it), so the entry is
- * dropped and the next call may try again -- that is the readiness gate
- * waiting for a CSMS still booting. If the server ANSWERED with a refusal, it
- * counted it, and retrying would only walk the account into the lockout; the
- * rejection is kept for the life of the process.
+ * ONLY A REFUSED SIGNIN IS CACHED. The counter is incremented by
+ * `POST /api/v1/auth/app/signin` alone (AccountService#login is the one caller
+ * of RateLimiter#check on this path), so a signin the server answered 401, 403
+ * or 429 is the one failure that spent budget and would spend more if retried:
+ * that rejection is kept for the life of the process. Every other failure is
+ * dropped from the cache and the next call tries again -- a `fetch` that threw
+ * (the readiness gate waiting for a CSMS still booting), any answer to the
+ * uncounted `GET /api/v1/auth/csrf`, a 5xx from signin, a 2xx without a token.
+ * Keeping those would turn one bad moment into a failure of every later lane
+ * and scenario, for an attempt that either was not counted or succeeded.
  *
  * FAILURE CLASSES. A request `fetch` could not complete, and one the server
  * answered with a non-2xx status, are both {@link CsmsNotDispatchedError}: for
