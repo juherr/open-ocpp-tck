@@ -948,6 +948,7 @@ the bytes under test, the way a digest does for the stacks above.
 | local image tag | `open-ocpp-tck/codetics-ev-server-lite:<commit>`, never pushed |
 | built by | `drivers/codetics-ev-server-lite/compose.yaml` |
 | licence | Codetics Attribution License 1.0 — cloning counts as acceptance; attribution required |
+| validated | 2026-11-10, built natively on arm64: 47 OCPP 1.6 scenarios in one `run-all --version 1.6`, three lanes, twice with a restart between: 40 PASS, 5 PARTIAL (the same five as SteVe), 0 FAIL, 2 NOT APPLICABLE, nothing retried |
 
 **`tests/vendor-integrity.sh` does not compare this block**, and the shape is
 chosen so that it cannot: A14 reads the `image`, `tag resolved`, `digest` and

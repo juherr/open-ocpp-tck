@@ -18,8 +18,12 @@ Released as `0.3.0`. The documented install ref already points at that tag, so
   endpoint and wait for dispatch, records through its transaction list, and
   `compose.yaml` builds the server from source at a pinned commit — its
   licence, the Codetics Attribution License 1.0, counts cloning as acceptance.
-  `check-driver` reports 43 `DRIVABLE`, 2 `CONDITIONAL` and 2
-  `NOT_APPLICABLE` OCPP 1.6 scenarios; the first live sweep is still to come.
+  `check-driver` reports 45 `DRIVABLE` and 2 `NOT_APPLICABLE` OCPP 1.6
+  scenarios, and a full 1.6 sweep gives 40 PASS, 5 PARTIAL and no failure,
+  so its expected-failure list is empty. The driver README has the coverage
+  per group and the caveat that, on a fresh station, the server's own
+  first-boot `GetConfiguration` can stand in for the driven one in
+  TC_019_1's payload check.
 - **`open-ocpp-tck/csms-driver` gains an optional charge-point administration
   surface** (#154): `CsmsDriver.chargePoints` creates, reads, updates and
   deletes a station's registration with the CSMS — its OCPP identity,

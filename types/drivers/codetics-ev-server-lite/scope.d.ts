@@ -9,7 +9,9 @@
  * Every status below is read off what the admin API can EXPRESS at the pinned
  * commit, not off a run: the first live sweep is what turns a DRIVABLE row
  * green or red, and a red one goes to expected.ts with its evidence, never
- * back here as a demotion. Every operation travels one route,
+ * back here as a demotion. The two exceptions are the rows that were
+ * CONDITIONAL until the 2026-11-10 sweep answered their question; each says
+ * what was measured. Every operation travels one route,
  * `POST /api/v1/stations/{id}/commands`, which forwards the OCPP payload this
  * driver builds; every record comes from `GET /api/v1/transactions`.
  */

@@ -35,7 +35,14 @@ bun bin/ocpp-tck.ts driver provision   # stations on profile 0, the CERT… tags
 bun bin/ocpp-tck.ts driver verify
 bun bin/ocpp-tck.ts driver selftest
 bun bin/ocpp-tck.ts run-all --group core
+
+# the whole OCPP 1.6 suite, three lanes, as the coverage below was measured
+bun bin/ocpp-tck.ts run-all --version 1.6 --parallel --retry-failed-isolated
 ```
+
+Started under another compose project name (`docker compose -p <name> …`),
+the network is `<name>_evsl-internal`: set `EVSL_NETWORK` to match, or the
+simulator cannot reach the server.
 
 The first build compiles the server with Maven and takes several minutes. The
 `local` profile keeps everything in an in-memory H2 database, so **a restart
@@ -84,17 +91,94 @@ a restart resets them:
 
 ## Scope
 
-`ocpp-tck check-driver` reports 43 `DRIVABLE`, 2 `CONDITIONAL` and 2
+`ocpp-tck check-driver` reports 45 `DRIVABLE`, 0 `CONDITIONAL` and 2
 `NOT_APPLICABLE` OCPP 1.6 scenarios; every OCPP 2.0.1 one is not applicable
-through `protocols`. `scope.ts` names the endpoint behind each row and the
-question each `CONDITIONAL` row leaves for the first live run.
+through `protocols`. `scope.ts` names the endpoint behind each row.
+
+The two rows that were `CONDITIONAL` before the first live sweep are
+`DRIVABLE` since, each on what that sweep measured:
+
+- `cert16-tc043-5-send-local-list-differential` asked whether the server keeps
+  the member order of a `SendLocalList` it stores as JSON and re-serialises.
+  It does: the station received
+  `{"listVersion":2,"localAuthorizationList":[{"idTag":"CERT-TAG-2"}],"updateType":"Differential"}`.
+- `cert16-tc019-get-configuration-all` asked whether the server's own
+  first-boot `GetConfiguration` satisfies or shadows the driven one. On a
+  station that had already booted, the trace holds exactly one received
+  `GetConfiguration`, the driven one, so the row is drivable; the caveat below
+  says when the scenario stops measuring the driver.
+
+The two `NOT_APPLICABLE` rows are capabilities the admin API lacks, not
+failures of a run:
+
+- `cert16-tc019-get-configuration-key` — the command endpoint's payload
+  validator checks a member called `key` on every action as a string of 1 to 50
+  characters (`ocpp/OcppValidation.kt:173-180`, applied at `:230-237`), and
+  `GetConfiguration.req`'s `key` is an array, so any key list is refused before
+  it is queued (`ocpp/OcppCommandQueue.kt:73-77` validates on enqueue and turns
+  the fault into an invalid request). Read from the source at the pinned
+  commit; the sweep never asks.
+- `cert16-tc051-cancel-reservation` — no reservation entity, and
+  `GET /api/v1/commands` serves no request payload, so the reservation id the
+  scenario must read back and cancel is unreadable.
 
 ## Coverage
 
-To be filled from the first live sweep.
+Measured 2026-11-10 at the pinned commit, `run-all --version 1.6 --parallel
+--retry-failed-isolated` over `CERTCP1,CERTCP2,CERTCP3`, twice, with a
+container restart and a fresh `driver provision` between the two runs. Both
+sweeps gave the same verdict for every scenario, exited 0 and had nothing to
+retry; each took about 12½ minutes.
+
+| group | scenarios | `DRIVABLE` | `NOT_APPLICABLE` | PASS | PARTIAL | FAIL |
+|---|---|---|---|---|---|---|
+| core | 15 | 14 | 1 | 13 | 1 | 0 |
+| authorize | 3 | 3 | 0 | 3 | 0 | 0 |
+| authlist-reservation | 13 | 12 | 1 | 12 | 0 | 0 |
+| remotetrigger-smartcharging | 12 | 12 | 0 | 8 | 4 | 0 |
+| firmware | 4 | 4 | 0 | 4 | 0 | 0 |
+| **OCPP 1.6** | **47** | **45** | **2** | **40** | **5** | **0** |
+
+The five PARTIAL rows are `tc001` (no `Heartbeat` inside the hold), `tc010`,
+`tc011` and `tc059` (no `Authorize` before a remote start), and `tc054` (no
+`MeterValues`, `FirmwareStatusNotification` or `DiagnosticsStatusNotification`
+sent). Each SKIPPED check reads "scenario does not exercise this": the station
+never sent the message the generic every-CALL-answered check looks for. They
+are the same five rows, with the same SKIPPED checks, that SteVe reports
+(`VENDOR.md`'s SteVe validation table), so they describe the scenarios and the
+simulator rather than this CSMS.
+
+By tag, over the 47 OCPP 1.6 scenarios (a scenario carries one tag or more,
+so the rows do not add up to 47): every scenario tagged `authorization` (4),
+`availability` (1), `data-transfer` (1), `firmware` (4), `local-auth-list`
+(6), `remote-control` (9), `remote-trigger` (2), `smart-charging` (5) and
+`transaction` (20) is `DRIVABLE`; `provisioning` is 5 of 6 and `reservation` 6
+of 7. `check-driver --json`'s `scopeByTag` counts the OCPP 2.0.1 rows too,
+which `protocols` makes `NOT_APPLICABLE`.
+
+## Caveats
+
+- **The first boot of a station brings its own `GetConfiguration`.** On a
+  station's first `BootNotification` since it was registered, the server
+  queues an every-key `GetConfiguration`
+  (`services/stations/StationConfigurationService.kt:83-92`, keyed on
+  `lastBoot == null` in `ocpp/OcppService.kt:127`). The station receives it a
+  moment after the boot — a one-scenario run on a station registered for it
+  showed it, in a scenario that drives nothing. `TC_019_1` accepts *any*
+  received every-key request, so on a freshly provisioned station it no longer
+  checks the payload the driver sent — a driven request that wrongly carried a
+  key filter would still pass — and its response checks may read the station's
+  answer to the server's request instead. A driven request that is never
+  dispatched still turns the row red: `execute()` throws
+  `CsmsNotDispatchedError` and the runner awaits `drive()`. In both sweeps the
+  scenario ran third on its station, so the one request it saw was the driven
+  one. Restart and provision make every station fresh again; a run that puts
+  `cert16-tc019-get-configuration-all` first on a lane measures less than it
+  claims.
 
 ## Deviations
 
-To be filled from the first live sweep: one row per scenario the CSMS drives
-and gets wrong, with the trace evidence, mirrored by an entry in
-`expected.ts`.
+None measured. Neither sweep produced a FAIL or an ERROR, so `expected.ts` is
+empty: no scenario the server drives is known to be answered wrongly. The
+gaps this CSMS does have are the two `NOT_APPLICABLE` rows above — things the
+admin API cannot express, which no run can turn red.

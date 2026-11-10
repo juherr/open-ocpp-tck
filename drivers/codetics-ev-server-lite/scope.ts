@@ -11,7 +11,9 @@
  * Every status below is read off what the admin API can EXPRESS at the pinned
  * commit, not off a run: the first live sweep is what turns a DRIVABLE row
  * green or red, and a red one goes to expected.ts with its evidence, never
- * back here as a demotion. Every operation travels one route,
+ * back here as a demotion. The two exceptions are the rows that were
+ * CONDITIONAL until the 2026-11-10 sweep answered their question; each says
+ * what was measured. Every operation travels one route,
  * `POST /api/v1/stations/{id}/commands`, which forwards the OCPP payload this
  * driver builds; every record comes from `GET /api/v1/transactions`.
  */
@@ -64,16 +66,20 @@ export const EVSL_SCOPE: ScopeTable = {
   "cert16-tc014-soft-reset": d(COMMAND),
   "cert16-tc017-unlock-occupied": d(COMMAND),
   "cert16-tc018-unlock-failure": d(COMMAND),
-  "cert16-tc019-get-configuration-all": {
-    status: "CONDITIONAL",
-    reason:
-      "The every-key GetConfiguration is expressible as an empty command " +
-      "payload. Open question for the first live run: the server also queues " +
-      "an unsolicited GetConfiguration on a station's FIRST BootNotification " +
-      "(OcppService, `lastBoot == null`), so does that second request satisfy " +
-      "or shadow the one this scenario drives when it is the first scenario on " +
-      "a freshly provisioned station?",
-  },
+  "cert16-tc019-get-configuration-all": d(
+    `${COMMAND} The every-key request is an empty command payload. Measured ` +
+      "2026-11-10: on a station that had already booted, the trace holds " +
+      "exactly one received GetConfiguration, the driven one. CAVEAT, which " +
+      "is why this row was CONDITIONAL: the server queues an unsolicited " +
+      "every-key GetConfiguration on a station's FIRST BootNotification " +
+      "(StationConfigurationService#booted), and this scenario accepts any " +
+      "received every-key request -- so run first on a freshly provisioned " +
+      "station it no longer checks the PAYLOAD the driver sent, and its " +
+      "response checks may read the answer to the server's request. A " +
+      "request that is never dispatched still turns the row red: execute() " +
+      "throws CsmsNotDispatchedError and drive() is awaited. README.md's " +
+      "\"Caveats\" section has the evidence.",
+  ),
   "cert16-tc019-get-configuration-key": {
     status: "NOT_APPLICABLE",
     reason: GET_CONFIGURATION_KEYS_UNSUPPORTED,
@@ -97,15 +103,14 @@ export const EVSL_SCOPE: ScopeTable = {
   "cert16-tc043-1-send-local-list-not-supported": d(LOCAL_LIST),
   "cert16-tc043-3-send-local-list-failed": d(LOCAL_LIST),
   "cert16-tc043-4-send-local-list-full": d(LOCAL_LIST),
-  "cert16-tc043-5-send-local-list-differential": {
-    status: "CONDITIONAL",
-    reason:
-      `${LOCAL_LIST} Open question for the first live run: this scenario ` +
-      "asserts the member ORDER of the received SendLocalList " +
-      '(`"listVersion":2,"localAuthorizationList":[{"idTag":"CERT-TAG-2"`), and ' +
-      "the payload is stored as JSON and re-serialised before dispatch -- does " +
-      "the server keep the order it was given?",
-  },
+  "cert16-tc043-5-send-local-list-differential": d(
+    `${LOCAL_LIST} This scenario asserts the member ORDER of the received ` +
+      'SendLocalList (`"listVersion":2,"localAuthorizationList":[{"idTag":"CERT-TAG-2"`), ' +
+      "and the payload is stored as JSON and re-serialised before dispatch. " +
+      "Measured 2026-11-10: the station received " +
+      '`{"listVersion":2,"localAuthorizationList":[{"idTag":"CERT-TAG-2"}],' +
+      '"updateType":"Differential"}`, the order requests.ts builds.',
+  ),
 
   // --- Reservation ---------------------------------------------------------
   "cert16-reservation-basic": d(RESERVE),
