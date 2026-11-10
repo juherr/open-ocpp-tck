@@ -1143,8 +1143,11 @@ export const tc064DataTransferSpec: ScenarioSpec<void> = {
  * stop it doing so, and §3.7.1 says what a CALLERROR does instead -- the
  * station resends the message and finally discards it, so the CSMS's record
  * of the session ends up shorter than the station's.
+ *
+ * Exported ONLY so tests/cert16-gap-checks.ts can hand it frames, as are the
+ * two checks below it.
  */
-function assertStartConfirmed(
+export function assertStartConfirmed(
   rec: AssertRecorder,
   frames: readonly Frame[],
   idTag: string,
@@ -1177,7 +1180,7 @@ function assertStartConfirmed(
  * the wire, and reading it as the busy-connector one would report the first
  * tag's status as the second's.
  */
-function assertStartStatus(
+export function assertStartStatus(
   rec: AssertRecorder,
   frames: readonly Frame[],
   idTag: string,
@@ -1221,7 +1224,7 @@ function assertStartStatus(
  * the one for `secondIdTag` are both integers, and differ. Reusing the open
  * transaction's id would merge two sessions the station keeps apart.
  */
-function assertDistinctTransactionIds(
+export function assertDistinctTransactionIds(
   rec: AssertRecorder,
   frames: readonly Frame[],
   firstIdTag: string,

@@ -560,8 +560,11 @@ export const tc028RemoteStopRejectedSpec: ScenarioSpec<RemoteStopRejectedDriveSt
  * The arguments are literals at the call sites so ASSERT-INVENTORY.txt
  * renders which trigger each check is about -- see the rejected-refactor note
  * beside `assertIdTagInfoStatus` in assert.ts for why a predicate would not.
+ *
+ * Exported ONLY so tests/cert16-gap-checks.ts can hand it frames. Not part of
+ * the driver-author surface: tck/index.ts deliberately re-exports no specs.
  */
-function assertTriggered(
+export function assertTriggered(
   rec: AssertRecorder,
   frames: readonly Frame[],
   requestedMessage: string,

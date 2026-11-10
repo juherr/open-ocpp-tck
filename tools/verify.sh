@@ -74,6 +74,9 @@ run "a CALLERROR fails, a truncated log does not" bun tests/assert-answered.ts
 # TC_019_1 used to reject -- an omitted member -- cannot be produced by any run
 # this repository can perform, only by handing the helper the frames.
 run "an unfiltered GetConfiguration is a shape, not a spelling" bun tests/get-configuration-filter.ts
+# The same way in, for the hand-rolled checks of cert16-tc053, -tc054 and
+# spec48: every red row needs a CSMS or a station answering a chosen wrong way.
+run "the 1.6 gap checks go red for their reasons" bun tests/cert16-gap-checks.ts
 # And in-process because the foreign-sweep refusal reads `docker ps`, so
 # checking it from a shell would mean starting a container per row on the very
 # daemon it protects.

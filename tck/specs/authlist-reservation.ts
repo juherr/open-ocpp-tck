@@ -791,8 +791,11 @@ export const tc052CancelReservationRejectedSpec: ScenarioSpec<void> = {
  * The arguments are literals at the call site so ASSERT-INVENTORY.txt pins
  * them -- see the rejected-refactor note beside `assertIdTagInfoStatus` in
  * assert.ts for why this is not a predicate handed to a generic helper.
+ *
+ * Exported ONLY so tests/cert16-gap-checks.ts can hand it frames. Not part of
+ * the driver-author surface: tck/index.ts deliberately re-exports no specs.
  */
-function assertIdTagInfoParent(
+export function assertIdTagInfoParent(
   rec: AssertRecorder,
   frames: readonly Frame[],
   action: string,
@@ -839,8 +842,10 @@ function assertIdTagInfoParent(
  * to the reservation, which for a tag other than the reserved one is only
  * through the parent the CSMS supplied. The reservationId is the CSMS's own
  * allocation, so it is compared to the request rather than written here.
+ *
+ * Exported ONLY so tests/cert16-gap-checks.ts can hand it frames.
  */
-function assertStartUsesReservation(
+export function assertStartUsesReservation(
   rec: AssertRecorder,
   frames: readonly Frame[],
   idTag: string,

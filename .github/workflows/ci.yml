@@ -134,6 +134,12 @@ jobs:
       - name: An unfiltered GetConfiguration is a shape, not a spelling
         run: bun tests/get-configuration-filter.ts
 
+      # The same way in, for the hand-rolled checks of cert16-tc053, -tc054
+      # and spec48: every red row needs a CSMS or a station answering a
+      # chosen wrong way.
+      - name: The 1.6 gap checks go red for their reasons
+        run: bun tests/cert16-gap-checks.ts
+
       # In-process because the refusal it guards reads `docker ps`: a shell
       # version would start a container per row on the daemon this repository's
       # own sweeps share, to check the rule that keeps two sweeps apart.
