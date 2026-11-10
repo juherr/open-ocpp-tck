@@ -368,8 +368,8 @@ jobs:
 
   # Everything above is offline and proves the drivers type-check. This job
   # proves they WORK: real containers, real OCPP-J frames. It runs once per
-  # bundled driver, and the two lanes are peers -- each answers a question the
-  # other cannot.
+  # bundled driver, and the lanes are peers -- each answers a question the
+  # others cannot.
   #
   # SteVe is the CSMS the 47 scenarios were originally written against, so it
   # is where a capability the harness LOST shows up first. Its scope table
@@ -389,8 +389,14 @@ jobs:
   # left when the pin moved to beta4; the table is empty at the pinned digest
   # and drivers/citrineos/README.md carries the full gap table.
   #
-  # ONE JOB RATHER THAN TWO NEAR-IDENTICAL COPIES, and it is only legal because
-  # both lanes are blocking: a matrix carries one continue-on-error for the
+  # Codetics ev-server-lite is the third: a CSMS reached through one generic
+  # command endpoint, with no reservation entity and no profile registry, and
+  # the only stack here with no image to pull -- it is BUILT from a git context
+  # at the commit drivers/codetics-ev-server-lite/compose.yaml pins. Its
+  # expected-failure table is empty, so any red row is new.
+  #
+  # ONE JOB RATHER THAN NEAR-IDENTICAL COPIES, and it is only legal because
+  # every lane is blocking: a matrix carries one continue-on-error for the
   # whole strategy, so the arrangement this replaced -- one lane muted, one not
   # -- could not have been written here at all.
   e2e:
@@ -404,7 +410,7 @@ jobs:
       # minute.
       fail-fast: false
       matrix:
-        driver: [steve, citrineos]
+        driver: [steve, citrineos, codetics-ev-server-lite]
         # SHARDS, AND THE ONE PLACE THE COUNT IS WRITTEN TWICE. This list and
         # the SHARD_TOTAL below have to agree, and a disagreement is the silent
         # kind: `--shard 1/3` and `--shard 2/3` with a two-entry matrix runs two
@@ -418,11 +424,17 @@ jobs:
         # 24, which is a margin rather than a coin flip. Each shard also boots
         # its OWN CSMS, so it halves the scenarios one server sees -- the lever
         # on citrineos/citrineos#223, where the loops accumulate with the number
-        # of requests one server handles. Growing this list is a two-line edit,
+        # of requests one server handles. It is the same lever on ev-server-lite's
+        # rate limits (60 handshakes per station and 10 logins per fifteen
+        # minutes, counted in its in-memory database): a fresh server per
+        # shard is fresh counters, and a shard spends three logins -- provision,
+        # verify, sweep. Growing this list is a two-line edit,
         # and the guard makes it a three-line one.
         shard: [1, 2]
     # ~10 min of sweep plus image pull, a cold CSMS boot and -- for SteVe --
-    # the one-off provisioning restart. Generous, but far below the 6h default:
+    # the one-off provisioning restart; for ev-server-lite, the image build,
+    # which is minutes cold and a cache load warm. Generous, but far below the
+    # 6h default:
     # a wedged simulator container should fail the build, not occupy a runner
     # all day.
     timeout-minutes: 45
@@ -435,11 +447,17 @@ jobs:
       # service name from inside the network. That asymmetry is why each driver
       # has a separate setting for the two.
       #
-      # Both are set in both lanes. Each driver reads only its own, so the
-      # unused one is inert, and spelling them out here beats a
+      # All are set in every lane. Each driver reads only its own, so the
+      # unused ones are inert, and spelling them out here beats a
       # matrix.include that hides which settings exist at all.
       STEVE_URL: http://localhost:8180/steve/manager
       CITRINE_API_URL: http://localhost:8080
+      # 8380, not 8080, so it cannot collide with CitrineOS on a shared
+      # daemon. The network is the one compose project `evsl` creates; it is
+      # the driver's default too, written out so whoever renames the project
+      # finds the setting it breaks next to the others.
+      EVSL_URL: http://localhost:8380
+      EVSL_NETWORK: evsl_evsl-internal
     steps:
       - uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09 # v5.1.0
         with:
@@ -458,8 +476,38 @@ jobs:
       # 150s for Flyway; CitrineOS runs its migrations on a cold database)
       # shares nothing with installing bun, so the two may as well overlap. The
       # blocking wait below is then usually already satisfied.
+      #
+      # ev-server-lite has no image to pull, so the two steps before this one
+      # build it -- through bake, off the compose file itself, so the pinned
+      # commit stays written in one file rather than also here. The GitHub
+      # Actions cache makes a warm build a layer download, scoped per driver;
+      # mode=max because the Maven compile is in a builder stage that `min`
+      # would not keep. load: the docker-container builder does not share the
+      # daemon's image store, and compose below must find the image there.
+      #
+      # --no-build on both compose calls: a no-op for the stacks that only
+      # pull, and on this one it turns an image the bake step failed to load
+      # into a red step, rather than a silent, uncached second build.
+      - name: Set up buildx
+        if: matrix.driver == 'codetics-ev-server-lite'
+        uses: docker/setup-buildx-action@f87e5991a6d7451dcb8d9637bfbc97413f497069 # v4.4.1
+
+      - name: Build the CSMS image
+        if: matrix.driver == 'codetics-ev-server-lite'
+        uses: docker/bake-action@59cb1203cd42bcefd40a1b6d73b589e48c86040e # v7.5.0
+        with:
+          # The checkout, not the action's default git context: the compose
+          # file is read from the tree under test.
+          source: .
+          files: drivers/codetics-ev-server-lite/compose.yaml
+          targets: ev-server-lite
+          load: true
+          set: |
+            *.cache-from=type=gha,scope=codetics-ev-server-lite
+            *.cache-to=type=gha,mode=max,scope=codetics-ev-server-lite
+
       - name: Start the CSMS
-        run: docker compose -f drivers/${{ matrix.driver }}/compose.yaml up -d
+        run: docker compose -f drivers/${{ matrix.driver }}/compose.yaml up -d --no-build
 
       - uses: oven-sh/setup-bun@0c5077e51419868618aeaa5fe8019c62421857d6 # v2.2.0
         with:
@@ -468,7 +516,7 @@ jobs:
       - run: bun install --frozen-lockfile
 
       - name: Wait for it to be healthy
-        run: docker compose -f drivers/${{ matrix.driver }}/compose.yaml up -d --wait
+        run: docker compose -f drivers/${{ matrix.driver }}/compose.yaml up -d --no-build --wait
 
       - name: Seed the fixtures the scenarios assume
         run: bun bin/ocpp-tck.ts driver provision

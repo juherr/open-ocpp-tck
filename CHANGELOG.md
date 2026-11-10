@@ -23,7 +23,8 @@ Released as `0.3.0`. The documented install ref already points at that tag, so
   so its expected-failure list is empty. The driver README has the coverage
   per group and the caveat that, on a fresh station, the server's own
   first-boot `GetConfiguration` can stand in for the driven one in
-  TC_019_1's payload check.
+  TC_019_1's payload check. CI runs it as a third e2e lane, two shards like
+  the others, building the server image through the GitHub Actions cache.
 - **`open-ocpp-tck/csms-driver` gains an optional charge-point administration
   surface** (#154): `CsmsDriver.chargePoints` creates, reads, updates and
   deletes a station's registration with the CSMS — its OCPP identity,
