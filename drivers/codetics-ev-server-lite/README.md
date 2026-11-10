@@ -48,16 +48,19 @@ The first build compiles the server with Maven and takes several minutes. The
 `local` profile keeps everything in an in-memory H2 database, so **a restart
 is a fresh server**: run `driver provision` again after one.
 
-Two limits are hard-coded in the server and counted in that database, so only
+Three limits are hard-coded in the server and counted in that database, so only
 a restart resets them:
 
 - **ten logins per fifteen minutes** for the admin account. The driver logs in
-  once per process and never retries a login the server refused, but every
-  `ocpp-tck` invocation is a process: provision, verify, selftest and each
-  sweep spend one each.
-- **sixty WebSocket handshakes per fifteen minutes per station.** A full sweep
-  over three stations reconnects each one many times; restart the container
-  before a second sweep.
+  once per process and never retries a signin the server refused (401, 403 or
+  429), but every `ocpp-tck` invocation is a process: provision, verify,
+  selftest and each sweep spend one each.
+- **sixty WebSocket handshakes per fifteen minutes per station**, per client
+  address. A full sweep over three stations reconnects each one many times;
+  restart the container before a second sweep.
+- **a thousand WebSocket handshakes per fifteen minutes per client address**,
+  all stations together (`OcppWebSocketConfiguration.kt`, checked before the
+  per-station one).
 
 ## Environment
 

@@ -170,7 +170,9 @@ class Provisioner {
   }
 
   /**
-   * Removes the tags and the stations. A 409 is the server refusing because a
+   * Removes the tags and the stations of EVSL_STATIONS (`cfg.stations`). A
+   * station the prepare hook registered outside that list is not removed. A
+   * 409 is the server refusing because a
    * transaction is still open on the tag or the station; it is reported, not
    * forced, since forcing it would mean closing a session nobody asked to close.
    */
