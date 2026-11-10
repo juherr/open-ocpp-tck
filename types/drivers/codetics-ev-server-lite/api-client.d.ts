@@ -23,14 +23,19 @@
  *
  * ONLY A REFUSED SIGNIN IS CACHED. The counter is incremented by
  * `POST /api/v1/auth/app/signin` alone (AccountService#login is the one caller
- * of RateLimiter#check on this path), so a signin the server answered 401, 403
- * or 429 is the one failure that spent budget and would spend more if retried:
- * that rejection is kept for the life of the process. Every other failure is
- * dropped from the cache and the next call tries again -- a `fetch` that threw
- * (the readiness gate waiting for a CSMS still booting), any answer to the
- * uncounted `GET /api/v1/auth/csrf`, a 5xx from signin, a 2xx without a token.
- * Keeping those would turn one bad moment into a failure of every later lane
- * and scenario, for an attempt that either was not counted or succeeded.
+ * of RateLimiter#check on this path), and it counts before anything else in
+ * login can fail. A signin answered 401 (bad credentials) or 429 (the limit)
+ * was counted and is deterministic: a retry gets the same answer and spends
+ * more budget. A 403 never reaches login -- the security chain's
+ * access-denied handler sends it, i.e. the CSRF pair was refused -- and is
+ * kept because the same pair would be refused again, not because it was
+ * counted. Those three are kept for the life of the process. Every other
+ * failure is dropped from the cache and the next call tries again: a `fetch`
+ * that threw (the readiness gate waiting for a CSMS still booting), any answer
+ * to the uncounted `GET /api/v1/auth/csrf`, a 2xx without a token, and a
+ * signin 5xx -- which WAS counted, and is retried anyway because it is the
+ * server's transient fault, and keeping it would fail every later lane and
+ * scenario for one bad moment.
  *
  * FAILURE CLASSES. A request `fetch` could not complete, and one the server
  * answered with a non-2xx status, are both {@link CsmsNotDispatchedError}: for

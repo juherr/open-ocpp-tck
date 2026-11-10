@@ -374,8 +374,12 @@ export async function dispatch(
             "FAILED with no result: the server could not write the CALL to the station's socket",
           );
         case "TIMED_OUT":
+          throw new CsmsNotDispatchedError(
+            what,
+            "TIMED_OUT with no SENT observed: nothing shows the CALL was written",
+          );
         case "CANCELLED":
-          throw new CsmsNotDispatchedError(what, `${row.state} before it was sent`);
+          throw new CsmsNotDispatchedError(what, "CANCELLED while still QUEUED");
         case "QUEUED":
           break;
         default:

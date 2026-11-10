@@ -33,14 +33,15 @@
  *     names the command; a command the list never shows is a plain `Error` too.
  *  4. Concurrent callers share one login: three clients, one csrf read, one
  *     signin.
- *  5. Every login failure but a counted refusal is forgotten, and the next call
- *     logs in again: the csrf read refused by transport, by a 5xx or answered
- *     without a token; the signin refused by transport, by a 5xx or answered 2xx
- *     without a token. None of those reached the rate counter, or reached it and
- *     succeeded.
- *  6. A signin refused 401, 403 or 429 is kept: the next call makes no request
- *     at all, and the message says the process will not retry -- a message a
- *     5xx must not carry, because the process will.
+ *  5. Every login failure but a kept signin refusal is forgotten, and the next
+ *     call logs in again: the csrf read refused by transport, by a 5xx or
+ *     answered without a token; the signin refused by transport, by a 5xx or
+ *     answered 2xx without a token. The csrf read is never counted; a signin
+ *     5xx is, and is retried anyway as the server's transient fault.
+ *  6. A signin refused 401, 403 or 429 is kept: a retry would only get the
+ *     same answer (and, for 401 and 429, spend budget). The next call makes no
+ *     request at all, and the message says the process will not retry -- a
+ *     message a 5xx must not carry, because the process will.
  *
  * WHY THIS IS TYPESCRIPT AND NOT A SHELL GUARD. Every row needs the server to
  * answer a chosen way at a chosen moment -- a poll that fails once, a signin

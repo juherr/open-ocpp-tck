@@ -217,9 +217,9 @@ it runs through a command's STATE rather than an HTTP status — the POST queues
 it, a poll reads what became of it — and the row that matters is the one in
 between: a read that fails after the server accepted the command says nothing
 about the wire, and used to be filed as a non-dispatch. Its other half is the
-login cache, because signin is the one call the server rate-counts: a refusal
-it counted is kept, every other login failure is forgotten, and keeping the
-wrong one fails every later lane.
+login cache, because signin is the one call the server rate-counts: a signin
+refusal a retry would only repeat is kept, every other login failure is
+forgotten, and keeping the wrong one fails every later lane.
 `citrineos-device-model-fixture.ts`: the one whose subject is
 least visible from anywhere else. It holds a SEQUENCE of writes — which rows
 `provision` seeds, which one the prepare hook points back, which ones teardown
