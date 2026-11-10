@@ -38,8 +38,12 @@ Released as `0.3.0`. The documented install ref already points at that tag, so
   it for `CSMS_DRIVER=steve` with no further setting. SteVe has no way to clear
   a stored password, so a move to profile 0 or 3 replaces it with a random one
   nobody holds. A refusal SteVe renders on the page is a plain `Error` carrying
-  its error text and never the posted form. `bun tools/steve-charge-points.ts
-  --yes-isolated` re-checks all of it against a live SteVe.
+  its error text and never the posted form. A station is found by its exact
+  id whether the manager lists ids escaped, as 3.15.0 does, or raw, as 3.14.x
+  did: a match found only by decoding the list is confirmed on the station's
+  details page, so `X&amp;` is never taken for a listed `X&amp;amp;`.
+  `bun tools/steve-charge-points.ts --yes-isolated` re-checks all of it
+  against a live SteVe.
 - **`ocpp-tck csms-server` serves a CSMS driver over HTTP/JSON** (#156), so an
   application in any language can provision a charge point and send an OCPP
   1.6 remote operation through the CSMS without importing TypeScript. It loads
@@ -630,6 +634,18 @@ Released as `0.3.0`. The documented install ref already points at that tag, so
   WebAPI facts the provisioner is built on were re-measured and hold, and the
   full sweep's verdict set is identical to 3.14.0's — `VENDOR.md`'s validation
   history has the row.
+- **The SteVe stack pin moved on to `steve-3.15.0`** —
+  `ghcr.io/juherr/steve@sha256:6ef25d9c…`, resolved 2026-11-10, the first pin
+  that is an amd64 + arm64 index. The manager UI the driver scrapes moved from
+  JSP to Thymeleaf; every page, form action and field name it posts survived,
+  and the charge-point list now escapes ids, which the offline fake and the
+  live re-check now model. The concurrent-`StatusNotification` deadlock
+  (steve-community/steve#2107) is fixed upstream: a boot burst that hit it in
+  11 of 20 bursts on 3.14.1 hits it in 0 of 40, the driver README's gap row
+  moved to a Resolved section, and the full sweep — 42 PASS, the same 5
+  PARTIAL — needed no isolated retry. The new `PATCH /ocppTags/{pk}/expire`
+  is not adopted: it expires at `now()` with no margin, by upstream's choice,
+  and is absent before 3.15.0, so `CERT023-EXP` stays aged through SQL.
 - **The simulator image pin moved on to `0.10.1`, and the container now runs
   on the image's own entrypoint** —
   `ghcr.io/shiv3/ocpp-cp-simulator@sha256:1324a3b7…`, the multi-arch index

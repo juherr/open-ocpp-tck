@@ -38,7 +38,8 @@
  *
  * WHY THE FAKE MODELS SPRING AND NOT A GUESS.
  * The fake below is the guard's load-bearing assumption, so it is built from
- * what SteVe actually runs -- Spring Boot 4.1.0, so Spring Security 7.0, with
+ * what SteVe actually runs -- Spring Boot 4.1.2 at steve-3.15.0, so Spring
+ * Security 7.1, with
  * `SecurityConfiguration.java` leaving both CSRF defaults in place:
  *  - `HttpSessionCsrfTokenRepository`: the raw token lives in the SESSION and
  *    is never rotated per request;

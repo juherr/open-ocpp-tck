@@ -47,7 +47,8 @@
  *    measurement said otherwise. It can be an intermittent defect in the CSMS:
  *    the worked example is a MariaDB deadlock under concurrent lanes, where
  *    re-tuning the scenario's timing was tried, shipped and measured to change
- *    nothing (drivers/steve/README.md's gap row, steve-community/steve#2107).
+ *    nothing (drivers/steve/README.md's Resolved row, steve-community/steve#2107,
+ *    fixed in steve-3.15.0).
  *    The handling is the same either way -- do not declare it, let the isolated
  *    retry adjudicate it, and write the finding down in the driver README's gap
  *    table -- but "fix the scenario" is advice that sends the next reader after

@@ -31,8 +31,11 @@
  *     one stops answering 101, SteVe changed the rule and the adapter's
  *     reason to overwrite should be re-read, not the other way round.
  *  6. An id SteVe's validator accepts that looks like markup (`LIVE&amp;155`)
- *     reads back, and the list renders it RAW -- which the fake models and
- *     the adapter's exact match depends on.
+ *     reads back, and the list renders it ESCAPED -- which the fake models by
+ *     default. Up to 3.14.x the list wrote it raw, which is why the adapter
+ *     confirms a match it only finds decoded against the details form. And
+ *     the list query's LIKE is case-insensitive with `_` a wildcard:
+ *     `live_amp;155` lists it.
  *
  * Run it against a stack with unknown-station auto-registration OFF, so the
  * boot in 2 is the provisioning working and not SteVe registering a stranger:
@@ -47,7 +50,7 @@
  */
 import { createSteveCsmsDriver } from "../packages/csms-driver/steve";
 import { unknowablePassword } from "../packages/csms-driver/steve/charge-points";
-import { chargeBoxPkOf, STEVE_CHARGE_POINT_PAGES } from "../packages/csms-driver/steve/forms";
+import { listedChargeBoxes, STEVE_CHARGE_POINT_PAGES } from "../packages/csms-driver/steve/forms";
 import { SteveUiOps } from "../packages/csms-driver/steve/ui-client";
 import { defaultSteveConfig } from "../drivers/steve/ui-client";
 import { chargePointAdminViolations, clearConformanceStations } from "../tests/lib/charge-point-conformance";
@@ -123,7 +126,8 @@ async function station(cpId: string, basicAuthPassword: string, answer: object) 
 
 /** What an operator does in the manager UI: open the details page, set the profile, leave the password empty. */
 async function operatorSetsProfile(cpId: string, profile: string): Promise<void> {
-  const pk = chargeBoxPkOf(await operator.page(STEVE_CHARGE_POINT_PAGES.query(cpId)), cpId);
+  const pk = listedChargeBoxes(await operator.page(STEVE_CHARGE_POINT_PAGES.query(cpId)), cpId).find((row) => row.verbatim)
+    ?.chargeBoxPk;
   if (pk === undefined) throw new Error(`${cpId} is not listed`);
   await operator.submitForm(STEVE_CHARGE_POINT_PAGES.details(pk), STEVE_CHARGE_POINT_PAGES.updateAction, {
     submitter: "update",
@@ -179,7 +183,10 @@ observe("station after delete", await admin.get(STATION), null);
 await admin.create({ id: MARKUP_STATION, registration: "Pending" });
 observe(`${MARKUP_STATION} read back`, (await admin.get(MARKUP_STATION))?.id, MARKUP_STATION);
 const listed = await operator.page(STEVE_CHARGE_POINT_PAGES.query(MARKUP_STATION));
-observe(`${MARKUP_STATION} as the list renders it`, listed.includes(`>${MARKUP_STATION}</a>`) ? "raw" : "escaped", "raw");
+observe(`${MARKUP_STATION} as the list renders it`, listed.includes(`>${MARKUP_STATION}</a>`) ? "raw" : "escaped", "escaped");
+const likeQuery = "live_amp;155";
+const likeListed = await operator.page(STEVE_CHARGE_POINT_PAGES.query(likeQuery));
+observe(`the list query for ${likeQuery}`, likeListed.includes("/chargepoints/details/") ? "lists it" : "lists nothing", "lists it");
 await admin.delete(MARKUP_STATION);
 observe(`${MARKUP_STATION} after delete`, await admin.get(MARKUP_STATION), null);
 

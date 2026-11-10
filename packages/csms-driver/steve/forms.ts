@@ -147,22 +147,33 @@ export function chargePointFromForm(fields: URLSearchParams): ChargePointDetails
   };
 }
 
+/** A list row naming the id asked for; `verbatim` when its text matched as written. */
+export interface ListedChargeBox {
+  readonly chargeBoxPk: number;
+  readonly verbatim: boolean;
+}
+
 /**
- * The `chargeBoxPk` the list page links `cpId` to. Matched on the link text
- * EXACTLY: the query page filters with LIKE, so asking for `CP-1` also lists
- * `CP-10`.
+ * The rows of the list page whose link text is `cpId`. Matched EXACTLY: the
+ * query page filters with LIKE -- case-insensitive, `_` and `%` wildcards --
+ * so asking for `CP-1` also lists `CP-10`.
  *
- * Compared RAW first: the pinned image's chargepoints.jsp writes
- * `${cp.chargeBoxId}` unescaped, and an id its validator accepts may look
- * like markup -- `CP&amp;01` is listed as `CP&amp;01`, which decoded is
- * another id. The decoded text is a fallback for a SteVe that escapes the
- * list, and is consulted only when no link matches raw.
+ * `verbatim` rows match the text as written and are `cpId` whichever way the
+ * list renders. The others match only once decoded, and the rendering decides
+ * what that proves. SteVe escapes the list from 3.15.0 on, and there the
+ * decoded text IS the id: `CP&01` is written `CP&amp;01`. Up to 3.14.x it
+ * wrote `${cp.chargeBoxId}` raw, and there a decoded match is another
+ * station: `X&amp;amp;` is listed for `X&amp;` and reads `X&amp;` decoded.
+ * The page does not say which rendering it is, so the caller confirms a
+ * decoded match against the details form, which escapes the id on both.
  */
-export function chargeBoxPkOf(listHtml: string, cpId: string): number | undefined {
-  const links = [...listHtml.matchAll(/<a href="[^"]*\/chargepoints\/details\/(\d+)">([^<]*)<\/a>/g)];
-  const link = links.find((candidate) => candidate[2] === cpId) ??
-    links.find((candidate) => decodeHtml(candidate[2]) === cpId);
-  return link === undefined ? undefined : Number(link[1]);
+export function listedChargeBoxes(listHtml: string, cpId: string): ListedChargeBox[] {
+  const listed: ListedChargeBox[] = [];
+  for (const [, pk, text] of listHtml.matchAll(/<a href="[^"]*\/chargepoints\/details\/(\d+)">([^<]*)<\/a>/g)) {
+    if (text === cpId) listed.push({ chargeBoxPk: Number(pk), verbatim: true });
+    else if (decodeHtml(text) === cpId) listed.push({ chargeBoxPk: Number(pk), verbatim: false });
+  }
+  return listed;
 }
 
 export function toSteveForm(op: CsmsOperation16): {

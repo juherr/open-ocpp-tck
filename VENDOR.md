@@ -454,12 +454,12 @@ conformance run that cannot name the bytes it tested proves nothing.
 | field | value |
 |---|---|
 | image | `ghcr.io/juherr/steve` |
-| tag resolved | `steve-3.14.1` |
-| digest | `sha256:c3fbfcc3f220dc63c13c4accbab7a90757984c1902af2c9e4233bedcc3675400` |
+| tag resolved | `steve-3.15.0` |
+| digest | `sha256:6ef25d9c624d6bfa6c3e867434109a41ea616d2fd2cc553e9becb1aea022d8db` |
 | image | `mariadb` |
 | tag resolved | `11.8` |
 | digest | `sha256:d9f7eb2637296652f24b484afd5d246f759f49f5babcadc6a9e344c9acb75fbf` |
-| resolved on | SteVe 2026-09-12, MariaDB 2026-08-11, from the registry manifest `Docker-Content-Digest` |
+| resolved on | SteVe 2026-11-10, MariaDB 2026-08-11, from the registry manifest `Docker-Content-Digest` |
 | declared in | `drivers/steve/compose.yaml` |
 
 ### Validation history
@@ -480,13 +480,14 @@ read as a vendored-file row and fails the build.
 
 | SteVe | digest | validated | `all` (44) | `authorize` (3) |
 |---|---|---|---|---|
-| `steve-3.14.1` — **current pin** | `sha256:c3fbfcc3…` | 2026-09-12 | 47 OCPP 1.6 scenarios in one `run-all` (`authorize` folded in): 40 PASS, 5 PARTIAL, 0 FAIL; 2 parallel-only flakes (`tc003`, `tc004`) PASS on isolated retry — 42 PASS counting it. The 5 PARTIAL are the same five SKIPPED checks the 3.14.0 pin reports the same day on CI (`tc001`, `tc010`, `tc011`, `tc054`, `tc059`), so the verdict set is unchanged | in the sweep: 3 PASS |
+| `steve-3.15.0` — **current pin** | `sha256:6ef25d9c…` | 2026-11-10 | 47 OCPP 1.6 scenarios in one `run-all` (`authorize` folded in), three lanes, run natively on arm64: 42 PASS, 5 PARTIAL, 0 FAIL, and no isolated retry needed — the first full run without a flake. The 5 PARTIAL are the same five SKIPPED checks as the 3.14.1 row. The last CI sweep on 3.14.1 that day had four parallel-only flakes (`tc003`, `tc004`, `tc005`, `tc014`) | in the sweep: 3 PASS |
+| `steve-3.14.1` | `sha256:c3fbfcc3…` | 2026-09-12 | 47 OCPP 1.6 scenarios in one `run-all` (`authorize` folded in): 40 PASS, 5 PARTIAL, 0 FAIL; 2 parallel-only flakes (`tc003`, `tc004`) PASS on isolated retry — 42 PASS counting it. The 5 PARTIAL are the same five SKIPPED checks the 3.14.0 pin reports the same day on CI (`tc001`, `tc010`, `tc011`, `tc054`, `tc059`), so the verdict set is unchanged | in the sweep: 3 PASS |
 | `steve-3.14.0` | `sha256:aa56949a…` | 2026-08-11 | 44 PASS, 0 PARTIAL, 0 N/A; 1 parallel-only flake (`tc013-hard-reset`) PASS on isolated retry | 3 PASS |
 | `steve-3.13.0` | `sha256:a1e6647d…` | 2026-08-11 | 44 PASS, 0 PARTIAL, 0 N/A; 1 parallel-only flake (`tc014-soft-reset`) PASS on isolated retry | 3 PASS |
 
-None of the three versions needed a single line of driver or provisioner
-change — that is the column that would have mattered most, and it is uniform,
-so it is stated here rather than repeated per row. The 3.14.1 row's PARTIALs
+None of the four versions needed a single line of driver or provisioner
+change to pass — that is the column that would have mattered most, and it is
+uniform, so it is stated here rather than repeated per row. The 3.14.1 row's PARTIALs
 are not a regression against the 3.14.0 row's zero: the suite grew SKIPPED
 checks between the two dates, and the same five rows are PARTIAL on 3.14.0 in
 that day's CI run.
@@ -499,15 +500,36 @@ answer 200 with their filters, a past `expiryDate` is still refused 400, and
 `web_user.api_password` still gates the WebAPI — and `driver selftest`
 answered all 12 record calls.
 
-Every flake in the table was parallel-lane interference, not CSMS behaviour:
-each passed on the isolated sequential retry, and they were different
+3.15.0 moved the manager UI from JSP to Thymeleaf (steve-community/steve#2162).
+Every URL, form action and field name the driver posts survived, and so did the
+CSRF rendering the driver reads; what changed is that the charge-point list now
+escapes ids. That moved the offline fake (`tests/fixtures/fake-steve-manager.ts`,
+re-modelled from pages captured on this digest) and exposed a lookup edge on
+the raw lists of 3.14.x, fixed in the same move: a match found only by decoding
+the list is confirmed on the details page. It is also the first pin that is a
+multi-architecture index (amd64 and arm64); `c3fbfcc3…` is an amd64-only
+manifest, and the `steve-3.14.1` tag has since been republished as an index,
+so a rollback names the digest, not the tag. Three upstream changes were
+checked against the suite rather than assumed: the `evse` deadlock is gone
+(steve-community/steve#2108 — a boot burst of fresh stations answered
+`InternalError` in 11 of 20 bursts of three on 3.14.1 and in 0 of 40 on
+3.15.0, both run natively on arm64); OCPP
+payloads are no longer HTML-encoded (#1981), and no scenario sends or asserts
+a value that encoding would have changed; and incoming OCPP messages now go
+through an in-memory queue with no per-station ordering (#2125), which the
+archived traces show matters only where a station has two CALLs open at once
+— `tc013`'s reboot — and which the sweep above passed without a retry.
+
+Every flake in the older rows was parallel-lane contention inside the CSMS —
+the `evse` deadlock above, once it was root-caused: each passed on the
+isolated sequential retry, and they were different
 scenarios on every run. That is the pattern `--retry-failed-isolated` exists
 for.
 
 Moving this pin is not a version bump — every statement below is what the
 provisioner is built on, so each was re-measured against the running container
-before each move (3.14.0 on 2026-08-11, 3.14.1 on 2026-09-12). All of them
-still hold, and held identically on 3.13.0:
+before each move (3.14.0 on 2026-08-11, 3.14.1 on 2026-09-12, 3.15.0 on
+2026-11-10). All of them still hold, and held identically on 3.13.0:
 
 - SteVe's WebAPI exposes `ocppTags`, `operations` and `transactions` — and
   nothing else. Probed on this digest: `chargePoints`, `reservations` and
@@ -535,8 +557,13 @@ still hold, and held identically on 3.13.0:
   `provision.ts`. That write dates `CERT023-EXP` from MariaDB's own clock at
   provisioning time, not from a fabricated historical date, which is what
   [steve-community/steve#2100][sc2100] settled on: a `PATCH
-  /ocppTags/{pk}/expire` endpoint expiring with `now()`. If it lands, the SQL
-  write folds into REST and the fixture keeps the same meaning.
+  /ocppTags/{pk}/expire` endpoint expiring with `now()`. It landed in 3.15.0
+  ([#2103][sc2103]), and the SQL write stays for good: the endpoint expires at
+  `now()` and nothing earlier — a margin was asked for and the maintainer
+  declined it — while `verify` checks the instant against the host's clock,
+  so it would read through the skew between two clocks (72 ms of margin on the
+  probe, round trip included). It also answers 404 on every release before
+  3.15.0, which this table says the driver still targets.
 - API access is off until `web_user.api_password` (bcrypt, distinct from the
   UI password) is set, and SteVe reads that column once at startup. There is
   still no environment variable for it, so `provision` writes it and restarts
@@ -545,11 +572,13 @@ still hold, and held identically on 3.13.0:
   [#2059][sc2059] (a Web UI for those accounts) are what would end it.
 
 Every remaining database access in `drivers/steve/` is one of these four gaps,
-and nothing else — which is the property to preserve when editing that driver:
+and nothing else — which is the property to preserve when editing that driver.
+The first is no longer a gap waiting on upstream but a settled answer; the
+other three would each fold into REST the day their ticket lands:
 
 | what needs the database | upstream ticket |
 |---|---|
-| write a past `expiry_date` | [#2100][sc2100] |
+| write a past `expiry_date` | [#2100][sc2100] — answered by [#2103][sc2103] with no margin, by design; the SQL write is permanent (see the bullet above) |
 | turn the WebAPI on (`web_user.api_password`) | [#2075][sc2075], [#2059][sc2059] |
 | read reservation status; teardown's reservation guard | [#2074][sc2074] |
 | create, verify and remove charging profiles | [#2069][sc2069] |
@@ -582,6 +611,7 @@ TC_052 passes on this digest. If TC_052 ever regresses, read that header first.
 [sc2074]: https://github.com/steve-community/steve/issues/2074
 [sc2075]: https://github.com/steve-community/steve/issues/2075
 [sc2100]: https://github.com/steve-community/steve/issues/2100
+[sc2103]: https://github.com/steve-community/steve/pull/2103
 [sc1000]: https://github.com/steve-community/steve/issues/1000
 [sc2059]: https://github.com/steve-community/steve/issues/2059
 
