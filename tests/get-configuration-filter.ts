@@ -64,13 +64,14 @@ const cases: Array<{
   expect: "PASS" | "FAIL";
 }> = [
   {
-    // The issue #31 case, and the only one no driver here can produce.
+    // The issue #31 case. Neither of the first two bundled drivers produces
+    // it; drivers/codetics-ev-server-lite, added later, does.
     name: "the key member is omitted -- the idiomatic 'no filter'",
     lines: [req({})],
     expect: "PASS",
   },
   {
-    // What both bundled drivers send. Was the ONLY accepted spelling.
+    // What the first two bundled drivers send. Was the ONLY accepted spelling.
     name: "the key member is an empty array -- the same request",
     lines: [req({ key: [] })],
     expect: "PASS",

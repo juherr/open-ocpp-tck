@@ -342,7 +342,7 @@ ever pass and delete the entry.
 
 ### Two worked examples
 
-Two drivers ship here, and they are worth reading together because they solve
+Two of the bundled drivers are worth reading together because they solve
 the same problem through completely different surfaces — which is the strongest
 evidence that the contract is not shaped around either of them.
 
@@ -350,6 +350,12 @@ evidence that the contract is not shaped around either of them.
 from MariaDB. `drivers/citrineos/` posts JSON to a generated REST API and reads
 from Postgres, and additionally supports two incompatible releases of its CSMS
 behind one `CITRINE_VARIANT` setting.
+
+A third, `drivers/codetics-ev-server-lite/`, is the smallest worked example of
+a driver over a plain REST API: one generic command endpoint carries every
+operation, so its `execute()` is a payload builder plus a wait for dispatch,
+and the CSMS has no reservation entity and no charging-profile registry, so it
+omits one record surface and owns the other as a fixture table.
 
 For the mechanics of the contract — the operation switch, the record queries,
 the bootstrap verbs — either one works as a model. For **what to do when your
@@ -363,7 +369,7 @@ row.
 
 ## Contributing back
 
-Pull requests welcome for the core, either bundled driver, and new scenarios.
+Pull requests welcome for the core, any bundled driver, and new scenarios.
 Two rules the test suite enforces rather than merely documents:
 
 - **`tests/generic-core.sh`** — nothing under `tck/` may name a CSMS, no driver

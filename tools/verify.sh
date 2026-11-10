@@ -50,6 +50,7 @@ run "driver scope: citrineos (v1)" bun run check:driver:citrineos-v1
 # override that selects the v1.9.1 image has to carry the configuration that
 # image reads, since the base file stopped carrying it at v2.0.0-beta4.
 run "the v1 compose override configures v1.9.1" bash tests/citrineos-v1-override.sh
+run "driver scope: codetics-ev-server-lite" bun run check:driver:codetics-ev-server-lite
 run "driver scope follows the env" bun tests/driver-env-scope.ts
 run "scenario protocol selection and simulator compatibility" bun tests/scenario-version.ts
 run "scenario tags are declared, closed and selected on" bun tests/scenario-tags.ts
@@ -106,6 +107,11 @@ run "the manager-UI client survives concurrent lanes" bun tests/steve-ui-session
 # refuse a request a chosen way -- a 503, a body that stalls mid-stream, a 200
 # that is not JSON. The pinned image produces none of them on demand.
 run "a request that never reached the CSMS says so" bun tests/citrineos-transport-classification.ts
+# And in-process for the same reason, one driver over: a poll that fails once,
+# a signin that 503s, a command that sits QUEUED are answers the pinned server
+# gives on nobody's demand, and a refused signin spends a budget only a restart
+# gives back.
+run "an accepted command is not reported undispatched" bun tests/codetics-ev-server-lite-dispatch.ts
 # And in-process for the reason its own header gives: what it holds is a
 # SEQUENCE of writes, and a CSMS answers a right fixture and a wrong one with
 # the same empty StatusNotificationResponse.

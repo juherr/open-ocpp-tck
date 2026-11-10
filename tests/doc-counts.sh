@@ -51,6 +51,8 @@ word_to_number() {
     sixteen) echo 16 ;; seventeen) echo 17 ;; eighteen) echo 18 ;;
     nineteen) echo 19 ;; twenty) echo 20 ;; twenty-one) echo 21 ;; twenty-two) echo 22 ;;
     twenty-three) echo 23 ;; twenty-four) echo 24 ;; twenty-five) echo 25 ;;
+    twenty-six) echo 26 ;; twenty-seven) echo 27 ;; twenty-eight) echo 28 ;;
+    twenty-nine) echo 29 ;; thirty) echo 30 ;;
     *) echo "" ;;
   esac
 }

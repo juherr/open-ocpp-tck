@@ -89,6 +89,10 @@ jobs:
       - name: The v1 compose override configures v1.9.1
         run: bash tests/citrineos-v1-override.sh
 
+      # The third driver, OCPP 1.6 only. Offline like the two above.
+      - name: Codetics ev-server-lite driver agrees with the core
+        run: bun run check:driver:codetics-ev-server-lite
+
       # In-process, because the CLI can only ever pass process.env: that a
       # driver's declarations follow the env they are RESOLVED with, not the
       # one that happened to exist at import, is unreachable from a shell.
@@ -179,6 +183,13 @@ jobs:
       # the charge point was never asked to perform.
       - name: A request that never reached the CSMS says so
         run: bun tests/citrineos-transport-classification.ts
+
+      # And in-process for the same reason, one driver over: a poll that fails
+      # once, a signin that 503s, a command that sits QUEUED are answers the
+      # pinned server gives on nobody's demand, and a refused signin spends a
+      # budget only a restart gives back.
+      - name: An accepted command is not reported undispatched
+        run: bun tests/codetics-ev-server-lite-dispatch.ts
 
       # In-process because what it holds is a SEQUENCE of writes -- what was
       # inserted, what was pointed back, what was left alone -- and a CSMS

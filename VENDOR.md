@@ -185,6 +185,15 @@ the drivers are native here, and the name now says so.
 | `drivers/citrineos/variant.ts` | `local-native` | `—` | `—` | `—` | `—` |
 | `drivers/citrineos/provision.ts` | `local-native` | `—` | `—` | `—` | `—` |
 | `drivers/citrineos/device-model.ts` | `local-native` | `—` | `—` | `—` | `—` |
+| `drivers/codetics-ev-server-lite/index.ts` | `local-native` | `—` | `—` | `—` | `—` |
+| `drivers/codetics-ev-server-lite/config.ts` | `local-native` | `—` | `—` | `—` | `—` |
+| `drivers/codetics-ev-server-lite/api-client.ts` | `local-native` | `—` | `—` | `—` | `—` |
+| `drivers/codetics-ev-server-lite/requests.ts` | `local-native` | `—` | `—` | `—` | `—` |
+| `drivers/codetics-ev-server-lite/profiles.ts` | `local-native` | `—` | `—` | `—` | `—` |
+| `drivers/codetics-ev-server-lite/records.ts` | `local-native` | `—` | `—` | `—` | `—` |
+| `drivers/codetics-ev-server-lite/scope.ts` | `local-native` | `—` | `—` | `—` | `—` |
+| `drivers/codetics-ev-server-lite/expected.ts` | `local-native` | `—` | `—` | `—` | `—` |
+| `drivers/codetics-ev-server-lite/provision.ts` | `local-native` | `—` | `—` | `—` | `—` |
 
 Deliberately **not** imported from upstream: `steve-api.ts` (SteVe 3.13.0 REST
 client, 763 lines), `capability-probe.ts` (probes a live SteVe container),
@@ -921,3 +930,37 @@ Worth recording because it is the claim the second driver exists to test:
 **every other group passed unmodified** — core, remote-trigger, smart charging,
 local auth list and firmware — against a CSMS that had no part in writing the
 scenarios, and no scenario needed editing to accommodate it.
+
+## Source-built CSMS
+
+### Codetics ev-server-lite
+
+The third driver's environment, and the one stack here with no image to pin:
+upstream publishes none, so `drivers/codetics-ev-server-lite/compose.yaml`
+builds it from a git build context at a full commit sha. The sha is what pins
+the bytes under test, the way a digest does for the stacks above.
+
+| field | value |
+|---|---|
+| repository | `https://github.com/codetics-software/ev-server-lite` |
+| commit | `0a9b1cc5125cee0dec537165caa6f29cda64124c` (`main`, 2026-11-10) |
+| build context | `ev-server/` at that commit, upstream's own `Dockerfile` |
+| local image tag | `open-ocpp-tck/codetics-ev-server-lite:<commit>`, never pushed |
+| built by | `drivers/codetics-ev-server-lite/compose.yaml` |
+| licence | Codetics Attribution License 1.0 — cloning counts as acceptance; attribution required |
+| validated | 2026-11-10, built natively on arm64: 47 OCPP 1.6 scenarios in one `run-all --version 1.6`, three lanes, twice with a restart between: 40 PASS, 5 PARTIAL (the same five as SteVe), 0 FAIL, 2 NOT APPLICABLE, nothing retried |
+
+**`tests/vendor-integrity.sh` does not compare this block**, and the shape is
+chosen so that it cannot: A14 reads the `image`, `tag resolved`, `digest` and
+`declared in` rows of a two-column table and requires the declaring file to
+carry an `image@sha256:` string, which a build context does not have. None of
+those four field names appears above, so A14 skips the block rather than
+failing on it. Moving the pin therefore means editing the commit in both
+places by hand, in the same commit. What the sha does not pin is upstream's
+`Dockerfile` base images (`maven:3.9-eclipse-temurin-25`,
+`eclipse-temurin:25-jre`), which are tags in a file this repository does not
+patch.
+
+Nothing of that repository is redistributed here: the daemon clones it on the
+machine that runs the compose file. `drivers/codetics-ev-server-lite/README.md`
+states the licence for whoever does.

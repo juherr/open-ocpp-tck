@@ -1,0 +1,67 @@
+# Codetics ev-server-lite, built from source at a pinned upstream commit.
+#
+# There is no published image, so this file builds one: the build context is
+# the upstream repository's `ev-server/` directory at a full commit sha, which
+# is what pins the bytes under test (VENDOR.md records it, under "Source-built
+# CSMS"). The upstream Dockerfile's own base images are not digest-pinned;
+# that is upstream's file and it is not patched here.
+#
+#   docker compose -f drivers/codetics-ev-server-lite/compose.yaml up -d --build --wait
+#
+# The `local` profile runs on an in-memory H2 database, so every restart is a
+# fresh server: the fixtures `ocpp-tck driver provision` seeds are gone, and so
+# are the login and handshake rate-limit counters, which live in that database.
+#
+# LICENCE. The upstream repository is under the "Codetics Attribution License
+# 1.0", which counts cloning as acceptance and requires attribution. This file
+# makes the docker daemon clone it; this repository redistributes none of it.
+# See drivers/codetics-ev-server-lite/README.md.
+name: evsl${TCK_SUFFIX:-}
+
+services:
+  ev-server-lite:
+    build:
+      context: https://github.com/codetics-software/ev-server-lite.git#0a9b1cc5125cee0dec537165caa6f29cda64124c:ev-server
+    image: open-ocpp-tck/codetics-ev-server-lite:0a9b1cc5125cee0dec537165caa6f29cda64124c
+    container_name: ev-server-lite${TCK_SUFFIX:-}
+    restart: unless-stopped
+    environment:
+      - SPRING_PROFILES_ACTIVE=local
+      - PORT=8080
+      - COOKIE_SECURE=false
+      # Security profile 0 (no station password) is refused unless this is
+      # set; the stations `driver provision` registers are put on profile 0.
+      - OCPP_ALLOW_UNAUTHENTICATED=true
+      # The administrator the driver logs in as, created on first start. The
+      # password must be 16 to 128 characters or the server refuses to start;
+      # these match the driver's defaults in config.ts.
+      - BOOTSTRAP_EMAIL=tck@example.com
+      - BOOTSTRAP_PASSWORD=open-ocpp-tck-admin-password
+      - BOOTSTRAP_TENANT=codetics
+    ports:
+      - "127.0.0.1:${EVSL_PORT:-8380}:8080"
+    networks:
+      - evsl-internal
+    # The runtime image (eclipse-temurin:25-jre) ships neither curl nor wget,
+    # so the probe is bash's own /dev/tcp. The READINESS group rather than the
+    # root health endpoint: Spring Boot moves readiness to ACCEPTING_TRAFFIC
+    # only after the application runners have run, and the bootstrap
+    # administrator the driver logs in as is created by one. A login refused
+    # before that is cached for the whole process (api-client.ts). The upstream
+    # security configuration leaves both paths open without authentication,
+    # and application.yml enables the probe groups.
+    healthcheck:
+      test:
+        - CMD
+        - bash
+        - -c
+        - |-
+          exec 3<>/dev/tcp/127.0.0.1/8080 && printf 'GET /actuator/health/readiness HTTP/1.0\r\nHost: localhost\r\n\r\n' >&3 && grep -q '"UP"' <&3
+      interval: 10s
+      timeout: 5s
+      retries: 30
+      start_period: 120s
+
+networks:
+  evsl-internal:
+    driver: bridge
