@@ -838,6 +838,11 @@ Released as `0.3.0`. The documented install ref already points at that tag, so
 
 ### Fixed
 
+- **`check:fixture-tags` reads the simulator's tags from the image again, and
+  refuses to compare an empty set.** It grepped `/app/src`, which from `0.10.0`
+  holds only a launch shim, so it would have found no tag, no driver could
+  have been missing one, and it exited 0. It now greps the CLI bundle under `/app/dist-cli`, and
+  fails when it finds nothing there.
 - **`cert201-tcf27-trigger-not-implemented` no longer depends on which
   triggers the simulator implements.** It asked for a
   `FirmwareStatusNotification`, a value the pinned simulator happens to leave
