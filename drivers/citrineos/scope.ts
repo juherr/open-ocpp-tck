@@ -13,7 +13,8 @@
  * numbers. The seven NOT_APPLICABLE rows were predicted from the sources first
  * and then confirmed against a running container, whose /docs/json advertises
  * 18 `/ocpp/1.6/` paths with neither `reserveNow` nor `cancelReservation`
- * among them.
+ * among them. `cert16-tc053` came after that sweep and is NOT_APPLICABLE on
+ * the same missing route, never having been run here.
  *
  * ONE ROW IS DRIVABLE AND CURRENTLY RED, ON PURPOSE. `tck/scope.ts` forbids
  * demoting a row to NOT_APPLICABLE to make a red scenario go away, because
@@ -62,6 +63,7 @@ const V2_SCOPE = {
   "cert16-tc048-4-reserve-now-rejected": na(NO_RESERVATIONS),
   "cert16-tc051-cancel-reservation": na(NO_RESERVATIONS),
   "cert16-tc052-cancel-reservation-rejected": na(NO_RESERVATIONS),
+  "cert16-tc053-reserved-connector-parent-idtag": na(NO_RESERVATIONS),
 
   // --- Core ----------------------------------------------------------------
   "cert16-tc001-cold-boot": d(OBSERVED),
@@ -79,6 +81,11 @@ const V2_SCOPE = {
   "cert16-tc024-lock-failure": d(OBSERVED),
   "cert16-tc061-clear-cache": d(OBSERVED),
   "cert16-tc064-data-transfer": d(OBSERVED),
+  "cert16-spec48-start-transaction-busy-connector": d(
+    "Station-initiated: the scenario drives no operation, and needs the " +
+      "transaction support tc003 established. Added after the sweep that " +
+      "settled this table, so its verdict is the next CI run's to give.",
+  ),
 
   // --- GetConfiguration ----------------------------------------------------
   // The batching worry did not materialise: CitrineOS splits a request into

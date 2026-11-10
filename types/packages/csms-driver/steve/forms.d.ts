@@ -93,7 +93,17 @@ export interface ListedChargeBox {
  * decoded match against the details form, which escapes the id on both.
  */
 export declare function listedChargeBoxes(listHtml: string, cpId: string): ListedChargeBox[];
-export declare function toSteveForm(op: CsmsOperation16): {
+/**
+ * What toSteveForm() cannot know from the operation alone.
+ *
+ * `reservedTagParent` is the parent SteVe stores for a ReserveNow's `idTag`
+ * -- null for a tag with none -- and is left undefined when nobody looked it
+ * up. Only a ReserveNow carrying a `parentIdTag` needs it; see that case.
+ */
+export interface SteveFormContext {
+    readonly reservedTagParent?: string | null;
+}
+export declare function toSteveForm(op: CsmsOperation16, context?: SteveFormContext): {
     opPath: string;
     fields: Record<string, string>;
 };

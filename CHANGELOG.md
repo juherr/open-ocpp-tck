@@ -18,13 +18,48 @@ Released as `0.3.0`. The documented install ref already points at that tag, so
   endpoint and wait for dispatch, records through its transaction list, and
   `compose.yaml` builds the server from source at a pinned commit — its
   licence, the Codetics Attribution License 1.0, counts cloning as acceptance.
-  `check-driver` reports 45 `DRIVABLE` and 2 `NOT_APPLICABLE` OCPP 1.6
-  scenarios, and a full 1.6 sweep gives 40 PASS, 5 PARTIAL and no failure,
-  so its expected-failure list is empty. The driver README has the coverage
+  `check-driver` reports 46 `DRIVABLE` and 3 `NOT_APPLICABLE` OCPP 1.6
+  scenarios, and a full 1.6 sweep gives 40 PASS, 5 PARTIAL and no failure.
+  Its expected-failure list holds one entry, from a scenario added after that
+  sweep: the server answers a `StartTransaction` on a busy connector with a
+  CALLERROR (below), which its README records as a deviation. The driver
+  README has the coverage
   per group and the caveat that, on a fresh station, the server's own
   first-boot `GetConfiguration` can stand in for the driven one in
   TC_019_1's payload check. CI runs it as a third e2e lane, two shards like
   the others, building the server image through the GitHub Actions cache.
+- **`cert16-tc053-reserved-connector-parent-idtag` covers OCA `TC_053`**, use
+  a reserved connector with a `parentIdTag`. The CSMS reserves connector 1 for
+  `CERT053-RES` with parent `CERT053-GRP`, and `CERT053-CHILD`, another tag of
+  that group, charges on it: the station learns the child's parent from the
+  `Authorize.conf`, so a CSMS that leaves `parentIdTag` out of `idTagInfo` gets
+  no `StartTransaction`, and a check on that `Authorize.conf` says so by name.
+  A driver seeds the three tags; SteVe's `provision` does, parent first.
+  `NOT_APPLICABLE` on CitrineOS (no 1.6 `ReserveNow` route) and on
+  codetics-ev-server-lite (its tokens have no parent field).
+- **`cert16-spec48-start-transaction-busy-connector`, the first 1.6 scenario no
+  OCA case covers.** OCPP 1.6 §4.8 has the CSMS answer a `StartTransaction.req`
+  with a `StartTransaction.conf` whatever its own checks conclude, and §3.7.1
+  says a CALLERROR makes the station resend and finally discard it. The
+  scenario starts one transaction, sends a second `StartTransaction` for
+  another tag on the same connector through the simulator's expert call, and
+  checks the answer is a `.conf` — `Accepted`, with a `transactionId` of its
+  own — not a CALLERROR. Its id names the clause rather than a `TC_NNN` it
+  does not trace to; `OCA-COVERAGE.md` lists it, and it adds nothing to the
+  OCA obligation counts.
+- `tests/cert16-gap-checks.ts`, the twenty-seventh in-process guard, over the
+  hand-rolled checks `cert16-tc053`, `cert16-tc054` and `spec48` decide on.
+  It hands each helper synthetic frames: a green control, and a red row per
+  way the
+  check must fail — a trigger read off another message's TriggerMessage, a
+  trigger accepted and never honoured, or honoured only
+  before its answer, on the wrong connector, or answered `NotImplemented`
+  where only the last trigger may; an `Authorize.conf` without the parent, or
+  with another; a `StartTransaction` without the reservation's id; a second
+  start answered with a CALLERROR, the open transaction's id or another
+  status; a resent first start read as the second
+- `createSteveCsmsDriver` takes an optional `ocppTagParent` lookup, which the
+  bundled SteVe driver answers from the WebAPI; see the `ReserveNow` fix below.
 - **`open-ocpp-tck/csms-driver` gains an optional charge-point administration
   surface** (#154): `CsmsDriver.chargePoints` creates, reads, updates and
   deletes a station's registration with the CSMS — its OCPP identity,
@@ -571,6 +606,25 @@ Released as `0.3.0`. The documented install ref already points at that tag, so
 
 ### Changed
 
+- **`cert16-tc054-trigger-message` triggers all five messages `TC_054` lists**
+  — `MeterValues` and `StatusNotification` for the connector, then
+  `Heartbeat`, `DiagnosticsStatusNotification` and `FirmwareStatusNotification`
+  — where it triggered `Heartbeat` alone. Its three answered-checks that always
+  reported SKIPPED now measure something, so the scenario that was PARTIAL on
+  every driver can now PASS, or FAIL: a trigger the CSMS never dispatches, or a
+  triggered message it does not answer, is red where it used to be orange.
+- **`cert16-tc064-data-transfer` accepts the statuses `TC_064` accepts:**
+  `Rejected`, `UnknownMessageId` and `UnknownVendorId`, and `Accepted` with a
+  warning in the check's wording. An `UnknownMessageId` used to FAIL.
+- **`OCA-COVERAGE.md` gives the right reasons for its unexercised
+  obligations.** The `Authorize.conf` rows of `tc010`, `tc011` and `tc059` are
+  the pinned simulator's read-only `AuthorizeRemoteTxRequests=false`
+  (shiv3/ocpp-cp-simulator#921), not a property of remote start, which §5.11
+  makes authorize first when the key is `true`. The `tc001` `Heartbeat` row
+  says why the hold is not simply raised: SteVe's interval is a global setting
+  of at least a minute, and the simulator's Heartbeat timer restarts on every
+  CALL it sends.
+
 - **Notes that described the simulator wrongly are corrected; nothing runs
   differently.** Twenty-four `OCA-201-SLICE.txt` rows, three notes in
   `tck/states-201.ts` and one in the driver contract said the pinned image
@@ -866,6 +920,25 @@ Released as `0.3.0`. The documented install ref already points at that tag, so
   ([#55])
 
 ### Fixed
+
+- **The SteVe driver no longer drops a `ReserveNow`'s `parentIdTag` in
+  silence.** SteVe's form has no such field and sends the reserved tag's
+  stored parent instead, so a scenario asking for a group reservation was told
+  it got one. The requested parent is now checked against the stored one and
+  the operation refused with `UnsupportedOperationError` when they differ, or
+  when no `ocppTagParent` lookup was given to check.
+- **A SteVe `ReserveNow` on a tag SteVe does not store fails instead of
+  reading `NOT APPLICABLE`.** The parent lookup answered `null` both for an
+  unknown tag and for a tag stored without a parent, so on a volume provisioned
+  before `CERT053-RES` existed `cert16-tc053` was reported as a capability gap
+  for what is a missing fixture. The lookup now throws an error naming the tag
+  and `ocpp-tck driver provision`; a stored parent that differs from the
+  requested one is still refused as unsupported.
+- **SteVe's `provision` rebuilds group tags before their drifted parent.** It
+  rebuilt a blocked or expired tag by deleting and recreating it, and SteVe
+  refuses that `DELETE` while another tag names it as parent — so
+  provisioning stopped at `CERT053-GRP`. The child tags naming a parent about
+  to be rebuilt are now removed first and recreated after it.
 
 - **`cert16-reservation-basic` reserves the idTag its station presents.** It
   reserved `CERT-TAG-1` and the template then started a transaction with

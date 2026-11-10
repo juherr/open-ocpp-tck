@@ -129,4 +129,35 @@ export declare const tc024LockFailureSpec: ScenarioSpec<void>;
 export declare const tc031UnlockUnknownConnectorSpec: ScenarioSpec<void>;
 export declare const tc061ClearCacheSpec: ScenarioSpec<void>;
 export declare const tc064DataTransferSpec: ScenarioSpec<void>;
+/**
+ * The first StartTransaction.req the station sent for `idTag` was answered
+ * with a CALLRESULT.
+ *
+ * Hand-rolled because what it asserts is the KIND of answer, and the generic
+ * helpers report a CALLERROR only as the reason another check failed. Here it
+ * is the finding: §4.8 says the Central System "SHOULD respond" with a
+ * StartTransaction.conf and that the outcome of its own checks "SHOULD NOT"
+ * stop it doing so, and §3.7.1 says what a CALLERROR does instead -- the
+ * station resends the message and finally discards it, so the CSMS's record
+ * of the session ends up shorter than the station's.
+ *
+ * Exported ONLY so tests/cert16-gap-checks.ts can hand it frames, as are the
+ * two checks below it.
+ */
+export declare function assertStartConfirmed(rec: AssertRecorder, frames: readonly Frame[], idTag: string, description: string): void;
+/**
+ * The StartTransaction.req for `idTag` was answered with idTagInfo.status
+ * `expectedStatus`. Selected by idTag rather than by position, as the two
+ * checks above it are: a resent first start is a second StartTransaction on
+ * the wire, and reading it as the busy-connector one would report the first
+ * tag's status as the second's.
+ */
+export declare function assertStartStatus(rec: AssertRecorder, frames: readonly Frame[], idTag: string, expectedStatus: string, description: string): void;
+/**
+ * The transactionIds answering the StartTransaction.req for `firstIdTag` and
+ * the one for `secondIdTag` are both integers, and differ. Reusing the open
+ * transaction's id would merge two sessions the station keeps apart.
+ */
+export declare function assertDistinctTransactionIds(rec: AssertRecorder, frames: readonly Frame[], firstIdTag: string, secondIdTag: string, description: string): void;
+export declare const spec48StartTransactionBusyConnectorSpec: ScenarioSpec<void>;
 export declare const CORE_SPECS: ScenarioSpec<any>[];

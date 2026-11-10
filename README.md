@@ -14,7 +14,10 @@ material — the [OCPP 1.6 certification page][octt], and in particular its
 *Test Procedure & Test Plans* and *OCPP Compliancy Testing Tool — Test Case
 Document*. Scenario `cert16-tcNNN-…` corresponds to OCA test case `TC_NNN`,
 and because the CSMS is the system under test here, the **`_CSMS` variant** is
-the one that applies: it is the Central System that must answer. This is not a
+the one that applies: it is the Central System that must answer. The one 1.6
+scenario no case covers says so in its id — `cert16-spec48-…` traces to
+§4.8 of the specification — and is listed in
+[`OCA-COVERAGE.md`](OCA-COVERAGE.md#scenarios-no-oca-case-covers). This is not a
 certification tool and passing it is not certification — but the reference is
 where a disagreement about what a scenario *should* assert gets settled.
 
@@ -241,7 +244,7 @@ selection metadata: like groups, they are absent from the pinned
 | `ocpp-tck run <template-id> [--version 1.6\|2.0.1] [--tag T]` | docker + CSMS | One scenario, optionally checked against its declared version and tags |
 | `ocpp-tck run-all [--group N] [--version 1.6\|2.0.1] [--tag T] [--parallel]` | docker + CSMS | A sweep; group, version and tag filters intersect |
 | `ocpp-tck check-driver [--driver SPEC]` | nothing | Offline conformance of a driver against this core |
-| `ocpp-tck list-scenarios [--group N] [--version 1.6\|2.0.1] [--tag T] [--json]` | nothing | The 96 registered scenarios with their group and tags, optionally filtered |
+| `ocpp-tck list-scenarios [--group N] [--version 1.6\|2.0.1] [--tag T] [--json]` | nothing | The 98 registered scenarios with their group and tags, optionally filtered |
 | `ocpp-tck print-sim-image` | nothing | The pinned simulator image digest |
 | `ocpp-tck driver selftest [--with-writes]` | CSMS | Every `CsmsRecords` method once, in seconds: does this driver answer the contract? `--with-writes` adds the `prepareStation` hook |
 | `ocpp-tck driver <verb>` | driver-defined | A bootstrap verb your driver contributes |
@@ -254,7 +257,8 @@ because a rename usually breaks several at once. Shellcheck joins that list
 only where it is installed, and is skipped with a notice where it is not; CI
 always has it and always enforces it.
 
-Both bundled drivers contribute the same three: `provision` (seed the fixtures,
+Each of the three bundled drivers — SteVe, CitrineOS and codetics
+ev-server-lite — contributes the same three verbs: `provision` (seed the fixtures,
 idempotent), `verify` (read-only — are they there?), `teardown` (remove them).
 A driver that needs no bootstrap contributes none, and the runner never calls
 them during a scenario.

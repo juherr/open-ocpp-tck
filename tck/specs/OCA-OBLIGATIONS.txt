@@ -3,7 +3,7 @@
 #
 # THIS FILE IS THE TABLE, for both protocols. OCA-COVERAGE.md explains where
 # the OCPP 1.6 rows come from and what they mean; it does not restate them,
-# because two copies of a 53-row derivation drift and the prose copy is the one
+# because two copies of a 56-row derivation drift and the prose copy is the one
 # nobody diffs. The OCPP 2.0.1 rows at the end have their own provenance, noted
 # above them.
 #
@@ -11,7 +11,7 @@
 # against tck/specs/ASSERT-INVENTORY.txt in both directions, so an obligation
 # with no check and a check with no obligation are both build failures. That
 # is the point -- before it, "46 obligations, 46 checks" was a number a
-# reviewer had to take on faith, and it was wrong: the 1.6 derivation has 53,
+# reviewer had to take on faith, and it was wrong: the 1.6 derivation had 53,
 # of which 46 are the checks issue #11 added.
 #
 # checked-by:
@@ -48,6 +48,9 @@ cert16-tc048-2-reserve-now-occupied       StatusNotification             assertA
 cert16-tc048-3-reserve-now-unavailable    StatusNotification             assertAllAnswered      TC_048_3
 cert16-tc051-cancel-reservation           StatusNotification             assertAllAnswered      TC_051
 cert16-tc052-cancel-reservation-rejected  StatusNotification             assertAllAnswered      TC_052
+cert16-tc053-reserved-connector-parent-idtag Authorize                   assertAllAnswered      TC_053
+cert16-tc053-reserved-connector-parent-idtag StartTransaction            assertAllAnswered      TC_053
+cert16-tc053-reserved-connector-parent-idtag StatusNotification          assertAllAnswered      TC_053
 cert16-tc010-remote-start                 Authorize                      assertAllAnswered      TC_010
 cert16-tc010-remote-start                 StartTransaction               assertAllAnswered      TC_010
 cert16-tc010-remote-start                 StatusNotification             assertAllAnswered      TC_010

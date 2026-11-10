@@ -137,6 +137,23 @@ const VALID_TAGS = [
   // ReserveNow and SendLocalList carry these.
   "CERT-TAG-1",
   "CERT-TAG-2",
+  // TC_053's group: the parent of GROUP_TAGS below, usable in its own right.
+  "CERT053-GRP",
+] as const;
+
+/**
+ * Tags seeded with a parent, for TC_053: the reserved tag and the one that
+ * charges on its reservation through the parent they share.
+ *
+ * ORDER IS FORCED BY THE SCHEMA. `ocpp_tag.parent_id_tag` is a foreign key
+ * onto `ocpp_tag.id_tag`, ON DELETE NO ACTION (migration V0_8_4), so the
+ * parent must exist before a child names it and cannot be deleted while one
+ * still does: provisioning creates VALID_TAGS first, and teardown removes these
+ * before them, keeping the parent whenever a child is kept.
+ */
+const GROUP_TAGS = [
+  { idTag: "CERT053-RES", parentIdTag: "CERT053-GRP" },
+  { idTag: "CERT053-CHILD", parentIdTag: "CERT053-GRP" },
 ] as const;
 
 /** Absent from ocpp_tag entirely -- SteVe answers Invalid for an unknown tag. */
@@ -175,12 +192,47 @@ const PROFILES: readonly ChargingProfileFields[] = [
  * derived from maxActiveTransactionCount server-side, so asserting on it checks
  * the state the Authorize path will actually see.
  */
-interface OcppTagOverview {
+export interface OcppTagOverview {
   ocppTagPk: number;
   idTag: string;
   expiryDate: string | null;
   blocked: boolean;
   maxActiveTransactionCount: number;
+  parentIdTag: string | null;
+}
+
+/** SteVe's OCPP tags by idTag -- the one read of `GET /ocppTags`. */
+async function readOcppTags(
+  api: Pick<SteveWebApi, "getJson">,
+): Promise<Map<string, OcppTagOverview>> {
+  const rows = await api.getJson<OcppTagOverview[]>("/ocppTags");
+  return new Map(rows.map((r) => [r.idTag, r]));
+}
+
+/**
+ * The `ocppTagParent` lookup the SteVe driver hands its ReserveNow form
+ * mapper: the parent SteVe stores for `idTag`, null for a tag stored without
+ * one. The whole list rather than a filter, as `readOcppTags` reads it -- the
+ * fixture table is a few dozen rows.
+ *
+ * A tag SteVe does not store at all is a THROW, not null: null means "SteVe
+ * would send no parent", which the mapper turns into an
+ * UnsupportedOperationError, and a scenario reads that as NOT APPLICABLE. A
+ * missing fixture -- a volume provisioned before the tag was added -- is a
+ * broken environment, and has to read as one.
+ */
+export function ocppTagParentLookup(
+  api: Pick<SteveWebApi, "getJson">,
+): (idTag: string) => Promise<string | null> {
+  return async (idTag) => {
+    const row = (await readOcppTags(api)).get(idTag);
+    if (!row) {
+      throw new Error(
+        `SteVe stores no OCPP tag ${idTag}: the fixtures are missing or stale -- run \`ocpp-tck driver provision\``,
+      );
+    }
+    return row.parentIdTag;
+  };
 }
 
 /**
@@ -194,6 +246,65 @@ interface OcppTagOverview {
  */
 function isUsable(row: OcppTagOverview): boolean {
   return !row.blocked && row.expiryDate === null;
+}
+
+/** The two writes `provisionUsableTags` makes, so a guard can answer them. */
+export interface OcppTagWrites {
+  create(body: Record<string, unknown>): Promise<void>;
+  delete(pk: number): Promise<void>;
+}
+
+/**
+ * VALID_TAGS and GROUP_TAGS, made usable from the `existing` snapshot: a tag
+ * that is missing is created, one that drifted (blocked, carrying an expiry
+ * from an earlier run, or under another parent) is deleted and recreated
+ * rather than patched -- PUT would hit the same @Future validation that
+ * forbids writing the expiry in the first place.
+ *
+ * CHILDREN GO FIRST. `ocpp_tag.parent_id_tag` is ON DELETE NO ACTION, so a
+ * VALID_TAGS parent rebuilt while a GROUP_TAGS row still names it is a
+ * refused DELETE. Those children are removed before the parent, and then
+ * recreated under the new parent like any missing group tag -- which is why
+ * the group loop reads them as absent rather than from the snapshot.
+ */
+export async function provisionUsableTags(
+  writes: OcppTagWrites,
+  existing: ReadonlyMap<string, OcppTagOverview>,
+  log: (msg: string) => void,
+): Promise<void> {
+  const rebuilt = new Set<string>(
+    VALID_TAGS.filter((idTag) => {
+      const row = existing.get(idTag);
+      return !(row && isUsable(row));
+    }),
+  );
+
+  const orphaned = new Set<string>();
+  for (const { idTag } of GROUP_TAGS) {
+    const row = existing.get(idTag);
+    if (row?.parentIdTag == null || !rebuilt.has(row.parentIdTag)) continue;
+    await writes.delete(row.ocppTagPk);
+    orphaned.add(idTag);
+  }
+
+  for (const idTag of rebuilt) {
+    const row = existing.get(idTag);
+    if (row) await writes.delete(row.ocppTagPk);
+    await writes.create({ idTag, note: "open-ocpp-tck fixture" });
+    log(`tag: ${idTag} valid`);
+  }
+
+  for (const { idTag, parentIdTag } of GROUP_TAGS) {
+    const row = orphaned.has(idTag) ? undefined : existing.get(idTag);
+    if (row && isUsable(row) && row.parentIdTag === parentIdTag) continue;
+    if (row) await writes.delete(row.ocppTagPk);
+    await writes.create({
+      idTag,
+      parentIdTag,
+      note: "open-ocpp-tck fixture: grouped",
+    });
+    log(`tag: ${idTag} valid, parent ${parentIdTag}`);
+  }
 }
 
 function isBlocked(row: OcppTagOverview): boolean {
@@ -321,9 +432,8 @@ export class SteveProvisioner {
     );
   }
 
-  private async listTags(): Promise<Map<string, OcppTagOverview>> {
-    const rows = await this.api.getJson<OcppTagOverview[]>("/ocppTags");
-    return new Map(rows.map((r) => [r.idTag, r]));
+  private listTags(): Promise<Map<string, OcppTagOverview>> {
+    return readOcppTags(this.api);
   }
 
   private async createTag(body: Record<string, unknown>): Promise<void> {
@@ -337,16 +447,11 @@ export class SteveProvisioner {
   async provisionTags(): Promise<void> {
     const existing = await this.listTags();
 
-    for (const idTag of VALID_TAGS) {
-      const row = existing.get(idTag);
-      if (row && isUsable(row)) continue;
-      // A tag that exists but drifted (blocked, or carrying an expiry from an
-      // earlier run) is deleted rather than patched: PUT would hit the same
-      // @Future validation that forbids writing the expiry in the first place.
-      if (row) await this.deleteTag(row.ocppTagPk);
-      await this.createTag({ idTag, note: "open-ocpp-tck fixture" });
-      this.log(`tag: ${idTag} valid`);
-    }
+    await provisionUsableTags(
+      { create: (body) => this.createTag(body), delete: (pk) => this.deleteTag(pk) },
+      existing,
+      this.log,
+    );
 
     const blocked = existing.get(BLOCKED_TAG);
     if (!blocked || !isBlocked(blocked)) {
@@ -446,6 +551,20 @@ export class SteveProvisioner {
       }
     }
 
+    for (const { idTag, parentIdTag } of GROUP_TAGS) {
+      const row = tags.get(idTag);
+      if (!row) {
+        problems.push(`${idTag}: missing`);
+        continue;
+      }
+      if (!isUsable(row)) problems.push(`${idTag}: blocked or expiring, expected usable`);
+      if (row.parentIdTag !== parentIdTag) {
+        problems.push(
+          `${idTag}: parent ${row.parentIdTag ?? "<none>"}, expected ${parentIdTag}`,
+        );
+      }
+    }
+
     if (tags.has(INVALID_TAG)) {
       problems.push(`${INVALID_TAG}: present, must be absent for TC_023`);
     }
@@ -515,7 +634,15 @@ export class SteveProvisioner {
    * the volume, which is the only case where it matters.
    */
   async teardown(): Promise<void> {
-    const wanted = [...VALID_TAGS, BLOCKED_TAG, EXPIRED_TAG, INVALID_TAG];
+    // Children first: a parent cannot be deleted while a child names it.
+    const children = GROUP_TAGS.map((tag) => tag.idTag);
+    const wanted = [
+      ...children,
+      ...VALID_TAGS,
+      BLOCKED_TAG,
+      EXPIRED_TAG,
+      INVALID_TAG,
+    ];
 
     // Only tags nothing refers to. `transaction_start.id_tag` and
     // `reservation.id_tag` are ON DELETE CASCADE onto ocpp_tag, so deleting a
@@ -529,11 +656,13 @@ export class SteveProvisioner {
       this.listTags(),
     ]);
     let kept = 0;
+    const keptParents = new Set<string>();
     for (const idTag of wanted) {
       const row = tags.get(idTag);
       if (!row) continue;
-      if (used.has(idTag)) {
+      if (used.has(idTag) || keptParents.has(idTag)) {
         kept += 1;
+        if (row.parentIdTag) keptParents.add(row.parentIdTag);
         continue;
       }
       await this.deleteTag(row.ocppTagPk);

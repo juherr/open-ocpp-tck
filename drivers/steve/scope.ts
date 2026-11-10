@@ -190,6 +190,22 @@ export const STEVE_SCOPE: ScopeTable = {
     status: "DRIVABLE",
     reason: REFERENCE_CSMS,
   },
+  "cert16-spec48-start-transaction-busy-connector": {
+    status: "DRIVABLE",
+    reason:
+      "Station-initiated: the scenario drives no operation. Expected to pass " +
+      "and unmeasured: CentralSystemService16_Service#startTransaction has no " +
+      "busy-connector refusal, and its validator only logs.",
+  },
+  "cert16-tc053-reserved-connector-parent-idtag": {
+    status: "DRIVABLE",
+    reason:
+      "`driver provision` seeds CERT053-RES and CERT053-CHILD with parent " +
+      "CERT053-GRP through POST /ocppTags. SteVe's ReserveNow form has no " +
+      "parentIdTag field and sends the reserved tag's stored parent instead, " +
+      "so the driver checks the requested one against GET /ocppTags and " +
+      "refuses a ReserveNow it would not send as asked (forms.ts).",
+  },
   "cert16-tc054-trigger-message": {
     status: "DRIVABLE",
     reason: REFERENCE_CSMS,

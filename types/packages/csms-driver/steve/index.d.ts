@@ -8,6 +8,15 @@ export interface SteveCsmsDriverOptions {
     readonly fetch?: FetchLike;
     readonly sessions?: CsmsSessionApi;
     readonly connectors?: CsmsConnectorApi;
+    /**
+     * The parent SteVe stores for an OCPP tag, null for none. Only a ReserveNow
+     * carrying a `parentIdTag` asks it: SteVe sends the reserved tag's stored
+     * parent and has no field for another one, so without this lookup such a
+     * request is refused as unsupported rather than posted with its parent
+     * dropped. The manager UI cannot answer it; SteVe's WebAPI can
+     * (`GET /ocppTags` reports `parentIdTag`).
+     */
+    readonly ocppTagParent?: (idTag: string) => Promise<string | null>;
 }
 export declare const STEVE_CAPABILITIES: CsmsCapabilities;
 /**

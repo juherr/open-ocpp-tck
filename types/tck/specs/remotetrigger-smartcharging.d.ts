@@ -12,6 +12,8 @@
  * cert16-tc026-remote-start-rejected moves here from main.ts (Task 1's proof
  * scenario, kept there unported until this group existed).
  */
+import { type AssertRecorder } from "../assert";
+import { type Frame } from "../ocpp";
 import type { ScenarioSpec } from "../spec-types";
 export declare const tc010RemoteStartSpec: ScenarioSpec<void>;
 export declare const tc011RemoteStartStopSpec: ScenarioSpec<void>;
@@ -24,6 +26,34 @@ interface RemoteStopRejectedDriveState {
     txPk: string;
 }
 export declare const tc028RemoteStopRejectedSpec: ScenarioSpec<RemoteStopRejectedDriveState>;
+/**
+ * One TriggerMessage of TC_054, judged on its own: the CSMS sent a
+ * TriggerMessage.req asking for `requestedMessage` (scoped to `connectorId`
+ * when the case scopes it, i.e. for MeterValues and StatusNotification), the
+ * CP answered it, and -- when the answer is Accepted -- the requested message
+ * left the CP AFTER that answer.
+ *
+ * Why per trigger rather than the generic helpers: `assertResponseStatus`
+ * reads the FIRST TriggerMessage only, and `assertLineAfter` anchors on the
+ * LAST one, so with five triggers in a row the first would stop covering
+ * triggers two to five and the second would read the Heartbeat sent at step 7
+ * as missing because the FirmwareStatusNotification trigger comes later. And
+ * "sent after" is the check that FAILS: `assertAllAnswered` reports SKIPPED
+ * when nothing was sent, so without this a trigger the CSMS never dispatched
+ * would leave the scenario PARTIAL rather than red.
+ *
+ * `notImplementedAllowed` is the case's own exception for its last trigger:
+ * the CP sends FirmwareStatusNotification only "if implemented", and answers
+ * NotImplemented otherwise, after which nothing is owed on the wire.
+ *
+ * The arguments are literals at the call sites so ASSERT-INVENTORY.txt
+ * renders which trigger each check is about -- see the rejected-refactor note
+ * beside `assertIdTagInfoStatus` in assert.ts for why a predicate would not.
+ *
+ * Exported ONLY so tests/cert16-gap-checks.ts can hand it frames. Not part of
+ * the driver-author surface: tck/index.ts deliberately re-exports no specs.
+ */
+export declare function assertTriggered(rec: AssertRecorder, frames: readonly Frame[], requestedMessage: string, connectorId: number | null, notImplementedAllowed: boolean, description: string): void;
 export declare const tc054TriggerMessageSpec: ScenarioSpec<void>;
 export declare const tc055TriggerMessageRejectedSpec: ScenarioSpec<void>;
 interface TxDefaultProfileDriveState {

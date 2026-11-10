@@ -81,41 +81,69 @@ case it comes from. It lives there rather than here because
 `tck/specs/ASSERT-INVENTORY.txt` in both directions — an obligation with no
 check and a check with no obligation are both build failures.
 
-**53 obligations. 46 are the `assertAllAnswered` checks issue #11 added; the
-other 7 were already covered** by `assertResponseStatus`,
+**56 obligations. 49 are `assertAllAnswered` checks -- 46 added by issue #11,
+three by `cert16-tc053` -- and the other 7 were already covered** by `assertResponseStatus`,
 `assertIdTagInfoStatus`, or the hand-rolled block in `cert16-tc064`.
 
 That count used to be stated here as "46 obligations, 46 checks", which was
 wrong in a way nothing could catch — it counted only the new checks and called
 them the whole set. The guard exists because of it, and found it.
 
-Seven of the 46 can never go green: the scenario carrying the obligation never
+Four of the 46 can never go green: the scenario carrying the obligation never
 puts the request on the wire. Those report **SKIPPED**, which makes the
 scenario PARTIAL — orange, outside the exit code — rather than PASS or FAIL.
 Red would say "the CSMS did not answer" about a question nobody asked; green
-would hide the gap. Which seven was measured, not guessed: a full sweep plus
-`tools/answered-report.ts`.
+would hide the gap. Which four was measured, not guessed: a full sweep plus
+`tools/answered-report.ts`. There were seven until `cert16-tc054` triggered
+all five messages its case lists rather than one.
 
 ## Unexercised obligations
 
-Seven `.conf` obligations report SKIPPED on every driver, because the scenario
+Four `.conf` obligations report SKIPPED on every driver, because the scenario
 does not put the corresponding request on the wire. Each was confirmed against
 a real sweep's logs, not inferred from reading the specs. They are checked --
 so a run shows them — but they cannot pass until the scenario changes.
 
 | scenario | OCA step | obligation | why the request is never sent |
 |---|---|---|---|
-| `cert16-tc001-cold-boot` | TC_001 step 6 | `Heartbeat.conf` | the scenario holds 20s and the CP sends no Heartbeat in that window. TC_054 triggers one explicitly and carries the obligation instead. |
-| `cert16-tc010-remote-start` | TC_010 step 6 | `Authorize.conf` | remote start: the CSMS supplies the idTag in `RemoteStartTransaction`, so the CP goes straight to `StartTransaction`. |
-| `cert16-tc011-remote-start-stop` | TC_011_1 step 6 | `Authorize.conf` | same |
-| `cert16-tc059-remote-start-with-profile` | TC_059 step 6 | `Authorize.conf` | same |
-| `cert16-tc054-trigger-message` | TC_054 | `DiagnosticsStatusNotification.conf`, `FirmwareStatusNotification.conf`, `MeterValues.conf` | the case triggers six message types; this scenario triggers one (Heartbeat). |
+| `cert16-tc001-cold-boot` | TC_001 step 6 | `Heartbeat.conf` | the case's Heartbeat is periodic, at the interval `BootNotification.conf` returns, and the scenario holds 20 s. Measured on the wire: SteVe returns 14400 s, CitrineOS 60 s, codetics-ev-server-lite 60 s. See below for why the hold is not simply raised. TC_054 triggers a Heartbeat explicitly and carries the obligation instead. |
+| `cert16-tc010-remote-start` | TC_010 step 6 | `Authorize.conf` | the simulator's `AuthorizeRemoteTxRequests` is read-only `false`, so it starts the transaction without authorizing first ([shiv3/ocpp-cp-simulator#921](https://github.com/shiv3/ocpp-cp-simulator/issues/921)). |
+| `cert16-tc011-remote-start-stop` | TC_011_1 step 4 | `Authorize.conf` | same |
+| `cert16-tc059-remote-start-with-profile` | TC_059 step 4 | `Authorize.conf` | same |
 
-The `Authorize` rows are the same fact three times, and it is worth stating
-plainly: **no remote-start scenario can carry the `Authorize.conf`
-obligation**, because remote start is precisely the flow that skips
-authorization. `TC_003` and `TC_004` are locally driven, do send `Authorize`,
-and do carry it.
+The `Authorize` rows are the same fact three times, and it is a fact about
+the charge point this suite drives, not about remote start. OCPP 1.6 §5.11
+makes the effect of `RemoteStartTransaction.req` depend on the
+`AuthorizeRemoteTxRequests` key: when it is `true`, the charge point behaves
+as for a local start and authorizes the idTag first, which may mean an
+`Authorize.req`; only when it is `false` does it start straight away. The
+three OCA cases are written for the first reading: the charge point sends
+`Authorize.req` after its `RemoteStartTransaction.conf`, and the Central
+System owes the `.conf`. §9.1.3 lets the charge point choose whether the key
+is read-only, so the pinned simulator's read-only `false` is conformant; it
+just leaves no scenario a way to turn the behaviour on. That is
+[shiv3/ocpp-cp-simulator#921](https://github.com/shiv3/ocpp-cp-simulator/issues/921),
+and these rows can go green once a pinned simulator lets the key be set to
+`true`. Until then `TC_003` and `TC_004`, which are locally driven and do send
+`Authorize`, are where that obligation is checked.
+
+The `tc001` row stays open on purpose. Closing it faithfully means a hold
+longer than the interval the CSMS returns, and that cannot be had cleanly for
+every driver:
+
+- **SteVe's interval is a global setting**, in whole minutes (its settings
+  page, `ocppSettings.heartbeat`; 0 means "client default"). Shortening it
+  would be a write to CSMS-wide state that no driver makes today, would apply
+  to every station of every lane, and still has a floor of 60 s.
+- **The simulator's Heartbeat is an idle timer**, re-armed by every CALL the
+  station sends (`HeartbeatService.notifyOutgoingCall` at the pinned 0.10.1).
+  So even at 60 s, the first Heartbeat leaves one interval after the last boot
+  `StatusNotification`: about 70 s of hold for one Heartbeat, about 130 s to
+  see the period the case describes, against 20 s today.
+
+That is a sweep-time cost on every driver and a provisioning change on one, to
+measure a `.conf` that `cert16-tc054` already measures with a Heartbeat it
+triggers itself.
 
 Closing any of these is a change to the scenario -- a longer hold, an extra
 trigger -- not a change to what the checks assert. Until then each shows up as
@@ -158,24 +186,48 @@ something no one can look up.
 `TC_043_2_CS` exists (SUT = Charge Point) and has no `_CSMS` counterpart. There
 is nothing to cover, and nothing to open an issue about.
 
-**29 of the 77 `_CSMS` cases have no scenario at all.** The 47 OCPP 1.6
-scenarios cover 48 cases -- `cert16-tc017-unlock-occupied` answers both `TC_017_1` and
+**28 of the 77 `_CSMS` cases have no scenario at all.** The 48 OCPP 1.6
+scenarios that trace to a case cover 49 cases -- `cert16-tc017-unlock-occupied` answers both `TC_017_1` and
 `TC_017_2`. Uncovered:
 
 ```
 TC_004_2  TC_007    TC_011_2  TC_030    TC_032_1  TC_037_1  TC_037_3  TC_039
-TC_040_1  TC_040_2  TC_045_2  TC_047    TC_049    TC_053    TC_073    TC_074
-TC_075_1  TC_075_2  TC_076    TC_077    TC_078    TC_079    TC_080    TC_081
-TC_083    TC_085    TC_086    TC_087    TC_088
+TC_040_1  TC_040_2  TC_045_2  TC_047    TC_049    TC_073    TC_074    TC_075_1
+TC_075_2  TC_076    TC_077    TC_078    TC_079    TC_080    TC_081    TC_083
+TC_085    TC_086    TC_087    TC_088
 ```
 
 That is a coverage gap in the other direction, and a much larger piece of work
 than issue #11: each needs a charge-point-side scenario template, and the
 templates are not in this repository -- they are baked into the pinned
 `ocpp-cp-simulator` image (`tck/sim.ts`). Stated here so the suite's extent is
-a number rather than an inference from "47 scenarios". The OCPP 2.0.1
+a number rather than an inference from "48 scenarios". The OCPP 2.0.1
 scenarios are counted nowhere on this page: their own selection rule and list
 are `OCA-201-SELECTION.md` and `tck/specs/OCA-201-SLICE.txt`.
+
+## Scenarios no OCA case covers
+
+One OCPP 1.6 scenario traces to the specification instead of to a case, and
+its id says so: `cert16-spec48-…` rather than `cert16-tcNNN-…`, because
+`README.md` ties the second shape to OCA case `TC_NNN`.
+
+| scenario | clause | what it measures |
+|---|---|---|
+| `cert16-spec48-start-transaction-busy-connector` | OCPP 1.6 §4.8, with §3.7.1 for the consequence | a `StartTransaction.req` for a connector that already has an open transaction gets a `StartTransaction.conf` — not a CALLERROR — with a `transactionId` of its own and the tag's status, `Accepted` |
+
+§4.8 has the Central System respond with a `StartTransaction.conf` and not let
+the outcome of its own checks stop it; §3.7.1 is why that matters, since a
+charge point answered with a CALLERROR resends the message and finally
+discards it. No section-3 case sends a second `StartTransaction` on a busy
+connector, so nothing above derives the obligation.
+
+It deliberately carries no `assertAllAnswered` and no row in
+`tck/specs/OCA-OBLIGATIONS.txt`: that table is the OCA cases' obligations and
+nothing else, which is the rule "Findings recorded, not acted on" applies to
+`MeterValues.conf`. Every count on this page is over OCA cases and leaves it
+out. A §4.8 obligation is a SHOULD, so a CSMS failing it deviates from a
+recommendation rather than breaking a requirement; the scenario still reports
+`FAIL`, and a driver that knows its CSMS does so declares it in `expected.ts`.
 
 ## Checking a real sweep against this table
 

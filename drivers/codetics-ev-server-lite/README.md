@@ -107,7 +107,7 @@ applicable.
 
 ## Scope
 
-`ocpp-tck check-driver` reports 45 `DRIVABLE`, 0 `CONDITIONAL` and 2
+`ocpp-tck check-driver` reports 46 `DRIVABLE`, 0 `CONDITIONAL` and 3
 `NOT_APPLICABLE` OCPP 1.6 scenarios; every OCPP 2.0.1 one is not applicable
 through `protocols`. `scope.ts` names the endpoint behind each row.
 
@@ -124,7 +124,7 @@ The two rows that were `CONDITIONAL` before the first live sweep are
   `GetConfiguration`, the driven one, so the row is drivable; the caveat below
   says when the scenario stops measuring the driver.
 
-The two `NOT_APPLICABLE` rows are capabilities the admin API lacks, not
+The three `NOT_APPLICABLE` rows are capabilities the admin API lacks, not
 failures of a run:
 
 - `cert16-tc019-get-configuration-key` — the command endpoint's payload
@@ -137,6 +137,12 @@ failures of a run:
 - `cert16-tc051-cancel-reservation` — no reservation entity, and
   `GET /api/v1/commands` serves no request payload, so the reservation id the
   scenario must read back and cancel is unreadable.
+- `cert16-tc053-reserved-connector-parent-idtag` — no token can carry a
+  parent. The charging-token entity has no parent or group field
+  (`models/entities/ChargingTokenEntity.kt`), nor does the body of
+  `POST /api/v1/tokens` (`models/tokens/ChargingTokenInput.kt`), so the
+  scenario's group of tags cannot be seeded and no `Authorize.conf` can name
+  their parent. Read from the source at the pinned commit.
 
 ## Coverage
 
@@ -162,7 +168,12 @@ sent). Each SKIPPED check reads "scenario does not exercise this": the station
 never sent the message the generic every-CALL-answered check looks for. They
 are the same five rows, with the same SKIPPED checks, that SteVe reports
 (`VENDOR.md`'s SteVe validation table), so they describe the scenarios and the
-simulator rather than this CSMS.
+simulator rather than this CSMS. `tc054` has since been made to trigger all
+five messages its case lists, and run on its own against this server it is
+PASS, 15 checks, none skipped; the sweep counts above predate that change,
+and predate `cert16-tc053-reserved-connector-parent-idtag` (`NOT_APPLICABLE`)
+and `cert16-spec48-start-transaction-busy-connector` (a declared FAIL, see
+"Deviations") too.
 
 By tag, over the 47 OCPP 1.6 scenarios (a scenario carries one tag or more,
 so the rows do not add up to 47): every scenario tagged `authorization` (4),
@@ -194,7 +205,13 @@ which `protocols` makes `NOT_APPLICABLE`.
 
 ## Deviations
 
-None measured. Neither sweep produced a FAIL or an ERROR, so `expected.ts` is
-empty: no scenario the server drives is known to be answered wrongly. The
-gaps this CSMS does have are the two `NOT_APPLICABLE` rows above — things the
+One measured, in `cert16-spec48-start-transaction-busy-connector`, a scenario
+added after the two sweeps above and run on its own on 2026-11-10. It is
+declared in `expected.ts`, so it prints `FAIL` and does not end the build;
+the day the server answers it the row turns `UNEXPECTED PASS` and the entry
+goes. The three `NOT_APPLICABLE` rows above are a different thing: things the
 admin API cannot express, which no run can turn red.
+
+| Deviation | Effect | Evidence |
+|---|---|---|
+| **StartTransaction on a busy connector.** A `StartTransaction.req` for a connector that already has an open transaction is answered with a CALLERROR, unless it repeats that transaction's tag, timestamp and `meterStart` (a resend, which gets the existing `transactionId`). OCPP 1.6 §4.8 has the Central System respond with a `StartTransaction.conf` and not let its own checks stop it; §3.7.1 is what the CALLERROR costs: the station resends the message and finally discards it. It is a SHOULD, so this is a deviation from a recommendation rather than a hard violation. | `cert16-spec48-start-transaction-busy-connector` FAILs three of its four checks. | `ocpp/OcppService.kt:452-460` throws `OcppFault("GenericError", …)` at the pinned commit. On the wire: `[4,"67ab3287-…","GenericError","Une session est déjà en cours sur ce connecteur.",{}]` answering the second `StartTransaction` (`CERT-TAG-2`, connector 1). |

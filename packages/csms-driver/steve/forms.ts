@@ -17,6 +17,7 @@ import type {
 import {
   assertNever,
   type CsmsOperation16,
+  UnsupportedOperationError,
 } from "../contracts";
 import { decodeHtml } from "./html-form";
 
@@ -176,7 +177,21 @@ export function listedChargeBoxes(listHtml: string, cpId: string): ListedChargeB
   return listed;
 }
 
-export function toSteveForm(op: CsmsOperation16): {
+/**
+ * What toSteveForm() cannot know from the operation alone.
+ *
+ * `reservedTagParent` is the parent SteVe stores for a ReserveNow's `idTag`
+ * -- null for a tag with none -- and is left undefined when nobody looked it
+ * up. Only a ReserveNow carrying a `parentIdTag` needs it; see that case.
+ */
+export interface SteveFormContext {
+  readonly reservedTagParent?: string | null;
+}
+
+export function toSteveForm(
+  op: CsmsOperation16,
+  context: SteveFormContext = {},
+): {
   opPath: string;
   fields: Record<string, string>;
 } {
@@ -287,6 +302,23 @@ export function toSteveForm(op: CsmsOperation16): {
         },
       };
     case "ReserveNow":
+      // The form has no parentIdTag field: SteVe sends the reserved tag's
+      // STORED parent (ChargePointServiceClient#reserveNow reads it from
+      // ocpp_tag), whatever the caller asked for. So a requested parent is
+      // posted only when it is the one SteVe will send, and is otherwise an
+      // operation this CSMS cannot express -- dropping it silently would let a
+      // scenario assert on a group reservation that was never made.
+      if (
+        op.parentIdTag !== undefined &&
+        context.reservedTagParent !== op.parentIdTag
+      ) {
+        throw new UnsupportedOperationError(
+          "ReserveNow",
+          context.reservedTagParent === undefined
+            ? `SteVe sends the stored parent of ${op.idTag} rather than a requested parentIdTag, and no lookup was configured to check that it is ${op.parentIdTag}`
+            : `SteVe would send parentIdTag ${context.reservedTagParent ?? "<none>"}, the stored parent of ${op.idTag}, not the requested ${op.parentIdTag}`,
+        );
+      }
       return {
         opPath,
         fields: {

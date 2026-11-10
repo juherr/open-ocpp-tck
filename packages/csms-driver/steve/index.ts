@@ -14,6 +14,15 @@ export interface SteveCsmsDriverOptions {
   readonly fetch?: FetchLike;
   readonly sessions?: CsmsSessionApi;
   readonly connectors?: CsmsConnectorApi;
+  /**
+   * The parent SteVe stores for an OCPP tag, null for none. Only a ReserveNow
+   * carrying a `parentIdTag` asks it: SteVe sends the reserved tag's stored
+   * parent and has no field for another one, so without this lookup such a
+   * request is refused as unsupported rather than posted with its parent
+   * dropped. The manager UI cannot answer it; SteVe's WebAPI can
+   * (`GET /ocppTags` reports `parentIdTag`).
+   */
+  readonly ocppTagParent?: (idTag: string) => Promise<string | null>;
 }
 
 export const STEVE_CAPABILITIES: CsmsCapabilities = {
@@ -34,7 +43,13 @@ export function createSteveCsmsDriver(options: SteveCsmsDriverOptions): CsmsDriv
     chargePoints: steveChargePoints(ui),
     operations16: {
       async execute(cpId: string, operation: CsmsOperation16): Promise<string> {
-        const { opPath, fields } = toSteveForm(operation);
+        const reservedTagParent =
+          operation.action === "ReserveNow" &&
+          operation.parentIdTag !== undefined &&
+          options.ocppTagParent
+            ? await options.ocppTagParent(operation.idTag)
+            : undefined;
+        const { opPath, fields } = toSteveForm(operation, { reservedTagParent });
         return ui.op(opPath, { chargePointSelectList: cpSelect(cpId), ...fields });
       },
     },

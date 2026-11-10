@@ -3,6 +3,27 @@
 # A diff here means a scenario's checks changed. See the test's header.
 
 FILE authlist-reservation.ts
+  HELPER assertIdTagInfoParent
+    IF
+      ·.fail(·, ·)
+      RETURN
+    IF
+      OR
+      ·.fail(·, ·)
+      RETURN
+    IF
+      ·.pass(·)
+      ·.fail(·, ·)
+  HELPER assertStartUsesReservation
+    IF
+      ·.fail(·, "no received ReserveNow carrying a reservationId")
+      RETURN
+    IF
+      ·.fail(·, ·)
+      RETURN
+    IF
+      ·.pass(·)
+      ·.fail(·, ·)
   SPEC cert16-tc042-1-get-local-list-version-not-supported connector=1 bootWaitSecs=4 holdSecs=12 ocppVersion="OCPP-1.6J"
     assertLineMatches(·, ·, /Received: \[2,.*"GetLocalListVersion"/, "GetLocalListVersion.req received")
     assertLineMatches(·, ·, /"listVersion":-1/, "listVersion -1 returned (local list disabled)")
@@ -69,6 +90,23 @@ FILE authlist-reservation.ts
     assertReceived(·, ·, "CancelReservation", "CancelReservation.req received")
     assertResponseStatus(·, ·, "CancelReservation", "Rejected", "CancelReservation rejected (nonexistent reservationId)")
     assertAllAnswered(·, ·, "StatusNotification")
+  SPEC cert16-tc053-reserved-connector-parent-idtag connector=1 bootWaitSecs=4 holdSecs=12 ocppVersion="OCPP-1.6J" runsSimTemplate=false
+    assertCallPayload(·, ·, "received", "ReserveNow", {connectorId:1,idTag:"CERT053-RES",parentIdTag:"CERT053-GRP"}, "ReserveNow.req names connector 1 (not 0), CERT053-RES and parentIdTag CERT053-GRP")
+    assertResponseStatus(·, ·, "ReserveNow", "Accepted", "ReserveNow accepted")
+    assertLineAfter(·, ·, /Received: \[2,.*"ReserveNow"/, /Sent: \[2,.*"StatusNotification".*"status":"Reserved"/, "StatusNotification(Reserved) sent after ReserveNow accepted")
+    assertCallPayload(·, ·, "sent", "Authorize", {idTag:"CERT053-CHILD"}, "Authorize.req sent for CERT053-CHILD, a tag the reservation does not name")
+    assertIdTagInfoStatus(·, ·, "Authorize", "Accepted", "Authorize for CERT053-CHILD answered Accepted")
+    assertIdTagInfoParent(·, ·, "Authorize", "CERT053-CHILD", "CERT053-GRP", "Authorize.conf for CERT053-CHILD carries parentIdTag CERT053-GRP")
+    assertStartUsesReservation(·, ·, "CERT053-CHILD", "StartTransaction for CERT053-CHILD carries the reservation's id")
+    assertIdTagInfoStatus(·, ·, "StartTransaction", "Accepted", "StartTransaction on the reservation answered Accepted")
+    assertAllAnswered(·, ·, "StatusNotification")
+    assertAllAnswered(·, ·, "Authorize")
+    assertAllAnswered(·, ·, "StartTransaction")
+    IF
+      ·.fail(·, "no transaction found")
+      RETURN
+    ·.pass(·)
+    assertEq(·, ·, "CERT053-CHILD", "DB: id_tag is CERT053-CHILD")
 
 FILE authorize.ts
 
@@ -699,6 +737,38 @@ FILE core.ts
         ·.pass(·)
         RETURN
     ·.fail(·, ·)
+  HELPER assertStartConfirmed
+    IF
+      ·.fail(·, ·)
+      RETURN
+    IF
+      ·.fail(·, ·)
+      IF
+        ·.fail(·, ·)
+        ·.pass(·)
+  HELPER assertStartStatus
+    IF
+      ·.fail(·, ·)
+      RETURN
+    IF
+      ·.fail(·, ·)
+      RETURN
+    IF
+      ·.fail(·, ·)
+      RETURN
+    IF
+      ·.pass(·)
+      ·.fail(·, ·)
+  HELPER assertDistinctTransactionIds
+    TERNARY
+    RETURN
+      TERNARY
+    IF
+      OR
+      ·.fail(·, ·)
+      IF
+        ·.fail(·, ·)
+        ·.pass(·)
   SPEC cert16-tc004-charging-id-first connector=1 bootWaitSecs=4 holdSecs=40 ocppVersion="OCPP-1.6J"
     assertLineMatches(·, ·, /Sent: \[2,.*"StartTransaction".*"idTag":"CERT004"/, "StartTransaction sent with idTag CERT004")
     assertIdTagInfoStatus(·, ·, "StartTransaction", "Accepted", "StartTransaction accepted by the CSMS")
@@ -808,7 +878,14 @@ FILE core.ts
       OR
         OR
       ·.pass(·)
-      ·.fail(·, ·)
+      IF
+        ·.pass(·)
+        ·.fail(·, ·)
+  SPEC cert16-spec48-start-transaction-busy-connector connector=1 bootWaitSecs=4 holdSecs=10 ocppVersion="OCPP-1.6J" runsSimTemplate=false
+    assertIdTagInfoStatus(·, ·, "StartTransaction", "Accepted", "first StartTransaction (CERT-TAG-1) accepted, so connector 1 has an open transaction")
+    assertStartConfirmed(·, ·, "CERT-TAG-2", "second StartTransaction (CERT-TAG-2) on the busy connector answered with a StartTransaction.conf, not a CALLERROR (§4.8)")
+    assertDistinctTransactionIds(·, ·, "CERT-TAG-1", "CERT-TAG-2", "second StartTransaction got a transactionId of its own")
+    assertStartStatus(·, ·, "CERT-TAG-2", "Accepted", "second StartTransaction answered with CERT-TAG-2's status, Accepted")
 
 FILE firmware.ts
   SPEC cert16-tc044-1-firmware-update connector=1 bootWaitSecs=4 holdSecs=115 ocppVersion="OCPP-1.6J"
@@ -865,6 +942,39 @@ FILE remotetrigger-smartcharging.ts
         ·.pass(·)
         RETURN
     ·.fail(·, ·)
+  HELPER assertTriggered
+    IF
+      ·.fail(·, ·)
+      ·.fail(·, "nothing was triggered")
+      RETURN
+    IF
+      AND
+      ·.fail(·, ·)
+      ·.fail(·, "the trigger was scoped to another connector")
+      RETURN
+    IF
+      OR
+      TERNARY
+      ·.fail(·, ·)
+      ·.fail(·, "the trigger was not accepted")
+      RETURN
+    IF
+      AND
+      ·.pass(·)
+      ·.pass(·)
+      RETURN
+    IF
+      ·.fail(·, ·)
+      ·.fail(·, "the trigger was not accepted")
+      RETURN
+    ·.pass(·)
+    AND
+      AND
+        AND
+      OR
+    IF
+      ·.pass(·)
+      ·.fail(·, ·)
   SPEC cert16-tc010-remote-start connector=1 bootWaitSecs=4 holdSecs=25 ocppVersion="OCPP-1.6J"
     assertReceived(·, ·, "RemoteStartTransaction", "RemoteStartTransaction.req received")
     assertResponseStatus(·, ·, "RemoteStartTransaction", "Accepted", "RemoteStartTransaction accepted")
@@ -904,9 +1014,11 @@ FILE remotetrigger-smartcharging.ts
       RETURN
     assertNonEmpty(·, ·, "DB: transaction is closed (stop_timestamp set)")
   SPEC cert16-tc054-trigger-message connector=1 bootWaitSecs=4 holdSecs=12 ocppVersion="OCPP-1.6J"
-    assertReceived(·, ·, "TriggerMessage", "TriggerMessage.req received")
-    assertResponseStatus(·, ·, "TriggerMessage", "Accepted", "TriggerMessage accepted")
-    assertLineAfter(·, ·, /Received: \[2,.*"TriggerMessage"/, /Sent: \[2,.*"Heartbeat"/, "requested Heartbeat sent after TriggerMessage")
+    assertTriggered(·, ·, "MeterValues", 1, false, "requested MeterValues sent for connector 1")
+    assertTriggered(·, ·, "Heartbeat", null, false, "requested Heartbeat sent")
+    assertTriggered(·, ·, "StatusNotification", 1, false, "requested StatusNotification sent for connector 1")
+    assertTriggered(·, ·, "DiagnosticsStatusNotification", null, false, "requested DiagnosticsStatusNotification sent")
+    assertTriggered(·, ·, "FirmwareStatusNotification", null, true, "requested FirmwareStatusNotification sent (if implemented)")
     assertAllAnswered(·, ·, "Heartbeat")
     assertAllAnswered(·, ·, "StatusNotification")
     assertAllAnswered(·, ·, "MeterValues")
