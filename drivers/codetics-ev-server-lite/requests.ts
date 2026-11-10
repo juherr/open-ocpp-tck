@@ -31,11 +31,25 @@
  *   SENT, SUCCEEDED      the CALL was written to the station's socket
  *   FAILED with a result the station answered with a CALLERROR -- dispatched
  *   FAILED, no result    the socket write itself threw -- never dispatched
- *   TIMED_OUT, CANCELLED never sent (the server's own deadline is 60 s)
+ *   TIMED_OUT            the server's 60 s deadline passed while the command
+ *                        was ACTIVE, i.e. QUEUED or SENT. The wait returns at
+ *                        SENT, so a TIMED_OUT it sees is one whose SENT it never
+ *                        observed: no evidence of a CALL
+ *   CANCELLED            withdrawn while QUEUED (StationSecurityService only
+ *                        cancels a queued row) -- never sent
  *   QUEUED past our wait the station is not connected
  *
- * The last three are {@link CsmsNotDispatchedError}: nothing shows the request
- * became an OCPP CALL, which is that class's claim exactly.
+ * Those last four are {@link CsmsNotDispatchedError}: nothing shows the request
+ * became an OCPP CALL, which is that class's claim exactly. So is a refusal of
+ * the POST itself, since nothing was queued.
+ *
+ * WHAT IS NOT A NON-DISPATCH: anything that goes wrong AFTER the POST was
+ * accepted, other than the states above. The command is queued server-side by
+ * then, and a poll that cannot read it -- a refused read, a body that is not a
+ * list, a command that never shows in the list -- knows nothing about whether
+ * the dispatcher took it. The wait retries such a read until its deadline and
+ * then throws a plain `Error`; claiming a non-dispatch there would file a
+ * failure of our read as a fact about the CSMS's wire.
  */
 import {
   assertNever,
@@ -329,14 +343,24 @@ export async function dispatch(
   const what = `codetics-ev-server-lite: ${command.action} for ${cpId} (command ${id})`;
 
   const deadline = Date.now() + timeoutMs;
-  let last = "QUEUED";
   for (;;) {
     // The tenant's last 100 commands, newest first: a command queued a moment
     // ago is near the top, and one that scrolled out is reported as unseen.
-    const rows = (await api.get<CommandRow[]>("/api/v1/commands")) ?? [];
-    const row = Array.isArray(rows) ? rows.find((r) => r?.id === id) : undefined;
+    // A read that fails is retried until the deadline: see the header for why
+    // it is never a non-dispatch.
+    let row: CommandRow | undefined;
+    let readFailure: string | undefined;
+    try {
+      const rows = await api.get<unknown>("/api/v1/commands");
+      if (Array.isArray(rows)) {
+        row = (rows as (CommandRow | null)[]).find((r) => r?.id === id) ?? undefined;
+      } else {
+        readFailure = `GET /api/v1/commands answered something that is not a list: ${JSON.stringify(rows)?.slice(0, 200)}`;
+      }
+    } catch (err) {
+      readFailure = err instanceof Error ? err.message : String(err);
+    }
     if (row) {
-      last = row.state;
       switch (row.state) {
         case "SENT":
         case "SUCCEEDED":
@@ -359,11 +383,29 @@ export async function dispatch(
       }
     }
     if (Date.now() >= deadline) {
+      // Giving up does not withdraw the command. At the pinned commit the
+      // server has no way to cancel one (CommandController exposes GET only),
+      // so a command abandoned QUEUED stays queued until the server's own 60 s
+      // deadline and may still reach the station -- during the NEXT scenario on
+      // this cpId, whose wire log would then carry a CALL it never asked for.
+      const abandoned =
+        "; it may still be queued server-side, cannot be cancelled, and may " +
+        "still reach the station during a later scenario on this cpId";
+      if (readFailure !== undefined) {
+        throw new Error(
+          `${what}: accepted, but its state could not be read for ${timeoutMs} ms` +
+            ` -- last read: ${readFailure}${abandoned}`,
+        );
+      }
+      if (!row) {
+        throw new Error(
+          `${what}: accepted, but not among the last 100 commands after ${timeoutMs} ms` +
+            abandoned,
+        );
+      }
       throw new CsmsNotDispatchedError(
         what,
-        row
-          ? `still ${last} after ${timeoutMs} ms -- is the station connected?`
-          : `not among the last 100 commands after ${timeoutMs} ms`,
+        `still QUEUED after ${timeoutMs} ms -- is the station connected?${abandoned}`,
       );
     }
     await new Promise((resolve) => setTimeout(resolve, POLL_INTERVAL_MS));

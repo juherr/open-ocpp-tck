@@ -29,11 +29,25 @@
  *   SENT, SUCCEEDED      the CALL was written to the station's socket
  *   FAILED with a result the station answered with a CALLERROR -- dispatched
  *   FAILED, no result    the socket write itself threw -- never dispatched
- *   TIMED_OUT, CANCELLED never sent (the server's own deadline is 60 s)
+ *   TIMED_OUT            the server's 60 s deadline passed while the command
+ *                        was ACTIVE, i.e. QUEUED or SENT. The wait returns at
+ *                        SENT, so a TIMED_OUT it sees is one whose SENT it never
+ *                        observed: no evidence of a CALL
+ *   CANCELLED            withdrawn while QUEUED (StationSecurityService only
+ *                        cancels a queued row) -- never sent
  *   QUEUED past our wait the station is not connected
  *
- * The last three are {@link CsmsNotDispatchedError}: nothing shows the request
- * became an OCPP CALL, which is that class's claim exactly.
+ * Those last four are {@link CsmsNotDispatchedError}: nothing shows the request
+ * became an OCPP CALL, which is that class's claim exactly. So is a refusal of
+ * the POST itself, since nothing was queued.
+ *
+ * WHAT IS NOT A NON-DISPATCH: anything that goes wrong AFTER the POST was
+ * accepted, other than the states above. The command is queued server-side by
+ * then, and a poll that cannot read it -- a refused read, a body that is not a
+ * list, a command that never shows in the list -- knows nothing about whether
+ * the dispatcher took it. The wait retries such a read until its deadline and
+ * then throws a plain `Error`; claiming a non-dispatch there would file a
+ * failure of our read as a fact about the CSMS's wire.
  */
 import { type CsmsOperation16 } from "../../tck/driver";
 import type { EvslApi } from "./api-client";
