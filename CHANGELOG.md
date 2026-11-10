@@ -641,7 +641,7 @@ Released as `0.3.0`. The documented install ref already points at that tag, so
   and the charge-point list now escapes ids, which the offline fake and the
   live re-check now model. The concurrent-`StatusNotification` deadlock
   (steve-community/steve#2107) is fixed upstream: a boot burst that hit it in
-  5 of 5 bursts on 3.14.1 hits it in 0 of 40, the driver README's gap row
+  11 of 20 bursts on 3.14.1 hits it in 0 of 40, the driver README's gap row
   moved to a Resolved section, and the full sweep — 42 PASS, the same 5
   PARTIAL — needed no isolated retry. The new `PATCH /ocppTags/{pk}/expire`
   is not adopted yet: it expires with no margin and is absent before 3.15.0,

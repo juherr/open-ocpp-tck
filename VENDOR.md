@@ -512,7 +512,8 @@ manifest, and the `steve-3.14.1` tag has since been republished as an index,
 so a rollback names the digest, not the tag. Three upstream changes were
 checked against the suite rather than assumed: the `evse` deadlock is gone
 (steve-community/steve#2108 — a boot burst of fresh stations answered
-`InternalError` in 5 of 5 bursts on 3.14.1 and in 0 of 40 on 3.15.0); OCPP
+`InternalError` in 11 of 20 bursts of three on 3.14.1 and in 0 of 40 on
+3.15.0, both run natively on arm64); OCPP
 payloads are no longer HTML-encoded (#1981), and no scenario sends or asserts
 a value that encoding would have changed; and incoming OCPP messages now go
 through an in-memory queue with no per-station ordering (#2125), which the
