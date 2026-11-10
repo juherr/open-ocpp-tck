@@ -99,27 +99,33 @@ function profileFor(ref: string): CsChargingProfile {
   return profile;
 }
 
-/** The OCPP transactionId behind a ref. The server's transaction `id` IS the
- *  OCPP transactionId it handed the station, so there is nothing to resolve --
- *  only a ref that is not one to refuse, rather than send it as 0 or NaN. */
-function transactionId(ref: string, action: string): number {
+/** A ref that must be a non-negative integer id, as that number -- refused
+ *  rather than sent as 0 or NaN. `what` names the id, `hint` follows the
+ *  refused ref in the message. */
+function integerRef(ref: string, action: string, what: string, hint = ""): number {
   if (!/^\d+$/.test(ref)) {
     throw new Error(
-      `codetics-ev-server-lite: ${action} needs an OCPP transaction id, got ` +
-        `${JSON.stringify(ref)} -- the scenario's own transaction lookup came back empty`,
+      `codetics-ev-server-lite: ${action} needs ${what}, got ${JSON.stringify(ref)}${hint}`,
     );
   }
   return Number(ref);
 }
 
+/** The OCPP transactionId behind a ref. The server's transaction `id` IS the
+ *  OCPP transactionId it handed the station, so there is nothing to resolve --
+ *  only a ref that is not one to refuse. */
+function transactionId(ref: string, action: string): number {
+  return integerRef(
+    ref,
+    action,
+    "an OCPP transaction id",
+    " -- the scenario's own transaction lookup came back empty",
+  );
+}
+
 /** Integer reservation id from a ref; same refusal as {@link transactionId}. */
 function reservationId(ref: string, action: string): number {
-  if (!/^\d+$/.test(ref)) {
-    throw new Error(
-      `codetics-ev-server-lite: ${action} needs an integer reservation id, got ${JSON.stringify(ref)}`,
-    );
-  }
-  return Number(ref);
+  return integerRef(ref, action, "an integer reservation id");
 }
 
 /**
