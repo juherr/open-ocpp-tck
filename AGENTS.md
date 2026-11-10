@@ -24,7 +24,7 @@ error.
 ## The gate
 
 `bun run verify` is every check CI runs before it starts a container —
-typecheck, committed declarations, four driver scope checks, twenty-five in-process
+typecheck, committed declarations, four driver scope checks, twenty-six in-process
 guards and twenty shell guards — with one exit code, and every step runs even
 after one fails, where CI enumerates them and stops at the first.
 
@@ -63,6 +63,7 @@ bun tests/trace-format.ts
 bun tests/trace-frames.ts
 bun tests/steve-ui-session-race.ts
 bun tests/citrineos-transport-classification.ts
+bun tests/codetics-ev-server-lite-dispatch.ts
 bun tests/citrineos-device-model-fixture.ts
 bun tests/citrineos-redelivery-loops.ts
 bun tests/shard-selection.ts
@@ -150,7 +151,7 @@ There is no unit-test framework and no `*.test.ts`. `tests/` holds offline
 guards, each with a header stating the property it protects. `bun run test`
 chains them — note `bun test` is Bun's own runner and finds nothing here.
 
-Shell is the default, and the twenty-five TypeScript ones are TypeScript because
+Shell is the default, and the twenty-six TypeScript ones are TypeScript because
 what they assert is unreachable through the CLI. `driver-env-scope.ts`: a
 driver's declarations follow the env they are *resolved* with, where the CLI
 can only ever pass `process.env`. `capability-parity.ts`: the same reason and
@@ -211,6 +212,14 @@ cost a container and a misconfiguration to stage. What it holds is a line, not
 a behaviour: which failures `warnOpFailed` lets out, so it is wrong in two
 directions and half of its table asserts the *negative* — that a request the
 CSMS answered stays an ordinary failure.
+`codetics-ev-server-lite-dispatch.ts`: the same line on the next driver, where
+it runs through a command's STATE rather than an HTTP status — the POST queues
+it, a poll reads what became of it — and the row that matters is the one in
+between: a read that fails after the server accepted the command says nothing
+about the wire, and used to be filed as a non-dispatch. Its other half is the
+login cache, because signin is the one call the server rate-counts: a refusal
+it counted is kept, every other login failure is forgotten, and keeping the
+wrong one fails every later lane.
 `citrineos-device-model-fixture.ts`: the one whose subject is
 least visible from anywhere else. It holds a SEQUENCE of writes — which rows
 `provision` seeds, which one the prepare hook points back, which ones teardown

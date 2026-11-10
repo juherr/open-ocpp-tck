@@ -107,6 +107,11 @@ run "the manager-UI client survives concurrent lanes" bun tests/steve-ui-session
 # refuse a request a chosen way -- a 503, a body that stalls mid-stream, a 200
 # that is not JSON. The pinned image produces none of them on demand.
 run "a request that never reached the CSMS says so" bun tests/citrineos-transport-classification.ts
+# And in-process for the same reason, one driver over: a poll that fails once,
+# a signin that 503s, a command that sits QUEUED are answers the pinned server
+# gives on nobody's demand, and a refused signin spends a budget only a restart
+# gives back.
+run "an accepted command is not reported undispatched" bun tests/codetics-ev-server-lite-dispatch.ts
 # And in-process for the reason its own header gives: what it holds is a
 # SEQUENCE of writes, and a CSMS answers a right fixture and a wrong one with
 # the same empty StatusNotificationResponse.

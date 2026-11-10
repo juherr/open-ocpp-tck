@@ -184,6 +184,13 @@ jobs:
       - name: A request that never reached the CSMS says so
         run: bun tests/citrineos-transport-classification.ts
 
+      # And in-process for the same reason, one driver over: a poll that fails
+      # once, a signin that 503s, a command that sits QUEUED are answers the
+      # pinned server gives on nobody's demand, and a refused signin spends a
+      # budget only a restart gives back.
+      - name: An accepted command is not reported undispatched
+        run: bun tests/codetics-ev-server-lite-dispatch.ts
+
       # In-process because what it holds is a SEQUENCE of writes -- what was
       # inserted, what was pointed back, what was left alone -- and a CSMS
       # answers a correct fixture and a wrong one identically: a

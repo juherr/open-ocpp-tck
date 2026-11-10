@@ -40,10 +40,9 @@
  * plain `Error`: the request was answered, and whether it took effect is
  * exactly what is unknown.
  *
- * NOT GUARDED OFFLINE YET. The `fetch` seam below is the one the other bundled
- * drivers' transport guards ride, and this client takes it for the same
- * reason, but no guard drives it: what is unprotected is the classification
- * above and the login cache's two branches.
+ * GUARDED OFFLINE by tests/codetics-ev-server-lite-dispatch.ts, through the
+ * `fetch` seam below: the login cache's two branches, and this classification
+ * as requests.ts's dispatch wait reaches it.
  */
 import { type FetchLike } from "../../tck/driver";
 import type { EvslConfig } from "./config";
