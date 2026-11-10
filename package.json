@@ -128,6 +128,10 @@
       "types": "./types/drivers/citrineos/index.d.ts",
       "default": "./drivers/citrineos/index.ts"
     },
+    "./drivers/codetics-ev-server-lite": {
+      "types": "./types/drivers/codetics-ev-server-lite/index.d.ts",
+      "default": "./drivers/codetics-ev-server-lite/index.ts"
+    },
     "./tsconfig": "./tsconfig.base.json",
     "./package.json": "./package.json"
   },
