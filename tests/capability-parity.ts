@@ -107,6 +107,7 @@ import {
   resolveVariant,
   unroutedActions201,
 } from "../drivers/citrineos/variant";
+import { csmsDriver as evServerLite } from "../drivers/codetics-ev-server-lite/index";
 import { csmsDriver as steve } from "../drivers/steve/index";
 
 const failures: string[] = [];
@@ -151,6 +152,14 @@ const CASES: readonly DriverCase[] = [
   // `capabilities` are plain values on the module, so there is no second
   // resolution to disagree with the first.
   { label: "steve", module: steve, env: {}, unrouted201: new Set() },
+  // A third 1.6-only driver, and its declarations are constants too. It speaks
+  // no 2.0.1, so it owes no mapper and declares no unrouted table.
+  {
+    label: "codetics-ev-server-lite",
+    module: evServerLite,
+    env: {},
+    unrouted201: new Set(),
+  },
   // BOTH lines, for the reason tests/driver-env-scope.ts states about its own
   // pair: a driver that regressed to resolving the variant once, at import,
   // answers the same thing for both, so whichever the ambient CITRINE_VARIANT

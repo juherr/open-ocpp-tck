@@ -89,6 +89,10 @@ jobs:
       - name: The v1 compose override configures v1.9.1
         run: bash tests/citrineos-v1-override.sh
 
+      # The third driver, OCPP 1.6 only. Offline like the two above.
+      - name: Codetics ev-server-lite driver agrees with the core
+        run: bun run check:driver:codetics-ev-server-lite
+
       # In-process, because the CLI can only ever pass process.env: that a
       # driver's declarations follow the env they are RESOLVED with, not the
       # one that happened to exist at import, is unreachable from a shell.

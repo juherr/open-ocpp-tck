@@ -50,6 +50,7 @@ run "driver scope: citrineos (v1)" bun run check:driver:citrineos-v1
 # override that selects the v1.9.1 image has to carry the configuration that
 # image reads, since the base file stopped carrying it at v2.0.0-beta4.
 run "the v1 compose override configures v1.9.1" bash tests/citrineos-v1-override.sh
+run "driver scope: codetics-ev-server-lite" bun run check:driver:codetics-ev-server-lite
 run "driver scope follows the env" bun tests/driver-env-scope.ts
 run "scenario protocol selection and simulator compatibility" bun tests/scenario-version.ts
 run "scenario tags are declared, closed and selected on" bun tests/scenario-tags.ts

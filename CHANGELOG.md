@@ -12,6 +12,14 @@ Released as `0.3.0`. The documented install ref already points at that tag, so
 
 ### Added
 
+- **A third bundled driver, `drivers/codetics-ev-server-lite`**, for
+  [ev-server-lite](https://github.com/codetics-software/ev-server-lite), an
+  OCPP 1.6J-only CSMS by Codetics. Operations go through its generic command
+  endpoint and wait for dispatch, records through its transaction list, and
+  `compose.yaml` builds the server from source at a pinned commit — its
+  licence, the Codetics Attribution License 1.0, counts cloning as acceptance.
+  `check-driver` reports 43 `DRIVABLE`, 2 `CONDITIONAL` and 2
+  `NOT_APPLICABLE` OCPP 1.6 scenarios; the first live sweep is still to come.
 - **`open-ocpp-tck/csms-driver` gains an optional charge-point administration
   surface** (#154): `CsmsDriver.chargePoints` creates, reads, updates and
   deletes a station's registration with the CSMS — its OCPP identity,

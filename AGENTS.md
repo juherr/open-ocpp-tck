@@ -24,7 +24,7 @@ error.
 ## The gate
 
 `bun run verify` is every check CI runs before it starts a container —
-typecheck, committed declarations, three driver scope checks, twenty-five in-process
+typecheck, committed declarations, four driver scope checks, twenty-five in-process
 guards and twenty shell guards — with one exit code, and every step runs even
 after one fails, where CI enumerates them and stops at the first.
 
@@ -47,6 +47,7 @@ bun run check:driver:steve
 bun run check:driver:citrineos
 bun run check:driver:citrineos-v1     # the same driver's other release line
 bash tests/citrineos-v1-override.sh   # and the compose override that line boots from
+bun run check:driver:codetics-ev-server-lite
 bun tests/driver-env-scope.ts
 bun tests/scenario-version.ts
 bun tests/scenario-tags.ts
