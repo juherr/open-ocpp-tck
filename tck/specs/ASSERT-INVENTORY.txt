@@ -746,6 +746,19 @@ FILE core.ts
       IF
         ·.fail(·, ·)
         ·.pass(·)
+  HELPER assertStartStatus
+    IF
+      ·.fail(·, ·)
+      RETURN
+    IF
+      ·.fail(·, ·)
+      RETURN
+    IF
+      ·.fail(·, ·)
+      RETURN
+    IF
+      ·.pass(·)
+      ·.fail(·, ·)
   HELPER assertDistinctTransactionIds
     TERNARY
     RETURN
@@ -872,7 +885,7 @@ FILE core.ts
     assertIdTagInfoStatus(·, ·, "StartTransaction", "Accepted", "first StartTransaction (CERT-TAG-1) accepted, so connector 1 has an open transaction")
     assertStartConfirmed(·, ·, "CERT-TAG-2", "second StartTransaction (CERT-TAG-2) on the busy connector answered with a StartTransaction.conf, not a CALLERROR (§4.8)")
     assertDistinctTransactionIds(·, ·, "CERT-TAG-1", "CERT-TAG-2", "second StartTransaction got a transactionId of its own")
-    assertIdTagInfoStatus(·, ·, "StartTransaction", "Accepted", "second StartTransaction answered with CERT-TAG-2's status, Accepted", {occurrence:1})
+    assertStartStatus(·, ·, "CERT-TAG-2", "Accepted", "second StartTransaction answered with CERT-TAG-2's status, Accepted")
 
 FILE firmware.ts
   SPEC cert16-tc044-1-firmware-update connector=1 bootWaitSecs=4 holdSecs=115 ocppVersion="OCPP-1.6J"

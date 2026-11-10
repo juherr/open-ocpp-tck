@@ -1171,6 +1171,52 @@ function assertStartConfirmed(
 }
 
 /**
+ * The StartTransaction.req for `idTag` was answered with idTagInfo.status
+ * `expectedStatus`. Selected by idTag rather than by position, as the two
+ * checks above it are: a resent first start is a second StartTransaction on
+ * the wire, and reading it as the busy-connector one would report the first
+ * tag's status as the second's.
+ */
+function assertStartStatus(
+  rec: AssertRecorder,
+  frames: readonly Frame[],
+  idTag: string,
+  expectedStatus: string,
+  description: string,
+): void {
+  const start = findAllCalls(frames, "sent", "StartTransaction").find(
+    (c) => (c.payload as { idTag?: unknown } | null)?.idTag === idTag,
+  );
+  if (!start) {
+    rec.fail(description, `no sent StartTransaction for idTag ${idTag}`);
+    return;
+  }
+  const response = findResponseFor(frames, start);
+  if (!response) {
+    rec.fail(description, `no response frame found for uniqueId=${start.uniqueId}`);
+    return;
+  }
+  if (response.kind === "callerror") {
+    rec.fail(
+      description,
+      `expected CALLRESULT, got CALLERROR ${response.errorCode}: ${response.errorDescription}`,
+    );
+    return;
+  }
+  const status = (
+    response.payload as { idTagInfo?: { status?: unknown } } | null
+  )?.idTagInfo?.status;
+  if (status === expectedStatus) {
+    rec.pass(description);
+  } else {
+    rec.fail(
+      description,
+      `expected idTagInfo.status=${expectedStatus}, got ${JSON.stringify(status)}`,
+    );
+  }
+}
+
+/**
  * The transactionIds answering the StartTransaction.req for `firstIdTag` and
  * the one for `secondIdTag` are both integers, and differ. Reusing the open
  * transaction's id would merge two sessions the station keeps apart.
@@ -1310,13 +1356,12 @@ export const spec48StartTransactionBusyConnectorSpec: ScenarioSpec<void> = {
       "CERT-TAG-2",
       "second StartTransaction got a transactionId of its own",
     );
-    assertIdTagInfoStatus(
+    assertStartStatus(
       rec,
       frames,
-      "StartTransaction",
+      "CERT-TAG-2",
       "Accepted",
       "second StartTransaction answered with CERT-TAG-2's status, Accepted",
-      { occurrence: 1 },
     );
   },
 };
