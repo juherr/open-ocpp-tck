@@ -57,6 +57,7 @@ import {
   UnsupportedOperationError,
   type CsmsOperation16,
 } from "../../tck/driver";
+import { sleep } from "../../tck/util";
 import { preview, reason, type EvslApi } from "./api-client";
 import { profileByRef, type CsChargingProfile } from "./profiles";
 
@@ -75,6 +76,12 @@ interface CommandRow {
 }
 
 const POLL_INTERVAL_MS = 250;
+
+/** The command row a dispatched command resolves with, for the run log. Longer
+ *  than an error's body preview on purpose: it is the whole receipt. */
+function receiptOf(row: CommandRow): string {
+  return preview(JSON.stringify(row), 500);
+}
 
 /** Drops the members that are `undefined`, so an absent optional field is
  *  omitted on the wire rather than sent as null. */
@@ -337,11 +344,9 @@ export async function dispatch(
       switch (row.state) {
         case "SENT":
         case "SUCCEEDED":
-          return JSON.stringify(row).slice(0, 500);
+          return receiptOf(row);
         case "FAILED":
-          if (row.result !== null && row.result !== undefined) {
-            return JSON.stringify(row).slice(0, 500);
-          }
+          if (row.result !== null && row.result !== undefined) return receiptOf(row);
           throw new CsmsNotDispatchedError(
             what,
             "FAILED with no result: the server could not write the CALL to the station's socket",
@@ -385,6 +390,6 @@ export async function dispatch(
         `still QUEUED after ${timeoutMs} ms -- is the station connected?${abandoned}`,
       );
     }
-    await new Promise((resolve) => setTimeout(resolve, POLL_INTERVAL_MS));
+    await sleep(POLL_INTERVAL_MS);
   }
 }
