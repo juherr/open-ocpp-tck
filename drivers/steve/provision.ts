@@ -241,6 +241,65 @@ function isUsable(row: OcppTagOverview): boolean {
   return !row.blocked && row.expiryDate === null;
 }
 
+/** The two writes `provisionUsableTags` makes, so a guard can answer them. */
+export interface OcppTagWrites {
+  create(body: Record<string, unknown>): Promise<void>;
+  delete(pk: number): Promise<void>;
+}
+
+/**
+ * VALID_TAGS and GROUP_TAGS, made usable from the `existing` snapshot: a tag
+ * that is missing is created, one that drifted (blocked, carrying an expiry
+ * from an earlier run, or under another parent) is deleted and recreated
+ * rather than patched -- PUT would hit the same @Future validation that
+ * forbids writing the expiry in the first place.
+ *
+ * CHILDREN GO FIRST. `ocpp_tag.parent_id_tag` is ON DELETE NO ACTION, so a
+ * VALID_TAGS parent rebuilt while a GROUP_TAGS row still names it is a
+ * refused DELETE. Those children are removed before the parent, and then
+ * recreated under the new parent like any missing group tag -- which is why
+ * the group loop reads them as absent rather than from the snapshot.
+ */
+export async function provisionUsableTags(
+  writes: OcppTagWrites,
+  existing: ReadonlyMap<string, OcppTagOverview>,
+  log: (msg: string) => void,
+): Promise<void> {
+  const rebuilt = new Set<string>(
+    VALID_TAGS.filter((idTag) => {
+      const row = existing.get(idTag);
+      return !(row && isUsable(row));
+    }),
+  );
+
+  const orphaned = new Set<string>();
+  for (const { idTag } of GROUP_TAGS) {
+    const row = existing.get(idTag);
+    if (row?.parentIdTag == null || !rebuilt.has(row.parentIdTag)) continue;
+    await writes.delete(row.ocppTagPk);
+    orphaned.add(idTag);
+  }
+
+  for (const idTag of rebuilt) {
+    const row = existing.get(idTag);
+    if (row) await writes.delete(row.ocppTagPk);
+    await writes.create({ idTag, note: "open-ocpp-tck fixture" });
+    log(`tag: ${idTag} valid`);
+  }
+
+  for (const { idTag, parentIdTag } of GROUP_TAGS) {
+    const row = orphaned.has(idTag) ? undefined : existing.get(idTag);
+    if (row && isUsable(row) && row.parentIdTag === parentIdTag) continue;
+    if (row) await writes.delete(row.ocppTagPk);
+    await writes.create({
+      idTag,
+      parentIdTag,
+      note: "open-ocpp-tck fixture: grouped",
+    });
+    log(`tag: ${idTag} valid, parent ${parentIdTag}`);
+  }
+}
+
 function isBlocked(row: OcppTagOverview): boolean {
   return row.blocked;
 }
@@ -382,28 +441,11 @@ export class SteveProvisioner {
   async provisionTags(): Promise<void> {
     const existing = await this.listTags();
 
-    for (const idTag of VALID_TAGS) {
-      const row = existing.get(idTag);
-      if (row && isUsable(row)) continue;
-      // A tag that exists but drifted (blocked, or carrying an expiry from an
-      // earlier run) is deleted rather than patched: PUT would hit the same
-      // @Future validation that forbids writing the expiry in the first place.
-      if (row) await this.deleteTag(row.ocppTagPk);
-      await this.createTag({ idTag, note: "open-ocpp-tck fixture" });
-      this.log(`tag: ${idTag} valid`);
-    }
-
-    for (const { idTag, parentIdTag } of GROUP_TAGS) {
-      const row = existing.get(idTag);
-      if (row && isUsable(row) && row.parentIdTag === parentIdTag) continue;
-      if (row) await this.deleteTag(row.ocppTagPk);
-      await this.createTag({
-        idTag,
-        parentIdTag,
-        note: "open-ocpp-tck fixture: grouped",
-      });
-      this.log(`tag: ${idTag} valid, parent ${parentIdTag}`);
-    }
+    await provisionUsableTags(
+      { create: (body) => this.createTag(body), delete: (pk) => this.deleteTag(pk) },
+      existing,
+      this.log,
+    );
 
     const blocked = existing.get(BLOCKED_TAG);
     if (!blocked || !isBlocked(blocked)) {

@@ -1,6 +1,20 @@
 import { SteveWebApi, type SteveApiConfig } from "./api-client";
 import { type SteveConfig } from "./ui-client";
 /**
+ * SteVe's `OcppTagOverview`, narrowed to what provisioning and verification
+ * read. `blocked` is SteVe's own reading of the fixture rather than ours: it is
+ * derived from maxActiveTransactionCount server-side, so asserting on it checks
+ * the state the Authorize path will actually see.
+ */
+interface OcppTagOverview {
+    ocppTagPk: number;
+    idTag: string;
+    expiryDate: string | null;
+    blocked: boolean;
+    maxActiveTransactionCount: number;
+    parentIdTag: string | null;
+}
+/**
  * The `ocppTagParent` lookup the SteVe driver hands its ReserveNow form
  * mapper: the parent SteVe stores for `idTag`, null for a tag stored without
  * one. The whole list rather than a filter, as `listTags` reads it -- the
@@ -13,6 +27,25 @@ import { type SteveConfig } from "./ui-client";
  * broken environment, and has to read as one.
  */
 export declare function ocppTagParentLookup(api: Pick<SteveWebApi, "getJson">): (idTag: string) => Promise<string | null>;
+/** The two writes `provisionUsableTags` makes, so a guard can answer them. */
+export interface OcppTagWrites {
+    create(body: Record<string, unknown>): Promise<void>;
+    delete(pk: number): Promise<void>;
+}
+/**
+ * VALID_TAGS and GROUP_TAGS, made usable from the `existing` snapshot: a tag
+ * that is missing is created, one that drifted (blocked, carrying an expiry
+ * from an earlier run, or under another parent) is deleted and recreated
+ * rather than patched -- PUT would hit the same @Future validation that
+ * forbids writing the expiry in the first place.
+ *
+ * CHILDREN GO FIRST. `ocpp_tag.parent_id_tag` is ON DELETE NO ACTION, so a
+ * VALID_TAGS parent rebuilt while a GROUP_TAGS row still names it is a
+ * refused DELETE. Those children are removed before the parent, and then
+ * recreated under the new parent like any missing group tag -- which is why
+ * the group loop reads them as absent rather than from the snapshot.
+ */
+export declare function provisionUsableTags(writes: OcppTagWrites, existing: ReadonlyMap<string, OcppTagOverview>, log: (msg: string) => void): Promise<void>;
 export declare class SteveProvisioner {
     private readonly cfg;
     private readonly apiCfg;
@@ -91,3 +124,4 @@ export declare function provisionCommand(): Promise<number>;
 export declare function verifyCommand(): Promise<number>;
 /** `ocpp-tck driver teardown` */
 export declare function teardownCommand(): Promise<number>;
+export {};

@@ -7,7 +7,9 @@
  * ReserveNow carrying a parentIdTag is posted only when it is the parent
  * SteVe will send anyway, and refused as unsupported otherwise -- except for
  * a reserved tag SteVe does not store, which the driver's wired lookup fails
- * on as a missing fixture rather than as an unsupported request. The fakes
+ * on as a missing fixture rather than as an unsupported request. The group
+ * fixtures that lookup reads are rebuilt children-first, so a drifted parent
+ * is never deleted while a child still names it. The fakes
  * observe the public factory result without starting a CSMS or TCK run.
  */
 
@@ -17,7 +19,7 @@ import {
   UnsupportedOperationError,
 } from "open-ocpp-tck/csms-driver";
 import type { FetchLike } from "open-ocpp-tck/csms-driver";
-import { ocppTagParentLookup } from "../drivers/steve/provision";
+import { ocppTagParentLookup, provisionUsableTags } from "../drivers/steve/provision";
 
 const failures: string[] = [];
 
@@ -219,6 +221,64 @@ async function verifySteveReserveNowParent(): Promise<void> {
   check(unknown.posts.length === 0, "SteVe's wired lookup posts nothing for a tag SteVe does not store");
 }
 
+/**
+ * The fixtures that ReserveNow lookup reads, rebuilt in the order SteVe's
+ * schema forces. `ocpp_tag.parent_id_tag` is a foreign key ON DELETE NO
+ * ACTION, so rebuilding a drifted parent (blocked, or expired by an earlier
+ * run) while its children still name it is a refused DELETE -- and provision
+ * stops there. The fake store enforces that key both ways; what is asserted
+ * is the end state, every grouped tag back under a usable parent.
+ */
+async function verifySteveGroupTagRebuild(): Promise<void> {
+  type Row = Parameters<typeof provisionUsableTags>[1] extends ReadonlyMap<string, infer R> ? R : never;
+  let nextPk = 1;
+  const rows = new Map<string, Row>();
+  const put = (idTag: string, extra: Partial<Row> = {}): void => {
+    rows.set(idTag, {
+      ocppTagPk: nextPk++,
+      idTag,
+      expiryDate: null,
+      blocked: false,
+      maxActiveTransactionCount: -1,
+      parentIdTag: null,
+      ...extra,
+    });
+  };
+  put("CERT053-GRP", { blocked: true, maxActiveTransactionCount: 0 });
+  put("CERT053-RES", { parentIdTag: "CERT053-GRP" });
+  put("CERT053-CHILD", { parentIdTag: "CERT053-GRP" });
+
+  const store = {
+    async create(body: Record<string, unknown>): Promise<void> {
+      const idTag = String(body.idTag);
+      const parentIdTag = (body.parentIdTag as string | undefined) ?? null;
+      if (rows.has(idTag)) throw new Error(`duplicate idTag ${idTag}`);
+      if (parentIdTag !== null && !rows.has(parentIdTag)) {
+        throw new Error(`FK: parent ${parentIdTag} of ${idTag} does not exist`);
+      }
+      put(idTag, { parentIdTag });
+    },
+    async delete(pk: number): Promise<void> {
+      const row = [...rows.values()].find((r) => r.ocppTagPk === pk);
+      if (!row) throw new Error(`no ocpp_tag pk ${pk}`);
+      const child = [...rows.values()].find((r) => r.parentIdTag === row.idTag);
+      if (child) throw new Error(`FK: ${child.idTag} still names ${row.idTag} as its parent`);
+      rows.delete(row.idTag);
+    },
+  };
+
+  const err = await provisionUsableTags(store, new Map(rows), () => {}).then(
+    () => undefined,
+    (e: unknown) => e,
+  );
+  check(err === undefined, `SteVe provisioning rebuilds a drifted group parent its children name (threw: ${String(err)})`);
+  const parent = rows.get("CERT053-GRP");
+  check(parent !== undefined && !parent.blocked, "SteVe provisioning leaves the group parent usable");
+  for (const child of ["CERT053-RES", "CERT053-CHILD"]) {
+    check(rows.get(child)?.parentIdTag === "CERT053-GRP", `SteVe provisioning leaves ${child} under CERT053-GRP`);
+  }
+}
+
 async function verifyCitrine16Factory(): Promise<void> {
   let requestUrl = "";
   let requestBody = "";
@@ -246,6 +306,7 @@ async function verifyCitrine16Factory(): Promise<void> {
 
 await verifySteveFactory();
 await verifySteveReserveNowParent();
+await verifySteveGroupTagRebuild();
 await verifyCitrine16Factory();
 
 if (failures.length > 0) {
