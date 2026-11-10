@@ -257,7 +257,8 @@ because a rename usually breaks several at once. Shellcheck joins that list
 only where it is installed, and is skipped with a notice where it is not; CI
 always has it and always enforces it.
 
-Both bundled drivers contribute the same three: `provision` (seed the fixtures,
+Each of the three bundled drivers — SteVe, CitrineOS and codetics
+ev-server-lite — contributes the same three verbs: `provision` (seed the fixtures,
 idempotent), `verify` (read-only — are they there?), `teardown` (remove them).
 A driver that needs no bootstrap contributes none, and the runner never calls
 them during a scenario.
