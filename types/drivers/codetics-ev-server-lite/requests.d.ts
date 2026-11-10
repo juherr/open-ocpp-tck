@@ -50,7 +50,7 @@
  * failure of our read as a fact about the CSMS's wire.
  */
 import { type CsmsOperation16 } from "../../tck/driver";
-import type { EvslApi } from "./api-client";
+import { type EvslApi } from "./api-client";
 export interface Command {
     action: string;
     payload: Record<string, unknown>;

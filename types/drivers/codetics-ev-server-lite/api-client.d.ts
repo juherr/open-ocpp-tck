@@ -51,6 +51,10 @@
  */
 import { type FetchLike } from "../../tck/driver";
 import type { EvslConfig } from "./config";
+/** An error's message, or the thrown value as a string. */
+export declare function reason(err: unknown): string;
+/** The first `max` characters of a text quoted in a failure message. */
+export declare function preview(text: string, max?: number): string;
 export interface ApiResponse {
     status: number;
     parsed: unknown;

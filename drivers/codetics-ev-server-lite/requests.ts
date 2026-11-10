@@ -57,7 +57,7 @@ import {
   UnsupportedOperationError,
   type CsmsOperation16,
 } from "../../tck/driver";
-import type { EvslApi } from "./api-client";
+import { preview, reason, type EvslApi } from "./api-client";
 import { profileByRef, type CsChargingProfile } from "./profiles";
 
 export interface Command {
@@ -328,10 +328,10 @@ export async function dispatch(
       if (Array.isArray(rows)) {
         row = (rows as (CommandRow | null)[]).find((r) => r?.id === id) ?? undefined;
       } else {
-        readFailure = `GET /api/v1/commands answered something that is not a list: ${JSON.stringify(rows)?.slice(0, 200)}`;
+        readFailure = `GET /api/v1/commands answered something that is not a list: ${preview(JSON.stringify(rows), 200)}`;
       }
     } catch (err) {
-      readFailure = err instanceof Error ? err.message : String(err);
+      readFailure = reason(err);
     }
     if (row) {
       switch (row.state) {

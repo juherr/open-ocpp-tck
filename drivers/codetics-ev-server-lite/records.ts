@@ -29,7 +29,7 @@
  */
 import type { CsmsChargingProfileRecords, CsmsRecords } from "../../tck/driver";
 import { waitForCondition } from "../../tck/wait";
-import { query, type EvslApi } from "./api-client";
+import { preview, query, type EvslApi } from "./api-client";
 import { refByDescription } from "./profiles";
 
 /** ChargingSessionResponse, narrowed to what the contract reads. Every member
@@ -69,7 +69,7 @@ export class EvslRecords implements Omit<CsmsRecords, "reservations" | "deviceMo
     );
     if (!page || !Array.isArray(page.items) || typeof page.total !== "number") {
       throw new Error(
-        `codetics-ev-server-lite: GET /api/v1/transactions returned a body that is not a page: ${JSON.stringify(page)?.slice(0, 300)}`,
+        `codetics-ev-server-lite: GET /api/v1/transactions returned a body that is not a page: ${preview(JSON.stringify(page), 300)}`,
       );
     }
     return page;

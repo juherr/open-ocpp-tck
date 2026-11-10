@@ -66,12 +66,20 @@ interface Session {
 /** Keyed by server and account. See the header for why it is process-wide. */
 const sessions = new Map<string, Promise<Session>>();
 
-function reason(err: unknown): string {
+/** An error's message, or the thrown value as a string. */
+export function reason(err: unknown): string {
   return err instanceof Error ? err.message : String(err);
 }
 
+/** The first `max` characters of a text quoted in a failure message. */
+export function preview(text: string, max = BODY_PREVIEW): string {
+  // `?.` because `JSON.stringify` is typed `string` and still returns
+  // `undefined` for `undefined`: it passes through, and prints as before.
+  return text?.slice(0, max);
+}
+
 async function bodyPreview(res: Response): Promise<string> {
-  return (await res.text().catch(() => "<unreadable body>")).slice(0, BODY_PREVIEW);
+  return preview(await res.text().catch(() => "<unreadable body>"));
 }
 
 /** The value of one cookie among a response's `Set-Cookie` headers, or
@@ -255,7 +263,7 @@ export class EvslApi {
     try {
       return { status: res.status, parsed: JSON.parse(text) as unknown };
     } catch {
-      throw new Error(`${what} returned unparseable body: ${text.slice(0, BODY_PREVIEW)}`);
+      throw new Error(`${what} returned unparseable body: ${preview(text)}`);
     }
   }
 
