@@ -102,23 +102,30 @@ function json(value: unknown, status = 200): Response {
 const CSRF_OK: Handler = () => json({ token: "csrf-1", headerName: "X-XSRF-TOKEN" });
 const SIGNIN_OK: Handler = () => json({ token: "bearer-1" });
 const REFUSED: Handler = () => Promise.reject(new TypeError("connect ECONNREFUSED"));
+/** A 503. The body is decoration: no row asserts on it. */
+const unavailable =
+  (body = "busy"): Handler =>
+  () =>
+    new Response(body, { status: 503 });
 
 interface Server {
   readonly fetch: FetchLike;
   readonly count: { csrf: number; signin: number; post: number; poll: number };
 }
 
-/**
- * Routes by method and path. Each route is a queue of handlers; the last one
- * repeats, so `[fail, ok]` is "fails once, then answers".
- */
-function server(routes: {
+interface Routes {
   csrf?: Handler[];
   signin?: Handler[];
   post?: Handler[];
   poll?: Handler[];
   other?: Handler[];
-}): Server {
+}
+
+/**
+ * Routes by method and path. Each route is a queue of handlers; the last one
+ * repeats, so `[fail, ok]` is "fails once, then answers".
+ */
+function server(routes: Routes): Server {
   const count = { csrf: 0, signin: 0, post: 0, poll: 0 };
   const take = (queue: Handler[] | undefined, n: number, fallback: Handler): Handler => {
     if (queue === undefined || queue.length === 0) return fallback;
@@ -158,7 +165,7 @@ function row(state: string, result: unknown = null): Handler {
 
 interface DispatchCase {
   readonly what: string;
-  readonly routes: Parameters<typeof server>[0];
+  readonly routes: Routes;
   readonly expect: Classification;
   /** Substrings the message must carry. */
   readonly carries?: readonly string[];
@@ -251,7 +258,7 @@ const POST_CASES: DispatchCase[] = [
   },
   {
     what: "a POST refused 503",
-    routes: { post: [() => new Response("down", { status: 503 })] },
+    routes: { post: [unavailable("down")] },
     expect: "not-dispatched",
     carries: ["returned 503"],
   },
@@ -268,7 +275,7 @@ for (const kase of POST_CASES) await checkDispatch("part 2", kase);
 const READ_CASES: DispatchCase[] = [
   {
     what: "a poll refused 503 once, then SENT",
-    routes: { poll: [() => new Response("busy", { status: 503 }), row("SENT")] },
+    routes: { poll: [unavailable(), row("SENT")] },
     expect: "dispatched",
   },
   {
@@ -278,7 +285,7 @@ const READ_CASES: DispatchCase[] = [
   },
   {
     what: "a poll refused 503 for the whole wait",
-    routes: { poll: [() => new Response("busy", { status: 503 })] },
+    routes: { poll: [unavailable()] },
     expect: "plain-error",
     carries: ["command cmd-1", "returned 503"],
   },
@@ -296,7 +303,7 @@ const READ_CASES: DispatchCase[] = [
   },
   {
     what: "a QUEUED command whose later reads fail",
-    routes: { poll: [row("QUEUED"), () => new Response("busy", { status: 503 })] },
+    routes: { poll: [row("QUEUED"), unavailable()] },
     expect: "plain-error",
     carries: ["command cmd-1", "returned 503"],
   },
@@ -327,6 +334,22 @@ async function outcomeOf(p: Promise<unknown>): Promise<{ ok: boolean; err?: unkn
   }
 }
 
+/** Two clients of one fresh configuration reading in turn: the second sees
+ *  whatever the first left in the session cache. */
+async function twoCalls(routes: Routes) {
+  const cfg = freshConfig();
+  const srv = server(routes);
+  const first = await outcomeOf(read(new EvslApi(cfg, srv.fetch)));
+  const second = await outcomeOf(read(new EvslApi(cfg, srv.fetch)));
+  return { first, second, srv };
+}
+
+function expectOneLogin(what: string, srv: Server): void {
+  if (srv.count.csrf !== 1 || srv.count.signin !== 1) {
+    fail(what, `expected one csrf read and one signin, got ${srv.count.csrf} and ${srv.count.signin}`);
+  }
+}
+
 // Part 4: three clients, one login.
 {
   const what = "part 4: three concurrent clients";
@@ -338,15 +361,13 @@ async function outcomeOf(p: Promise<unknown>): Promise<{ ok: boolean; err?: unkn
   if (!results.every((r) => r.ok)) {
     fail(what, `expected all three to succeed: ${results.map((r) => message(r.err)).join("; ")}`);
   }
-  if (srv.count.csrf !== 1 || srv.count.signin !== 1) {
-    fail(what, `expected one csrf read and one signin, got ${srv.count.csrf} and ${srv.count.signin}`);
-  }
+  expectOneLogin(what, srv);
 }
 
 // Part 5: a failure the server did not count is forgotten.
 interface RetryCase {
   readonly what: string;
-  readonly routes: Parameters<typeof server>[0];
+  readonly routes: Routes;
   /** Signins the server should have seen after the second call. */
   readonly signins: number;
   /** Substrings the FIRST failure's message must NOT carry. */
@@ -357,14 +378,14 @@ const RETRY_CASES: RetryCase[] = [
   { what: "csrf read whose fetch rejects", routes: { csrf: [REFUSED, CSRF_OK] }, signins: 1 },
   {
     what: "csrf read refused 503",
-    routes: { csrf: [() => new Response("booting", { status: 503 }), CSRF_OK] },
+    routes: { csrf: [unavailable("booting"), CSRF_OK] },
     signins: 1,
   },
   { what: "csrf read answered 200 without a token", routes: { csrf: [() => json({}), CSRF_OK] }, signins: 1 },
   { what: "signin whose fetch rejects", routes: { signin: [REFUSED, SIGNIN_OK] }, signins: 2 },
   {
     what: "signin refused 503",
-    routes: { signin: [() => new Response("down", { status: 503 }), SIGNIN_OK] },
+    routes: { signin: [unavailable("down"), SIGNIN_OK] },
     signins: 2,
     omits: ["will not try again"],
   },
@@ -377,9 +398,7 @@ const RETRY_CASES: RetryCase[] = [
 
 for (const kase of RETRY_CASES) {
   const what = `part 5: ${kase.what}`;
-  const cfg = freshConfig();
-  const srv = server(kase.routes);
-  const first = await outcomeOf(read(new EvslApi(cfg, srv.fetch)));
+  const { first, second, srv } = await twoCalls(kase.routes);
   if (first.ok) {
     fail(what, "the first call was expected to fail");
     continue;
@@ -389,7 +408,6 @@ for (const kase of RETRY_CASES) {
       fail(what, `the first failure claims ${JSON.stringify(s)}: ${message(first.err)}`);
     }
   }
-  const second = await outcomeOf(read(new EvslApi(cfg, srv.fetch)));
   if (!second.ok) {
     fail(what, `the second call did not log in again: ${message(second.err)}`);
     continue;
@@ -402,10 +420,9 @@ for (const kase of RETRY_CASES) {
 // Part 6: a refusal the server counted is kept.
 for (const status of [401, 403, 429]) {
   const what = `part 6: signin refused ${status}`;
-  const cfg = freshConfig();
-  const srv = server({ signin: [() => json({ message: "Identifiants incorrects." }, status), SIGNIN_OK] });
-  const first = await outcomeOf(read(new EvslApi(cfg, srv.fetch)));
-  const second = await outcomeOf(read(new EvslApi(cfg, srv.fetch)));
+  const { first, second, srv } = await twoCalls({
+    signin: [() => json({ message: "Identifiants incorrects." }, status), SIGNIN_OK],
+  });
   if (first.ok || second.ok) {
     fail(what, "both calls were expected to fail");
     continue;
@@ -416,9 +433,7 @@ for (const status of [401, 403, 429]) {
   if (!message(first.err).includes("will not try again")) {
     fail(what, `the message does not say the process will not retry: ${message(first.err)}`);
   }
-  if (srv.count.csrf !== 1 || srv.count.signin !== 1) {
-    fail(what, `expected one csrf read and one signin, got ${srv.count.csrf} and ${srv.count.signin}`);
-  }
+  expectOneLogin(what, srv);
 }
 
 if (failures > 0) {
