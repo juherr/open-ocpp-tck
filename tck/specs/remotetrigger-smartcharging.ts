@@ -23,6 +23,7 @@ import {
   assertReceived,
   assertResponseStatus,
   assertSent,
+  findCallByPayloadField,
   type AssertRecorder,
 } from "../assert";
 import { findAllCalls, findResponseFor, type Frame } from "../ocpp";
@@ -573,10 +574,12 @@ export function assertTriggered(
   description: string,
 ): void {
   const answeredDescription = `TriggerMessage(${requestedMessage}) sent and accepted`;
-  const trigger = findAllCalls(frames, "received", "TriggerMessage").find(
-    (call) =>
-      (call.payload as { requestedMessage?: unknown } | null)
-        ?.requestedMessage === requestedMessage,
+  const trigger = findCallByPayloadField(
+    frames,
+    "received",
+    "TriggerMessage",
+    "requestedMessage",
+    requestedMessage,
   );
   if (!trigger) {
     rec.fail(

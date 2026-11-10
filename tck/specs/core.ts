@@ -23,6 +23,7 @@ import {
   assertReceived,
   assertResponseStatus,
   assertSent,
+  findCallByPayloadField,
   type AssertRecorder,
 } from "../assert";
 import { findAllCalls, findCall, findResponseFor, type Frame } from "../ocpp";
@@ -1153,8 +1154,12 @@ export function assertStartConfirmed(
   idTag: string,
   description: string,
 ): void {
-  const start = findAllCalls(frames, "sent", "StartTransaction").find(
-    (c) => (c.payload as { idTag?: unknown } | null)?.idTag === idTag,
+  const start = findCallByPayloadField(
+    frames,
+    "sent",
+    "StartTransaction",
+    "idTag",
+    idTag,
   );
   if (!start) {
     rec.fail(description, `no sent StartTransaction for idTag ${idTag}`);
@@ -1187,8 +1192,12 @@ export function assertStartStatus(
   expectedStatus: string,
   description: string,
 ): void {
-  const start = findAllCalls(frames, "sent", "StartTransaction").find(
-    (c) => (c.payload as { idTag?: unknown } | null)?.idTag === idTag,
+  const start = findCallByPayloadField(
+    frames,
+    "sent",
+    "StartTransaction",
+    "idTag",
+    idTag,
   );
   if (!start) {
     rec.fail(description, `no sent StartTransaction for idTag ${idTag}`);
@@ -1232,8 +1241,12 @@ export function assertDistinctTransactionIds(
   description: string,
 ): void {
   const idFor = (idTag: string): unknown => {
-    const start = findAllCalls(frames, "sent", "StartTransaction").find(
-      (c) => (c.payload as { idTag?: unknown } | null)?.idTag === idTag,
+    const start = findCallByPayloadField(
+      frames,
+      "sent",
+      "StartTransaction",
+      "idTag",
+      idTag,
     );
     const response = start ? findResponseFor(frames, start) : undefined;
     return response?.kind === "callresult"

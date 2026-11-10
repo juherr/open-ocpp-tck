@@ -24,6 +24,7 @@ import {
   assertReceived,
   assertResponseStatus,
   assertSent,
+  findCallByPayloadField,
   type AssertRecorder,
 } from "../assert";
 import { UnsupportedOperationError } from "../driver";
@@ -803,9 +804,7 @@ export function assertIdTagInfoParent(
   expectedParent: string,
   description: string,
 ): void {
-  const call = findAllCalls(frames, "sent", action).find(
-    (c) => (c.payload as { idTag?: unknown } | null)?.idTag === idTag,
-  );
+  const call = findCallByPayloadField(frames, "sent", action, "idTag", idTag);
   if (!call) {
     rec.fail(description, `no sent ${action} for idTag ${idTag}`);
     return;
@@ -858,8 +857,12 @@ export function assertStartUsesReservation(
     rec.fail(description, "no received ReserveNow carrying a reservationId");
     return;
   }
-  const start = findAllCalls(frames, "sent", "StartTransaction").find(
-    (c) => (c.payload as { idTag?: unknown } | null)?.idTag === idTag,
+  const start = findCallByPayloadField(
+    frames,
+    "sent",
+    "StartTransaction",
+    "idTag",
+    idTag,
   );
   if (!start) {
     rec.fail(

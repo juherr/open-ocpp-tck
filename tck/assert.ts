@@ -1,5 +1,5 @@
 /**
- * Derived from shiv3/ocpp-cp-simulator src/cp/application/verification/assert.ts (re-exported upstream as scripts/steve-verify/runner/assert.ts) @ 604054adb0d7d7129a26a5f1ad2d5fdc290d1ca1 (Apache-2.0). Modified: added the UNVERIFIABLE_PREFIX and UNEXERCISED_PREFIX sentinels; added a third SKIPPED check outcome -- the CheckStatus type, AssertRecorder.skip, and the skipped and unexercised counters; assertEq/assertNonEmpty short-circuit to SKIPPED when a value carries the UNVERIFIABLE sentinel; added assertCallPayload, assertAllAnswered, AnsweredOptions, tallyAnswers, AnswerTally and AnswerError, which have no upstream counterpart. Everything else is unchanged.
+ * Derived from shiv3/ocpp-cp-simulator src/cp/application/verification/assert.ts (re-exported upstream as scripts/steve-verify/runner/assert.ts) @ 604054adb0d7d7129a26a5f1ad2d5fdc290d1ca1 (Apache-2.0). Modified: added the UNVERIFIABLE_PREFIX and UNEXERCISED_PREFIX sentinels; added a third SKIPPED check outcome -- the CheckStatus type, AssertRecorder.skip, and the skipped and unexercised counters; assertEq/assertNonEmpty short-circuit to SKIPPED when a value carries the UNVERIFIABLE sentinel; added assertCallPayload, assertAllAnswered, AnsweredOptions, tallyAnswers, AnswerTally and AnswerError, and the findCallByPayloadField lookup, which have no upstream counterpart. Everything else is unchanged.
  *
  * assert.ts -- typed assertion DSL for scenario specs, mirroring lib.sh's
  * check_* helpers but operating on parsed {@link Frame}s (see ocpp.ts)
@@ -222,6 +222,28 @@ export function assertCallCount(
   rec.fail(
     description,
     `${calls.length} ${direction} CALL(s) for action=${action}, expected ${expected}`,
+  );
+}
+
+/**
+ * The first CALL for `action`+`direction` whose payload member `field` is
+ * `value` (strict equality), or undefined.
+ *
+ * A lookup, not a check: it records nothing, and its name keeps it out of
+ * the `assert*` calls the spec-invariants extractor renders, so a helper
+ * that uses it renders exactly as the hand-written `.find` it replaces. A
+ * `null` payload is read as one with no members, the shape an absent member
+ * has -- the same null guard each of those copies spelt out.
+ */
+export function findCallByPayloadField(
+  frames: readonly Frame[],
+  direction: Direction,
+  action: string,
+  field: string,
+  value: string | number | boolean,
+): CallFrame | undefined {
+  return findAllCalls(frames, direction, action).find(
+    (c) => (c.payload as Record<string, unknown> | null)?.[field] === value,
   );
 }
 
