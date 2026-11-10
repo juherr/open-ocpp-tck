@@ -244,7 +244,7 @@ selection metadata: like groups, they are absent from the pinned
 | `ocpp-tck run <template-id> [--version 1.6\|2.0.1] [--tag T]` | docker + CSMS | One scenario, optionally checked against its declared version and tags |
 | `ocpp-tck run-all [--group N] [--version 1.6\|2.0.1] [--tag T] [--parallel]` | docker + CSMS | A sweep; group, version and tag filters intersect |
 | `ocpp-tck check-driver [--driver SPEC]` | nothing | Offline conformance of a driver against this core |
-| `ocpp-tck list-scenarios [--group N] [--version 1.6\|2.0.1] [--tag T] [--json]` | nothing | The 96 registered scenarios with their group and tags, optionally filtered |
+| `ocpp-tck list-scenarios [--group N] [--version 1.6\|2.0.1] [--tag T] [--json]` | nothing | The 98 registered scenarios with their group and tags, optionally filtered |
 | `ocpp-tck print-sim-image` | nothing | The pinned simulator image digest |
 | `ocpp-tck driver selftest [--with-writes]` | CSMS | Every `CsmsRecords` method once, in seconds: does this driver answer the contract? `--with-writes` adds the `prepareStation` hook |
 | `ocpp-tck driver <verb>` | driver-defined | A bootstrap verb your driver contributes |
