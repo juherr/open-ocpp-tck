@@ -136,21 +136,24 @@ export function allocateReservationId(): number {
 
 /** The `{action, payload}` the command endpoint takes for one operation. */
 export function toCommand(op: CsmsOperation16): Command {
+  return { action: op.action, payload: toPayload(op) };
+}
+
+/** The OCPP 1.6 request body for one operation. The command's action is the
+ *  operation's own, so no arm spells it a second time. */
+function toPayload(op: CsmsOperation16): Record<string, unknown> {
   switch (op.action) {
     case "Reset":
-      return { action: "Reset", payload: { type: op.type } };
+      return { type: op.type };
 
     case "UnlockConnector":
-      return { action: "UnlockConnector", payload: { connectorId: op.connectorId } };
+      return { connectorId: op.connectorId };
 
     case "ClearCache":
-      return { action: "ClearCache", payload: {} };
+      return {};
 
     case "ChangeAvailability":
-      return {
-        action: "ChangeAvailability",
-        payload: { connectorId: op.connectorId, type: op.type },
-      };
+      return { connectorId: op.connectorId, type: op.type };
 
     case "GetConfiguration":
       if (op.keys !== undefined && op.keys.length > 0) {
@@ -159,38 +162,26 @@ export function toCommand(op: CsmsOperation16): Command {
           GET_CONFIGURATION_KEYS_UNSUPPORTED,
         );
       }
-      return { action: "GetConfiguration", payload: {} };
+      return {};
 
     case "ChangeConfiguration":
-      return {
-        action: "ChangeConfiguration",
-        payload: { key: op.key, value: op.value },
-      };
+      return { key: op.key, value: op.value };
 
     case "RemoteStartTransaction":
       // `undefined` starts without a profile; `""` is a lookup that found none,
       // which profileFor() refuses rather than quietly sending no profile.
-      return {
-        action: "RemoteStartTransaction",
-        payload: body({
-          connectorId: op.connectorId,
-          idTag: op.idTag,
-          chargingProfile:
-            op.chargingProfile === undefined ? undefined : profileFor(op.chargingProfile),
-        }),
-      };
+      return body({
+        connectorId: op.connectorId,
+        idTag: op.idTag,
+        chargingProfile:
+          op.chargingProfile === undefined ? undefined : profileFor(op.chargingProfile),
+      });
 
     case "RemoteStopTransaction":
-      return {
-        action: "RemoteStopTransaction",
-        payload: { transactionId: transactionId(op.transaction, op.action) },
-      };
+      return { transactionId: transactionId(op.transaction, op.action) };
 
     case "TriggerMessage":
-      return {
-        action: "TriggerMessage",
-        payload: body({ requestedMessage: op.requestedMessage, connectorId: op.connectorId }),
-      };
+      return body({ requestedMessage: op.requestedMessage, connectorId: op.connectorId });
 
     case "SetChargingProfile": {
       const profile = profileFor(op.chargingProfile);
@@ -201,63 +192,48 @@ export function toCommand(op: CsmsOperation16): Command {
         op.transaction === undefined || op.transaction === ""
           ? profile
           : { ...profile, transactionId: transactionId(op.transaction, op.action) };
-      return {
-        action: "SetChargingProfile",
-        payload: { connectorId: op.connectorId, csChargingProfiles: scoped },
-      };
+      return { connectorId: op.connectorId, csChargingProfiles: scoped };
     }
 
     case "GetCompositeSchedule":
-      return {
-        action: "GetCompositeSchedule",
-        payload: body({
-          connectorId: op.connectorId,
-          duration: op.duration,
-          chargingRateUnit: op.chargingRateUnit,
-        }),
-      };
+      return body({
+        connectorId: op.connectorId,
+        duration: op.duration,
+        chargingRateUnit: op.chargingRateUnit,
+      });
 
     case "ClearChargingProfile":
       // Every member is optional and an omitted one is a wildcard, so an empty
       // ref must not become an absent id: that would clear everything.
-      return {
-        action: "ClearChargingProfile",
-        payload: body({
-          id:
-            op.chargingProfile === undefined
-              ? undefined
-              : profileFor(op.chargingProfile).chargingProfileId,
-          connectorId: op.connectorId,
-          chargingProfilePurpose: op.purpose,
-          stackLevel: op.stackLevel,
-        }),
-      };
+      return body({
+        id:
+          op.chargingProfile === undefined
+            ? undefined
+            : profileFor(op.chargingProfile).chargingProfileId,
+        connectorId: op.connectorId,
+        chargingProfilePurpose: op.purpose,
+        stackLevel: op.stackLevel,
+      });
 
     case "UpdateFirmware":
-      return {
-        action: "UpdateFirmware",
-        payload: body({
-          location: op.location,
-          retrieveDate: op.retrieveDate.toISOString(),
-          retries: op.retries,
-          retryInterval: op.retryInterval,
-        }),
-      };
+      return body({
+        location: op.location,
+        retrieveDate: op.retrieveDate.toISOString(),
+        retries: op.retries,
+        retryInterval: op.retryInterval,
+      });
 
     case "GetDiagnostics":
-      return {
-        action: "GetDiagnostics",
-        payload: body({
-          location: op.location,
-          retries: op.retries,
-          retryInterval: op.retryInterval,
-          startTime: op.startTime?.toISOString(),
-          stopTime: op.stopTime?.toISOString(),
-        }),
-      };
+      return body({
+        location: op.location,
+        retries: op.retries,
+        retryInterval: op.retryInterval,
+        startTime: op.startTime?.toISOString(),
+        stopTime: op.stopTime?.toISOString(),
+      });
 
     case "GetLocalListVersion":
-      return { action: "GetLocalListVersion", payload: {} };
+      return {};
 
     case "SendLocalList":
       // KEY ORDER IS DELIBERATE: TC_043.5 asserts
@@ -265,47 +241,38 @@ export function toCommand(op: CsmsOperation16): Command {
       // the station's raw received line, and the server keeps the order it was
       // given. An entry with no status carries no idTagInfo at all, which in a
       // Differential update means "remove this tag".
-      return {
-        action: "SendLocalList",
-        payload: body({
-          listVersion: op.listVersion,
-          localAuthorizationList: (op.localAuthorizationList ?? []).map((entry) =>
-            body({
-              idTag: entry.idTag,
-              idTagInfo:
-                entry.status === undefined
-                  ? undefined
-                  : body({
-                      status: entry.status,
-                      expiryDate: entry.expiryDate?.toISOString(),
-                      parentIdTag: entry.parentIdTag,
-                    }),
-            }),
-          ),
-          updateType: op.updateType,
-        }),
-      };
+      return body({
+        listVersion: op.listVersion,
+        localAuthorizationList: (op.localAuthorizationList ?? []).map((entry) =>
+          body({
+            idTag: entry.idTag,
+            idTagInfo:
+              entry.status === undefined
+                ? undefined
+                : body({
+                    status: entry.status,
+                    expiryDate: entry.expiryDate?.toISOString(),
+                    parentIdTag: entry.parentIdTag,
+                  }),
+          }),
+        ),
+        updateType: op.updateType,
+      });
 
     case "ReserveNow":
-      return {
-        action: "ReserveNow",
-        payload: body({
-          connectorId: op.connectorId,
-          expiryDate: op.expiryDate.toISOString(),
-          idTag: op.idTag,
-          parentIdTag: op.parentIdTag,
-          reservationId:
-            op.reservation === undefined
-              ? allocateReservationId()
-              : reservationId(op.reservation, op.action),
-        }),
-      };
+      return body({
+        connectorId: op.connectorId,
+        expiryDate: op.expiryDate.toISOString(),
+        idTag: op.idTag,
+        parentIdTag: op.parentIdTag,
+        reservationId:
+          op.reservation === undefined
+            ? allocateReservationId()
+            : reservationId(op.reservation, op.action),
+      });
 
     case "CancelReservation":
-      return {
-        action: "CancelReservation",
-        payload: { reservationId: reservationId(op.reservation, op.action) },
-      };
+      return { reservationId: reservationId(op.reservation, op.action) };
 
     default:
       return assertNever(op, "codetics-ev-server-lite.execute");
