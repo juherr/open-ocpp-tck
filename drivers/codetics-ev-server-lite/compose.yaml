@@ -43,16 +43,20 @@ services:
     networks:
       - evsl-internal
     # The runtime image (eclipse-temurin:25-jre) ships neither curl nor wget,
-    # so the probe is bash's own /dev/tcp. /actuator/health is open without
-    # authentication, and it reports UP only once the application runners --
-    # the bootstrap administrator among them -- have finished.
+    # so the probe is bash's own /dev/tcp. The READINESS group rather than the
+    # root health endpoint: Spring Boot moves readiness to ACCEPTING_TRAFFIC
+    # only after the application runners have run, and the bootstrap
+    # administrator the driver logs in as is created by one. A login refused
+    # before that is cached for the whole process (api-client.ts). The upstream
+    # security configuration leaves both paths open without authentication,
+    # and application.yml enables the probe groups.
     healthcheck:
       test:
         - CMD
         - bash
         - -c
         - |-
-          exec 3<>/dev/tcp/127.0.0.1/8080 && printf 'GET /actuator/health HTTP/1.0\r\nHost: localhost\r\n\r\n' >&3 && grep -q '"UP"' <&3
+          exec 3<>/dev/tcp/127.0.0.1/8080 && printf 'GET /actuator/health/readiness HTTP/1.0\r\nHost: localhost\r\n\r\n' >&3 && grep -q '"UP"' <&3
       interval: 10s
       timeout: 5s
       retries: 30

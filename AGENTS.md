@@ -170,9 +170,10 @@ rules needs a CSMS that emits a CALLERROR and a run truncated between a CALL
 and its response — both real, neither reproducible offline except by handing
 the helper the frames. `get-configuration-filter.ts`: the same, one step
 further — the encoding it pins TC_019_1 as accepting, a `GetConfiguration`
-with its optional `key` member *omitted*, is one no CSMS here sends. Both
-bundled drivers spell that request `{"key":[]}`, so the scenario was measuring
-a spelling and no sweep, offline or live, could say so.
+with its optional `key` member *omitted*, is one neither of the first two
+bundled drivers sends. Both spell that request `{"key":[]}`, so the scenario
+was measuring a spelling and no sweep of theirs, offline or live, could say so.
+The third, `drivers/codetics-ev-server-lite`, does send the omitted form.
 `foreign-sweep-scope.ts`: the refusal it guards reads `docker ps`, so a shell
 version would start a container per row on the daemon this repository's own
 sweeps share — and the rule is what can be wrong, so `classifyForeignSims` is
