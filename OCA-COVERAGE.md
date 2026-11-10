@@ -107,15 +107,25 @@ so a run shows them — but they cannot pass until the scenario changes.
 | scenario | OCA step | obligation | why the request is never sent |
 |---|---|---|---|
 | `cert16-tc001-cold-boot` | TC_001 step 6 | `Heartbeat.conf` | the case's Heartbeat is periodic, at the interval `BootNotification.conf` returns, and the scenario holds 20 s. Measured on the wire: SteVe returns 14400 s, CitrineOS 60 s, codetics-ev-server-lite 60 s. See below for why the hold is not simply raised. TC_054 triggers a Heartbeat explicitly and carries the obligation instead. |
-| `cert16-tc010-remote-start` | TC_010 step 6 | `Authorize.conf` | remote start: the CSMS supplies the idTag in `RemoteStartTransaction`, so the CP goes straight to `StartTransaction`. |
-| `cert16-tc011-remote-start-stop` | TC_011_1 step 6 | `Authorize.conf` | same |
-| `cert16-tc059-remote-start-with-profile` | TC_059 step 6 | `Authorize.conf` | same |
+| `cert16-tc010-remote-start` | TC_010 step 6 | `Authorize.conf` | the simulator's `AuthorizeRemoteTxRequests` is read-only `false`, so it starts the transaction without authorizing first ([shiv3/ocpp-cp-simulator#921](https://github.com/shiv3/ocpp-cp-simulator/issues/921)). |
+| `cert16-tc011-remote-start-stop` | TC_011_1 step 4 | `Authorize.conf` | same |
+| `cert16-tc059-remote-start-with-profile` | TC_059 step 4 | `Authorize.conf` | same |
 
-The `Authorize` rows are the same fact three times, and it is worth stating
-plainly: **no remote-start scenario can carry the `Authorize.conf`
-obligation**, because remote start is precisely the flow that skips
-authorization. `TC_003` and `TC_004` are locally driven, do send `Authorize`,
-and do carry it.
+The `Authorize` rows are the same fact three times, and it is a fact about
+the charge point this suite drives, not about remote start. OCPP 1.6 §5.11
+makes the effect of `RemoteStartTransaction.req` depend on the
+`AuthorizeRemoteTxRequests` key: when it is `true`, the charge point behaves
+as for a local start and authorizes the idTag first, which may mean an
+`Authorize.req`; only when it is `false` does it start straight away. The
+three OCA cases are written for the first reading: the charge point sends
+`Authorize.req` after its `RemoteStartTransaction.conf`, and the Central
+System owes the `.conf`. §9.1.3 lets the charge point choose whether the key
+is read-only, so the pinned simulator's read-only `false` is conformant; it
+just leaves no scenario a way to turn the behaviour on. That is
+[shiv3/ocpp-cp-simulator#921](https://github.com/shiv3/ocpp-cp-simulator/issues/921),
+and these rows can go green once a pinned simulator lets the key be set to
+`true`. Until then `TC_003` and `TC_004`, which are locally driven and do send
+`Authorize`, are where that obligation is checked.
 
 The `tc001` row stays open on purpose. Closing it faithfully means a hold
 longer than the interval the CSMS returns, and that cannot be had cleanly for

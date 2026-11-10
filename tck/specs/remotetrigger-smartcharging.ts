@@ -178,12 +178,18 @@ export const tc010RemoteStartSpec: ScenarioSpec<void> = {
     // would otherwise skip these whenever no transaction row is findable.
     //
     // Authorize reports SKIPPED, for a reason that holds for every
-    // remote-start scenario here: the CSMS supplies the idTag in
-    // RemoteStartTransaction, so the CP goes straight to StartTransaction and
-    // never sends an Authorize.req. Measured, not assumed -- a sweep shows no
-    // Authorize on the wire for this scenario at all. Orange rather than red
-    // because that is a gap in the scenario, not a CSMS defect; TC_003/TC_004
-    // are locally driven and check the same obligation for real.
+    // remote-start scenario here, and it is the SIMULATOR's, not remote
+    // start's. OCPP 1.6 §5.11: with AuthorizeRemoteTxRequests=true the CP
+    // treats a remote start as a local one and authorizes the idTag first,
+    // which is the flow TC_010 is written for (Authorize.req after
+    // RemoteStartTransaction.conf). The pinned simulator has the key
+    // read-only and false -- conformant, since §9.1.3 lets the CP choose --
+    // so it goes straight to StartTransaction and no scenario can switch it
+    // on (shiv3/ocpp-cp-simulator#921). Measured, not assumed -- a sweep
+    // shows no Authorize on the wire for this scenario at all. Orange rather
+    // than red because that is a gap in what the scenario can drive, not a
+    // CSMS defect; TC_003/TC_004 are locally driven and check the same
+    // obligation for real.
     assertAllAnswered(rec, frames, "StatusNotification");
     assertAllAnswered(rec, frames, "StartTransaction");
     assertAllAnswered(rec, frames, "Authorize");
@@ -275,9 +281,10 @@ export const tc011RemoteStartStopSpec: ScenarioSpec<void> = {
       /Sent: \[2,.*"StopTransaction".*"reason":"Remote"/,
       "StopTransaction sent with reason Remote",
     );
-    // TC_011.1 steps 6, 8, 10, 14. Authorize is SKIPPED for the same measured
-    // reason as TC_010 above: remote start carries the idTag, so no
-    // Authorize.req is ever sent.
+    // TC_011.1 steps 4, 6, 8, 10, 14. Authorize is SKIPPED for the same
+    // measured reason as TC_010 above: the simulator's
+    // AuthorizeRemoteTxRequests is read-only false, so it never authorizes
+    // a remote start (shiv3/ocpp-cp-simulator#921).
     assertAllAnswered(rec, frames, "StatusNotification");
     assertAllAnswered(rec, frames, "StartTransaction");
     assertAllAnswered(rec, frames, "Authorize");
@@ -985,9 +992,10 @@ export const tc059RemoteStartWithProfileSpec: ScenarioSpec<RemoteStartWithProfil
         /Sent: \[2,.*"StopTransaction"/,
         "StopTransaction eventually sent",
       );
-      // TC_059 steps 6, 8, 10. Authorize is SKIPPED for the same measured
-      // reason as TC_010 and TC_011: this is a remote start, so the idTag
-      // arrives in the request and no Authorize.req is ever sent.
+      // TC_059 steps 4, 6, 8, 10. Authorize is SKIPPED for the same measured
+      // reason as TC_010 and TC_011: the simulator's AuthorizeRemoteTxRequests
+      // is read-only false, so it never authorizes a remote start
+      // (shiv3/ocpp-cp-simulator#921).
       assertAllAnswered(rec, frames, "StatusNotification");
       assertAllAnswered(rec, frames, "StartTransaction");
       assertAllAnswered(rec, frames, "Authorize");
