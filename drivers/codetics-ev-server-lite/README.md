@@ -162,7 +162,9 @@ sent). Each SKIPPED check reads "scenario does not exercise this": the station
 never sent the message the generic every-CALL-answered check looks for. They
 are the same five rows, with the same SKIPPED checks, that SteVe reports
 (`VENDOR.md`'s SteVe validation table), so they describe the scenarios and the
-simulator rather than this CSMS.
+simulator rather than this CSMS. `tc054` has since been made to trigger all
+five messages its case lists, and run on its own against this server it is
+PASS, 15 checks, none skipped; the sweep counts above predate that change.
 
 By tag, over the 47 OCPP 1.6 scenarios (a scenario carries one tag or more,
 so the rows do not add up to 47): every scenario tagged `authorization` (4),

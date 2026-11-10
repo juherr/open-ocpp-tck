@@ -865,6 +865,39 @@ FILE remotetrigger-smartcharging.ts
         ·.pass(·)
         RETURN
     ·.fail(·, ·)
+  HELPER assertTriggered
+    IF
+      ·.fail(·, ·)
+      ·.fail(·, "nothing was triggered")
+      RETURN
+    IF
+      AND
+      ·.fail(·, ·)
+      ·.fail(·, "the trigger was scoped to another connector")
+      RETURN
+    IF
+      OR
+      TERNARY
+      ·.fail(·, ·)
+      ·.fail(·, "the trigger was not accepted")
+      RETURN
+    IF
+      AND
+      ·.pass(·)
+      ·.pass(·)
+      RETURN
+    IF
+      ·.fail(·, ·)
+      ·.fail(·, "the trigger was not accepted")
+      RETURN
+    ·.pass(·)
+    AND
+      AND
+        AND
+      OR
+    IF
+      ·.pass(·)
+      ·.fail(·, ·)
   SPEC cert16-tc010-remote-start connector=1 bootWaitSecs=4 holdSecs=25 ocppVersion="OCPP-1.6J"
     assertReceived(·, ·, "RemoteStartTransaction", "RemoteStartTransaction.req received")
     assertResponseStatus(·, ·, "RemoteStartTransaction", "Accepted", "RemoteStartTransaction accepted")
@@ -904,9 +937,11 @@ FILE remotetrigger-smartcharging.ts
       RETURN
     assertNonEmpty(·, ·, "DB: transaction is closed (stop_timestamp set)")
   SPEC cert16-tc054-trigger-message connector=1 bootWaitSecs=4 holdSecs=12 ocppVersion="OCPP-1.6J"
-    assertReceived(·, ·, "TriggerMessage", "TriggerMessage.req received")
-    assertResponseStatus(·, ·, "TriggerMessage", "Accepted", "TriggerMessage accepted")
-    assertLineAfter(·, ·, /Received: \[2,.*"TriggerMessage"/, /Sent: \[2,.*"Heartbeat"/, "requested Heartbeat sent after TriggerMessage")
+    assertTriggered(·, ·, "MeterValues", 1, false, "requested MeterValues sent for connector 1")
+    assertTriggered(·, ·, "Heartbeat", null, false, "requested Heartbeat sent")
+    assertTriggered(·, ·, "StatusNotification", 1, false, "requested StatusNotification sent for connector 1")
+    assertTriggered(·, ·, "DiagnosticsStatusNotification", null, false, "requested DiagnosticsStatusNotification sent")
+    assertTriggered(·, ·, "FirmwareStatusNotification", null, true, "requested FirmwareStatusNotification sent (if implemented)")
     assertAllAnswered(·, ·, "Heartbeat")
     assertAllAnswered(·, ·, "StatusNotification")
     assertAllAnswered(·, ·, "MeterValues")

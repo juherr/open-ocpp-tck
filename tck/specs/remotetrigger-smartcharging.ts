@@ -16,7 +16,6 @@
 import {
   assertAllAnswered,
   assertEq,
-  assertLineAfter,
   assertLineMatches,
   assertNoLineMatches,
   assertNonEmpty,
@@ -526,60 +525,153 @@ export const tc028RemoteStopRejectedSpec: ScenarioSpec<RemoteStopRejectedDriveSt
   };
 
 // ---------------------------------------------------------------------------
-// TC_054 Trigger Message -- CSMS sends TriggerMessage requesting a message
-// type; CP answers Accepted and sends the requested message (Heartbeat here).
+// TC_054 Trigger Message -- the CSMS triggers, one after the other, the five
+// charge-point messages the case lists; the CP answers each TriggerMessage
+// and sends the requested message, which the CSMS has to answer.
 // ---------------------------------------------------------------------------
+
+/**
+ * One TriggerMessage of TC_054, judged on its own: the CSMS sent a
+ * TriggerMessage.req asking for `requestedMessage` (scoped to `connectorId`
+ * when the case scopes it, i.e. for MeterValues and StatusNotification), the
+ * CP answered it, and -- when the answer is Accepted -- the requested message
+ * left the CP AFTER that answer.
+ *
+ * Why per trigger rather than the generic helpers: `assertResponseStatus`
+ * reads the FIRST TriggerMessage only, and `assertLineAfter` anchors on the
+ * LAST one, so with five triggers in a row the first would stop covering
+ * triggers two to five and the second would read the Heartbeat sent at step 7
+ * as missing because the FirmwareStatusNotification trigger comes later. And
+ * "sent after" is the check that FAILS: `assertAllAnswered` reports SKIPPED
+ * when nothing was sent, so without this a trigger the CSMS never dispatched
+ * would leave the scenario PARTIAL rather than red.
+ *
+ * `notImplementedAllowed` is the case's own exception for its last trigger:
+ * the CP sends FirmwareStatusNotification only "if implemented", and answers
+ * NotImplemented otherwise, after which nothing is owed on the wire.
+ *
+ * The arguments are literals at the call sites so ASSERT-INVENTORY.txt
+ * renders which trigger each check is about -- see the rejected-refactor note
+ * beside `assertIdTagInfoStatus` in assert.ts for why a predicate would not.
+ */
+function assertTriggered(
+  rec: AssertRecorder,
+  frames: readonly Frame[],
+  requestedMessage: string,
+  connectorId: number | null,
+  notImplementedAllowed: boolean,
+  description: string,
+): void {
+  const answeredDescription = `TriggerMessage(${requestedMessage}) sent and accepted`;
+  const trigger = findAllCalls(frames, "received", "TriggerMessage").find(
+    (call) =>
+      (call.payload as { requestedMessage?: unknown } | null)
+        ?.requestedMessage === requestedMessage,
+  );
+  if (!trigger) {
+    rec.fail(
+      answeredDescription,
+      `no Received TriggerMessage with requestedMessage=${requestedMessage}`,
+    );
+    rec.fail(description, "nothing was triggered");
+    return;
+  }
+  const sentConnector = (trigger.payload as { connectorId?: unknown })
+    .connectorId;
+  if (connectorId !== null && sentConnector !== connectorId) {
+    rec.fail(
+      answeredDescription,
+      `expected connectorId ${connectorId}, got ${JSON.stringify(sentConnector)}`,
+    );
+    rec.fail(description, "the trigger was scoped to another connector");
+    return;
+  }
+  const response = findResponseFor(frames, trigger);
+  if (!response || response.kind === "callerror") {
+    const detail = !response
+      ? `no response frame found for uniqueId=${trigger.uniqueId}`
+      : `CALLERROR ${response.errorCode}: ${response.errorDescription}`;
+    rec.fail(answeredDescription, detail);
+    rec.fail(description, "the trigger was not accepted");
+    return;
+  }
+  const status = (response.payload as { status?: unknown } | null)?.status;
+  if (notImplementedAllowed && status === "NotImplemented") {
+    rec.pass(`${answeredDescription} (NotImplemented, which the case allows)`);
+    rec.pass(`${description} (not owed: the CP answered NotImplemented)`);
+    return;
+  }
+  if (status !== "Accepted") {
+    rec.fail(answeredDescription, `expected status Accepted, got ${String(status)}`);
+    rec.fail(description, "the trigger was not accepted");
+    return;
+  }
+  rec.pass(answeredDescription);
+
+  const after = frames.slice(frames.indexOf(response) + 1);
+  const sent = after.some(
+    (frame) =>
+      frame.kind === "call" &&
+      frame.direction === "sent" &&
+      frame.action === requestedMessage &&
+      (connectorId === null ||
+        (frame.payload as { connectorId?: unknown } | null)?.connectorId ===
+          connectorId),
+  );
+  if (sent) {
+    rec.pass(description);
+  } else {
+    rec.fail(
+      description,
+      `no Sent ${requestedMessage}${connectorId === null ? "" : ` for connector ${connectorId}`} after the TriggerMessage.conf (uniqueId=${trigger.uniqueId})`,
+    );
+  }
+}
 
 export const tc054TriggerMessageSpec: ScenarioSpec<void> = {
   templateId: "cert16-tc054-trigger-message",
   ocppVersion: "OCPP-1.6J",
   tags: ["remote-trigger"],
   description:
-    "TC_054 Trigger Message: TriggerMessage(Heartbeat) accepted, CP sends the requested Heartbeat.",
+    "TC_054 Trigger Message: the CSMS triggers MeterValues, Heartbeat, StatusNotification, DiagnosticsStatusNotification and FirmwareStatusNotification in turn; the CP sends each.",
   connector: 1,
   bootWaitSecs: 4,
   holdSecs: 12,
   async drive({ cpId, csms16 }) {
+    // The case's order, one trigger at a time. The pause after each lets the
+    // triggered CALL go out and be answered before the next TriggerMessage:
+    // the case is a sequence, not a burst, and a CSMS may refuse a
+    // CSMS-initiated Call while one of the station's is still in progress.
+    // MeterValues and StatusNotification are scoped to the configured
+    // connector, as the case requires; the other three are station-wide.
+    const triggers = [
+      { action: "TriggerMessage", requestedMessage: "MeterValues", connectorId: 1 },
+      { action: "TriggerMessage", requestedMessage: "Heartbeat" },
+      { action: "TriggerMessage", requestedMessage: "StatusNotification", connectorId: 1 },
+      { action: "TriggerMessage", requestedMessage: "DiagnosticsStatusNotification" },
+      { action: "TriggerMessage", requestedMessage: "FirmwareStatusNotification" },
+    ] as const;
     await sleep(2000);
-    try {
-      await csms16.execute(cpId, { action: "TriggerMessage", requestedMessage: "Heartbeat" });
-    } catch (err) {
-      warnOpFailed("TriggerMessage", err);
+    for (const trigger of triggers) {
+      try {
+        await csms16.execute(cpId, trigger);
+      } catch (err) {
+        warnOpFailed("TriggerMessage", err);
+      }
+      await sleep(3000);
     }
   },
-  assert({ frames, lines, rec }) {
-    assertReceived(
-      rec,
-      frames,
-      "TriggerMessage",
-      "TriggerMessage.req received",
-    );
-    assertResponseStatus(
-      rec,
-      frames,
-      "TriggerMessage",
-      "Accepted",
-      "TriggerMessage accepted",
-    );
-    // assertLineAfter (not a first-match order check): a periodic Heartbeat
-    // unrelated to this TriggerMessage could land anywhere in the log and
-    // either mask a real failure (an earlier Heartbeat trivially satisfies
-    // first-match order) or, on a slow run, not exist yet at a fixed
-    // check position. Confirm a Heartbeat appears strictly after the
-    // (last) TriggerMessage.req line instead.
-    assertLineAfter(
-      rec,
-      lines,
-      /Received: \[2,.*"TriggerMessage"/,
-      /Sent: \[2,.*"Heartbeat"/,
-      "requested Heartbeat sent after TriggerMessage",
-    );
-    // TC_054 puts a .conf on the Central System for all five charge-point
-    // messages it can trigger. This scenario triggers ONE of them -- see the
-    // drive() above -- so Heartbeat and StatusNotification are checked for
-    // real and the other three report SKIPPED. Listing them is the point:
-    // the gap is in this scenario's single trigger, and leaving them out
-    // would hide that behind a green verdict.
+  assert({ frames, rec }) {
+    // TC_054 steps 1-19, one trigger at a time -- see assertTriggered.
+    assertTriggered(rec, frames, "MeterValues", 1, false, "requested MeterValues sent for connector 1");
+    assertTriggered(rec, frames, "Heartbeat", null, false, "requested Heartbeat sent");
+    assertTriggered(rec, frames, "StatusNotification", 1, false, "requested StatusNotification sent for connector 1");
+    assertTriggered(rec, frames, "DiagnosticsStatusNotification", null, false, "requested DiagnosticsStatusNotification sent");
+    assertTriggered(rec, frames, "FirmwareStatusNotification", null, true, "requested FirmwareStatusNotification sent (if implemented)");
+    // TC_054 steps 4, 8, 12, 16, 20: a .conf on the Central System for each of
+    // the five messages it triggered. The checks above make sure each was
+    // sent, so none of these can report SKIPPED on a run where the CSMS
+    // dispatched every trigger.
     assertAllAnswered(rec, frames, "Heartbeat");
     assertAllAnswered(rec, frames, "StatusNotification");
     assertAllAnswered(rec, frames, "MeterValues");

@@ -89,16 +89,17 @@ That count used to be stated here as "46 obligations, 46 checks", which was
 wrong in a way nothing could catch — it counted only the new checks and called
 them the whole set. The guard exists because of it, and found it.
 
-Seven of the 46 can never go green: the scenario carrying the obligation never
+Four of the 46 can never go green: the scenario carrying the obligation never
 puts the request on the wire. Those report **SKIPPED**, which makes the
 scenario PARTIAL — orange, outside the exit code — rather than PASS or FAIL.
 Red would say "the CSMS did not answer" about a question nobody asked; green
-would hide the gap. Which seven was measured, not guessed: a full sweep plus
-`tools/answered-report.ts`.
+would hide the gap. Which four was measured, not guessed: a full sweep plus
+`tools/answered-report.ts`. There were seven until `cert16-tc054` triggered
+all five messages its case lists rather than one.
 
 ## Unexercised obligations
 
-Seven `.conf` obligations report SKIPPED on every driver, because the scenario
+Four `.conf` obligations report SKIPPED on every driver, because the scenario
 does not put the corresponding request on the wire. Each was confirmed against
 a real sweep's logs, not inferred from reading the specs. They are checked --
 so a run shows them — but they cannot pass until the scenario changes.
@@ -109,7 +110,6 @@ so a run shows them — but they cannot pass until the scenario changes.
 | `cert16-tc010-remote-start` | TC_010 step 6 | `Authorize.conf` | remote start: the CSMS supplies the idTag in `RemoteStartTransaction`, so the CP goes straight to `StartTransaction`. |
 | `cert16-tc011-remote-start-stop` | TC_011_1 step 6 | `Authorize.conf` | same |
 | `cert16-tc059-remote-start-with-profile` | TC_059 step 6 | `Authorize.conf` | same |
-| `cert16-tc054-trigger-message` | TC_054 | `DiagnosticsStatusNotification.conf`, `FirmwareStatusNotification.conf`, `MeterValues.conf` | the case triggers six message types; this scenario triggers one (Heartbeat). |
 
 The `Authorize` rows are the same fact three times, and it is worth stating
 plainly: **no remote-start scenario can carry the `Authorize.conf`
