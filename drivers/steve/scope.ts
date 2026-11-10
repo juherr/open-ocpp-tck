@@ -190,6 +190,13 @@ export const STEVE_SCOPE: ScopeTable = {
     status: "DRIVABLE",
     reason: REFERENCE_CSMS,
   },
+  "cert16-spec48-start-transaction-busy-connector": {
+    status: "DRIVABLE",
+    reason:
+      "Station-initiated: the scenario drives no operation. Expected to pass " +
+      "and unmeasured: CentralSystemService16_Service#startTransaction has no " +
+      "busy-connector refusal, and its validator only logs.",
+  },
   "cert16-tc053-reserved-connector-parent-idtag": {
     status: "DRIVABLE",
     reason:

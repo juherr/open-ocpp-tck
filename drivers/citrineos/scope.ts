@@ -81,6 +81,11 @@ const V2_SCOPE = {
   "cert16-tc024-lock-failure": d(OBSERVED),
   "cert16-tc061-clear-cache": d(OBSERVED),
   "cert16-tc064-data-transfer": d(OBSERVED),
+  "cert16-spec48-start-transaction-busy-connector": d(
+    "Station-initiated: the scenario drives no operation, and needs the " +
+      "transaction support tc003 established. Added after the sweep that " +
+      "settled this table, so its verdict is the next CI run's to give.",
+  ),
 
   // --- GetConfiguration ----------------------------------------------------
   // The batching worry did not materialise: CitrineOS splits a request into

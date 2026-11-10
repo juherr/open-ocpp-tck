@@ -129,4 +129,5 @@ export declare const tc024LockFailureSpec: ScenarioSpec<void>;
 export declare const tc031UnlockUnknownConnectorSpec: ScenarioSpec<void>;
 export declare const tc061ClearCacheSpec: ScenarioSpec<void>;
 export declare const tc064DataTransferSpec: ScenarioSpec<void>;
+export declare const spec48StartTransactionBusyConnectorSpec: ScenarioSpec<void>;
 export declare const CORE_SPECS: ScenarioSpec<any>[];

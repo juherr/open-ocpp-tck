@@ -737,6 +737,25 @@ FILE core.ts
         ·.pass(·)
         RETURN
     ·.fail(·, ·)
+  HELPER assertStartConfirmed
+    IF
+      ·.fail(·, ·)
+      RETURN
+    IF
+      ·.fail(·, ·)
+      IF
+        ·.fail(·, ·)
+        ·.pass(·)
+  HELPER assertDistinctTransactionIds
+    TERNARY
+    RETURN
+      TERNARY
+    IF
+      OR
+      ·.fail(·, ·)
+      IF
+        ·.fail(·, ·)
+        ·.pass(·)
   SPEC cert16-tc004-charging-id-first connector=1 bootWaitSecs=4 holdSecs=40 ocppVersion="OCPP-1.6J"
     assertLineMatches(·, ·, /Sent: \[2,.*"StartTransaction".*"idTag":"CERT004"/, "StartTransaction sent with idTag CERT004")
     assertIdTagInfoStatus(·, ·, "StartTransaction", "Accepted", "StartTransaction accepted by the CSMS")
@@ -849,6 +868,11 @@ FILE core.ts
       IF
         ·.pass(·)
         ·.fail(·, ·)
+  SPEC cert16-spec48-start-transaction-busy-connector connector=1 bootWaitSecs=4 holdSecs=10 ocppVersion="OCPP-1.6J" runsSimTemplate=false
+    assertIdTagInfoStatus(·, ·, "StartTransaction", "Accepted", "first StartTransaction (CERT-TAG-1) accepted, so connector 1 has an open transaction")
+    assertStartConfirmed(·, ·, "CERT-TAG-2", "second StartTransaction (CERT-TAG-2) on the busy connector answered with a StartTransaction.conf, not a CALLERROR (§4.8)")
+    assertDistinctTransactionIds(·, ·, "CERT-TAG-1", "CERT-TAG-2", "second StartTransaction got a transactionId of its own")
+    assertIdTagInfoStatus(·, ·, "StartTransaction", "Accepted", "second StartTransaction answered with CERT-TAG-2's status, Accepted", {occurrence:1})
 
 FILE firmware.ts
   SPEC cert16-tc044-1-firmware-update connector=1 bootWaitSecs=4 holdSecs=115 ocppVersion="OCPP-1.6J"

@@ -91,6 +91,10 @@ export const EVSL_SCOPE: ScopeTable = {
   "cert16-tc024-lock-failure": d(OBSERVED),
   "cert16-tc031-unlock-unknown-connector": d(COMMAND),
   "cert16-tc061-clear-cache": d(COMMAND),
+  "cert16-spec48-start-transaction-busy-connector": d(
+    `${OBSERVED} Red, and declared in expected.ts: the server answers the ` +
+      "second start with a CALLERROR (README.md's Deviations).",
+  ),
   "cert16-tc064-data-transfer": d(
     "Station-initiated DataTransfer; the server answers from the station's " +
       "dataTransferVendors (UnknownVendorId otherwise), and the scenario does " +

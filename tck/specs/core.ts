@@ -1127,6 +1127,200 @@ export const tc064DataTransferSpec: ScenarioSpec<void> = {
   },
 };
 
+// ---------------------------------------------------------------------------
+// OCPP 1.6 §4.8, no OCA case: a StartTransaction.req for a connector that
+// already has an open transaction still gets a StartTransaction.conf.
+// ---------------------------------------------------------------------------
+
+/**
+ * The first StartTransaction.req the station sent for `idTag` was answered
+ * with a CALLRESULT.
+ *
+ * Hand-rolled because what it asserts is the KIND of answer, and the generic
+ * helpers report a CALLERROR only as the reason another check failed. Here it
+ * is the finding: §4.8 says the Central System "SHOULD respond" with a
+ * StartTransaction.conf and that the outcome of its own checks "SHOULD NOT"
+ * stop it doing so, and §3.7.1 says what a CALLERROR does instead -- the
+ * station resends the message and finally discards it, so the CSMS's record
+ * of the session ends up shorter than the station's.
+ */
+function assertStartConfirmed(
+  rec: AssertRecorder,
+  frames: readonly Frame[],
+  idTag: string,
+  description: string,
+): void {
+  const start = findAllCalls(frames, "sent", "StartTransaction").find(
+    (c) => (c.payload as { idTag?: unknown } | null)?.idTag === idTag,
+  );
+  if (!start) {
+    rec.fail(description, `no sent StartTransaction for idTag ${idTag}`);
+    return;
+  }
+  const response = findResponseFor(frames, start);
+  if (!response) {
+    rec.fail(description, `no response frame found for uniqueId=${start.uniqueId}`);
+  } else if (response.kind === "callerror") {
+    rec.fail(
+      description,
+      `got CALLERROR ${response.errorCode}: ${response.errorDescription}`,
+    );
+  } else {
+    rec.pass(description);
+  }
+}
+
+/**
+ * The transactionIds answering the StartTransaction.req for `firstIdTag` and
+ * the one for `secondIdTag` are both integers, and differ. Reusing the open
+ * transaction's id would merge two sessions the station keeps apart.
+ */
+function assertDistinctTransactionIds(
+  rec: AssertRecorder,
+  frames: readonly Frame[],
+  firstIdTag: string,
+  secondIdTag: string,
+  description: string,
+): void {
+  const idFor = (idTag: string): unknown => {
+    const start = findAllCalls(frames, "sent", "StartTransaction").find(
+      (c) => (c.payload as { idTag?: unknown } | null)?.idTag === idTag,
+    );
+    const response = start ? findResponseFor(frames, start) : undefined;
+    return response?.kind === "callresult"
+      ? (response.payload as { transactionId?: unknown } | null)?.transactionId
+      : undefined;
+  };
+  const first = idFor(firstIdTag);
+  const second = idFor(secondIdTag);
+  if (!Number.isInteger(first) || !Number.isInteger(second)) {
+    rec.fail(
+      description,
+      `transactionIds ${JSON.stringify(first)} (${firstIdTag}) and ${JSON.stringify(second)} (${secondIdTag}) are not both integers`,
+    );
+  } else if (first === second) {
+    rec.fail(description, `both starts got transactionId ${String(first)}`);
+  } else {
+    rec.pass(description);
+  }
+}
+
+/** What `send_ocpp_call` resolves with (simulator 0.10.x, #389). A CALLERROR
+ *  is a result, not a rejection. */
+interface OcppCallOutcome {
+  kind: "callResult" | "callError";
+  payload?: unknown;
+}
+
+export const spec48StartTransactionBusyConnectorSpec: ScenarioSpec<void> = {
+  // NOT `cert16-tcNNN`: README.md ties that shape to OCA case TC_NNN, and no
+  // OCTT section-3 case sends a second StartTransaction on a busy connector.
+  // `spec48` names the clause that obliges the answer instead -- see
+  // OCA-COVERAGE.md's "Scenarios no OCA case covers".
+  templateId: "cert16-spec48-start-transaction-busy-connector",
+  ocppVersion: "OCPP-1.6J",
+  tags: ["transaction"],
+  description:
+    "OCPP 1.6 §4.8: a StartTransaction.req for CERT-TAG-2 on a connector CERT-TAG-1 is already charging on gets a StartTransaction.conf -- Accepted, with a new transactionId -- and not a CALLERROR.",
+  // NO TEMPLATE: the station side is a local start, one expert CALL and the
+  // two stops, all sent by drive().
+  runsSimTemplate: false,
+  connector: 1,
+  bootWaitSecs: 4,
+  // drive() waits for the second start's answer itself; what is left is the
+  // two StopTransactions it sends last.
+  holdSecs: 10,
+  async drive({ connector, sim }) {
+    await sleep(2000);
+    await sim.send({
+      command: "start_transaction",
+      params: { connector, tagId: "CERT-TAG-1" },
+    });
+    // The first start's Authorize and StartTransaction round trips.
+    await sleep(4000);
+    // THE STATION WOULD NOT SEND THIS ON ITS OWN: it refuses a second local
+    // start on a connector with an open transaction. The expert call puts the
+    // request on the wire as given and hands the answer back without applying
+    // it (`applyResponse` left false), so the station keeps the first
+    // transaction as its own. It is never resent after a CALLERROR either --
+    // a call whose caller waits for the answer is that caller's
+    // (isRetriedOnCallError, simulator 0.10.1) -- so the wire holds exactly
+    // one second start whatever the CSMS answers. A rejection here is the
+    // SIMULATOR refusing the call (boot gate, schema) or nobody answering,
+    // and is left to surface as an ERROR: a CALLERROR is a result.
+    const second = (await sim.call(
+      "send_ocpp_call",
+      {
+        action: "StartTransaction",
+        payload: {
+          connectorId: connector,
+          idTag: "CERT-TAG-2",
+          meterStart: 0,
+          timestamp: new Date().toISOString(),
+        },
+      },
+      30_000,
+    )) as OcppCallOutcome | null;
+    await sleep(1000);
+    // TEARDOWN, not part of the case. The station's own stop closes the first
+    // transaction; the second exists only on the CSMS's side, so it is closed
+    // by an expert StopTransaction for the id the CSMS handed out.
+    await sim.send({ command: "stop_transaction", params: { connector } });
+    const secondTx =
+      second?.kind === "callResult"
+        ? (second.payload as { transactionId?: unknown } | null)?.transactionId
+        : undefined;
+    if (Number.isInteger(secondTx)) {
+      try {
+        await sim.call("send_ocpp_call", {
+          action: "StopTransaction",
+          payload: {
+            transactionId: secondTx,
+            idTag: "CERT-TAG-2",
+            meterStop: 0,
+            timestamp: new Date().toISOString(),
+            reason: "Local",
+          },
+        });
+      } catch (err) {
+        warnOpFailed("StopTransaction (teardown of the second start)", err);
+      }
+    }
+  },
+  assert({ frames, rec }) {
+    // FIRST, the precondition: the connector is busy only if the first start
+    // was accepted.
+    assertIdTagInfoStatus(
+      rec,
+      frames,
+      "StartTransaction",
+      "Accepted",
+      "first StartTransaction (CERT-TAG-1) accepted, so connector 1 has an open transaction",
+    );
+    assertStartConfirmed(
+      rec,
+      frames,
+      "CERT-TAG-2",
+      "second StartTransaction (CERT-TAG-2) on the busy connector answered with a StartTransaction.conf, not a CALLERROR (§4.8)",
+    );
+    assertDistinctTransactionIds(
+      rec,
+      frames,
+      "CERT-TAG-1",
+      "CERT-TAG-2",
+      "second StartTransaction got a transactionId of its own",
+    );
+    assertIdTagInfoStatus(
+      rec,
+      frames,
+      "StartTransaction",
+      "Accepted",
+      "second StartTransaction answered with CERT-TAG-2's status, Accepted",
+      { occurrence: 1 },
+    );
+  },
+};
+
 // ScenarioSpec<D> is effectively invariant in D (D appears in drive()'s
 // return position AND assert()'s parameter position), so a single array
 // holding specs with different driveState types needs `any` here, same as
@@ -1148,4 +1342,5 @@ export const CORE_SPECS: ScenarioSpec<any>[] = [
   tc031UnlockUnknownConnectorSpec,
   tc061ClearCacheSpec,
   tc064DataTransferSpec,
+  spec48StartTransactionBusyConnectorSpec,
 ];

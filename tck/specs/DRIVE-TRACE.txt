@@ -259,6 +259,11 @@ GROUP core
     -> driveState keys=[]
   SPEC cert16-tc064-data-transfer
     <no drive>
+  SPEC cert16-spec48-start-transaction-busy-connector
+    SIM send {"command":"start_transaction","params":{"connector":1,"tagId":"CERT-TAG-1"}}
+    SIM call send_ocpp_call {"action":"StartTransaction","payload":{"connectorId":1,"idTag":"CERT-TAG-2","meterStart":0,"timestamp":"<ts>"}}
+    SIM send {"command":"stop_transaction","params":{"connector":1}}
+    -> driveState keys=[]
 
 GROUP authlist-reservation
   SPEC cert16-tc042-1-get-local-list-version-not-supported

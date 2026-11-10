@@ -424,7 +424,14 @@ const simStub = {
       params && typeof params.scenario === "object" && params.scenario !== null
         ? { ...params, scenario: `<scenario:${String((params.scenario as { id?: unknown }).id)}>` }
         : params;
-    record(`SIM call ${command} ${JSON.stringify(shown ?? {})}`);
+    // A date-looking leaf is `<ts>`, the rule normaliseValue() applies to an
+    // operation's values: an expert OCPP call carries the station's own
+    // timestamp, which is runtime-relative by design.
+    record(
+      `SIM call ${command} ${JSON.stringify(shown ?? {}, (_key, value: unknown) =>
+        typeof value === "string" && DATEISH.test(value) ? "<ts>" : value,
+      )}`,
+    );
     return command === "scenario_status" ? { state: "waiting" } : null;
   },
 };

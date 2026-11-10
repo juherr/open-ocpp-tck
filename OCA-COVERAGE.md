@@ -205,6 +205,30 @@ a number rather than an inference from "48 scenarios". The OCPP 2.0.1
 scenarios are counted nowhere on this page: their own selection rule and list
 are `OCA-201-SELECTION.md` and `tck/specs/OCA-201-SLICE.txt`.
 
+## Scenarios no OCA case covers
+
+One OCPP 1.6 scenario traces to the specification instead of to a case, and
+its id says so: `cert16-spec48-…` rather than `cert16-tcNNN-…`, because
+`README.md` ties the second shape to OCA case `TC_NNN`.
+
+| scenario | clause | what it measures |
+|---|---|---|
+| `cert16-spec48-start-transaction-busy-connector` | OCPP 1.6 §4.8, with §3.7.1 for the consequence | a `StartTransaction.req` for a connector that already has an open transaction gets a `StartTransaction.conf` — not a CALLERROR — with a `transactionId` of its own and the tag's status, `Accepted` |
+
+§4.8 has the Central System respond with a `StartTransaction.conf` and not let
+the outcome of its own checks stop it; §3.7.1 is why that matters, since a
+charge point answered with a CALLERROR resends the message and finally
+discards it. No section-3 case sends a second `StartTransaction` on a busy
+connector, so nothing above derives the obligation.
+
+It deliberately carries no `assertAllAnswered` and no row in
+`tck/specs/OCA-OBLIGATIONS.txt`: that table is the OCA cases' obligations and
+nothing else, which is the rule "Findings recorded, not acted on" applies to
+`MeterValues.conf`. Every count on this page is over OCA cases and leaves it
+out. A §4.8 obligation is a SHOULD, so a CSMS failing it deviates from a
+recommendation rather than breaking a requirement; the scenario still reports
+`FAIL`, and a driver that knows its CSMS does so declares it in `expected.ts`.
+
 ## Checking a real sweep against this table
 
 ```sh

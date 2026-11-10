@@ -14,7 +14,10 @@ material — the [OCPP 1.6 certification page][octt], and in particular its
 *Test Procedure & Test Plans* and *OCPP Compliancy Testing Tool — Test Case
 Document*. Scenario `cert16-tcNNN-…` corresponds to OCA test case `TC_NNN`,
 and because the CSMS is the system under test here, the **`_CSMS` variant** is
-the one that applies: it is the Central System that must answer. This is not a
+the one that applies: it is the Central System that must answer. The one 1.6
+scenario no case covers says so in its id — `cert16-spec48-…` traces to
+§4.8 of the specification — and is listed in
+[`OCA-COVERAGE.md`](OCA-COVERAGE.md#scenarios-no-oca-case-covers). This is not a
 certification tool and passing it is not certification — but the reference is
 where a disagreement about what a scenario *should* assert gets settled.
 
