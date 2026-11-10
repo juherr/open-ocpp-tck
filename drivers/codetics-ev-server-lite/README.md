@@ -62,6 +62,19 @@ a restart resets them:
   all stations together (`OcppWebSocketConfiguration.kt`, checked before the
   per-station one).
 
+## In CI
+
+The `e2e` job in `.github/workflows/ci.yml` runs this driver as one of its
+lanes, in two shards like the others. Each shard builds the image with
+`docker/bake-action` off this `compose.yaml`, so the pinned commit is written
+here only; the layers, the Maven compile included, come from the GitHub
+Actions cache under the `codetics-ev-server-lite` scope once one run has
+written them. Each shard then boots its own server, so it starts with fresh
+rate-limit counters and spends three logins: `provision`, `verify` and the
+sweep. Unlike the local measurement below, CI runs `run-all` without
+`--version 1.6`, so the OCPP 2.0.1 scenarios appear in its summary as not
+applicable.
+
 ## Environment
 
 | variable | default | meaning |

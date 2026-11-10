@@ -68,6 +68,10 @@ surfaces, and each answers a question the others cannot:
 | [`drivers/citrineos`](drivers/citrineos/README.md) | JSON REST API + GraphQL | *Is the contract actually CSMS-neutral?* [CitrineOS](https://github.com/citrineos/citrineos-core) (LF Energy / S44) had no part in writing the scenarios and has a smaller OCPP 1.6 surface. | 35 `PASS`, 5 `PARTIAL`, 0 `FAIL`, 7 `NOT APPLICABLE` over the OCPP 1.6 scenarios; 49 `PASS` over the OCPP 2.0.1 ones |
 | [`drivers/codetics-ev-server-lite`](drivers/codetics-ev-server-lite/README.md) | JSON REST admin API, one generic command endpoint | *Does the contract fit a CSMS with no reservation entity and no profile registry?* [ev-server-lite](https://github.com/codetics-software/ev-server-lite) is OCPP 1.6J only and built from source at a pinned commit. | 40 `PASS`, 5 `PARTIAL`, 0 `FAIL`, 2 `NOT APPLICABLE` over the OCPP 1.6 scenarios; the OCPP 2.0.1 ones `NOT_APPLICABLE` |
 
+CI sweeps all three on every pull request, each against its own CSMS
+container in two shards, and a red row any of them did not declare fails the
+build.
+
 An abstraction with one implementation is neutral by assertion, so the second
 driver is what turns that into a measurement — and the result is the useful
 part: 35 scenarios pass unmodified against a CSMS that had no part in writing
