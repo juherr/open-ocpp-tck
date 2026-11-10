@@ -426,6 +426,17 @@ asks whether the source pin should follow it:
     only when a start will be attempted (errata 3.32); `Preparing` sent at
     plug-in and once -- and none changes what a scenario here asserts.
     tc010, tc013, tc024 and tc048-2 were run live on SteVe before the sweep;
+  - **the sweep found the two that did, and neither was in that list.** The
+    station now refuses to start on a connector reserved for another idTag
+    (OCPP 1.6 §5.13), which `cert16-reservation-basic` had been relying on
+    by reserving one tag and presenting another; and it keeps a real
+    certificate store (its #456), so `InstallCertificate` of a valid root is
+    `Accepted` where the old handler answered a canned `Rejected` -- which
+    `cert201-tcm05-install-refused` asserted in place of the `Failed` TC_M_05
+    scripts. Both were scenarios measuring a station defect; both now follow
+    the reference (TC_046, TC_M_05_CSMS). The method lesson is the 0.7.6 one
+    again: read the release notes' conformance fixes against what each
+    scenario's station does, not only against what the runner sends;
   - `tck/util.ts`'s and `tsconfig.json`'s upstream files are unchanged, and
     `ocpp.ts`'s differs by two comment lines that follow the move, so
     `Pinned commit` stays where it is;
