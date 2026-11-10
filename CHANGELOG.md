@@ -838,6 +838,15 @@ Released as `0.3.0`. The documented install ref already points at that tag, so
 
 ### Fixed
 
+- **`cert16-reservation-basic` reserves the idTag its station presents.** It
+  reserved `CERT-TAG-1` and the template then started a transaction with
+  `CERT-RES01`, which the simulator accepted on a connector reserved for
+  another tag — a station defect OCPP 1.6 §5.13 forbids, and the one the
+  scenario was measuring. From `0.10.0` the station refuses, so the scenario
+  went red against a conformant station. It now reserves `CERT-RES01`, which is
+  TC_046's own sequence: the reserved idTag arrives, and its `StartTransaction`
+  carries the `reservationId`. Its assertions and its CSMS call sequence move
+  with it.
 - **`check:fixture-tags` reads the simulator's tags from the image again, and
   refuses to compare an empty set.** It grepped `/app/src`, which from `0.10.0`
   holds only a launch shim, so it would have found no tag, no driver could

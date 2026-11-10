@@ -278,7 +278,7 @@ GROUP authlist-reservation
     OP SendLocalList [2, cert-tag-2, differential]
     -> driveState keys=[]
   SPEC cert16-reservation-basic
-    OP ReserveNow [1, <ts>, cert-tag-1]
+    OP ReserveNow [1, <ts>, cert-res01]
     -> driveState keys=[]
   SPEC cert16-tc048-1-reserve-now-faulted
     OP ReserveNow [1, <ts>, cert-tag-1]
