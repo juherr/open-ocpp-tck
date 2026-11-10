@@ -630,6 +630,23 @@ Released as `0.3.0`. The documented install ref already points at that tag, so
   WebAPI facts the provisioner is built on were re-measured and hold, and the
   full sweep's verdict set is identical to 3.14.0's — `VENDOR.md`'s validation
   history has the row.
+- **The simulator image pin moved on to `0.10.1`, and the container now runs
+  on the image's own entrypoint** —
+  `ghcr.io/shiv3/ocpp-cp-simulator@sha256:1324a3b7…`, the multi-arch index
+  digest resolved on 2026-11-10. From `0.10.0` the image carries a CLI bundle
+  instead of its sources, and its entrypoint hands an argv carrying `--json`
+  to that CLI unchanged (shiv3/ocpp-cp-simulator#688). The runner therefore
+  no longer passes `--entrypoint bun … src/cli/main.ts`. **To run an image
+  older than `0.10.0` through `SIM_IMAGE`**, set `SIM_ENTRYPOINT=bun
+  SIM_COMMAND=src/cli/main.ts`, which restores the previous argv exactly.
+  Nothing a sweep reads changed between `0.7.12` and `0.10.1`: the JSON Lines
+  commands and events, the CLI flags, the log-line format, the trace schema
+  (`1.1`) and the `cert16-*` template ids. Two templates, tc024 and tc048-2,
+  now get their `Preparing`, `Occupied` and `Available` from the station
+  model instead of explicit nodes. `tck/template-once.ts` keeps its four
+  calls although the pin now has `run_scenario_template`'s `once: true`, so
+  that this sweep changes one thing at a time. `VENDOR.md`'s "Moving this
+  pin" has what was read.
 - **The simulator image pin moved from `0.7.5` to `0.7.12`** —
   `ghcr.io/shiv3/ocpp-cp-simulator@sha256:b94ee6c7…`, the multi-arch index
   digest resolved on 2026-09-12. (`0.7.11` never had an image: its build failed

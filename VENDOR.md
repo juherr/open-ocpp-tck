@@ -283,10 +283,10 @@ deterministic and network-free.
 | field | value |
 |---|---|
 | image | `ghcr.io/shiv3/ocpp-cp-simulator` |
-| tag resolved | `0.7.12` |
-| digest | `sha256:b94ee6c78e3976943a268ce68e6095564db1f048d049ea020cb204b2d826504b` |
+| tag resolved | `0.10.1` |
+| digest | `sha256:1324a3b71615164940cdf36f269b4d5848741f6dff7a5379b6531aa2fb923209` |
 | digest kind | multi-arch OCI image index (selects the `linux/amd64` or `linux/arm64` manifest automatically) |
-| resolved on | 2026-09-12, with `docker buildx imagetools inspect ghcr.io/shiv3/ocpp-cp-simulator:0.7.12` |
+| resolved on | 2026-11-10, with `docker buildx imagetools inspect ghcr.io/shiv3/ocpp-cp-simulator:0.10.1` |
 | declared in | `tck/sim.ts` (`DEFAULT_SIM_IMAGE`), overridable with `SIM_IMAGE` |
 
 Verified on that digest:
@@ -295,21 +295,42 @@ Verified on that digest:
   image really does ship the CLI — no repo bind-mount is needed.
 - `--basic-auth-user` / `--basic-auth-pass` (outgoing CP → CSMS WebSocket)
   exist in that usage output.
-- The image's **default entrypoint cannot be used** for this harness: it
-  appends `--http-host 0.0.0.0 --unsafe-remote --web-console $HTTP_PORT`,
-  which switches the CLI into daemon/web-console mode (auto-connects, emits
-  `[server] …` lines, no JSON Lines event stream on stdout). `sim.ts`
-  therefore passes `--entrypoint bun` and runs `src/cli/main.ts` from the
-  image's own embedded sources. Upstream's `docker/entrypoint.sh` is where
-  that bundle is composed; it was re-read at `v0.7.12` and the `[server] …`
-  lines observed again on this digest.
+- The container runs on the image's **own entrypoint**. Upstream's
+  `docker/entrypoint.sh`, re-read at `v0.10.1`, hands an argv that contains
+  `--json` to `bun dist-cli/main.js` as it is, with none of the daemon flags
+  (`--http-host 0.0.0.0 --unsafe-remote --web-console $HTTP_PORT`) it
+  composes otherwise; that detection arrived in `0.10.0` (upstream #688).
+  `sim.ts` always emits `--json`, and `OCPP_ENTRYPOINT_DRY_RUN=1` on this
+  digest prints `bun dist-cli/main.js --ws-url …` with no daemon flag.
+- What this runner needs from an image is therefore a short contract: the
+  entrypoint, or `SIM_ENTRYPOINT` + `SIM_COMMAND`, starts the CLI in JSON
+  mode on `--ws-url --cp-id --json --ocpp-version` (plus `--trace-output`
+  and the Basic auth pair when configured); the CLI reads JSON Lines
+  commands on stdin, writes JSON Lines and the Logger's `Sent:` /
+  `Received:` lines on stdout, and exits 0 when stdin closes. Upstream pins
+  most of that in its own golden tests
+  (`apps/cli/src/__tests__/tck-contract/`, its #689), which spawn the CLI
+  from source rather than through the image.
+- **An image before `0.10.0` needs the override back**: its entrypoint
+  appends the daemon flags whatever it is handed, which leaves the CLI in
+  daemon mode -- `[server] …` lines, no JSON Lines event stream -- and every
+  scenario waiting out its budget. `SIM_ENTRYPOINT=bun
+  SIM_COMMAND=src/cli/main.ts` restores the argv every run used up to
+  `0.7.12`; `tests/sim-docker-argv.ts` pins it. The `0.10.x` images keep a
+  shim at that path (upstream #346) that nothing here uses.
+- **The image no longer ships sources.** Since `0.10.0` it carries one
+  bundle, `/app/dist-cli/main.js`, and the shim; a grep of `/app/src` finds
+  nothing. Read upstream at the tag, or grep the bundle -- which is what
+  `tools/extract-fixture-tags.sh` does.
 
 ### Moving this pin
 
-The pin has moved three times, all on 2026-09-12: `0.7.5` (resolved
+The pin moved three times on 2026-09-12: `0.7.5` (resolved
 2026-07-31) to `0.7.9`; to `0.7.10` once upstream shipped the
 `TransactionEvent` parameters (its #350); to `0.7.12` once a tag with an
-image existed again. What was read before each move is the checklist for the
+image existed again. It moved a fourth time on 2026-11-10, to `0.10.1`,
+across `0.8.0`, `0.9.0` and `0.10.0` -- the last bullet below is what was read
+for that one. What was read before each move is the checklist for the
 next one. Two of the facts below are about the source pin rather than the
 image, and they are here because a simulator release is the moment someone
 asks whether the source pin should follow it:
@@ -375,6 +396,42 @@ asks whether the source pin should follow it:
   -- no scenario here asserts a sample's value. Upstream's boot-gate
   key-order fix (its #262) was already in `tck/main.ts`.
 - **Still no `NOTICE` file upstream** at `v0.7.12`.
+- **`0.7.12` to `0.10.1`: one launch change, no runner change.** Upstream
+  became a Bun workspace in between (`src/cli/` is `apps/cli/src/`, the
+  templates are under `packages/core/src/utils/scenarios/`), and the image
+  traded its sources for a bundle -- which is what moved the launch to the
+  image's own entrypoint, above. The rest was read at both tags, the compare
+  API being capped at 300 files for 691 commits:
+  - the JSON Lines dispatcher's envelope, every command and member the
+    runner sends, and the `scenario_started` / `scenario_completed` events
+    are unchanged; the additions are optional members and new events, none
+    of which the runner's line patterns can match. `start_transaction` now
+    answers once the start has an outcome (its #813) -- the runner sends it
+    without an id and waits on wire lines, so the timing is not observed;
+  - the auto-start walker still skips `enabled === false` and `run_scenario`
+    still ignores it, so `tck/template-once.ts` holds; its header says why
+    the `once: true` form that now exists was not adopted in the same move;
+  - the CLI flags, the six `--ocpp-version` values, the exit on stdin EOF,
+    the Logger (byte-identical) and the trace record (still schema `1.1`,
+    now written through `@open-ocpp-trace/jsonl`) are unchanged;
+  - all 48 `cert16-*` templates still exist; three changed beyond their
+    `description`: tc024 and tc048-2 lost their explicit `Preparing` /
+    `Occupied` / `Available` nodes, which the station's own reservation and
+    connector model now produces, and tc051 a label;
+  - the station-behaviour fixes that could move a verdict were each traced
+    to the scenarios that exercise them -- a 2.x reconnect sends no
+    BootNotification (its #799) but a Reset still reboots, the golden tc013
+    trace shows both boots; no StatusNotification for the station scope
+    (#797); one 2.x CALL at a time (#802); `RemoteStartTransaction` Accepted
+    only when a start will be attempted (errata 3.32); `Preparing` sent at
+    plug-in and once -- and none changes what a scenario here asserts.
+    tc010, tc013, tc024 and tc048-2 were run live on SteVe before the sweep;
+  - `tck/util.ts`'s and `tsconfig.json`'s upstream files are unchanged, and
+    `ocpp.ts`'s differs by two comment lines that follow the move, so
+    `Pinned commit` stays where it is;
+  - still no root `NOTICE` at `v0.10.1`; the CLI bundle now carries
+    `THIRD-PARTY-LICENSES.txt` (its #857, #870), which concerns its own
+    dependencies, not anything copied here.
 
 ## CSMS container images
 
