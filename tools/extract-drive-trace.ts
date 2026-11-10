@@ -414,6 +414,19 @@ const simStub = {
   send(payload: unknown): void {
     record(`SIM send ${JSON.stringify(payload)}`);
   },
+  // A station-side scenario is DATA the spec writes, so a definition is traced
+  // by its id: its nodes are what the station does, not what the CSMS is
+  // asked. `scenario_status` answers `waiting`, the parked state a spec polls
+  // for before it dispatches -- any other answer would trace the poll's
+  // timeout rather than the drive.
+  async call(command: string, params?: Record<string, unknown>): Promise<unknown> {
+    const shown =
+      params && typeof params.scenario === "object" && params.scenario !== null
+        ? { ...params, scenario: `<scenario:${String((params.scenario as { id?: unknown }).id)}>` }
+        : params;
+    record(`SIM call ${command} ${JSON.stringify(shown ?? {})}`);
+    return command === "scenario_status" ? { state: "waiting" } : null;
+  },
 };
 
 // Collapse every timer to the next tick. 47 scenarios of literal `sleep(2000)`

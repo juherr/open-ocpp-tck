@@ -27,7 +27,7 @@ FILE authlist-reservation.ts
     assertReceived(·, ·, "ReserveNow", "ReserveNow.req received")
     assertResponseStatus(·, ·, "ReserveNow", "Accepted", "ReserveNow accepted")
     assertLineAfter(·, ·, /Received: \[2,.*"ReserveNow"/, /Sent: \[2,.*"StatusNotification".*"status":"Reserved"/, "StatusNotification(Reserved) sent after ReserveNow accepted (#186)")
-    assertLineMatches(·, ·, /Sent: \[2,.*"StartTransaction".*"idTag":"CERT-RES01"/, "StartTransaction sent with the scenario's hardcoded idTag CERT-RES01 (not the ReserveNow idTag)")
+    assertLineMatches(·, ·, /Sent: \[2,.*"StartTransaction".*"idTag":"CERT-RES01"/, "StartTransaction sent with the reserved idTag CERT-RES01")
     assertSent(·, ·, "StopTransaction", "StopTransaction sent")
     assertAllAnswered(·, ·, "StatusNotification")
     assertAllAnswered(·, ·, "Authorize")
@@ -642,7 +642,7 @@ FILE core-201.ts
   SPEC cert201-tcm05-install-refused connector=1 bootWaitSecs=4 holdSecs=10 ocppVersion="OCPP-2.0.1" runsSimTemplate=false
     assertReceived(·, ·, "InstallCertificate", "InstallCertificate.req received")
     assertCertificateInstallRequested(·, ·, 0, "CSMSRootCertificate", "InstallCertificate.req installs a CSMSRootCertificate and carries a certificate")
-    assertResponseStatus(·, ·, "InstallCertificate", "Rejected", "the station refused the certificate (Rejected, where the case scripts Failed)", {direction:"received"})
+    assertResponseStatus(·, ·, "InstallCertificate", "Failed", "the station could not install the certificate (Failed)", {direction:"received"})
   SPEC cert201-tcm13-installed-ids-manufacturer-root connector=1 bootWaitSecs=4 holdSecs=10 ocppVersion="OCPP-2.0.1" runsSimTemplate=false states=[{state:"GetInstalledCertificates",certificateType:"ManufacturerRootCertificate"}]
     assertStateEstablished(·, ·, "GetInstalledCertificates", "the station was asked for the certificates it holds")
     assertReceived(·, ·, "GetInstalledCertificateIds", "GetInstalledCertificateIds.req received")

@@ -321,7 +321,7 @@ export const reservationBasicSpec: ScenarioSpec<void> = {
   ocppVersion: "OCPP-1.6J",
   tags: ["reservation", "transaction"],
   description:
-    "TC_046 Reservation (Basic): ReserveNow accepted; reserved idTag arrival starts a tx (hardcoded CERT-RES01), charges, stops.",
+    "TC_046 Reservation (Basic): ReserveNow for CERT-RES01 accepted; that idTag arrives and starts a tx, charges, stops.",
   connector: 1,
   bootWaitSecs: 4,
   // settle(2) + delay-arrival(2) + bounded meter block(30) + tail.
@@ -329,10 +329,16 @@ export const reservationBasicSpec: ScenarioSpec<void> = {
   async drive({ cpId, csms16 }) {
     await sleep(2000);
     try {
+      // THE TAG THE TEMPLATE PRESENTS, because TC_046 is the RESERVED idTag
+      // arriving. The template hard-codes CERT-RES01 for its start; until the
+      // 0.10.1 simulator pin this reserved CERT-TAG-1, and the station started
+      // the transaction anyway on a connector reserved for another tag. From
+      // 0.10.0 it refuses to, as OCPP 1.6 section 5.13 has it, and the
+      // scenario had been measuring that defect.
       await csms16.execute(cpId, {
         action: "ReserveNow",
         connectorId: 1,
-        idTag: "CERT-TAG-1",
+        idTag: "CERT-RES01",
         expiryDate: inMinutes(10),
       });
     } catch (err) {
@@ -365,7 +371,7 @@ export const reservationBasicSpec: ScenarioSpec<void> = {
       rec,
       lines,
       /Sent: \[2,.*"StartTransaction".*"idTag":"CERT-RES01"/,
-      "StartTransaction sent with the scenario's hardcoded idTag CERT-RES01 (not the ReserveNow idTag)",
+      "StartTransaction sent with the reserved idTag CERT-RES01",
     );
     assertSent(rec, frames, "StopTransaction", "StopTransaction sent");
     // TC_046 step 4, plus the reusable state "Charging" it executes at step 5

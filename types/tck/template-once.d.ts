@@ -33,11 +33,15 @@
  * station that models the walker instead of a container.
  *
  * FOUR CALLS BECAUSE A TEMPLATE'S INSTANCE ONLY EXISTS ONCE LOADED, and loading
- * is what arms it. The pinned image (0.7.12) has no one-parameter form. The
- * simulator shipped one in v0.8.0 (shiv3/ocpp-cp-simulator#352, #359):
- * `run_scenario_template` takes `once: true`. At a pin that includes it this
- * module is one call, and tests/template-once.ts's control row is what says
- * the old shape is gone for the right reason.
+ * is what arms it. The simulator has had a one-parameter form since v0.8.0
+ * (shiv3/ocpp-cp-simulator#352, #359): `run_scenario_template` takes
+ * `once: true`, and the pinned image (0.10.1) ships it. NOT ADOPTED WITH THAT
+ * PIN MOVE, on purpose: the move also changed how the container is launched,
+ * and two changes in one sweep make a red row unattributable. The four calls
+ * still hold at 0.10.1 -- upstream's own golden test
+ * (apps/cli/src/__tests__/tck-contract/, #689) pins this exact sequence. When
+ * this module becomes one call, tests/template-once.ts's control row is what
+ * says the old shape is gone for the right reason.
  */
 /** The half of {@link import("./sim").SimProcess} these functions need. */
 export interface SimCalls {

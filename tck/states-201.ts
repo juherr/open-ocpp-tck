@@ -226,14 +226,15 @@ interface StateDefinition<S extends ReusableState201> {
    * condition holds".
    *
    * A DECLARED FACT AND NOT A COMMENT, which is the whole of why this field
-   * exists. Two states are in that position today and the argument for why it
-   * is safe is written out at each of their reaches: the post condition has no
-   * reader, because `establishes` returns the condition untouched and no other
-   * state's edge invokes them. That argument is a claim about the REST of this
+   * exists. One state is in that position today (two until the 0.10.1
+   * simulator pin, whose station stores an installed certificate), and the
+   * argument for why it is safe is written out at its reach: the post
+   * condition has no reader, because `establishes` returns the condition
+   * untouched and no other state's edge invokes it. That argument is a claim about the REST of this
    * table, and a claim about elsewhere is one a guard should be holding --
    * `tests/state-plan-201.ts` checks both halves of it against the definitions
-   * and pins which states carry this, so a third one added silently, or an
-   * edge re-pointed at one of the two, fails the build instead of quietly
+   * and pins which states carry this, so a second one added silently, or an
+   * edge re-pointed at this one, fails the build instead of quietly
    * letting a later step run on the strength of a condition that is not there.
    *
    * It is NOT a substitute for a reach: a state this build cannot execute at
@@ -480,17 +481,19 @@ const RECEIVED_GET_INSTALLED_CERTIFICATE_IDS =
   /Received: \[2,"[^"]*","GetInstalledCertificateIds"/;
 
 /**
- * The second fixture whose reach is a CSMS operation, and the first whose
+ * The second fixture whose reach is a CSMS operation, and the one whose
  * declared post condition this deployment does NOT in fact establish.
  *
  * WHAT THE REFERENCE SCRIPTS AND WHAT THE PINNED STATION GIVES ARE DIFFERENT
  * ANSWERS, and the gap is written here rather than in the four scenarios that
  * would otherwise each restate it. Part 6 has the station answer `Accepted`
  * with the hash data of every certificate of the type asked for; the pinned
- * simulator answers `NotFound` from a canned handler that reads no request
- * member and holds no truststore. So nothing is retrieved, and this fixture's
- * post condition -- "a list was retrieved" -- is not established in the sense
- * the reference means.
+ * simulator answers `NotFound`: it answers from its own certificate store
+ * (since 0.10.0, shiv3/ocpp-cp-simulator#456), and every scenario starts a
+ * fresh station whose store holds nothing of the type asked for -- none of the
+ * cases naming this state installs one first. So nothing is retrieved, and
+ * this fixture's post condition -- "a list was retrieved" -- is not established
+ * in the sense the reference means.
  *
  * IT IS STILL THE RIGHT FIXTURE, because of what the state establishes in the
  * MODEL: nothing. `establishes` returns the condition untouched, no other state
@@ -526,22 +529,18 @@ const reachGetInstalledCertificates: NonNullable<
 const RECEIVED_INSTALL_CERTIFICATE = /Received: \[2,"[^"]*","InstallCertificate"/;
 
 /**
- * The third fixture whose reach is a CSMS operation, and the second whose
- * declared post condition this deployment does not establish.
+ * The third fixture whose reach is a CSMS operation.
  *
- * THE STATION REFUSES EVERY CERTIFICATE, and it refuses them without looking.
- * Part 6 has it answer `Accepted` and store what it was sent; the pinned
- * simulator answers `Rejected` from a canned handler that reads no request
- * member. So no certificate is stored, and "a certificate of the specified type
- * is stored at the station" is not true after this fixture runs.
+ * THE STATION STORES WHAT IT IS SENT, as Part 6 has it: from 0.10.0 the pinned
+ * simulator keeps a certificate store (shiv3/ocpp-cp-simulator#456), answers a
+ * well-formed root `Accepted` and holds it, so "a certificate of the specified
+ * type is stored at the station" is true after this fixture runs. Up to 0.7.12
+ * it answered `Rejected` from a canned handler, and this state was declared as
+ * promising less than the reference; that declaration went with the pin.
  *
- * IT IS STILL THE RIGHT FIXTURE, for the reason
- * {@link reachGetInstalledCertificates} gives at length and which holds here in
- * the same shape: `establishes` returns the condition untouched, nothing
- * depends on this state, and the four cases that name it ARE it. There is no
- * later step running on the strength of a certificate the station never kept.
- * What is measured is what a CSMS campaign can measure -- the request the CSMS
- * sent, and the type it named.
+ * WHAT IS MEASURED is still what a CSMS campaign can measure -- the request the
+ * CSMS sent, and the type it named. The station's `Accepted` is the reference's
+ * script, not a verdict on the CSMS, and a fixture holds no verdict.
  *
  * THE CERTIFICATE IS THE SAME ONE EVERY TIME, and Part 6 says "the
  * corresponding certificate" rather than naming one, so the correspondence is
@@ -549,10 +548,6 @@ const RECEIVED_INSTALL_CERTIFICATE = /Received: \[2,"[^"]*","InstallCertificate"
  * asks for. Nothing on either side checks that a CSMS root is in fact a CSMS
  * root -- the type is a member of the request, and the material only has to
  * parse. {@link TEST_ROOT_CERTIFICATE_PEM}'s header carries the rest.
- *
- * THE GAP IS DECLARED AND NOT ONLY ARGUED, for the reason
- * {@link reachGetInstalledCertificates} gives: the definition below carries a
- * `divergence` and a guard walks the argument.
  */
 const reachCertificateInstalled: NonNullable<ReachSegment<"CertificateInstalled">["run"]> = async (
   ctx,
@@ -693,11 +688,6 @@ const STATE_DEFINITIONS: StateDefinitions = {
     // cases naming it four cases: nothing records it, so each one sends its own
     // request.
     establishes: (condition) => condition,
-    divergence:
-      "the pinned simulator answers InstallCertificate with a canned " +
-      "`Rejected` and stores nothing, so no certificate of the named type is " +
-      "held at the station afterwards -- what the reach establishes is that " +
-      "the CSMS sent the request. See reachCertificateInstalled.",
     reach: [{ run: reachCertificateInstalled }],
   },
 
@@ -749,10 +739,10 @@ const STATE_DEFINITIONS: StateDefinitions = {
     // declaring it sends its own request.
     establishes: (condition) => condition,
     divergence:
-      "the pinned simulator answers GetInstalledCertificateIds with a canned " +
-      "`NotFound` and holds no truststore, so no list is retrieved -- what " +
-      "the reach establishes is that the CSMS sent the request. See " +
-      "reachGetInstalledCertificates.",
+      "the pinned simulator answers GetInstalledCertificateIds from a store " +
+      "that holds nothing at the start of a scenario, so it answers " +
+      "`NotFound` and no list is retrieved -- what the reach establishes is " +
+      "that the CSMS sent the request. See reachGetInstalledCertificates.",
     reach: [{ run: reachGetInstalledCertificates }],
   },
 

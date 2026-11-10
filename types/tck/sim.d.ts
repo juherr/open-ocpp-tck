@@ -1,5 +1,5 @@
 /**
- * Derived from shiv3/ocpp-cp-simulator scripts/steve-verify/runner/sim.ts @ 604054adb0d7d7129a26a5f1ad2d5fdc290d1ca1 (Apache-2.0). Modified: the hardcoded docker argv is now built from SimConfig; the `-v <repoRoot>:/app -w /app` bind mount and `repoRoot` are gone (the published image ships the CLI sources); the image is pinned by digest; `--network` left the default path; outgoing WS Basic auth and an optional cpId-in-path WS URL were added; every trace of the command redacts the password; the line pump, the waiter list, `send` and an id-correlated `call()` live in `attachSimStreams` over a `SimIo` so a guard can drive them without a process, waitForLine is a predicate wait applied to a RegExp and takes a `fromIndex` past which the existing lines are scanned, and stdout's EOF rejects every pending wait with the exit code instead of leaving it to its timeout. stop(), container cleanup and signal handlers are byte-for-byte upstream.
+ * Derived from shiv3/ocpp-cp-simulator scripts/steve-verify/runner/sim.ts @ 604054adb0d7d7129a26a5f1ad2d5fdc290d1ca1 (Apache-2.0). Modified: the hardcoded docker argv is now built from SimConfig; the `-v <repoRoot>:/app -w /app` bind mount and `repoRoot` are gone (the published image ships the CLI); the image is pinned by digest; `--network` left the default path; outgoing WS Basic auth and an optional cpId-in-path WS URL were added; every trace of the command redacts the password; the line pump, the waiter list, `send` and an id-correlated `call()` live in `attachSimStreams` over a `SimIo` so a guard can drive them without a process, waitForLine is a predicate wait applied to a RegExp and takes a `fromIndex` past which the existing lines are scanned, and stdout's EOF rejects every pending wait with the exit code instead of leaving it to its timeout. stop(), container cleanup and signal handlers are byte-for-byte upstream.
  *
  * sim.ts -- docker-spawned simulator process: launches the ocpp-cp-simulator
  * CLI in JSON Lines mode inside a container (port of lib.sh's sim_start),
@@ -11,21 +11,27 @@
  *
  * Upstream ran `oven/bun:1.3-alpine` with the checkout bind-mounted at /app.
  * Here the published image `ghcr.io/shiv3/ocpp-cp-simulator` carries the CLI
- * sources itself, so there is no repo to mount -- but its default entrypoint
- * (`/usr/local/bin/entrypoint.sh`) always appends
- * `--http-host 0.0.0.0 --unsafe-remote --web-console $HTTP_PORT`, which puts
- * the CLI in daemon/web-console mode: it auto-connects on startup and emits
- * `[server] …` lines instead of the JSON Lines event stream this runner
- * parses (upstream's `docker/entrypoint.sh` composes that flag bundle; re-read
- * at v0.7.12 and observed live on the pinned digest). The entrypoint is
- * therefore overridden back to `bun src/cli/main.ts`, which runs the very
- * same embedded sources in true JSON Lines mode.
+ * itself (a bundle, `dist-cli/main.js`, since 0.10.0), so there is no repo to
+ * mount, and the container runs on the image's OWN entrypoint: from 0.10.0
+ * (upstream #688) `docker/entrypoint.sh` hands an argv that contains `--json`
+ * to the CLI as it is, with none of the daemon flags it otherwise composes.
+ * `buildDockerArgs` always emits `--json`, so that is the whole contract.
+ *
+ * Images before 0.10.0 have no such detection: their entrypoint always
+ * appends `--http-host 0.0.0.0 --unsafe-remote --web-console $HTTP_PORT`,
+ * which puts the CLI in daemon mode -- `[server] …` lines and no JSON Lines
+ * event stream -- and a scenario then waits out its whole budget. Every run
+ * up to 0.7.12 therefore overrode the entrypoint with `bun src/cli/main.ts`,
+ * and that is still how to run such a `SIM_IMAGE`:
+ * `SIM_ENTRYPOINT=bun SIM_COMMAND=src/cli/main.ts`. The 0.10.x images keep a
+ * shim at that path for this repository's sake (upstream #346), which nothing
+ * here relies on any more.
  */
 import type { ScenarioOcppVersion } from "./spec-types";
 /**
  * Default simulator image, PINNED BY DIGEST (repo convention: never
  * `latest`, never a bare tag). This is the multi-arch index digest of
- * `ghcr.io/shiv3/ocpp-cp-simulator:0.7.12`, resolved 2026-09-12 with
+ * `ghcr.io/shiv3/ocpp-cp-simulator:0.10.1`, resolved 2026-11-10 with
  * `docker buildx imagetools inspect`; it therefore still selects the right
  * per-platform manifest on amd64 and arm64. Override with `SIM_IMAGE`.
  *
@@ -36,9 +42,9 @@ import type { ScenarioOcppVersion } from "./spec-types";
  * another, and once the wrapper lives in a different repository from this
  * file, nothing can ever make the two agree again.
  */
-export declare const DEFAULT_SIM_IMAGE = "ghcr.io/shiv3/ocpp-cp-simulator@sha256:b94ee6c78e3976943a268ce68e6095564db1f048d049ea020cb204b2d826504b";
+export declare const DEFAULT_SIM_IMAGE = "ghcr.io/shiv3/ocpp-cp-simulator@sha256:1324a3b71615164940cdf36f269b4d5848741f6dff7a5379b6531aa2fb923209";
 /** What the CLI writes back for a command that carried an `id`
- *  (`toJsonResponse` in the pinned image's `src/cli/output.ts`). */
+ *  (`toJsonResponse` in upstream's `apps/cli/src/output.ts` at the pinned tag). */
 export type SimResponse = {
     ok: true;
     data: unknown;
@@ -97,11 +103,12 @@ export interface SimConfig {
      *  (`SIM_WS_BASIC_PASS`). NEVER rendered in a trace -- see
      *  {@link renderDockerArgs}. */
     basicAuthPass?: string;
-    /** Container entrypoint override. See this module's header for why the
-     *  image's own entrypoint is bypassed; `SIM_ENTRYPOINT` restores it (pass
-     *  an empty string to use the image default). */
+    /** Container entrypoint override (`SIM_ENTRYPOINT`). Undefined by default:
+     *  the image's own entrypoint is the one that knows how to run its CLI, see
+     *  this module's header. An empty string means the same as unset. */
     entrypoint?: string;
-    /** Argv handed to {@link entrypoint} ahead of the connection flags. */
+    /** Argv placed after the image, ahead of the connection flags
+     *  (`SIM_COMMAND`, split on whitespace). Empty by default. */
     command: string[];
     /** OCPP version the charge point speaks (`SIM_OCPP_VERSION` or the explicit
      *  diagnostic `SIM_FORCE_OCPP_VERSION`). A PROPERTY OF THE SCENARIO, not of the CSMS -- and deliberately not on the driver's

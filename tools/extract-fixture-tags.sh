@@ -45,11 +45,23 @@ echo "# simulator image: $image" >&2
 
 # CERT_QUIRKS / CERTIFICATE_PEM_RE and friends are source identifiers, not tags:
 # a real idTag has no underscore.
+#
+# The image carries the CLI as one bundle, /app/dist-cli, since 0.10.0; before
+# that it carried the sources under /app/src, which now holds only a launch
+# shim. Grepping a directory that has nothing to find is not an error to grep
+# -- so the empty set below is refused, or a layout move would read as "every
+# driver provisions every tag" with nothing compared.
 image_tags="$(
   docker run --rm --entrypoint sh "$image" \
-    -c "grep -rhoE 'CERT[A-Za-z0-9-]+' /app/src 2>/dev/null | sort -u" |
-    grep -vE '^CERTIFICATE' | sort -u
+    -c "grep -rhoE 'CERT[A-Za-z0-9-]+' /app/dist-cli 2>/dev/null | sort -u" |
+    grep -vE '^CERTIFICATE' | sort -u || true
 )"
+if [ -z "$image_tags" ]; then
+  echo "FAIL: no CERT… tag found under /app/dist-cli in $image." >&2
+  echo "  Either docker failed (its error is above) or the image layout moved;" >&2
+  echo "  find where it keeps the scenario templates before trusting this again." >&2
+  exit 1
+fi
 
 if [ "$mode" = "print" ]; then
   printf '%s\n' "$image_tags"

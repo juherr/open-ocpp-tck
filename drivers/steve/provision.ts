@@ -106,7 +106,7 @@ const RESTART_POLL_MS = 3_000;
  * Ground truth for the first group is the pinned simulator image:
  *
  *   docker run --rm --entrypoint sh <SIM_IMAGE> \
- *     -c "grep -rhoE 'CERT[A-Za-z0-9_-]+' /app/src | sort -u"
+ *     -c "grep -rhoE 'CERT[A-Za-z0-9_-]+' /app/dist-cli | sort -u"
  *
  * Re-run that when the image pin moves; `tck/sim.ts` owns the digest.
  */

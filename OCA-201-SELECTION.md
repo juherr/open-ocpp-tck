@@ -229,8 +229,9 @@ this time on the *material* rather than on the verb.
 
 **What the tranche does not buy is the answer.** Part 6 has the station return
 the hash data of the certificates it holds; the pinned simulator answers
-`NotFound` from a canned handler that reads no request member and holds no
-truststore. For a CSMS campaign that is the test tool's script rather than
+`NotFound`, from a certificate store that is empty at the start of every
+scenario (until the `0.10.1` pin, from a canned handler that held no store at
+all). For a CSMS campaign that is the test tool's script rather than
 anything the system under test decides, so five of the six measure the request
 and stop — the sixth, `TC_M_19`, is the case whose scripted answer *is*
 `NotFound`, and it is the only one that reads the ack. That asymmetry is written

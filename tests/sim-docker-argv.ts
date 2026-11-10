@@ -4,10 +4,12 @@
  * tests/sim-docker-argv.ts -- what the operator asked for is what the container
  * gets.
  *
- * PROPERTY, in five parts:
- *   1. an empty environment produces the argv this runner has always produced,
- *      plus an explicit `--ocpp-version OCPP-1.6J` -- the CLI's own default, so
- *      the 47 `cert16-` scenarios drive exactly what they drove before;
+ * PROPERTY, in six parts:
+ *   1. an empty environment runs the image on ITS OWN entrypoint -- no
+ *      `--entrypoint`, the CLI flags straight after the image, `--json` among
+ *      them, which is what that entrypoint keys CLI mode on -- plus an explicit
+ *      `--ocpp-version OCPP-1.6J`, the CLI's own default, so the 47 `cert16-`
+ *      scenarios drive exactly what they drove before;
  *   2. `SIM_OCPP_VERSION` resolves onto {@link SimConfig.ocppVersion} and
  *      reaches the argv, and a value the CLI does not accept is REFUSED by name
  *      with the list of the ones it does;
@@ -23,7 +25,12 @@
  *      unreachable through this runner in the first place;
  *   5. `SIM_TRACE=0`, and only that value, says no to a trace at all. It
  *      resolves in `tck/sim.ts` with the rest of the `SIM_*` namespace, which
- *      is what puts it under this guard instead of under none.
+ *      is what puts it under this guard instead of under none;
+ *   6. `SIM_ENTRYPOINT=bun SIM_COMMAND=src/cli/main.ts` gives back the argv
+ *      every run had before 0.10.1, override BEFORE the image and the script
+ *      AFTER it. It is the documented way to run an older `SIM_IMAGE`, whose
+ *      entrypoint starts the daemon whatever it is handed, so it has to keep
+ *      producing exactly that argv.
  *
  * WHY THIS IS TYPESCRIPT AND NOT A SHELL GUARD. `buildDockerArgs` is pure and
  * nothing prints its result without starting a container: the one caller that
@@ -92,10 +99,9 @@ expectArgs("the default argv", argsFor({}), [
   "--rm",
   "--name",
   CONTAINER,
-  "--entrypoint",
-  "bun",
+  // No `--entrypoint`: the image's own entrypoint hands an argv carrying
+  // `--json` to the CLI as it is. The CLI flags follow the image directly.
   DEFAULT_SIM_IMAGE,
-  "src/cli/main.ts",
   "--ws-url",
   "ws://localhost:8080/ocpp/CP1",
   "--cp-id",
@@ -235,10 +241,7 @@ for (const extra of [
       // pushed after it becomes an argument to the CLI instead.
       "-v",
       "/tmp/results:/trace",
-      "--entrypoint",
-      "bun",
       DEFAULT_SIM_IMAGE,
-      "src/cli/main.ts",
       "--ws-url",
       "ws://localhost:8080/ocpp/CP1",
       "--cp-id",
@@ -312,6 +315,33 @@ for (const [value, wanted] of [
     );
   }
 }
+
+// ---------------------------------------------------------------------------
+// 6. The escape for an image older than the entrypoint's `--json` detection.
+// ---------------------------------------------------------------------------
+
+expectArgs(
+  "the argv for an image older than 0.10.0",
+  argsFor({ SIM_ENTRYPOINT: "bun", SIM_COMMAND: "src/cli/main.ts" }),
+  [
+    "run",
+    "-i",
+    "--rm",
+    "--name",
+    CONTAINER,
+    "--entrypoint",
+    "bun",
+    DEFAULT_SIM_IMAGE,
+    "src/cli/main.ts",
+    "--ws-url",
+    "ws://localhost:8080/ocpp/CP1",
+    "--cp-id",
+    CP,
+    "--json",
+    "--ocpp-version",
+    "OCPP-1.6J",
+  ],
+);
 
 if (failures > 0) {
   process.stderr.write(

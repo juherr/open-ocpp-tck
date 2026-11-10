@@ -630,6 +630,23 @@ Released as `0.3.0`. The documented install ref already points at that tag, so
   WebAPI facts the provisioner is built on were re-measured and hold, and the
   full sweep's verdict set is identical to 3.14.0's — `VENDOR.md`'s validation
   history has the row.
+- **The simulator image pin moved on to `0.10.1`, and the container now runs
+  on the image's own entrypoint** —
+  `ghcr.io/shiv3/ocpp-cp-simulator@sha256:1324a3b7…`, the multi-arch index
+  digest resolved on 2026-11-10. From `0.10.0` the image carries a CLI bundle
+  instead of its sources, and its entrypoint hands an argv carrying `--json`
+  to that CLI unchanged (shiv3/ocpp-cp-simulator#688). The runner therefore
+  no longer passes `--entrypoint bun … src/cli/main.ts`. **To run an image
+  older than `0.10.0` through `SIM_IMAGE`**, set `SIM_ENTRYPOINT=bun
+  SIM_COMMAND=src/cli/main.ts`, which restores the previous argv exactly.
+  Nothing a sweep reads changed between `0.7.12` and `0.10.1`: the JSON Lines
+  commands and events, the CLI flags, the log-line format, the trace schema
+  (`1.1`) and the `cert16-*` template ids. Two templates, tc024 and tc048-2,
+  now get their `Preparing`, `Occupied` and `Available` from the station
+  model instead of explicit nodes. `tck/template-once.ts` keeps its four
+  calls although the pin now has `run_scenario_template`'s `once: true`, so
+  that this sweep changes one thing at a time. `VENDOR.md`'s "Moving this
+  pin" has what was read.
 - **The simulator image pin moved from `0.7.5` to `0.7.12`** —
   `ghcr.io/shiv3/ocpp-cp-simulator@sha256:b94ee6c7…`, the multi-arch index
   digest resolved on 2026-09-12. (`0.7.11` never had an image: its build failed
@@ -821,6 +838,32 @@ Released as `0.3.0`. The documented install ref already points at that tag, so
 
 ### Fixed
 
+- **`cert16-reservation-basic` reserves the idTag its station presents.** It
+  reserved `CERT-TAG-1` and the template then started a transaction with
+  `CERT-RES01`, which the simulator accepted on a connector reserved for
+  another tag — a station defect OCPP 1.6 §5.13 forbids, and the one the
+  scenario was measuring. From `0.10.0` the station refuses, so the scenario
+  went red against a conformant station. It now reserves `CERT-RES01`, which is
+  TC_046's own sequence: the reserved idTag arrives, and its `StartTransaction`
+  carries the `reservationId`. Its assertions and its CSMS call sequence move
+  with it.
+- **`cert201-tcm05-install-refused` asserts the answer TC_M_05 scripts,
+  `Failed`.** The station used to answer every `InstallCertificate` with a
+  canned `Rejected`, and the scenario asserted that in place of the case's
+  status. From `0.10.0` the station keeps a real certificate store and accepts
+  a valid root, which left the case with nothing to refuse. The scenario now
+  loads a station-side scenario that takes the request over
+  (`csmsCallTrigger` with `behavior: "replace"`) and answers `Failed`, and it
+  waits for that scenario to be armed before dispatching. As in Part 6, the
+  CSMS side is checked on the request alone. `CertificateInstalled` no longer
+  declares that it establishes less than the reference, since the station now
+  stores what it is sent; `GetInstalledCertificates` still does, because the
+  store is empty at the start of every scenario.
+- **`check:fixture-tags` reads the simulator's tags from the image again, and
+  refuses to compare an empty set.** It grepped `/app/src`, which from `0.10.0`
+  holds only a launch shim, so it would have found no tag, no driver could
+  have been missing one, and it exited 0. It now greps the CLI bundle under `/app/dist-cli`, and
+  fails when it finds nothing there.
 - **`cert201-tcf27-trigger-not-implemented` no longer depends on which
   triggers the simulator implements.** It asked for a
   `FirmwareStatusNotification`, a value the pinned simulator happens to leave
