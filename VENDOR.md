@@ -558,11 +558,12 @@ before each move (3.14.0 on 2026-08-11, 3.14.1 on 2026-09-12, 3.15.0 on
   provisioning time, not from a fabricated historical date, which is what
   [steve-community/steve#2100][sc2100] settled on: a `PATCH
   /ocppTags/{pk}/expire` endpoint expiring with `now()`. It landed in 3.15.0
-  ([#2103][sc2103]) and the SQL write stays, for two reasons measured on that
-  digest: the endpoint writes `now()` with no margin, which `verify` — checking
-  the instant against the host's clock — would read through the skew between
-  two clocks (72 ms of margin on the probe), and it answers 404 on every
-  release before 3.15.0, which this table says the driver still targets.
+  ([#2103][sc2103]), and the SQL write stays for good: the endpoint expires at
+  `now()` and nothing earlier — a margin was asked for and the maintainer
+  declined it — while `verify` checks the instant against the host's clock,
+  so it would read through the skew between two clocks (72 ms of margin on the
+  probe, round trip included). It also answers 404 on every release before
+  3.15.0, which this table says the driver still targets.
 - API access is off until `web_user.api_password` (bcrypt, distinct from the
   UI password) is set, and SteVe reads that column once at startup. There is
   still no environment variable for it, so `provision` writes it and restarts
@@ -571,11 +572,13 @@ before each move (3.14.0 on 2026-08-11, 3.14.1 on 2026-09-12, 3.15.0 on
   [#2059][sc2059] (a Web UI for those accounts) are what would end it.
 
 Every remaining database access in `drivers/steve/` is one of these four gaps,
-and nothing else — which is the property to preserve when editing that driver:
+and nothing else — which is the property to preserve when editing that driver.
+The first is no longer a gap waiting on upstream but a settled answer; the
+other three would each fold into REST the day their ticket lands:
 
 | what needs the database | upstream ticket |
 |---|---|
-| write a past `expiry_date` | [#2100][sc2100] — landed as [#2103][sc2103], not adopted (see the bullet above) |
+| write a past `expiry_date` | [#2100][sc2100] — answered by [#2103][sc2103] with no margin, by design; the SQL write is permanent (see the bullet above) |
 | turn the WebAPI on (`web_user.api_password`) | [#2075][sc2075], [#2059][sc2059] |
 | read reservation status; teardown's reservation guard | [#2074][sc2074] |
 | create, verify and remove charging profiles | [#2069][sc2069] |

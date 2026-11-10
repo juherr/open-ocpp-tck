@@ -15,8 +15,9 @@
  * channel is used wherever REST can answer, on purpose: a fixture asserted
  * through the API is a fixture an integrator could reproduce, while one
  * asserted through the tables is a claim about SteVe's private state. So the
- * two other channels are not a style choice -- each is a missing endpoint with
- * a ticket number, and the day it lands the channel goes with it.
+ * two other channels are not a style choice. The UI one is a missing endpoint
+ * with a ticket number, and the day it lands the channel goes with it; the SQL
+ * one is permanent, for the reason given under it.
  *
  *   REST  tags, end to end: `POST /ocppTags` to create, `GET /ocppTags` for
  *         everything `verify` checks, `DELETE /ocppTags/{pk}` for teardown.
@@ -41,11 +42,12 @@
  *         own clock, never a fabricated historical date -- see
  *         EXPIRED_FIXTURE_BACKDATE_MINUTES in tck/time.ts. That endpoint
  *         landed in steve-3.15.0 as `PATCH /ocppTags/{pk}/expire` (#2103),
- *         and this channel stays for two reasons. It writes `now()` with no
- *         margin, so `verify`, which compares the instant against THIS
- *         process's clock, would pass or fail on the skew between two clocks
- *         -- measured 72 ms of margin on one machine. And it answers 404 on
- *         every release before 3.15.0, which the driver still targets.
+ *         and this channel stays for good. That endpoint writes `now()` and
+ *         nothing earlier -- a margin was asked for and upstream declined it,
+ *         so it will not grow one -- and `verify`, which compares the instant
+ *         against THIS process's clock, would then pass or fail on the skew
+ *         between two clocks: 72 ms of margin on the 3.15.0 probe, round trip
+ *         included. It also answers 404 on every release before 3.15.0.
  *   UI    for the two charging profiles. SteVe's WebAPI exposes exactly
  *         ocppTags, operations and transactions; there is no chargingProfile
  *         endpoint at all. steve-community/steve#2069 proposes adding that

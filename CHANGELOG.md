@@ -644,8 +644,8 @@ Released as `0.3.0`. The documented install ref already points at that tag, so
   11 of 20 bursts on 3.14.1 hits it in 0 of 40, the driver README's gap row
   moved to a Resolved section, and the full sweep — 42 PASS, the same 5
   PARTIAL — needed no isolated retry. The new `PATCH /ocppTags/{pk}/expire`
-  is not adopted yet: it expires with no margin and is absent before 3.15.0,
-  so `CERT023-EXP` is still aged through SQL.
+  is not adopted: it expires at `now()` with no margin, by upstream's choice,
+  and is absent before 3.15.0, so `CERT023-EXP` stays aged through SQL.
 - **The simulator image pin moved on to `0.10.1`, and the container now runs
   on the image's own entrypoint** —
   `ghcr.io/shiv3/ocpp-cp-simulator@sha256:1324a3b7…`, the multi-arch index
