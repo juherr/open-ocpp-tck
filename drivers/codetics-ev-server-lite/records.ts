@@ -53,9 +53,14 @@ interface Page<T> {
  *  page rather than trusted to be first. */
 const NEWEST_WINDOW = 50;
 
+/** The rows' ids, without the nulls. */
+function ids(rows: readonly SessionRow[]): number[] {
+  return rows.flatMap((row) => (typeof row.id === "number" ? [row.id] : []));
+}
+
 function newest(rows: readonly SessionRow[]): string {
-  const ids = rows.map((row) => row.id).filter((id): id is number => typeof id === "number");
-  return ids.length === 0 ? "" : String(Math.max(...ids));
+  const found = ids(rows);
+  return found.length === 0 ? "" : String(Math.max(...found));
 }
 
 export class EvslRecords implements Omit<CsmsRecords, "reservations" | "deviceModel"> {
@@ -75,6 +80,14 @@ export class EvslRecords implements Omit<CsmsRecords, "reservations" | "deviceMo
     return page;
   }
 
+  /** The newest page of the station's open transactions, for one idTag when
+   *  given. `query()` drops an absent `tokenUid`. */
+  private async active(cpId: string, idTag?: string): Promise<SessionRow[]> {
+    return (
+      await this.page({ stationId: cpId, tokenUid: idTag, status: "active", limit: NEWEST_WINDOW })
+    ).items;
+  }
+
   async latestTransaction(cpId: string): Promise<string> {
     return newest((await this.page({ stationId: cpId, limit: NEWEST_WINDOW })).items);
   }
@@ -82,26 +95,12 @@ export class EvslRecords implements Omit<CsmsRecords, "reservations" | "deviceMo
   /** The station's still-open transactions. Not part of the contract: the
    *  prepare hook closes them. */
   async openTransactions(cpId: string): Promise<string[]> {
-    const page = await this.page({ stationId: cpId, status: "active", limit: NEWEST_WINDOW });
-    return page.items
-      .map((row) => row.id)
-      .filter((id): id is number => typeof id === "number")
-      .map(String);
+    return ids(await this.active(cpId)).map(String);
   }
 
   async waitForActiveTransaction(cpId: string, idTag: string, timeoutSecs = 15): Promise<string> {
     return waitForCondition(
-      async () =>
-        newest(
-          (
-            await this.page({
-              stationId: cpId,
-              tokenUid: idTag,
-              status: "active",
-              limit: NEWEST_WINDOW,
-            })
-          ).items,
-        ),
+      async () => newest(await this.active(cpId, idTag)),
       {
         timeoutMs: timeoutSecs * 1000,
         intervalMs: 1_000,

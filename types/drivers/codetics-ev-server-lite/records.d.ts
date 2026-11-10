@@ -31,6 +31,9 @@ export declare class EvslRecords implements Omit<CsmsRecords, "reservations" | "
     private readonly api;
     constructor(api: EvslApi);
     private page;
+    /** The newest page of the station's open transactions, for one idTag when
+     *  given. `query()` drops an absent `tokenUid`. */
+    private active;
     latestTransaction(cpId: string): Promise<string>;
     /** The station's still-open transactions. Not part of the contract: the
      *  prepare hook closes them. */
