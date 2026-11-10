@@ -51,7 +51,8 @@ Released as `0.3.0`. The documented install ref already points at that tag, so
   hand-rolled checks `cert16-tc053`, `cert16-tc054` and `spec48` decide on.
   It hands each helper synthetic frames: a green control, and a red row per
   way the
-  check must fail — a trigger accepted and never honoured, or honoured only
+  check must fail — a trigger read off another message's TriggerMessage, a
+  trigger accepted and never honoured, or honoured only
   before its answer, on the wrong connector, or answered `NotImplemented`
   where only the last trigger may; an `Authorize.conf` without the parent, or
   with another; a `StartTransaction` without the reservation's id; a second

@@ -65,12 +65,12 @@ const receivedError = (id: string) =>
 
 // --- assertTriggered ---------------------------------------------------------
 
-const trigger = (message: string, connectorId?: number) =>
-  receivedCall("t", "TriggerMessage", {
+const trigger = (message: string, connectorId?: number, id = "t") =>
+  receivedCall(id, "TriggerMessage", {
     requestedMessage: message,
     ...(connectorId === undefined ? {} : { connectorId }),
   });
-const triggerConf = (status: string) => sentResult("t", { status });
+const triggerConf = (status: string, id = "t") => sentResult(id, { status });
 const statusNotification = (connectorId: number) =>
   sentCall("s", "StatusNotification", {
     connectorId,
@@ -179,6 +179,20 @@ const cases: Array<{
     lines: [trigger("StatusNotification", 1), triggerConf("Accepted"), statusNotification(2)],
     expect: ["PASS", "FAIL"],
     because: "for connector 1 after",
+  },
+  {
+    // Five triggers in a row: each check reads ITS TriggerMessage, not the
+    // first one on the wire, which here is another message's and Rejected.
+    name: "trigger: read off its own TriggerMessage, not the first one",
+    check: triggered("Heartbeat", null, false),
+    lines: [
+      trigger("DiagnosticsStatusNotification", undefined, "t1"),
+      triggerConf("Rejected", "t1"),
+      trigger("Heartbeat", undefined, "t2"),
+      triggerConf("Accepted", "t2"),
+      sentCall("h", "Heartbeat", {}),
+    ],
+    expect: ["PASS", "PASS"],
   },
   {
     name: "trigger: the CSMS never sent the TriggerMessage",
