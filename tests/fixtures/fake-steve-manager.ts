@@ -5,7 +5,7 @@
  * tests/csms-driver-charge-points.ts: sign-in, the add form, the list query,
  * the details form, update and delete.
  *
- * What it models is what the pinned image (steve-3.14.1) was MEASURED to do,
+ * What it models is what the pinned image (steve-3.15.0) was MEASURED to do,
  * and each of these is a way the adapter could be wrong while a kinder fake
  * stayed green:
  *  - every refusal is a 200 page -- the validation list re-rendered with the
@@ -15,12 +15,17 @@
  *  - an update overwrites every column with what was posted, so a member the
  *    form left out is erased -- EXCEPT the password, which an empty field
  *    leaves unchanged, and which nothing clears;
- *  - the list query matches with LIKE, so `CP-1` lists `CP-10`, and renders
- *    the id unescaped where the details form escapes it -- `CP&amp;01` is
- *    listed as `CP&amp;01` and rendered `CP&amp;amp;01` on its details page;
+ *  - the list query matches with LIKE -- case-insensitive, `_` and `%` taken
+ *    as wildcards -- so `CP-1` lists `CP-10`, and `cp_01` lists `CP&01`;
+ *  - the list escapes the id, as the details form does -- `CP&01` is listed
+ *    as `CP&amp;01`, which is also how a station whose id IS `CP&amp;01`
+ *    would be listed raw. Releases up to 3.14.x wrote the list raw
+ *    (chargepoints.jsp's `${cp.chargeBoxId}`), and the adapter still has to
+ *    find the right row on them: `listRendering: "raw"` models that;
  *  - a request without an authenticated session is redirected to sign-in;
  *  - the handshake checks the password under profiles 1 and 2 only.
- * Markup follows Spring's form tags as the pinned image renders them. The
+ * Markup follows the Thymeleaf templates as the pinned image renders them --
+ * the CSRF input first in each form, no `id` on a `th:object` form. The
  * model is this fixture's one assumption; `tools/steve-charge-points.ts`
  * re-checks the adapter against the real image when the pin moves.
  */
@@ -70,6 +75,8 @@ export interface FakeSteveOptions {
   readonly forgetAdds?: boolean;
   /** Answer an accepted update with its redirect and change nothing, as SteVe does for an unknown chargeBoxPk. */
   readonly forgetUpdates?: boolean;
+  /** How the list query writes a charge-box id: escaped from 3.15.0 on (the default), raw up to 3.14.x. */
+  readonly listRendering?: "escaped" | "raw";
 }
 
 function esc(value: string | null | undefined): string {
@@ -79,6 +86,14 @@ function esc(value: string | null | undefined): string {
     .replace(/>/g, "&gt;")
     .replace(/"/g, "&quot;")
     .replace(/'/g, "&#39;");
+}
+
+/** `charge_box_id LIKE '%<filter>%'` as MariaDB runs it: case-insensitive, `_` and `%` left as wildcards. */
+function likePattern(filter: string): RegExp {
+  const body = [...filter]
+    .map((char) => (char === "%" ? "[\\s\\S]*" : char === "_" ? "[\\s\\S]" : char.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")))
+    .join("");
+  return new RegExp(body, "iu");
 }
 
 function html(body: string): Response {
@@ -93,8 +108,9 @@ function redirect(location: string, cookie?: string): Response {
   return new Response(null, { status: 302, headers });
 }
 
+/** Thymeleaf's `th:action` writes it as the form's first child. */
 function csrfInput(token: string): string {
-  return `<div>\n<input type="hidden" name="_csrf" value="${token}" />\n</div>`;
+  return `<input type="hidden" name="_csrf" value="${token}"/>`;
 }
 
 /** What GlobalControllerAdvice renders for an exception: a 200, with no status. */
@@ -133,8 +149,8 @@ function bind(fields: URLSearchParams): Bound {
 
 /** The two charge-point forms: where each posts, and what its button and its error say. */
 const FORMS = {
-  add: { action: "chargepoints/add/single", submit: "add", label: "Add", details: false },
-  update: { action: "chargepoints/update", submit: "update", label: "Update", details: true },
+  add: { action: "chargepoints/add/single", submit: "add", label: "Add", details: false, id: ' id="chargePointForm"' },
+  update: { action: "chargepoints/update", submit: "update", label: "Update", details: true, id: "" },
 } as const;
 type FormKind = keyof typeof FORMS;
 
@@ -143,11 +159,11 @@ function chargePointForm(
   token: string,
   station: Partial<FakeStation> & { echoedPassword?: string | null },
 ): string {
-  const { action, submit, label, details } = FORMS[kind];
+  const { action, submit, label, details, id } = FORMS[kind];
   const address = station.address ?? {};
   return (
-    `<form id="chargePointForm" action="${CONTEXT}/${action}" method="post">` +
-    (details ? `<input id="chargeBoxPk" name="chargeBoxPk" readonly="true" type="hidden" value="${station.pk}"/>` : "") +
+    `<form${id} action="${CONTEXT}/${action}" method="post">${csrfInput(token)}` +
+    (details ? `<input type="hidden" readonly="readonly" id="chargeBoxPk" name="chargeBoxPk" value="${station.pk}"/>` : "") +
     `<table class="userInput">\n` +
     `<input id="chargeBoxId" name="chargeBoxId"${details ? ' readonly="readonly"' : ""} type="text" value="${esc(station.chargeBoxId)}"/>\n` +
     `<input id="insertConnectorStatusAfterTransactionMsg1" name="insertConnectorStatusAfterTransactionMsg" type="checkbox" value="true"` +
@@ -157,7 +173,7 @@ function chargePointForm(
     select("securityProfile", PROFILES, station.securityProfile ?? "Profile_0") + "\n" +
     `<input id="authPassword" name="authPassword" placeholder="${station.authPassword ? "Enter new password" : "Enter password"}" ` +
     `type="password" value="${esc(station.echoedPassword)}"/>\n` +
-    (details ? `<input id="address.addressPk" name="address.addressPk" readonly="true" type="hidden" value=""/>` : "") +
+    (details ? `<input type="hidden" readonly="readonly" id="address.addressPk" name="address.addressPk" value=""/>` : "") +
     ADDRESS.map((member) =>
       member === "country" || member === "timeZone"
         ? select(`address.${member}`, ["", member === "country" ? "DE" : "Europe/Berlin"], address[member] ?? "")
@@ -165,10 +181,10 @@ function chargePointForm(
     ).join("\n") +
     `\n<input id="description" name="description" type="text" value="${esc(station.description)}"/>\n` +
     `<input id="adminAddress" name="adminAddress" type="text" value="${esc(station.adminAddress)}"/>\n` +
-    `<textarea id="note" name="note">\n${esc(station.note)}</textarea>\n` +
+    `<textarea id="note" name="note">${esc(station.note)}</textarea>\n` +
     `<input type="submit" name="${submit}" value="${label}">\n` +
     `<input type="submit" name="backToOverview" value="Back to Overview">\n` +
-    `</table>${csrfInput(token)}</form>`
+    `</table></form>`
   );
 }
 
@@ -274,21 +290,20 @@ export function fakeSteveManager(options: FakeSteveOptions = {}): FakeSteveManag
     if (method === "GET") {
       if (path === "chargepoints/add") {
         return html(
-          `<form id="batchChargePointForm" action="${CONTEXT}/chargepoints/add/batch" method="post">` +
-            `<textarea id="idList" name="idList">\n</textarea><input type="submit" value="Add All">${csrfInput(session.token)}</form>` +
+          `<form id="batchChargePointForm" action="${CONTEXT}/chargepoints/add/batch" method="post">${csrfInput(session.token)}` +
+            `<textarea id="idList" name="idList"></textarea><input type="submit" value="Add All"></form>` +
             chargePointForm("add", session.token, {}),
         );
       }
       if (path === "chargepoints/query") {
-        const filter = url.searchParams.get("chargeBoxId") ?? "";
+        const filter = likePattern(url.searchParams.get("chargeBoxId") ?? "");
         const rows = [...stations.values()]
-          .filter((station) => station.chargeBoxId.includes(filter))
+          .filter((station) => filter.test(station.chargeBoxId))
           .map((station) =>
-            // Unescaped: chargepoints.jsp writes `${cp.chargeBoxId}` raw, while
-            // the details page's form tag escapes the same id.
-            `<tr><td><a href="${CONTEXT}/chargepoints/details/${station.pk}">${station.chargeBoxId}</a></td>` +
-            `<td><form id="command" action="${CONTEXT}/chargepoints/delete/${station.pk}" method="post">` +
-            `<input type="submit" class="redSubmit" value="Delete">${csrfInput(session.token)}</form></td></tr>`,
+            `<tr><td><a href="${CONTEXT}/chargepoints/details/${station.pk}">` +
+            `${options.listRendering === "raw" ? station.chargeBoxId : esc(station.chargeBoxId)}</a></td>` +
+            `<td><form action="${CONTEXT}/chargepoints/delete/${station.pk}" method="post">${csrfInput(session.token)}` +
+            `<input type="submit" class="redSubmit" value="Delete"></form></td></tr>`,
           );
         return html(`<table class="res"><tbody>${rows.join("\n")}</tbody></table>`);
       }

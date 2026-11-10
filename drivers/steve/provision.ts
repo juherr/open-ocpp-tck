@@ -36,12 +36,16 @@
  *         around the protocol. Raised upstream as
  *         steve-community/steve#2100.
  *
- *         What that SQL writes is deliberately the same thing the endpoint
- *         proposed there would: the tag is expired AS OF THIS RUN, from the
- *         database's own clock, never a fabricated historical date -- see
- *         EXPIRED_FIXTURE_BACKDATE_MINUTES in tck/time.ts. So if
- *         `PATCH /ocppTags/{pk}/expire` lands, this channel goes away and tags
- *         become REST-only without any fixture changing meaning.
+ *         What that SQL writes is deliberately what the endpoint proposed
+ *         there does: the tag is expired AS OF THIS RUN, from the database's
+ *         own clock, never a fabricated historical date -- see
+ *         EXPIRED_FIXTURE_BACKDATE_MINUTES in tck/time.ts. That endpoint
+ *         landed in steve-3.15.0 as `PATCH /ocppTags/{pk}/expire` (#2103),
+ *         and this channel stays for two reasons. It writes `now()` with no
+ *         margin, so `verify`, which compares the instant against THIS
+ *         process's clock, would pass or fail on the skew between two clocks
+ *         -- measured 72 ms of margin on one machine. And it answers 404 on
+ *         every release before 3.15.0, which the driver still targets.
  *   UI    for the two charging profiles. SteVe's WebAPI exposes exactly
  *         ocppTags, operations and transactions; there is no chargingProfile
  *         endpoint at all. steve-community/steve#2069 proposes adding that

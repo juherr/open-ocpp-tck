@@ -12,7 +12,8 @@
  * every control the page rendered. So does this: load the page, read its form,
  * change what the caller asked for, post the rest back untouched.
  *
- * It reads Spring's form-tag output, not arbitrary HTML -- attributes quoted,
+ * It reads the manager's form markup -- Spring's form tags up to 3.14.x,
+ * Thymeleaf from 3.15.0 -- not arbitrary HTML: attributes quoted,
  * no control nested in another, no script building the form. That is enough
  * for the pages it is pointed at, and it is a regex reader rather than a DOM
  * because this package has no runtime dependencies.
@@ -32,8 +33,8 @@ export function decodeHtml(text: string): string {
     if (body[0] === "#") {
       const code = body[1] === "x" || body[1] === "X" ? parseInt(body.slice(2), 16) : parseInt(body.slice(1), 10);
       // Past U+10FFFF no character answers, and fromCodePoint would throw:
-      // kept as written, since SteVe lists a charge-box id unescaped and its
-      // validator lets `CP&#999999999;` through.
+      // kept as written, since SteVe's validator lets `CP&#999999999;`
+      // through and a list up to 3.14.x wrote it unescaped.
       return code <= 0x10ffff ? String.fromCodePoint(code) : entity;
     }
     return ENTITIES[body.toLowerCase()] ?? entity;
@@ -61,7 +62,9 @@ function controlValues(control: string, open: string, attrs: Map<string, string>
     return [attrs.get("value") ?? (type === "checkbox" || type === "radio" ? "on" : "")];
   }
   if (/^<textarea/i.test(control)) {
-    // HTML drops one newline straight after the start tag, and Spring writes one.
+    // HTML drops one newline straight after the start tag, as a browser does.
+    // Spring's form tag wrote one there; Thymeleaf writes none, and SteVe trims
+    // what it binds, so no stored value starts with one either way.
     const content = control.slice(open.length, control.lastIndexOf("<"));
     return [decodeHtml(content).replace(/^\r?\n/, "")];
   }

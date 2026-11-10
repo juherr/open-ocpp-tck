@@ -10,7 +10,8 @@
  * every control the page rendered. So does this: load the page, read its form,
  * change what the caller asked for, post the rest back untouched.
  *
- * It reads Spring's form-tag output, not arbitrary HTML -- attributes quoted,
+ * It reads the manager's form markup -- Spring's form tags up to 3.14.x,
+ * Thymeleaf from 3.15.0 -- not arbitrary HTML: attributes quoted,
  * no control nested in another, no script building the form. That is enough
  * for the pages it is pointed at, and it is a regex reader rather than a DOM
  * because this package has no runtime dependencies.
