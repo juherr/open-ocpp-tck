@@ -35,7 +35,14 @@ function redirect(location: string): Response {
   return new Response(null, { status: 302, headers: { location } });
 }
 
-async function verifySteveFactory(): Promise<void> {
+/**
+ * A fake SteVe manager UI: signin, then the `action` operation form, whose
+ * POST is recorded and redirected to task `taskId`. Anything else is a 500.
+ */
+function steveFetch(
+  action: string,
+  taskId: number,
+): { fetch: FetchLike; posts: { url: string; body: string }[] } {
   const posts: { url: string; body: string }[] = [];
   const fetch: FetchLike = async (input, init) => {
     const url = String(input);
@@ -46,15 +53,20 @@ async function verifySteveFactory(): Promise<void> {
     if (url.endsWith("/signin") && method === "POST") {
       return redirect("/manager/home");
     }
-    if (url.endsWith("/operations/v1.6/Reset") && method === "GET") {
+    if (url.endsWith(`/operations/v1.6/${action}`) && method === "GET") {
       return new Response('<input name="_csrf" value="operation-token">');
     }
-    if (url.endsWith("/operations/v1.6/Reset") && method === "POST") {
+    if (url.endsWith(`/operations/v1.6/${action}`) && method === "POST") {
       posts.push({ url, body: String(init?.body ?? "") });
-      return redirect("/manager/operations/tasks/42");
+      return redirect(`/manager/operations/tasks/${taskId}`);
     }
     return new Response("unexpected request", { status: 500 });
   };
+  return { fetch, posts };
+}
+
+async function verifySteveFactory(): Promise<void> {
+  const { fetch, posts } = steveFetch("Reset", 42);
 
   const driver = createSteveCsmsDriver({
     config: { baseUrl: "http://steve/manager", username: "operator", password: "secret" },
@@ -82,28 +94,6 @@ async function verifySteveFactory(): Promise<void> {
  * injected lookup says SteVe stores exactly that one.
  */
 async function verifySteveReserveNowParent(): Promise<void> {
-  function harness(): { fetch: FetchLike; posts: string[] } {
-    const posts: string[] = [];
-    const fetch: FetchLike = async (input, init) => {
-      const url = String(input);
-      const method = init?.method ?? "GET";
-      if (url.endsWith("/signin") && method === "GET") {
-        return new Response('<input name="_csrf" value="login-token">');
-      }
-      if (url.endsWith("/signin") && method === "POST") {
-        return redirect("/manager/home");
-      }
-      if (url.endsWith("/operations/v1.6/ReserveNow") && method === "GET") {
-        return new Response('<input name="_csrf" value="operation-token">');
-      }
-      if (url.endsWith("/operations/v1.6/ReserveNow") && method === "POST") {
-        posts.push(String(init?.body ?? ""));
-        return redirect("/manager/operations/tasks/43");
-      }
-      return new Response("unexpected request", { status: 500 });
-    };
-    return { fetch, posts };
-  }
   const config = { baseUrl: "http://steve/manager", username: "operator", password: "secret" };
   const reserve = {
     action: "ReserveNow" as const,
@@ -117,57 +107,48 @@ async function verifySteveReserveNowParent(): Promise<void> {
     return idTag === "TAG-RES" ? "TAG-GRP" : null;
   };
 
-  async function refusal(promise: Promise<unknown>): Promise<unknown> {
+  /** Executes `reserve` with `overrides` through a fresh fake SteVe; the
+   *  error it threw, if any, and the forms it posted. */
+  async function reserveWith(
+    ocppTagParent: ((idTag: string) => Promise<string | null>) | undefined,
+    overrides: Partial<typeof reserve> & { parentIdTag?: string },
+  ): Promise<{ err: unknown; posts: unknown[] }> {
+    const { fetch, posts } = steveFetch("ReserveNow", 43);
     try {
-      await promise;
-      return undefined;
+      await createSteveCsmsDriver({ config, fetch, ocppTagParent }).operations16.execute("CP-1", {
+        ...reserve,
+        ...overrides,
+      });
+      return { err: undefined, posts };
     } catch (err) {
-      return err;
+      return { err, posts };
     }
   }
 
-  const plain = harness();
+  const plain = steveFetch("ReserveNow", 43);
   await createSteveCsmsDriver({ config, fetch: plain.fetch }).operations16.execute("CP-1", reserve);
   check(plain.posts.length === 1, "SteVe ReserveNow without a parentIdTag is posted as before");
 
-  const blind = harness();
-  const blindErr = await refusal(
-    createSteveCsmsDriver({ config, fetch: blind.fetch }).operations16.execute("CP-1", {
-      ...reserve,
-      parentIdTag: "TAG-GRP",
-    }),
-  );
+  const { err: blindErr, posts: blindPosts } = await reserveWith(undefined, { parentIdTag: "TAG-GRP" });
   check(
     blindErr instanceof UnsupportedOperationError,
     "SteVe ReserveNow refuses a parentIdTag it has no way to check against the stored parent",
   );
-  check(blind.posts.length === 0, "SteVe ReserveNow posts nothing when it cannot check the parentIdTag");
+  check(blindPosts.length === 0, "SteVe ReserveNow posts nothing when it cannot check the parentIdTag");
 
-  const matching = harness();
-  const matchingErr = await refusal(
-    createSteveCsmsDriver({ config, fetch: matching.fetch, ocppTagParent: storedParent }).operations16.execute("CP-1", {
-      ...reserve,
-      parentIdTag: "TAG-GRP",
-    }),
-  );
+  const { err: matchingErr, posts: matchingPosts } = await reserveWith(storedParent, { parentIdTag: "TAG-GRP" });
   check(
-    matchingErr === undefined && matching.posts.length === 1,
+    matchingErr === undefined && matchingPosts.length === 1,
     `SteVe ReserveNow posts a parentIdTag equal to the reserved tag's stored parent${matchingErr ? ` (threw: ${String(matchingErr)})` : ""}`,
   );
   check(lookedUp.join(",") === "TAG-RES", "SteVe ReserveNow looks up the parent of the RESERVED idTag");
 
-  const wrong = harness();
-  const wrongErr = await refusal(
-    createSteveCsmsDriver({ config, fetch: wrong.fetch, ocppTagParent: storedParent }).operations16.execute("CP-1", {
-      ...reserve,
-      parentIdTag: "TAG-OTHER",
-    }),
-  );
+  const { err: wrongErr, posts: wrongPosts } = await reserveWith(storedParent, { parentIdTag: "TAG-OTHER" });
   check(
     wrongErr instanceof UnsupportedOperationError,
     "SteVe ReserveNow refuses a parentIdTag other than the reserved tag's stored parent",
   );
-  check(wrong.posts.length === 0, "SteVe ReserveNow posts nothing for a parentIdTag SteVe would not send");
+  check(wrongPosts.length === 0, "SteVe ReserveNow posts nothing for a parentIdTag SteVe would not send");
 
   // The lookup the SteVe driver actually wires, over a fake WebAPI. A tag
   // stored WITHOUT a parent is a real "SteVe would send none", so the refusal
@@ -182,39 +163,19 @@ async function verifySteveReserveNowParent(): Promise<void> {
   const webApi = { getJson: async <T>(path: string): Promise<T> => (path === "/ocppTags" ? tags : []) as T };
   const wired = ocppTagParentLookup(webApi);
 
-  const known = harness();
-  const knownErr = await refusal(
-    createSteveCsmsDriver({ config, fetch: known.fetch, ocppTagParent: wired }).operations16.execute("CP-1", {
-      ...reserve,
-      parentIdTag: "TAG-GRP",
-    }),
-  );
+  const { err: knownErr, posts: knownPosts } = await reserveWith(wired, { parentIdTag: "TAG-GRP" });
   check(
-    knownErr === undefined && known.posts.length === 1,
+    knownErr === undefined && knownPosts.length === 1,
     `SteVe's wired lookup posts a ReserveNow whose parentIdTag is the stored one${knownErr ? ` (threw: ${String(knownErr)})` : ""}`,
   );
 
-  const lone = harness();
-  const loneErr = await refusal(
-    createSteveCsmsDriver({ config, fetch: lone.fetch, ocppTagParent: wired }).operations16.execute("CP-1", {
-      ...reserve,
-      idTag: "TAG-LONE",
-      parentIdTag: "TAG-GRP",
-    }),
-  );
+  const { err: loneErr, posts: lonePosts } = await reserveWith(wired, { idTag: "TAG-LONE", parentIdTag: "TAG-GRP" });
   check(
-    loneErr instanceof UnsupportedOperationError && lone.posts.length === 0,
+    loneErr instanceof UnsupportedOperationError && lonePosts.length === 0,
     "SteVe's wired lookup refuses as unsupported a parentIdTag for a tag stored without a parent",
   );
 
-  const unknown = harness();
-  const unknownErr = await refusal(
-    createSteveCsmsDriver({ config, fetch: unknown.fetch, ocppTagParent: wired }).operations16.execute("CP-1", {
-      ...reserve,
-      idTag: "TAG-MISSING",
-      parentIdTag: "TAG-GRP",
-    }),
-  );
+  const { err: unknownErr, posts: unknownPosts } = await reserveWith(wired, { idTag: "TAG-MISSING", parentIdTag: "TAG-GRP" });
   check(
     unknownErr instanceof Error &&
       !(unknownErr instanceof UnsupportedOperationError) &&
@@ -222,7 +183,7 @@ async function verifySteveReserveNowParent(): Promise<void> {
       unknownErr.message.includes("driver provision"),
     `SteVe's wired lookup fails on a tag SteVe does not store, naming it and \`driver provision\`, rather than reading as unsupported (got: ${String(unknownErr)})`,
   );
-  check(unknown.posts.length === 0, "SteVe's wired lookup posts nothing for a tag SteVe does not store");
+  check(unknownPosts.length === 0, "SteVe's wired lookup posts nothing for a tag SteVe does not store");
 }
 
 /**
