@@ -6,7 +6,7 @@ import { type SteveConfig } from "./ui-client";
  * derived from maxActiveTransactionCount server-side, so asserting on it checks
  * the state the Authorize path will actually see.
  */
-interface OcppTagOverview {
+export interface OcppTagOverview {
     ocppTagPk: number;
     idTag: string;
     expiryDate: string | null;
@@ -124,4 +124,3 @@ export declare function provisionCommand(): Promise<number>;
 export declare function verifyCommand(): Promise<number>;
 /** `ocpp-tck driver teardown` */
 export declare function teardownCommand(): Promise<number>;
-export {};

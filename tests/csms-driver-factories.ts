@@ -19,7 +19,11 @@ import {
   UnsupportedOperationError,
 } from "open-ocpp-tck/csms-driver";
 import type { FetchLike } from "open-ocpp-tck/csms-driver";
-import { ocppTagParentLookup, provisionUsableTags } from "../drivers/steve/provision";
+import {
+  ocppTagParentLookup,
+  provisionUsableTags,
+  type OcppTagOverview,
+} from "../drivers/steve/provision";
 
 const failures: string[] = [];
 
@@ -230,10 +234,9 @@ async function verifySteveReserveNowParent(): Promise<void> {
  * is the end state, every grouped tag back under a usable parent.
  */
 async function verifySteveGroupTagRebuild(): Promise<void> {
-  type Row = Parameters<typeof provisionUsableTags>[1] extends ReadonlyMap<string, infer R> ? R : never;
   let nextPk = 1;
-  const rows = new Map<string, Row>();
-  const put = (idTag: string, extra: Partial<Row> = {}): void => {
+  const rows = new Map<string, OcppTagOverview>();
+  const put = (idTag: string, extra: Partial<OcppTagOverview> = {}): void => {
     rows.set(idTag, {
       ocppTagPk: nextPk++,
       idTag,

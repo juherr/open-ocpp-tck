@@ -192,7 +192,7 @@ const PROFILES: readonly ChargingProfileFields[] = [
  * derived from maxActiveTransactionCount server-side, so asserting on it checks
  * the state the Authorize path will actually see.
  */
-interface OcppTagOverview {
+export interface OcppTagOverview {
   ocppTagPk: number;
   idTag: string;
   expiryDate: string | null;
