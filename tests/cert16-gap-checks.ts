@@ -128,13 +128,12 @@ const distinct = (rec: AssertRecorder, frames: readonly Frame[]) =>
 const statusOf = (rec: AssertRecorder, frames: readonly Frame[]) =>
   assertStartStatus(rec, frames, "TAG-2", "Accepted", "status");
 
+/** The accepted first start every spec48 row but the resend opens with. */
+const FIRST_START_OK = [start("a", "TAG-1"), startConf("a", 10)];
 /** The conformant spec48 exchange: two starts, two confs, two ids. */
-const SPEC48_OK = [
-  start("a", "TAG-1"),
-  startConf("a", 10),
-  start("b", "TAG-2"),
-  startConf("b", 11),
-];
+const SPEC48_OK = [...FIRST_START_OK, start("b", "TAG-2"), startConf("b", 11)];
+/** The second start refused with a CALLERROR, after an accepted first one. */
+const SECOND_CALLERROR = [...FIRST_START_OK, start("b", "TAG-2"), receivedError("b")];
 
 const cases: Array<{
   name: string;
@@ -295,14 +294,14 @@ const cases: Array<{
   {
     name: "confirmed: second start answered with a CALLERROR",
     check: confirmed,
-    lines: [start("a", "TAG-1"), startConf("a", 10), start("b", "TAG-2"), receivedError("b")],
+    lines: SECOND_CALLERROR,
     expect: ["FAIL"],
     because: "got CALLERROR InternalError",
   },
   {
     name: "confirmed: second start never answered",
     check: confirmed,
-    lines: [start("a", "TAG-1"), startConf("a", 10), start("b", "TAG-2")],
+    lines: [...FIRST_START_OK, start("b", "TAG-2")],
     expect: ["FAIL"],
     because: "no response frame found for uniqueId=b",
   },
@@ -317,21 +316,21 @@ const cases: Array<{
   {
     name: "distinct: the second start reuses the open transaction's id",
     check: distinct,
-    lines: [start("a", "TAG-1"), startConf("a", 10), start("b", "TAG-2"), startConf("b", 10)],
+    lines: [...FIRST_START_OK, start("b", "TAG-2"), startConf("b", 10)],
     expect: ["FAIL"],
     because: "both starts got transactionId 10",
   },
   {
     name: "distinct: the second start got a CALLERROR, so no id",
     check: distinct,
-    lines: [start("a", "TAG-1"), startConf("a", 10), start("b", "TAG-2"), receivedError("b")],
+    lines: SECOND_CALLERROR,
     expect: ["FAIL"],
     because: "are not both integers",
   },
   {
     name: "distinct: a non-integer id",
     check: distinct,
-    lines: [start("a", "TAG-1"), startConf("a", 10), start("b", "TAG-2"), startConf("b", "11")],
+    lines: [...FIRST_START_OK, start("b", "TAG-2"), startConf("b", "11")],
     expect: ["FAIL"],
     because: "are not both integers",
   },
@@ -346,14 +345,14 @@ const cases: Array<{
   {
     name: "status: second start answered ConcurrentTx",
     check: statusOf,
-    lines: [start("a", "TAG-1"), startConf("a", 10), start("b", "TAG-2"), startConf("b", 11, "ConcurrentTx")],
+    lines: [...FIRST_START_OK, start("b", "TAG-2"), startConf("b", 11, "ConcurrentTx")],
     expect: ["FAIL"],
     because: 'expected idTagInfo.status=Accepted, got "ConcurrentTx"',
   },
   {
     name: "status: second start answered with a CALLERROR",
     check: statusOf,
-    lines: [start("a", "TAG-1"), startConf("a", 10), start("b", "TAG-2"), receivedError("b")],
+    lines: SECOND_CALLERROR,
     expect: ["FAIL"],
     because: "expected CALLRESULT, got CALLERROR",
   },
