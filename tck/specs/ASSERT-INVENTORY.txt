@@ -642,7 +642,7 @@ FILE core-201.ts
   SPEC cert201-tcm05-install-refused connector=1 bootWaitSecs=4 holdSecs=10 ocppVersion="OCPP-2.0.1" runsSimTemplate=false
     assertReceived(·, ·, "InstallCertificate", "InstallCertificate.req received")
     assertCertificateInstallRequested(·, ·, 0, "CSMSRootCertificate", "InstallCertificate.req installs a CSMSRootCertificate and carries a certificate")
-    assertResponseStatus(·, ·, "InstallCertificate", "Rejected", "the station refused the certificate (Rejected, where the case scripts Failed)", {direction:"received"})
+    assertResponseStatus(·, ·, "InstallCertificate", "Failed", "the station could not install the certificate (Failed)", {direction:"received"})
   SPEC cert201-tcm13-installed-ids-manufacturer-root connector=1 bootWaitSecs=4 holdSecs=10 ocppVersion="OCPP-2.0.1" runsSimTemplate=false states=[{state:"GetInstalledCertificates",certificateType:"ManufacturerRootCertificate"}]
     assertStateEstablished(·, ·, "GetInstalledCertificates", "the station was asked for the certificates it holds")
     assertReceived(·, ·, "GetInstalledCertificateIds", "GetInstalledCertificateIds.req received")

@@ -278,14 +278,14 @@ nobody was asked — `UnsupportedOperationError` and `CsmsNotDispatchedError`. T
 second of those was being swallowed, and the way that is wrong is silent: a
 driver pointed at a base URL that answers nothing turns every scenario declaring
 one of those states into a row whose `UNEXERCISED_PREFIX` claims the gap is in
-OUR scenarios. The seventh checks an ARGUMENT rather than a rule. Two Reusable
-States are `established: true` after a reach that does not reach the reference's
-post condition — the pinned station refuses both requests from a canned handler
-— and `tck/states-201.ts` declares that on the definition and argues it is safe
-because nothing depends on those post conditions. That is a claim about the rest
-of the table, so the guard walks it: no dependency edge invokes one, and their
-`establishes` is the identity from every condition, not only from the initial
-one.
+OUR scenarios. The seventh checks an ARGUMENT rather than a rule. One Reusable
+State is `established: true` after a reach that does not reach the reference's
+post condition — the pinned station answers `GetInstalledCertificateIds` from a
+store that is empty at the start of every scenario — and `tck/states-201.ts`
+declares that on the definition and argues it is safe because nothing depends on
+that post condition. That is a claim about the rest of the table, so the guard
+walks it: no dependency edge invokes it, and its `establishes` is the identity
+from every condition, not only from the initial one.
 
 `request-shape-201.ts`: the last one, and the only one whose subject is what a
 scenario ACCEPTS rather than what it refuses. Every check in `tck/specs/core-201.ts`
@@ -599,12 +599,13 @@ its header is now a false claim about what the build checks.
   `states:` declaration is DATA on the spec object, and a non-literal renders
   `·` and is then omitted from `ASSERT-INVENTORY.txt` rather than marked — so a
   fixture re-pointed at another connector or another tag moves no committed
-  artifact and no diff says so. And two of the five promise LESS than the
-  reference: the pinned station refuses both certificate requests from a canned
-  handler, so `established` there means the state was exercised. That is
-  declared on the definition rather than only argued in prose, because what
-  makes it safe is a claim about the rest of the table — no dependency edge
-  invokes one, and their post condition is the identity — and a claim about
+  artifact and no diff says so. And one of the five promises LESS than the
+  reference: the pinned station answers `GetInstalledCertificateIds` from a
+  store that is empty at the start of every scenario, so `established` there
+  means the state was exercised. That is declared on the definition rather than
+  only argued in prose, because what makes it safe is a claim about the rest of
+  the table — no dependency edge invokes it, and its post condition is the
+  identity — and a claim about
   elsewhere is one a guard should hold. The same guard pins which failures are
   NOT an unestablished precondition: an operation the driver cannot express, and
   one that never became an OCPP CALL, both leave the fixture rather than being

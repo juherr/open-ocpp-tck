@@ -847,6 +847,18 @@ Released as `0.3.0`. The documented install ref already points at that tag, so
   TC_046's own sequence: the reserved idTag arrives, and its `StartTransaction`
   carries the `reservationId`. Its assertions and its CSMS call sequence move
   with it.
+- **`cert201-tcm05-install-refused` asserts the answer TC_M_05 scripts,
+  `Failed`.** The station used to answer every `InstallCertificate` with a
+  canned `Rejected`, and the scenario asserted that in place of the case's
+  status. From `0.10.0` the station keeps a real certificate store and accepts
+  a valid root, which left the case with nothing to refuse. The scenario now
+  loads a station-side scenario that takes the request over
+  (`csmsCallTrigger` with `behavior: "replace"`) and answers `Failed`, and it
+  waits for that scenario to be armed before dispatching. As in Part 6, the
+  CSMS side is checked on the request alone. `CertificateInstalled` no longer
+  declares that it establishes less than the reference, since the station now
+  stores what it is sent; `GetInstalledCertificates` still does, because the
+  store is empty at the start of every scenario.
 - **`check:fixture-tags` reads the simulator's tags from the image again, and
   refuses to compare an empty set.** It grepped `/app/src`, which from `0.10.0`
   holds only a launch shim, so it would have found no tag, no driver could

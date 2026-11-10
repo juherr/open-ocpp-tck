@@ -100,6 +100,7 @@ import {
   type CallFrame,
   type Frame,
 } from "../ocpp";
+import type { SimProcess } from "../sim";
 import type { ScenarioSpec } from "../spec-types";
 import { GHERKIN_201_PILOT } from "../gherkin/compiler-201";
 import { assertStateEstablished } from "../states-201";
@@ -5023,14 +5024,14 @@ export function assertCertificateInstallRequested(
  * is the execution of the `CertificateInstalled` Reusable State for one
  * `certificateType`. A `drive()` would put a second request on the wire.
  *
- * NO ASSERTION READS THE ACK, for TC_M_13's reason and one more. The reference
- * has the station answer `Accepted` and store the certificate; the pinned
- * simulator answers `Rejected` from a canned handler that reads no request
- * member and has nowhere to store one. So the certificate is never installed --
- * which also means these four cases can be run in any order, any number of
- * times, against a station that never accumulates state. TC_M_05 is the case
- * whose scripted answer is a refusal, and it is the only one of the five that
- * reads the ack.
+ * NO ASSERTION READS THE ACK, for TC_M_13's reason: the reference has the
+ * station answer `Accepted` and store the certificate, which is the test
+ * tool's script rather than anything the CSMS decides. The pinned simulator
+ * does exactly that since 0.10.0 (shiv3/ocpp-cp-simulator#456; up to 0.7.12 it
+ * answered `Rejected` from a canned handler). Each scenario starts a fresh
+ * station, so these four still run in any order, any number of times. TC_M_05
+ * is the case whose scripted answer is a refusal, and it is the only one of the
+ * five that reads the ack.
  */
 const TC_M_01: ScenarioSpec = {
   templateId: "cert201-tcm01-install-csms-root",
@@ -5159,6 +5160,100 @@ const TC_M_04: ScenarioSpec = {
   },
 };
 
+/** The station-side scenario TC_M_05 runs: own the next `InstallCertificate`
+ *  and answer it `Failed`, the status the case scripts. */
+const INSTALL_FAILED_SCENARIO_ID = "tck-tcm05-install-failed";
+
+/**
+ * Makes the station answer the next `InstallCertificate` with `Failed`, and
+ * returns once that answer is armed.
+ *
+ * WHY THE STATION HAS TO BE TOLD. From 0.10.0 the simulator keeps a real
+ * certificate store (shiv3/ocpp-cp-simulator#456): a well-formed root is
+ * installed and answered `Accepted`, which is right, and leaves a case about a
+ * refusal with nothing to refuse. Its own refusals are a malformed PEM -- which
+ * a CSMS here may refuse to dispatch at all, see certificate-material.ts -- a
+ * full store, which no JSON Lines command can configure, and a database that
+ * would not persist the row, which is the `Failed` the case scripts and the
+ * one nothing can provoke. So a scenario takes the request over
+ * (`csmsCallTrigger` with `behavior: "replace"`, schema 1.5) and answers it
+ * the way the case says the station does.
+ *
+ * WHY IT WAITS FOR `waiting`. `run_scenario` answers before the trigger node
+ * runs, and a request that lands before the node has parked is answered by
+ * the station's own handler -- `Accepted`, the very answer this replaces. The
+ * daemon's `awaitArmed` closes that race and JSON mode has no such option, so
+ * this polls `scenario_status` for the parked state it resolves on.
+ */
+async function armInstallCertificateFailed(
+  sim: SimProcess,
+  connector: number,
+): Promise<void> {
+  await sim.call("load_scenario", {
+    connector,
+    scenario: {
+      id: INSTALL_FAILED_SCENARIO_ID,
+      name: "TC_M_05 station: InstallCertificate answered Failed",
+      schemaVersion: "1.5",
+      targetType: "connector",
+      targetId: connector,
+      trigger: { type: "manual" },
+      defaultExecutionMode: "oneshot",
+      // Started by the run_scenario below and by nothing else: an enabled
+      // definition would also be started by the auto-start walker.
+      enabled: false,
+      nodes: [
+        { id: "start", type: "start", position: { x: 0, y: 0 }, data: { label: "Start" } },
+        {
+          id: "own-install",
+          type: "csmsCallTrigger",
+          position: { x: 0, y: 100 },
+          data: {
+            label: "Own InstallCertificate",
+            action: "InstallCertificate",
+            behavior: "replace",
+          },
+        },
+        {
+          id: "answer-failed",
+          type: "callResponse",
+          position: { x: 0, y: 200 },
+          data: { label: "Failed", kind: "result", payload: { status: "Failed" } },
+        },
+        { id: "end", type: "end", position: { x: 0, y: 300 }, data: { label: "End" } },
+      ],
+      edges: [
+        { id: "e1", source: "start", target: "own-install" },
+        { id: "e2", source: "own-install", target: "answer-failed" },
+        { id: "e3", source: "answer-failed", target: "end" },
+      ],
+    },
+  });
+  await sim.call("run_scenario", {
+    connector,
+    scenarioId: INSTALL_FAILED_SCENARIO_ID,
+  });
+  const deadline = Date.now() + 10_000;
+  for (;;) {
+    const status = (await sim.call("scenario_status", {
+      connector,
+      scenarioId: INSTALL_FAILED_SCENARIO_ID,
+    })) as { state?: unknown } | null;
+    if (status?.state === "waiting") return;
+    if (status?.state === "error" || status?.state === "completed") {
+      throw new Error(
+        `the station scenario that answers InstallCertificate ended before it armed: ${JSON.stringify(status)}`,
+      );
+    }
+    if (Date.now() > deadline) {
+      throw new Error(
+        `the station scenario that answers InstallCertificate did not arm within 10 s: ${JSON.stringify(status)}`,
+      );
+    }
+    await sleep(100);
+  }
+}
+
 const TC_M_05: ScenarioSpec = {
   templateId: "cert201-tcm05-install-refused",
   description:
@@ -5182,7 +5277,8 @@ const TC_M_05: ScenarioSpec = {
   // is not what the case distinguishes, and a 1,115-character literal on the
   // artifact would pin bytes nothing measures. The material has a guard of its
   // own.
-  async drive({ cpId, csms201 }) {
+  async drive({ cpId, connector, csms201, sim }) {
+    await armInstallCertificateFailed(sim, connector);
     await csms201.execute(cpId, {
       action: "InstallCertificate",
       certificateType: "CSMSRootCertificate",
@@ -5198,18 +5294,16 @@ const TC_M_05: ScenarioSpec = {
       "CSMSRootCertificate",
       "InstallCertificate.req installs a CSMSRootCertificate and carries a certificate",
     );
-    // A REFUSAL, AND NOT THIS CASE'S REFUSAL. The reference scripts `Failed`;
-    // the pinned station answers `Rejected` from a canned handler that reads no
-    // request member. Both are refusals, and the finding either would catch is
-    // the same -- a CSMS reporting a declined installation as done -- but the
-    // status asserted here is the station's rather than the case's. TC_B_44
-    // carries the same substitution one block up.
+    // THE CASE'S OWN REFUSAL. Until the 0.10.1 pin the station answered
+    // `Rejected` from a canned handler, and this check asserted that status in
+    // place of the scripted one; the station now installs a valid root, so
+    // armInstallCertificateFailed makes it answer `Failed` as the case scripts.
     assertResponseStatus(
       rec,
       frames,
       "InstallCertificate",
-      "Rejected",
-      "the station refused the certificate (Rejected, where the case scripts Failed)",
+      "Failed",
+      "the station could not install the certificate (Failed)",
       { direction: "received" },
     );
   },
@@ -5273,8 +5367,8 @@ function assertCertificateTypesRequested(
  * NO ASSERTION READS THE ACK, and that is a deliberate hole rather than an
  * oversight. The reference has the station answer `Accepted` carrying the hash
  * data of every certificate of the type asked for; the pinned simulator answers
- * `NotFound` from a canned handler that reads no request member and holds no
- * truststore. That answer is the OCTT's script rather than anything the system
+ * `NotFound`, from a certificate store that holds nothing at the start of a
+ * scenario. That answer is the OCTT's script rather than anything the system
  * under test decides, so for a CSMS campaign it was never the measurement --
  * but a reader who found `assertResponseStatus(..., "NotFound")` here would
  * take it for the case's own expectation, which it is not. TC_M_19 is the one
@@ -5486,9 +5580,10 @@ const TC_M_19: ScenarioSpec = {
   // the fixture for that reason: the state's post condition is that a list was
   // retrieved, and this case is the one where none is.
   //
-  // THE PINNED STATION MAKES THIS THE EASY DIRECTION. Its canned answer is
-  // `NotFound` whatever it is asked, which is the scripted answer HERE and the
-  // wrong one for TC_M_13 -- see the note above TC_M_13.
+  // THE PINNED STATION MAKES THIS THE EASY DIRECTION. Its store is empty at
+  // the start of every scenario, so it answers `NotFound` whatever it is asked,
+  // which is the scripted answer HERE and the wrong one for TC_M_13 -- see the
+  // note above TC_M_13.
   async drive({ cpId, csms201 }) {
     await csms201.execute(cpId, {
       action: "GetInstalledCertificateIds",

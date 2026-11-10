@@ -41,15 +41,18 @@
  *      every scenario declaring one of those states into a row that says the
  *      gap is in OUR scenarios. `UNEXERCISED_PREFIX` is defined to carry
  *      exactly the opposite claim.
- *   7. A FIXTURE THAT PROMISES LESS THAN THE REFERENCE HAS NO READER. Two
- *      states are `established: true` after a reach that does not reach the
- *      reference's post condition -- the pinned station refuses both requests
- *      from a canned handler -- and `tck/states-201.ts` declares that on the
- *      definition and argues it is safe because nothing depends on those post
- *      conditions. That argument is a claim about the REST of the table: no
- *      edge invokes them and their `establishes` is the identity. Both halves
- *      are checked here, and which states carry the divergence is pinned, so a
- *      third one cannot arrive silently.
+ *   7. A FIXTURE THAT PROMISES LESS THAN THE REFERENCE HAS NO READER. One
+ *      state is `established: true` after a reach that does not reach the
+ *      reference's post condition -- the pinned station answers
+ *      `GetInstalledCertificateIds` from a store that is empty at the start of
+ *      every scenario -- and `tck/states-201.ts` declares that on the
+ *      definition and argues it is safe because nothing depends on that post
+ *      condition. That argument is a claim about the REST of the table: no
+ *      edge invokes it and its `establishes` is the identity. Both halves are
+ *      checked here, and which states carry the divergence is pinned, so a
+ *      second one cannot arrive silently. (`CertificateInstalled` carried one
+ *      too until the 0.10.1 simulator pin, whose station stores what it is
+ *      sent.)
  *
  * WHY IT IS A GUARD AND NOT A SWEEP, and why TypeScript, like
  * tests/expected-failure-standing.ts. Reaching claim 1's second row means a
@@ -408,7 +411,7 @@ const DIVERGING = REUSABLE_STATES_201.filter(
 );
 
 check(
-  DIVERGING.join(",") === "CertificateInstalled,GetInstalledCertificates",
+  DIVERGING.join(",") === "GetInstalledCertificates",
   "the set of states whose reach establishes LESS than the reference's post " +
     "condition has changed. That is a legitimate thing to do -- say so in the " +
     "pull request, and check that the scenarios naming the state describe " +

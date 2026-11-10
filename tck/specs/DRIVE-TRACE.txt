@@ -187,6 +187,9 @@ GROUP core
     SIM wait-for-line Received: \[2,"[^"]*","InstallCertificate" 15000
     -> driveState keys=[]
   SPEC cert201-tcm05-install-refused
+    SIM call load_scenario {"connector":1,"scenario":"<scenario:tck-tcm05-install-failed>"}
+    SIM call run_scenario {"connector":1,"scenarioId":"tck-tcm05-install-failed"}
+    SIM call scenario_status {"connector":1,"scenarioId":"tck-tcm05-install-failed"}
     OP 201:InstallCertificate [<pem:1115>, csmsrootcertificate]
     -> driveState keys=[]
   SPEC cert201-tcm13-installed-ids-manufacturer-root
