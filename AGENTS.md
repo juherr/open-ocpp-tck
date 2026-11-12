@@ -29,7 +29,7 @@ error.
 ## The gate
 
 `bun run verify` is every check CI runs before it starts a container —
-typecheck, committed declarations, four driver scope checks, twenty-six in-process
+typecheck, committed declarations, five driver scope checks, twenty-seven in-process
 guards and nineteen shell guards — with one exit code, and every step runs even
 after one fails, where CI enumerates them and stops at the first.
 
@@ -53,6 +53,7 @@ bun run check:driver:citrineos
 bun run check:driver:citrineos-v1     # the same driver's other release line
 bash tests/citrineos-v1-override.sh   # and the compose override that line boots from
 bun run check:driver:codetics-ev-server-lite
+bun run check:driver:evtivity
 bun tests/driver-env-scope.ts
 bun tests/scenario-version.ts
 bun tests/scenario-tags.ts
@@ -69,6 +70,7 @@ bun tests/trace-frames.ts
 bun tests/steve-ui-session-race.ts
 bun tests/citrineos-transport-classification.ts
 bun tests/codetics-ev-server-lite-dispatch.ts
+bun tests/evtivity-adapter.ts
 bun tests/citrineos-device-model-fixture.ts
 bun tests/citrineos-redelivery-loops.ts
 bun tests/shard-selection.ts
@@ -155,7 +157,7 @@ There is no unit-test framework and no `*.test.ts`. `tests/` holds offline
 guards, each with a header stating the property it protects. `bun run test`
 chains them — note `bun test` is Bun's own runner and finds nothing here.
 
-Shell is the default, and the twenty-six TypeScript ones are TypeScript because
+Shell is the default, and the twenty-seven TypeScript ones are TypeScript because
 what they assert is unreachable through the CLI. `driver-env-scope.ts`: a
 driver's declarations follow the env they are *resolved* with, where the CLI
 can only ever pass `process.env`. `capability-parity.ts`: the same reason and
@@ -178,7 +180,8 @@ further — the encoding it pins TC_019_1 as accepting, a `GetConfiguration`
 with its optional `key` member *omitted*, is one neither of the first two
 bundled drivers sends. Both spell that request `{"key":[]}`, so the scenario
 was measuring a spelling and no sweep of theirs, offline or live, could say so.
-The third, `drivers/codetics-ev-server-lite`, does send the omitted form.
+The third and the fourth, `drivers/codetics-ev-server-lite` and
+`drivers/evtivity`, do send the omitted form.
 `cert16-gap-checks.ts`: the same way in, for the hand-rolled checks
 `cert16-tc053`, `cert16-tc054` and `spec48` decide on. Every red row is a
 CSMS or a station answering a chosen wrong way — a trigger accepted and
@@ -237,6 +240,21 @@ about the wire, and used to be filed as a non-dispatch. Its other half is the
 login cache, because signin is the one call the server rate-counts: a signin
 refusal a retry would only repeat is kept, every other login failure is
 forgotten, and keeping the wrong one fails every later lane.
+`evtivity-adapter.ts`: the fourth driver, and the half of it that is still
+ours. Its operations are `createEvtivityCsmsDriver` from
+`@ovarilo/csms-drivers`, whose own tests hold which command answers are
+non-dispatches -- the route BLOCKS until the station answers, so one status
+carries both whether the CALL left and what the station said. What the
+library does not export is its REST client, so records, provisioning and the
+prepare hook ride one of their own, with a login cache of its own and the
+library's rules: one login per process and password, a 401 renewing a
+session only once it is a minute old, the refusals that count toward the
+account's sign-in backoff kept for fifteen minutes, and every login failure
+a non-dispatch. A lockout, a token refused mid-sweep and a station still
+connected are answers the pinned server gives on nobody's demand, so the
+client takes its `fetch` and the guard answers from a table. Its last part
+is the prepare hook: a leftover session it cannot end because the station is
+still connected is named in a warning, not swallowed with the benign 409.
 `citrineos-device-model-fixture.ts`: the one whose subject is
 least visible from anywhere else. It holds a SEQUENCE of writes — which rows
 `provision` seeds, which one the prepare hook points back, which ones teardown

@@ -51,6 +51,7 @@ run "driver scope: citrineos (v1)" bun run check:driver:citrineos-v1
 # image reads, since the base file stopped carrying it at v2.0.0-beta4.
 run "the v1 compose override configures v1.9.1" bash tests/citrineos-v1-override.sh
 run "driver scope: codetics-ev-server-lite" bun run check:driver:codetics-ev-server-lite
+run "driver scope: evtivity" bun run check:driver:evtivity
 run "driver scope follows the env" bun tests/driver-env-scope.ts
 run "scenario protocol selection and simulator compatibility" bun tests/scenario-version.ts
 run "scenario tags are declared, closed and selected on" bun tests/scenario-tags.ts
@@ -110,6 +111,11 @@ run "a request that never reached the CSMS says so" bun tests/citrineos-transpor
 # gives on nobody's demand, and a refused signin spends a budget only a restart
 # gives back.
 run "an accepted command is not reported undispatched" bun tests/codetics-ev-server-lite-dispatch.ts
+# The fourth driver's commands are the library's, and its tests hold them;
+# what stays here is its own REST client's login and the prepare hook's
+# warning -- a token refused mid-sweep, a login lockout, a station still
+# connected are answers the pinned server gives on nobody's demand.
+run "a refused login is remembered, and for how long" bun tests/evtivity-adapter.ts
 # And in-process for the reason its own header gives: what it holds is a
 # SEQUENCE of writes, and a CSMS answers a right fixture and a wrong one with
 # the same empty StatusNotificationResponse.
