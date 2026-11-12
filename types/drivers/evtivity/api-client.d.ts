@@ -1,5 +1,7 @@
 import { type FetchLike } from "../../tck/driver";
 import type { EvtivityConfig } from "./config";
+/** The list routes' own maximum page size. */
+export declare const PAGE_LIMIT = 100;
 /** An error's message, or the thrown value as a string. */
 export declare function reason(err: unknown): string;
 /** The first `max` characters of a text quoted in a failure message. */
@@ -50,5 +52,13 @@ export declare class EvtivityApi {
     request(method: "GET" | "POST" | "PATCH" | "PUT" | "DELETE", path: string, body?: unknown, allow?: readonly number[]): Promise<ApiResponse>;
     get<T>(path: string, allow?: readonly number[]): Promise<T | null>;
 }
+/**
+ * The row of a paged list that `match` accepts, following `page=` until one
+ * does or `total` is reached. Every list route's `search` is a substring
+ * match, so the exact station, tag or driver can sit behind a full first page
+ * of near misses (`CERTCP1` finds `CERTCP10` and up); a first page alone
+ * would report it absent.
+ */
+export declare function findInPages<T>(api: EvtivityApi, path: string, params: Readonly<Record<string, string | number>>, match: (row: T) => boolean): Promise<T | undefined>;
 /** `?a=1&b=2` from the members that are set, or `""`. */
 export declare function query(params: Readonly<Record<string, string | number | undefined>>): string;

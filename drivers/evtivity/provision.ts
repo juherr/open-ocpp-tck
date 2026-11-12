@@ -37,7 +37,7 @@
 import { EXPIRED_FIXTURE_BACKDATE_MINUTES, inMinutes } from "../../tck/time";
 import { CsmsNotDispatchedError } from "../../tck/driver";
 import { waitForCondition, WaitTimeoutError } from "../../tck/wait";
-import { EvtivityApi, parseJson, preview, query } from "./api-client";
+import { EvtivityApi, findInPages, parseJson, preview } from "./api-client";
 import { defaultEvtivityConfig, type EvtivityConfig } from "./config";
 
 /**
@@ -94,11 +94,6 @@ export const REQUIRED_SETTINGS: Readonly<Record<string, unknown>> = {
   "ocpp.clockAlignedInterval": 0,
 };
 
-interface Page<T> {
-  data: T[];
-  total: number;
-}
-
 interface StationRow {
   id: string;
   stationId: string;
@@ -122,9 +117,8 @@ interface DriverRow {
 }
 
 async function findStation(api: EvtivityApi, cpId: string): Promise<StationRow | undefined> {
-  const page = await api.get<Page<StationRow>>(`/v1/stations${query({ search: cpId, limit: 100 })}`);
   // `search` is a case-insensitive substring match.
-  return page?.data.find((row) => row.stationId === cpId);
+  return findInPages<StationRow>(api, "/v1/stations", { search: cpId }, (row) => row.stationId === cpId);
 }
 
 /** What {@link endLeftoverSessions} needs besides the sessions to end. */
@@ -239,9 +233,8 @@ export async function ensureStation(api: EvtivityApi, cpId: string): Promise<voi
 }
 
 async function findToken(api: EvtivityApi, idTag: string): Promise<TokenRow | undefined> {
-  const page = await api.get<Page<TokenRow>>(`/v1/tokens${query({ search: idTag, limit: 100 })}`);
   // `search` is a substring match: CERT01 would find CERT010 to CERT018.
-  return page?.data.find((row) => row.idToken === idTag);
+  return findInPages<TokenRow>(api, "/v1/tokens", { search: idTag }, (row) => row.idToken === idTag);
 }
 
 class Provisioner {
@@ -251,10 +244,7 @@ class Provisioner {
   ) {}
 
   private async findDriver(): Promise<DriverRow | undefined> {
-    const page = await this.api.get<Page<DriverRow>>(
-      `/v1/drivers${query({ search: DRIVER.email, limit: 100 })}`,
-    );
-    return page?.data.find((row) => row.email === DRIVER.email);
+    return findInPages<DriverRow>(this.api, "/v1/drivers", { search: DRIVER.email }, (row) => row.email === DRIVER.email);
   }
 
   /** The fixture driver's id, created or reactivated as needed. */

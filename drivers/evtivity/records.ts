@@ -70,7 +70,7 @@
 import type { CsmsChargingProfileRecords, CsmsRecords } from "../../tck/driver";
 import { randomUUID } from "node:crypto";
 import { waitForCondition } from "../../tck/wait";
-import { preview, query, type EvtivityApi } from "./api-client";
+import { findInPages, PAGE_LIMIT, preview, query, type EvtivityApi } from "./api-client";
 import { refByDescription } from "./profiles";
 
 /** Every list route answers this envelope. */
@@ -104,9 +104,6 @@ interface TokenRow {
   id: string;
   idToken: string;
 }
-
-/** The route's own maximum page size. */
-const PAGE_LIMIT = 100;
 
 /** A query member no route names, unique per read, so the response cache
  *  has never seen the URL it is on. See the header. */
@@ -153,18 +150,13 @@ export class EvtivityRecords implements Omit<CsmsRecords, "reservations" | "devi
 
   /** The REST id of a station, or undefined when there is none. */
   async stationRestId(cpId: string): Promise<string | undefined> {
-    const page = await this.page<StationRow>(
-      `/v1/stations${query({ search: cpId, limit: PAGE_LIMIT })}`,
-    );
-    return page.data.find((row) => row.stationId === cpId)?.id;
+    return (await findInPages<StationRow>(this.api, "/v1/stations", { search: cpId }, (row) => row.stationId === cpId))
+      ?.id;
   }
 
   /** The token id of an idTag, or undefined when there is none. */
   private async tokenId(idTag: string): Promise<string | undefined> {
-    const page = await this.page<TokenRow>(
-      `/v1/tokens${query({ search: idTag, limit: PAGE_LIMIT })}`,
-    );
-    return page.data.find((row) => row.idToken === idTag)?.id;
+    return (await findInPages<TokenRow>(this.api, "/v1/tokens", { search: idTag }, (row) => row.idToken === idTag))?.id;
   }
 
   /** The sessions an idTag opened at one station. */
