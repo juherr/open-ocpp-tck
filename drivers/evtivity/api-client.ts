@@ -51,7 +51,9 @@
  * FAILURE CLASSES. A request that could not CONNECT, or that our own timeout
  * aborted after it left, is {@link CsmsNotDispatchedError}. For `request()`, a
  * non-2xx is one too, as for every bundled driver: a refused read or fixture
- * write is one whose effect did not happen.
+ * write is one whose effect did not happen. A 2xx whose body cannot be read
+ * is neither that nor an empty result: a plain error, since a write took
+ * effect and a read would otherwise report a record as absent.
  *
  * GUARDED OFFLINE by tests/evtivity-adapter.ts, through the `fetch` seam.
  */
@@ -146,6 +148,9 @@ export interface RawResponse {
   status: number;
   /** The body as text; `""` when it could not be read. */
   text: string;
+  /** Why the body could not be read, when it could not: `request()` refuses
+   *  a 2xx answered so, rather than read it as an empty result. */
+  unreadable?: string;
 }
 
 export interface ApiResponse {
@@ -192,8 +197,11 @@ export class EvtivityApi {
         : reason(err);
       throw new CsmsNotDispatchedError(what, why);
     }
-    const text = await res.text().catch(() => "");
-    return { status: res.status, text };
+    try {
+      return { status: res.status, text: await res.text() };
+    } catch (err) {
+      return { status: res.status, text: "", unreadable: reason(err) };
+    }
   }
 
   /** Server, account and a digest of the password -- never the password
@@ -335,6 +343,11 @@ export class EvtivityApi {
     const ok = res.status >= 200 && res.status <= 299;
     if (!ok && !allow.includes(res.status)) {
       throw new CsmsNotDispatchedError(what, `returned ${res.status}: ${preview(res.text)}`);
+    }
+    if (ok && res.unreadable !== undefined) {
+      // Not a non-dispatch: the server answered 2xx, so a write took effect.
+      // Nor an empty result: a read would report a record as absent.
+      throw new Error(`${what} returned ${res.status} and its body could not be read: ${res.unreadable}`);
     }
     if (!ok || res.text === "") return { status: res.status, parsed: null };
     try {
