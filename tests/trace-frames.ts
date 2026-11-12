@@ -3,11 +3,13 @@
  * as frames.
  *
  * WHAT THIS GUARDS SINCE THE FORMAT READER MOVED OUT. Reading the format --
- * the schema, `raw` against the members beside it, the consumer view -- is
- * `packages/trace-format/`'s, and `tests/trace-format.ts` guards it. What is left here
- * is this suite's POLICY over what that reader found, and the mapping onto
- * ocpp.ts's frames. So these rows are not "the library detects X"; they are
- * "this runner refuses over X, and names the refusal correctly".
+ * the schema and its `schemaVersion` rule -- is `@open-ocpp-trace/core`'s and
+ * `@open-ocpp-trace/jsonl`'s, and the SDK's own suite guards it. What is left
+ * here is this suite's POLICY over what that reader found, the one check the
+ * SDK does not make (`raw` against the envelope members a check selects by),
+ * and the mapping onto ocpp.ts's frames. So these rows are not "the library
+ * detects X"; they are "this runner refuses over X, and names the refusal
+ * correctly".
  *
  * PROPERTY, in eight parts.
  *
@@ -22,10 +24,15 @@
  *     the row below builds -- with unique ids a wrong implementation passes.
  *  2. A CALLERROR carries its code, description and details onto errorCode /
  *     errorDescription / errorDetails.
- *  3. A `schemaVersion` whose MAJOR is not 1 refuses. The library only REPORTS
- *     it -- the record is schema-valid -- so this row is the policy, not the
- *     detection: a major bump is where a member name may stop meaning what
- *     this module reads it as, and every frame after it would be a guess.
+ *  3. A `schemaVersion` that is not `1.<minor>` refuses, through BOTH entry
+ *     points -- `recordsToFrames` and `readTrace` validate separately. The
+ *     SDK withholds such a record outright (`unsupported-version` for a
+ *     well-formed other major, `format` for `"1"`, `"1.01"`, `"v1.1"`...),
+ *     and a withheld record is `unreadable`: a major bump is where a member
+ *     name may stop meaning what this module reads it as. `"1"`, `"1.01"` and
+ *     `"1.1.0"` were accepted before the SDK replaced the local reader, which
+ *     only compared the text before the first dot; their rows are the
+ *     CHANGELOG's claim that they no longer are.
  *  4. A missing or empty `messageId` refuses rather than yielding an empty
  *     uniqueId. The schema makes that member OPTIONAL, so again the library is
  *     right to pass it and this suite is right to refuse it: an empty uniqueId
@@ -36,8 +43,9 @@
  *     record that is not an object.
  *  6. THE ENVELOPE MUST AGREE WITH THE BYTES on the three members a check
  *     SELECTS by -- `messageId`, `messageType`, `action` -- and only those.
- *     The library detects a disagreement on every member; this suite refuses
- *     over three of them, because a disagreement there silently answers the
+ *     The SDK does not compare `raw` with the envelope at all, so tck/trace.ts
+ *     makes that comparison itself, on those three members only, because a
+ *     disagreement there silently answers the
  *     wrong question where one on a member that is merely REPORTED shows up in
  *     the failure detail a human is already reading. `raw` itself must also be
  *     a frame `ocpp.ts` accepts: two of these cases are what the first draft
@@ -59,7 +67,10 @@
  *     rather than judging a wire with a hole in it -- and it can say which
  *     happened without going back to the filesystem, where the answer may have
  *     changed. A blank line is skipped rather than refused: a trailing newline
- *     is a property of appending to a file.
+ *     is a property of appending to a file. Two more of the SDK reader's
+ *     framing rules are mirrored -- a CRLF terminator and a leading BOM are
+ *     accepted -- and `empty` means no non-blank line, so a file whose only
+ *     line is torn is `unreadable`, not `empty`.
  *
  * Why this is TypeScript and not a shell guard. Every refusal above needs a
  * trace no run produces: across PR #64's CI artifacts -- 94 scenarios, 1576
@@ -361,6 +372,37 @@ const refusals: Array<{
     record: tweak(CALL, { schemaVersion: "2.0" }),
     expect: "unreadable",
   },
+  // The SDK requires `1.<minor>`, digits only, no leading zero. The reader this
+  // suite used before it only asked that the text before the first dot be
+  // "1", so it ACCEPTED the next three -- they are the behaviour change the
+  // CHANGELOG states, measured by running these rows red against it.
+  {
+    name: 'a schemaVersion with no minor, "1"',
+    record: tweak(CALL, { schemaVersion: "1" }),
+    expect: "unreadable",
+  },
+  {
+    name: 'a zero-padded schemaVersion minor, "1.01"',
+    record: tweak(CALL, { schemaVersion: "1.01" }),
+    expect: "unreadable",
+  },
+  {
+    name: 'a three-part schemaVersion, "1.1.0"',
+    record: tweak(CALL, { schemaVersion: "1.1.0" }),
+    expect: "unreadable",
+  },
+  // ...and two the old reader refused too, by its major alone. Kept because
+  // they are what a lenient replacement rule ("contains 1.") would let in.
+  {
+    name: 'a prefixed schemaVersion, "v1.1"',
+    record: tweak(CALL, { schemaVersion: "v1.1" }),
+    expect: "unreadable",
+  },
+  {
+    name: 'a zero-padded schemaVersion major, "01.1"',
+    record: tweak(CALL, { schemaVersion: "01.1" }),
+    expect: "unreadable",
+  },
   {
     name: "no schemaVersion at all",
     record: tweak(CALL, {}, ["schemaVersion"]),
@@ -488,7 +530,7 @@ if (recordsToFrames([tweak(CALL, { schemaVersion: "1.9" })]).frames === undefine
 }
 
 // And an envelope disagreeing with the bytes on a member no check SELECTS by
-// is REPORTED by the library and NOT refused here -- property 6's other half.
+// is NOT refused here -- property 6's other half.
 // Without this row the guard would pass on a policy that refused everything,
 // which is the failure mode of scoping a rule by naming what it covers.
 const describedDifferently = tweak(CALLERROR, {
@@ -528,6 +570,20 @@ try {
     fail("readTrace skips blank lines", `got ${blanks.frames?.length ?? blanks.refusal}`);
   }
 
+  // Two of the SDK reader's framing rules: a CR before the LF is part of
+  // the terminator, and a BOM is dropped at the start of the file only. The
+  // BOM row is the one that bites -- `JSON.parse` refuses a leading U+FEFF --
+  // while the CRLF row also held under the reader this replaced, because
+  // `JSON.parse` tolerates the trailing CR on its own.
+  const crlf = readTrace(write("crlf.jsonl", jsonl(TRACE).replaceAll("\n", "\r\n")));
+  if (crlf.frames?.length !== TRACE.length) {
+    fail("readTrace reads CRLF-terminated lines", `got ${crlf.frames?.length ?? crlf.refusal}`);
+  }
+  const bom = readTrace(write("bom.jsonl", "\uFEFF" + jsonl(TRACE)));
+  if (bom.frames?.length !== TRACE.length) {
+    fail("readTrace drops a leading BOM", `got ${bom.frames?.length ?? bom.refusal}`);
+  }
+
   // The refusal REASON is part of the answer: the runner says a different
   // thing about a mount that did not work and an image whose records this
   // build does not map, and it must not have to re-stat the file to find out.
@@ -538,9 +594,32 @@ try {
       expect: "unreadable",
     },
     {
+      // `empty` counts non-blank LINES, not records read: a file whose one
+      // line is torn has something in it, and something wrong with it.
+      name: "a file whose only line is torn",
+      read: readTrace(write("torn-only.jsonl", '{"schemaVersion":"1.1"\n')),
+      expect: "unreadable",
+    },
+    {
+      // A BOM is dropped at the START of the file only; anywhere else it is
+      // content, and a line that starts with one is not JSON.
+      name: "a BOM that does not start the file",
+      read: readTrace(write("inner-bom.jsonl", jsonl([CALL]) + "\uFEFF" + jsonl([CALLRESULT]))),
+      expect: "unreadable",
+    },
+    {
       name: "a record this build cannot map",
       read: readTrace(
         write("alien.jsonl", jsonl([...TRACE, tweak(CALL, { schemaVersion: "2.0" })])),
+      ),
+      expect: "unreadable",
+    },
+    {
+      // The other refusal path through the file reader: "1" is a `format`
+      // issue in the SDK, where "2.0" above is `unsupported-version`.
+      name: 'a record whose schemaVersion is "1"',
+      read: readTrace(
+        write("bare-major.jsonl", jsonl([...TRACE, tweak(CALL, { schemaVersion: "1" })])),
       ),
       expect: "unreadable",
     },
