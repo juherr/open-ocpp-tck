@@ -87,6 +87,14 @@ locally, `GITHUB_TOKEN: ${{ github.token }}` on the install step of a GitHub
 Actions job, with `packages: read` in its `permissions`. Working in a clone of
 this repository, the `bunfig.toml` is already there; only the token is needed.
 
+`gh auth token` prints the stored credentials as they are, and gh does not ask
+for `read:packages` by default, so without it the registry still answers 401.
+Add the scope once (`gh auth status` lists the ones the token has):
+
+```sh
+gh auth refresh --hostname github.com --scopes read:packages
+```
+
 ## Bundled drivers
 
 Three ship here, on equal footing. They reach their CSMS through different
