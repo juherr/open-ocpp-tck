@@ -71,6 +71,8 @@ const RENEW_MIN_AGE_MS = 60_000;
 /** How long a kept login refusal is kept. See the header. */
 const KEPT_REFUSAL_MS = 15 * 60_000;
 const BODY_PREVIEW = 300;
+/** The list routes' own maximum page size. */
+export const PAGE_LIMIT = 100;
 
 interface Session {
   token: string;
@@ -359,6 +361,34 @@ export class EvtivityApi {
 
   async get<T>(path: string, allow: readonly number[] = []): Promise<T | null> {
     return (await this.request("GET", path, undefined, allow)).parsed as T | null;
+  }
+}
+
+/**
+ * The row of a paged list that `match` accepts, following `page=` until one
+ * does or `total` is reached. Every list route's `search` is a substring
+ * match, so the exact station, tag or driver can sit behind a full first page
+ * of near misses (`CERTCP1` finds `CERTCP10` and up); a first page alone
+ * would report it absent.
+ */
+export async function findInPages<T>(
+  api: EvtivityApi,
+  path: string,
+  params: Readonly<Record<string, string | number>>,
+  match: (row: T) => boolean,
+): Promise<T | undefined> {
+  let seen = 0;
+  for (let pageNo = 1; ; pageNo++) {
+    const url = `${path}${query({ ...params, page: pageNo, limit: PAGE_LIMIT })}`;
+    const page = await api.get<{ data?: unknown; total?: unknown }>(url);
+    if (!page || !Array.isArray(page.data) || typeof page.total !== "number") {
+      throw new Error(`evtivity: GET ${url} returned a body that is not a page: ${preview(JSON.stringify(page))}`);
+    }
+    const rows = page.data as T[];
+    const hit = rows.find(match);
+    if (hit !== undefined) return hit;
+    seen += rows.length;
+    if (rows.length === 0 || seen >= page.total) return undefined;
   }
 }
 

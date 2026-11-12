@@ -20,7 +20,7 @@
  * are the library's, and this guard holds them here because nothing upstream
  * runs this copy:
  *
- * PROPERTY, in 9 parts:
+ * PROPERTY, in 10 parts:
  *  1. ONE LOGIN PER PROCESS. Concurrent clients share one
  *     `POST /v1/auth/login`, and a token near its JWT `exp` (EVtivity's lives
  *     one hour) is replaced before use.
@@ -66,6 +66,12 @@
  *     `openSessions` and the stop reason see a change the station made since
  *     their previous read. The fake models that cache, keyed as upstream
  *     keys it; the cache itself is the guard's one assumption.
+ * 10. AN EXACT ID PAST THE FIRST PAGE IS FOUND. Every list route's `search` is
+ *     a substring match, so a station or tag can sit behind a full first page
+ *     of near misses. The lookups of records.ts and provision.ts share one
+ *     paged helper; the rows reach it through a station and a tag read and
+ *     through `ensureStation`, which would otherwise create a station that
+ *     exists.
  *
  * WHAT IT DOES NOT CLAIM. That the two caches -- this client's and the
  * library's -- are one: they are not, so a process logs in twice, and a wrong
@@ -93,7 +99,7 @@
 import { CsmsNotDispatchedError, type FetchLike } from "../tck/driver";
 import { EvtivityApi } from "../drivers/evtivity/api-client";
 import { defaultEvtivityConfig, type EvtivityConfig } from "../drivers/evtivity/config";
-import { endLeftoverSessions } from "../drivers/evtivity/provision";
+import { endLeftoverSessions, ensureStation } from "../drivers/evtivity/provision";
 import { EvtivityRecords } from "../drivers/evtivity/records";
 
 let failures = 0;
@@ -642,6 +648,7 @@ interface FakeSession {
   transactionId: string;
   status: "active" | "completed";
   stoppedReason: string | null;
+  tokenId?: string;
 }
 
 /**
@@ -656,6 +663,7 @@ interface FakeSession {
  */
 class FakeEvtivity {
   readonly stations = [{ id: "sta_1", stationId: "CERTCP1" }];
+  readonly tokens = [{ id: "dtk_1", idToken: "CERT01" }];
   sessions: FakeSession[] = [];
   readonly urls: string[] = [];
   private readonly cache = new Map<string, string>();
@@ -695,6 +703,9 @@ class FakeEvtivity {
       );
     }
     if (url.pathname === "/v1/sessions") return page(this.sessions.filter((s) => search(s.transactionId)));
+    if (url.pathname === "/v1/tokens") return page(this.tokens.filter((t) => search(t.idToken)));
+    const tokenSessions = /^\/v1\/tokens\/([^/]+)\/sessions$/.exec(url.pathname);
+    if (tokenSessions) return page(this.sessions.filter((s) => s.tokenId === tokenSessions[1]));
     const detail = /^\/v1\/sessions\/([^/]+)$/.exec(url.pathname);
     const session = this.sessions.find((s) => s.id === detail?.[1]);
     if (session) return json({ ...session, endedAt: session.status === "active" ? null : "2026-11-12T00:00:00Z" });
@@ -753,6 +764,49 @@ function fakeSession(n: number, status: FakeSession["status"] = "active"): FakeS
   if (before !== "" || after === "") fail(what, `expected "" then a timestamp, got "${before}" then "${after}"`);
 }
 
+// ---------------------------------------------------------------------------
+// Part 10: an exact id past the first page of a substring search
+// ---------------------------------------------------------------------------
+
+/** A fake whose station and token searches answer a first page of 100 near
+ *  misses -- `search` is a substring match -- with the exact row on page 2. */
+function crowdedFake(): FakeEvtivity {
+  const fake = new FakeEvtivity();
+  for (let i = 99; i >= 0; i--) {
+    fake.stations.unshift({ id: `sta_x${i}`, stationId: `CERTCP1${i}` });
+    fake.tokens.unshift({ id: `dtk_x${i}`, idToken: `CERT01${i}` });
+  }
+  return fake;
+}
+
+{
+  const what = "part 10: stationRestId finds a station on the second page";
+  const fake = crowdedFake();
+  const got = await new EvtivityRecords(new EvtivityApi(freshConfig(), fake.fetch)).stationRestId("CERTCP1");
+  if (got !== "sta_1") fail(what, `expected sta_1, got ${String(got)}`);
+}
+{
+  const what = "part 10: a tag's sessions are found through a token on the second page";
+  const fake = crowdedFake();
+  fake.sessions = [{ ...fakeSession(7), tokenId: "dtk_1" }];
+  const got = await new EvtivityRecords(new EvtivityApi(freshConfig(), fake.fetch)).transactionCountForIdTag(
+    "CERTCP1",
+    "CERT01",
+  );
+  if (got !== "1") fail(what, `expected 1, got ${got}`);
+}
+{
+  // Provisioning's lookups share the rule: a station past the first page is
+  // there, so ensureStation creates nothing.
+  const what = "part 10: ensureStation finds a station on the second page";
+  const fake = crowdedFake();
+  const result = await outcomeOf(ensureStation(new EvtivityApi(freshConfig(), fake.fetch), "CERTCP1"));
+  const writes = fake.urls.filter((u) => !u.startsWith("GET "));
+  if (!result.ok || writes.length > 0) {
+    fail(what, `expected no write, got ${writes.join(", ") || "none"}${result.ok ? "" : ` (${message(result.err)})`}`);
+  }
+}
+
 if (failures > 0) {
   process.stderr.write(
     `\n${failures} failure(s). This guard holds what the EVtivity driver owns ` +
@@ -760,7 +814,8 @@ if (failures > 0) {
       `process, renewed on a stale token, which failures it remembers and for ` +
       `how long, bound to the password -- and when a leftover session the ` +
       `prepare hook could not end is named, an accepted end waited for, and a 2xx body that cannot be read ` +
-      `is an error, and a live read is not served from the response cache. The command classification is ` +
+      `is an error, a live read is not served from the response cache, and an exact id is ` +
+      `looked for past the first page. The command classification is ` +
       `the library's, and its tests hold it.\n`,
   );
   process.exit(1);
