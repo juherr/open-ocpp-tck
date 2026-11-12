@@ -12,6 +12,25 @@ Released as `0.3.0`. The documented install ref already points at that tag, so
 
 ### Added
 
+- **A fourth bundled driver, `drivers/evtivity`**, for
+  [EVtivity](https://github.com/EVtivity/evtivity-csms), a TypeScript CSMS
+  that serves OCPP 1.6J and 2.x; the driver drives 1.6J only, exported as
+  `open-ocpp-tck/drivers/evtivity`. It adapts the EVtivity factory of
+  `@ovarilo/csms-drivers`, `createEvtivityCsmsDriver`, as the SteVe and
+  CitrineOS drivers adapt theirs: every operation goes through EVtivity's
+  synchronous per-action command route, which answers with the station's
+  response, and records come through its session routes.
+  `compose.yaml` runs the published `0.1.51` images pinned by digest and
+  seeds the settings the sweep needs before the OCPP server starts —
+  nothing is built or vendored, since EVtivity is under the Business Source
+  License 1.1. `check-driver` reports 47 `DRIVABLE` and 2 `NOT_APPLICABLE`
+  OCPP 1.6 scenarios (TC_051 and TC_053), and the expected-failure list is
+  empty. The command classification is the library's and its tests hold
+  it; `tests/evtivity-adapter.ts` holds offline the driver's own REST
+  client's login — it keeps a login cache apart from the library's, so a
+  wrong password is refused once per client — and the prepare hook's
+  warning about a session it cannot end. CI runs it as a fourth e2e lane,
+  two shards like the others.
 - **A third bundled driver, `drivers/codetics-ev-server-lite`**, for
   [ev-server-lite](https://github.com/codetics-software/ev-server-lite), an
   OCPP 1.6J-only CSMS by Codetics. Operations go through its generic command
