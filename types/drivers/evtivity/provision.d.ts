@@ -7,8 +7,8 @@ export declare const REQUIRED_SETTINGS: Readonly<Record<string, unknown>>;
  * or StartTransaction of that tag ConcurrentTx while one is (authorize-token.ts).
  *
  * Two 409s, which are not alike (packages/api/src/routes/sessions.ts):
- *  - SESSION_NOT_ACTIVE: it ended since it was listed -- the list is a cached
- *    read (records.ts), so this is expected, and quiet;
+ *  - SESSION_NOT_ACTIVE: it ended since it was listed, which a station
+ *    ending it on its own can do at any moment -- expected, and quiet;
  *  - STATION_ONLINE: the route refuses while the station is connected, so the
  *    session stays active and the scenario about to run will meet
  *    ConcurrentTx. Not an error the hook can fix -- the station connected is
