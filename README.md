@@ -59,6 +59,33 @@ green one.
 - [bun](https://bun.sh) ≥ 1.3.14 — the runner uses `Bun.spawn`/`Bun.write`;
   Node cannot run it, and `bin/ocpp-tck.ts` says so rather than failing later.
 - docker — one simulator container per scenario.
+- a GitHub token with `read:packages`, for the `@open-ocpp-trace` scope. The
+  runner reads the simulator's wire trace through
+  [`@open-ocpp-trace/core`](https://github.com/open-ocpp-trace/sdk) and
+  `@open-ocpp-trace/jsonl`, which are published to GitHub Packages only, and
+  that registry asks for a token even for a public package.
+
+### The `@open-ocpp-trace` registry
+
+Map the scope in the project that installs this package, before `bun add`.
+With bun, in `bunfig.toml`:
+
+```toml
+[install.scopes]
+"@open-ocpp-trace" = { url = "https://npm.pkg.github.com/", token = "$GITHUB_TOKEN" }
+```
+
+With npm, in `.npmrc`:
+
+```ini
+@open-ocpp-trace:registry=https://npm.pkg.github.com
+//npm.pkg.github.com/:_authToken=${GITHUB_TOKEN}
+```
+
+Then export the token for the install: `export GITHUB_TOKEN=$(gh auth token)`
+locally, `GITHUB_TOKEN: ${{ github.token }}` on the install step of a GitHub
+Actions job, with `packages: read` in its `permissions`. Working in a clone of
+this repository, the `bunfig.toml` is already there; only the token is needed.
 
 ## Bundled drivers
 
@@ -103,7 +130,8 @@ single container pair.
 walkthrough for the other one.
 
 ```sh
-bun add github:juherr/open-ocpp-tck#v0.3.0
+# Map @open-ocpp-trace first -- see "The @open-ocpp-trace registry" above.
+GITHUB_TOKEN=$(gh auth token) bun add github:juherr/open-ocpp-tck#v0.3.0
 
 export CSMS_DRIVER=open-ocpp-tck/drivers/steve
 export STEVE_URL=http://localhost:8180/steve/manager
@@ -387,7 +415,7 @@ upstream licence the forked half carries.
 ## Tests
 
 ```sh
-bun install
+GITHUB_TOKEN=$(gh auth token) bun install   # @open-ocpp-trace is on GitHub Packages
 bun run typecheck                 # tsc --noEmit
 bun run check:driver:steve        # offline
 bun run check:driver:citrineos    # offline

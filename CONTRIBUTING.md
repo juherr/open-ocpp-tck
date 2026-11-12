@@ -16,9 +16,18 @@ driving it, and the core never learns which CSMS it is testing.
 ```sh
 mkdir acme-ocpp-tck && cd acme-ocpp-tck
 bun init -y
+cat > bunfig.toml <<'EOF'
+[install.scopes]
+"@open-ocpp-trace" = { url = "https://npm.pkg.github.com/", token = "$GITHUB_TOKEN" }
+EOF
+export GITHUB_TOKEN=$(gh auth token)   # needs read:packages
 bun add github:juherr/open-ocpp-tck#v0.3.0
 bun add -d @types/bun typescript
 ```
+
+The `bunfig.toml` is there because the runner depends on `@open-ocpp-trace/*`,
+which is published to GitHub Packages only. The README's "The
+`@open-ocpp-trace` registry" has the `.npmrc` equivalent and the CI recipe.
 
 `tsconfig.json`:
 
