@@ -91,6 +91,8 @@ export const csmsDriver: CsmsDriverModule = {
     return {
       operations16: csms.operations16,
       chargePoints: csms.chargePoints,
+      // Declared by STEVE_CAPABILITIES, so returned: the daemon serves it.
+      commands: csms.commands,
       records,
       prepareStation: (cpId) => records.closeStaleTransaction(cpId),
       simTransport: async () => ({

@@ -635,10 +635,12 @@ Released as `0.3.0`. The documented install ref already points at that tag, so
     `ocpp-tck csms-server` carries it for a driver module whose parts return
     it: a dispatch's `202` keeps `status: "dispatched"` and adds `outcome`,
     and the library's handler adds `GET /v1/commands/<ref>` for a driver that
-    polls. The bundled SteVe and CitrineOS modules inherit the declaration
-    from the library but do not return the surface yet, so their daemon
-    dispatches and answers as before. `GET /v1/driver` describes `commands`
-    and the new `chargePoints` declarations.
+    polls. The bundled SteVe and CitrineOS drivers declare it and return
+    it, so their daemon answers a dispatch with an `accepted` outcome, and
+    `tests/capability-parity.ts` holds `commands` to the same
+    declared-exactly-when-returned rule as the other optional halves.
+    `GET /v1/driver` describes `commands` and the new `chargePoints`
+    declarations.
   The library's own guards -- the charge-point conformance rows, the
   standalone consumer example -- moved with it.
 - **Installing this package needs a `read:packages` GitHub token.** The runner

@@ -556,7 +556,7 @@ its header is now a false claim about what the build checks.
   `create(env)` returns — and `check-driver` reads only the first. It cannot
   read the second by design: a declaration must be readable without
   credentials. So the guard holds the two to each other for every env a bundled
-  driver's declarations are a function of, both directions, over the five
+  driver's declarations are a function of, both directions, over the six
   omissible halves; requires a present `operations201` to be non-empty, since
   absent and empty are different claims and only one of them is ever honest
   here; and pushes `SAMPLE_OPERATION_201`, one well-formed operation per

@@ -158,6 +158,8 @@ export const csmsDriver: CsmsDriverModule = {
       // protocol its parts cannot drive would report the gap only at runtime,
       // after a container had started.
       ...(generic.operations201 ? { operations201: generic.operations201 } : {}),
+      // Declared by citrineOsCapabilities, so returned: the daemon serves it.
+      ...(generic.commands ? { commands: generic.commands } : {}),
       records,
       // TWO WRITES, AND THE SECOND IS NOT RESIDUE-CLEARING. The first closes
       // what a previous scenario left open; the second puts the EVSE and the
