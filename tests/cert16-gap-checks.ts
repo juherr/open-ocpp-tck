@@ -28,8 +28,9 @@
  * - TC_021's assert, whole: the ChangeConfiguration it reads, and the answer
  *   it reads, are the ones setting MeterValueSampleInterval to 10 -- not the
  *   first on the wire, which a CSMS pushing its own metering configuration
- *   at boot makes the push's, same key and another value. The right key
- *   with the wrong value stays red and names the value it got.
+ *   at boot makes the push's, same key and another value, nor one of another
+ *   key with the same value. The right key with the wrong value stays red
+ *   and names the value it got, and so does a request left unanswered.
  *
  * Why this is TypeScript. Every red row needs a CSMS (or a station) that
  * answers a chosen way -- a CALLERROR to the second start, a reused
@@ -461,6 +462,28 @@ const cases: Array<{
     ],
     expect: ["PASS", "FAIL"],
     because: "CALLERROR InternalError",
+  },
+  {
+    // The status is read off the request whose KEY and value both match: an
+    // accepted push of another key with the same value comes first on the
+    // wire and must not stand for the scenario's refused request.
+    name: "tc021: an accepted push of another key with the same value does not stand for the request",
+    check: tc021,
+    lines: [
+      changeConfiguration("p", "ClockAlignedDataInterval", "10"),
+      changeConfigurationConf("p", "Accepted"),
+      changeConfiguration("c", "MeterValueSampleInterval", "10"),
+      changeConfigurationConf("c", "Rejected"),
+    ],
+    expect: ["PASS", "FAIL"],
+    because: "got status=Rejected",
+  },
+  {
+    name: "tc021: the request left unanswered is red",
+    check: tc021,
+    lines: [changeConfiguration("c", "MeterValueSampleInterval", "10")],
+    expect: ["PASS", "FAIL"],
+    because: "no response frame found",
   },
 ];
 
