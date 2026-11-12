@@ -851,6 +851,61 @@ export const tc019GetConfigurationKeySpec: ScenarioSpec<void> = {
 // TC_021 Change Configuration.
 // ---------------------------------------------------------------------------
 
+/**
+ * The ChangeConfiguration.req setting `key` to `value` was answered with
+ * status `expectedStatus` -- the answer to THAT request, paired by uniqueId.
+ *
+ * Selected by payload rather than by position because a CSMS may send
+ * ChangeConfigurations of its own: one pushes its metering configuration
+ * right after every first boot, starting with the very key TC_021 asks for.
+ * Reading the first ChangeConfiguration's answer would report the push's
+ * Accepted as the scenario's, whatever the station said to the request the
+ * scenario made.
+ */
+function assertChangeConfigurationStatus(
+  rec: AssertRecorder,
+  frames: readonly Frame[],
+  key: string,
+  value: string,
+  expectedStatus: string,
+  description: string,
+): void {
+  const call = findAllCalls(frames, "received", "ChangeConfiguration").find(
+    (c) => {
+      const payload = c.payload as { key?: unknown; value?: unknown } | null;
+      return payload?.key === key && payload?.value === value;
+    },
+  );
+  if (!call) {
+    rec.fail(
+      description,
+      `no received ChangeConfiguration setting ${key} to ${JSON.stringify(value)}`,
+    );
+    return;
+  }
+  const response = findResponseFor(frames, call);
+  if (!response) {
+    rec.fail(description, `no response frame found for uniqueId=${call.uniqueId}`);
+    return;
+  }
+  if (response.kind === "callerror") {
+    rec.fail(
+      description,
+      `expected CALLRESULT, got CALLERROR ${response.errorCode}: ${response.errorDescription}`,
+    );
+    return;
+  }
+  const status = (response.payload as { status?: unknown } | null)?.status;
+  if (status === expectedStatus) {
+    rec.pass(description);
+  } else {
+    rec.fail(
+      description,
+      `expected status=${expectedStatus}, got status=${String(status)} (uniqueId=${call.uniqueId})`,
+    );
+  }
+}
+
 export const tc021ChangeConfigurationSpec: ScenarioSpec<void> = {
   templateId: "cert16-tc021-change-configuration",
   ocppVersion: "OCPP-1.6J",
@@ -873,47 +928,35 @@ export const tc021ChangeConfigurationSpec: ScenarioSpec<void> = {
     }
   },
   assert({ frames, rec }) {
-    // The second instance of issue #31, and the one its report could not find:
-    // its grep looked for an empty optional member, where this was a regex
-    // matching `"key":...` BEFORE `"value":...`. That pins JSON member order,
-    // which JSON does not define -- a CSMS serialising {value, key} is
-    // conformant and was reported as failing. main.ts hit the same bug once
-    // on BootNotification.conf and fixed it with order-free lookaheads; going
-    // one better here and comparing the members as VALUES also drops the
-    // assumption that the CSMS puts no whitespace around its colons.
+    // The members are compared as VALUES, not matched as text: the regex this
+    // replaced (issue #31) pinned `"key"` BEFORE `"value"`, a member order
+    // JSON does not define.
     //
-    // Composed from the existing DSL rather than given a helper of its own:
-    // assertReceived already hands back the frame it found, and assertEq
-    // already renders a value mismatch. Three checks where there was one, and
-    // the extra two are the point -- a CSMS that applies the right key with
-    // the wrong value now reports which, instead of "the regex did not match".
-    const req = assertReceived(
+    // And the request is selected by what it carries, not by being the FIRST
+    // ChangeConfiguration on the wire. A CSMS may send its own: EVtivity
+    // pushes `MeterValueSampleInterval=60` (and three more keys) right after
+    // a station's first boot, once per station per ten minutes -- so a
+    // positional read took the push for the scenario's request whenever the
+    // scenario happened to be the first on its cp id, and passed or failed
+    // on the run order. assertCallPayload looks at every received
+    // ChangeConfiguration and, when none carries both members, prints each
+    // one's wrong members -- so a CSMS that applies the right key with the
+    // wrong value still reports `value="11"` rather than a bare miss.
+    assertCallPayload(
       rec,
       frames,
+      "received",
       "ChangeConfiguration",
-      "ChangeConfiguration.req received",
+      { key: "MeterValueSampleInterval", value: "10" },
+      "ChangeConfiguration.req sets MeterValueSampleInterval to 10",
     );
-    const payload = req?.payload as
-      | { key?: unknown; value?: unknown }
-      | undefined;
-    assertEq(
+    assertChangeConfigurationStatus(
       rec,
-      payload?.key,
+      frames,
       "MeterValueSampleInterval",
-      "ChangeConfiguration.req asks for MeterValueSampleInterval",
-    );
-    assertEq(
-      rec,
-      payload?.value,
       "10",
-      "ChangeConfiguration.req carries value 10",
-    );
-    assertResponseStatus(
-      rec,
-      frames,
-      "ChangeConfiguration",
       "Accepted",
-      "ChangeConfiguration accepted",
+      "ChangeConfiguration(MeterValueSampleInterval=10) accepted",
     );
   },
 };

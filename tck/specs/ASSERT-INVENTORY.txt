@@ -737,6 +737,21 @@ FILE core.ts
         ·.pass(·)
         RETURN
     ·.fail(·, ·)
+  HELPER assertChangeConfigurationStatus
+    RETURN
+      AND
+    IF
+      ·.fail(·, ·)
+      RETURN
+    IF
+      ·.fail(·, ·)
+      RETURN
+    IF
+      ·.fail(·, ·)
+      RETURN
+    IF
+      ·.pass(·)
+      ·.fail(·, ·)
   HELPER assertStartConfirmed
     IF
       ·.fail(·, ·)
@@ -848,10 +863,8 @@ FILE core.ts
     assertLineMatches(·, ·, /Received: \[2,.*"GetConfiguration".*"key":\["HeartbeatInterval"\]/, "GetConfiguration(HeartbeatInterval).req received")
     assertConfigurationKeyListed(·, ·, "HeartbeatInterval", "CALLRESULT returns the HeartbeatInterval key")
   SPEC cert16-tc021-change-configuration connector=1 bootWaitSecs=4 holdSecs=12 ocppVersion="OCPP-1.6J"
-    assertReceived(·, ·, "ChangeConfiguration", "ChangeConfiguration.req received")
-    assertEq(·, ·, "MeterValueSampleInterval", "ChangeConfiguration.req asks for MeterValueSampleInterval")
-    assertEq(·, ·, "10", "ChangeConfiguration.req carries value 10")
-    assertResponseStatus(·, ·, "ChangeConfiguration", "Accepted", "ChangeConfiguration accepted")
+    assertCallPayload(·, ·, "received", "ChangeConfiguration", {key:"MeterValueSampleInterval",value:"10"}, "ChangeConfiguration.req sets MeterValueSampleInterval to 10")
+    assertChangeConfigurationStatus(·, ·, "MeterValueSampleInterval", "10", "Accepted", "ChangeConfiguration(MeterValueSampleInterval=10) accepted")
   SPEC cert16-tc024-lock-failure connector=1 bootWaitSecs=4 holdSecs=12 ocppVersion="OCPP-1.6J"
     assertCallPayload(·, ·, "sent", "StatusNotification", {errorCode:"ConnectorLockFailure",status:"Faulted"}, "StatusNotification(Faulted, ConnectorLockFailure) sent")
     assertNoLineMatches(·, ·, /Sent: \[2,.*"StartTransaction"/, "no StartTransaction sent (lock failure prevents charging)")
