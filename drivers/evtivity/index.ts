@@ -76,10 +76,13 @@ export const csmsDriver: CsmsDriverModule = {
       // (authorize-token.ts). `POST /v1/sessions/{ses}/end` ends it without
       // the station, which is the point, since the station that opened it is
       // gone; while the station is still connected it refuses, and the
-      // session is left alone with a warning (endLeftoverSessions).
+      // session is left alone with a warning (endLeftoverSessions). An
+      // accepted end is waited for: the OCPP server ends it asynchronously.
       prepareStation: async (cpId) => {
         await ensureStation(api, cpId);
-        await endLeftoverSessions(api, cpId, await records.openSessions(cpId));
+        await endLeftoverSessions(api, cpId, await records.openSessions(cpId), {
+          stillOpen: () => records.openSessions(cpId),
+        });
       },
       simTransport: async () => ({
         wsUrl: env.SIM_WS_URL ?? cfg.wsBaseUrl,

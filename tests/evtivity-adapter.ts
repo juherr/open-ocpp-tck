@@ -20,7 +20,7 @@
  * are the library's, and this guard holds them here because nothing upstream
  * runs this copy:
  *
- * PROPERTY, in 8 parts:
+ * PROPERTY, in 9 parts:
  *  1. ONE LOGIN PER PROCESS. Concurrent clients share one
  *     `POST /v1/auth/login`, and a token near its JWT `exp` (EVtivity's lives
  *     one hour) is replaced before use.
@@ -48,6 +48,13 @@
  *     answered ConcurrentTx) warns with the cp id and the session. Any other
  *     refusal is a non-dispatch. Source: packages/api/src/routes/sessions.ts,
  *     `/sessions/:id/end`, at v0.1.51.
+ *  9. AN ACCEPTED END IS WAITED FOR. The route only records and publishes the
+ *     request; the OCPP server ends the session later, and ConcurrentTx keys
+ *     on its status. So the hook polls the station's open sessions until
+ *     every session it ended has left them -- and only those: one the CSMS
+ *     refused is not waited for. Still active at the bound, it is named in
+ *     one warning rather than thrown; a poll that fails is that read's
+ *     failure, not a timeout.
  *  7. A 2XX WHOSE BODY CANNOT BE READ IS AN ERROR. Not an empty result, which
  *     a read would take for "no such record", and not a non-dispatch, since
  *     the server answered. A non-2xx answered so keeps its status-based
@@ -467,9 +474,10 @@ for (const kase of END_CASES) {
   };
   const warnings: string[] = [];
   const result = await outcomeOf(
-    endLeftoverSessions(new EvtivityApi(freshConfig(), fetchImpl), "CERTCP1", ["ses_left"], (line) =>
-      warnings.push(line),
-    ),
+    endLeftoverSessions(new EvtivityApi(freshConfig(), fetchImpl), "CERTCP1", ["ses_left"], {
+      stillOpen: async () => [],
+      warn: (line) => warnings.push(line),
+    }),
   );
   const got = result.ok ? "resolves" : classify(result.err);
   if (got !== kase.expect) {
@@ -483,6 +491,100 @@ for (const kase of END_CASES) {
   } else {
     for (const s of kase.warns) {
       if (!warnings[0]!.includes(s)) fail(what, `the warning lacks ${JSON.stringify(s)}: ${warnings[0]}`);
+    }
+  }
+}
+
+// ---------------------------------------------------------------------------
+// Part 9: an accepted end is waited for
+// ---------------------------------------------------------------------------
+
+interface WaitCase {
+  readonly what: string;
+  /** What the end request is answered. */
+  readonly answer: Handler;
+  /** The station's open sessions, per poll; the last one repeats. A thrown
+   *  value is thrown by that poll. */
+  readonly polls: readonly (readonly string[] | Error)[];
+  readonly expect: "resolves" | Classification;
+  readonly expectPolls: number;
+  /** Substrings the one warning must carry; absent means no warning at all. */
+  readonly warns?: readonly string[];
+}
+
+const ENDED: Handler = () => json({ sessionId: "ses_left", transactionId: "7" });
+const WAIT_CASES: WaitCase[] = [
+  { what: "a session gone at the first poll", answer: ENDED, polls: [[]], expect: "resolves", expectPolls: 1 },
+  {
+    what: "a session that ends after two more polls",
+    answer: ENDED,
+    polls: [["ses_left"], ["ses_left", "ses_other"], ["ses_other"]],
+    expect: "resolves",
+    expectPolls: 3,
+  },
+  {
+    // Bounded, and named: the CSMS accepted the end and its OCPP server has
+    // not acted on it, so the tag will meet ConcurrentTx until it does.
+    what: "a session still active at the bound warns, naming the station and the session",
+    answer: ENDED,
+    polls: [["ses_left"]],
+    expect: "resolves",
+    expectPolls: -1,
+    warns: ["CERTCP1", "ses_left", "accepted ending"],
+  },
+  {
+    what: "a poll whose read fails is that read's failure",
+    answer: ENDED,
+    polls: [new CsmsNotDispatchedError("evtivity: GET /v1/stations", "returned 503")],
+    expect: "not-dispatched",
+    expectPolls: 1,
+  },
+  {
+    // Control: a session the CSMS refused to end is not waited for.
+    what: "409 STATION_ONLINE is not waited for",
+    answer: () => json({ error: "The station is connected", code: "STATION_ONLINE" }, 409),
+    polls: [["ses_left"]],
+    expect: "resolves",
+    expectPolls: 0,
+    warns: ["STATION_ONLINE"],
+  },
+];
+for (const kase of WAIT_CASES) {
+  const what = `part 9: ${kase.what}`;
+  const fetchImpl: FetchLike = async (input, init) => {
+    if (init?.method === "POST" && new URL(input).pathname === "/v1/auth/login") return LOGIN_OK();
+    return kase.answer();
+  };
+  let polls = 0;
+  const stillOpen = async (): Promise<readonly string[]> => {
+    const next = kase.polls[Math.min(polls, kase.polls.length - 1)]!;
+    polls++;
+    if (next instanceof Error) throw next;
+    return next;
+  };
+  const warnings: string[] = [];
+  const result = await outcomeOf(
+    endLeftoverSessions(new EvtivityApi(freshConfig(), fetchImpl), "CERTCP1", ["ses_left"], {
+      stillOpen,
+      warn: (line) => warnings.push(line),
+      timeoutMs: 100,
+      intervalMs: 5,
+    }),
+  );
+  const got = result.ok ? "resolves" : classify(result.err);
+  if (got !== kase.expect) {
+    fail(what, `expected ${kase.expect}, got ${got}${result.ok ? "" : ` (${message(result.err)})`}`);
+  }
+  if (kase.expectPolls === -1 ? polls < 2 : polls !== kase.expectPolls) {
+    fail(what, `expected ${kase.expectPolls === -1 ? "several" : kase.expectPolls} polls, got ${polls}`);
+  }
+  if (kase.warns === undefined) {
+    if (warnings.length > 0) fail(what, `expected no warning, got ${warnings.join(" | ")}`);
+  } else if (warnings.length !== 1) {
+    fail(what, `expected one warning, got ${warnings.length}: ${warnings.join(" | ")}`);
+  } else {
+    for (const sub of kase.warns) {
+      if (!warnings[0]!.includes(sub)) fail(what, `the warning lacks ${JSON.stringify(sub)}: ${warnings[0]}`);
     }
   }
 }
@@ -657,7 +759,7 @@ if (failures > 0) {
       `on top of @ovarilo/csms-drivers: its own REST client's login -- one per ` +
       `process, renewed on a stale token, which failures it remembers and for ` +
       `how long, bound to the password -- and when a leftover session the ` +
-      `prepare hook could not end is named, and a 2xx body that cannot be read ` +
+      `prepare hook could not end is named, an accepted end waited for, and a 2xx body that cannot be read ` +
       `is an error, and a live read is not served from the response cache. The command classification is ` +
       `the library's, and its tests hold it.\n`,
   );

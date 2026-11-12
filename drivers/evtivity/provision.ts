@@ -36,6 +36,7 @@
  */
 import { EXPIRED_FIXTURE_BACKDATE_MINUTES, inMinutes } from "../../tck/time";
 import { CsmsNotDispatchedError } from "../../tck/driver";
+import { waitForCondition, WaitTimeoutError } from "../../tck/wait";
 import { EvtivityApi, parseJson, preview, query } from "./api-client";
 import { defaultEvtivityConfig, type EvtivityConfig } from "./config";
 
@@ -126,6 +127,21 @@ async function findStation(api: EvtivityApi, cpId: string): Promise<StationRow |
   return page?.data.find((row) => row.stationId === cpId);
 }
 
+/** What {@link endLeftoverSessions} needs besides the sessions to end. */
+export interface EndLeftoverOptions {
+  /** The station's still-active sessions, read past the response cache
+   *  (records.ts `openSessions`). */
+  stillOpen: () => Promise<readonly string[]>;
+  warn?: (line: string) => void;
+  timeoutMs?: number;
+  intervalMs?: number;
+}
+
+/** How long an accepted end may take: the publish path is milliseconds, the
+ *  sweep that backs it a minute, which a prepare hook does not wait for. */
+const END_WAIT_MS = 10_000;
+const END_POLL_MS = 250;
+
 /**
  * Ends the sessions an interrupted run left active on a station, without the
  * station: `POST /v1/sessions/{ses}/end`. EVtivity answers the next Authorize
@@ -140,17 +156,31 @@ async function findStation(api: EvtivityApi, cpId: string): Promise<StationRow |
  *    another process's -- but one the run must name, so it warns with the
  *    station and the session.
  * Any other refusal is a non-dispatch, as for every REST call.
+ *
+ * AN ACCEPTED END IS NOT AN ENDED SESSION. The route records the request and
+ * publishes it; the OCPP server ends the session when it reads the message,
+ * or at its next sweep, a minute later, if the publish failed
+ * (packages/api/src/lib/session-end.ts, packages/ocpp/src/server/
+ * csms-session-end.ts). ConcurrentTx keys on `status = 'active'` alone, so the
+ * hook polls `stillOpen` until every session it ended has left it, and a
+ * session still active at the bound is warned about like a refused one: the
+ * hook cannot do more, and the scenario about to run may not use that tag.
  */
 export async function endLeftoverSessions(
   api: EvtivityApi,
   cpId: string,
   sessions: readonly string[],
-  warn: (line: string) => void = (line) => process.stderr.write(line),
+  options: EndLeftoverOptions,
 ): Promise<void> {
+  const warn = options.warn ?? ((line: string) => process.stderr.write(line));
+  const accepted: string[] = [];
   for (const ses of sessions) {
     const path = `/v1/sessions/${ses}/end`;
     const res = await api.raw("POST", path, {});
-    if (res.status >= 200 && res.status <= 299) continue;
+    if (res.status >= 200 && res.status <= 299) {
+      accepted.push(ses);
+      continue;
+    }
     const code = (parseJson(res.text) as { code?: unknown } | undefined)?.code;
     if (res.status === 409 && code === "SESSION_NOT_ACTIVE") continue;
     if (res.status === 409) {
@@ -162,6 +192,28 @@ export async function endLeftoverSessions(
       continue;
     }
     throw new CsmsNotDispatchedError(`evtivity: POST ${path}`, `returned ${res.status}: ${preview(res.text)}`);
+  }
+  if (accepted.length === 0) return;
+  const timeoutMs = options.timeoutMs ?? END_WAIT_MS;
+  try {
+    await waitForCondition(
+      async () => {
+        const open = await options.stillOpen();
+        return accepted.every((ses) => !open.includes(ses));
+      },
+      {
+        timeoutMs,
+        intervalMs: options.intervalMs ?? END_POLL_MS,
+        description: `${cpId}'s ended sessions to leave the active list`,
+      },
+    );
+  } catch (err) {
+    if (!(err instanceof WaitTimeoutError)) throw err;
+    warn(
+      `[evtivity] WARN: ${cpId} still has active session(s) ${accepted.join(", ")} ` +
+        `${timeoutMs} ms after the CSMS accepted ending them: their tags will be ` +
+        "answered ConcurrentTx until the OCPP server ends them\n",
+    );
   }
 }
 
