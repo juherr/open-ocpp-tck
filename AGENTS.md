@@ -186,7 +186,12 @@ never honoured, an Authorize.conf without the parent, a CALLERROR or a reused
 transactionId for the second start, a resent first start — which no bundled
 one can be asked for. Each red row is a one-field change of its helper's
 green control and names the reason it is red, so a synthetic line that
-stopped parsing cannot pass for a working check.
+stopped parsing cannot pass for a working check. Its TC_021 rows hold the
+scenario's whole assert rather than a helper: a CSMS may push a
+`ChangeConfiguration` of its own after the first boot, of the same key, and
+which request the verdict reads depends on run order — so the rows hand it a
+boot push ahead of the scenario's request, answered both ways, and the push
+may never stand for the request.
 `foreign-sweep-scope.ts`: the refusal it guards reads `docker ps`, so a shell
 version would start a container per row on the daemon this repository's own
 sweeps share — and the rule is what can be wrong, so `classifyForeignSims` is
