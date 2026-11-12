@@ -147,6 +147,7 @@
     "@cucumber/gherkin": "^42.0.1",
     "@cucumber/messages": "^34.2.1",
     "@open-ocpp-trace/core": "0.1.0",
-    "@open-ocpp-trace/jsonl": "0.1.0"
+    "@open-ocpp-trace/jsonl": "0.1.0",
+    "@ovarilo/csms-drivers": "0.0.3"
   }
 }
