@@ -183,4 +183,6 @@ it would make a row red or green depending on the run order.
   connect.
 - **Teardown does not delete.** `DELETE /v1/stations/{id}` blocks a station
   and `DELETE /v1/drivers/{id}` deactivates a driver; `driver provision`
-  undoes both. Tags are deleted.
+  undoes both. Tags are deleted. A tag an open session holds is refused and
+  reported, and so is its driver, kept active: deactivating the driver would
+  deactivate that tag too.

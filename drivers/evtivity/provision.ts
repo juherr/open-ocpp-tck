@@ -357,15 +357,22 @@ class Provisioner {
    * station is BLOCKED rather than deleted -- the API has no hard delete --
    * and the driver is soft-deleted; `provision` undoes both. A 409 is the
    * server refusing because a session is still open on the tag or the
-   * station; it is reported, not forced.
+   * station; it is reported, not forced. Forcing includes the driver:
+   * deleting it deactivates every token it holds (packages/api/src/routes/
+   * drivers.ts, DELETE /drivers/:id, at v0.1.51), the held one too, so a
+   * held tag keeps the driver.
    */
   async teardown(): Promise<string[]> {
     const problems: string[] = [];
+    let held = false;
     for (const idTag of ALL_TAGS) {
       const token = await findToken(this.api, idTag);
       if (!token) continue;
       const res = await this.api.request("DELETE", `/v1/tokens/${token.id}`, undefined, [404, 409]);
-      if (res.status === 409) problems.push(`tag ${idTag} is held by an open session`);
+      if (res.status === 409) {
+        held = true;
+        problems.push(`tag ${idTag} is held by an open session`);
+      }
     }
     for (const cpId of this.cfg.stations) {
       const station = await findStation(this.api, cpId);
@@ -374,11 +381,19 @@ class Provisioner {
       if (res.status === 409) problems.push(`station ${cpId} has an open session`);
     }
     const driver = await this.findDriver();
-    if (driver?.isActive) {
+    if (driver?.isActive && held) {
+      problems.push(`driver ${DRIVER.email} kept: deleting it would deactivate the held tags`);
+    } else if (driver?.isActive) {
       await this.api.request("DELETE", `/v1/drivers/${driver.id}`, undefined, [404]);
     }
     return problems;
   }
+}
+
+/** `teardown` against a given client and configuration -- the seam
+ *  tests/evtivity-adapter.ts reaches it through. */
+export function teardownFixtures(api: EvtivityApi, cfg: EvtivityConfig): Promise<string[]> {
+  return new Provisioner(cfg, api).teardown();
 }
 
 function newProvisioner(): Provisioner {
