@@ -9,9 +9,9 @@
  * test is one the daemon can serve, with no second configuration. What this
  * module adds is only the bridge from the TCK's driver module to the
  * library's `CsmsDriver`; routing, decoding and error translation are
- * `packages/csms-driver/server`, which knows nothing about the TCK.
+ * `@ovarilo/csms-drivers/server`, which knows nothing about the TCK.
  */
-import { createCsmsHttpHandler, MAX_TIMEOUT_MS } from "../packages/csms-driver/server";
+import { createCsmsHttpHandler, MAX_TIMEOUT_MS } from "@ovarilo/csms-drivers/server";
 import {
   CSMS_OPERATION_16_ACTIONS,
   driverCapabilities,
@@ -84,6 +84,7 @@ const SURFACES = {
   sessions: true,
   connectors: true,
   chargePoints: true,
+  commands: true,
 } as const satisfies Record<Exclude<keyof CsmsDriver, "capabilities">, true>;
 
 /**

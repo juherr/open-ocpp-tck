@@ -11,7 +11,9 @@
  * Its charge-point store is enough of the admin surface to provision a
  * station and read it back. With `FAKE_CSMS_HOLD_CREATE` set, `create(env)`
  * resolves only when the guard calls `releaseCreate()`, which is how it puts
- * a signal inside startup without timing anything.
+ * a signal inside startup without timing anything. It declares the command
+ * surface, whose `submit16` goes through `execute`, so the daemon carrying
+ * that surface is visible in what a dispatch answers.
  */
 import {
   ChargePointAlreadyExistsError,
@@ -42,6 +44,7 @@ export const csmsDriver: CsmsDriverModule = {
     chargingProfiles: false,
     deviceModel: false,
     chargePoints: { securityProfiles: new Set([0]) },
+    commands: { completion: "accepted", polling: false },
   },
   create(env: CsmsEnv): CsmsDriverParts | Promise<CsmsDriverParts> {
     const parts = createParts(env);
@@ -52,14 +55,21 @@ export const csmsDriver: CsmsDriverModule = {
 };
 
 function createParts(env: CsmsEnv): CsmsDriverParts {
+    const operations16 = {
+      async execute(cpId: string, op: CsmsOperation16): Promise<string> {
+        calls.push({ cpId, op });
+        if (op.action === "ChangeConfiguration") {
+          throw new Error(`fake CSMS refused the login for password ${env.FAKE_CSMS_PASS}`);
+        }
+        return "receipt-that-must-not-leak";
+      },
+    };
     return {
-      operations16: {
-        async execute(cpId, op) {
-          calls.push({ cpId, op });
-          if (op.action === "ChangeConfiguration") {
-            throw new Error(`fake CSMS refused the login for password ${env.FAKE_CSMS_PASS}`);
-          }
-          return "receipt-that-must-not-leak";
+      operations16,
+      commands: {
+        async submit16(cpId, op) {
+          await operations16.execute(cpId, op);
+          return { state: "accepted", at: "2026-01-01T00:00:00.000Z" };
         },
       },
       chargePoints: {

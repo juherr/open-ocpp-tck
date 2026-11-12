@@ -59,26 +59,30 @@ green one.
 - [bun](https://bun.sh) ≥ 1.3.14 — the runner uses `Bun.spawn`/`Bun.write`;
   Node cannot run it, and `bin/ocpp-tck.ts` says so rather than failing later.
 - docker — one simulator container per scenario.
-- a GitHub token with `read:packages`, for the `@open-ocpp-trace` scope. The
-  runner reads the simulator's wire trace through
+- a GitHub token with `read:packages`, for the `@open-ocpp-trace` and
+  `@ovarilo` scopes. The runner reads the simulator's wire trace through
   [`@open-ocpp-trace/core`](https://github.com/open-ocpp-trace/sdk) and
-  `@open-ocpp-trace/jsonl`, which are published to GitHub Packages only, and
-  that registry asks for a token even for a public package.
+  `@open-ocpp-trace/jsonl`, and reaches a CSMS through the reusable CSMS
+  library [`@ovarilo/csms-drivers`](https://github.com/ovarilo/csms-drivers).
+  All three are published to GitHub Packages only, and that registry asks for
+  a token even for a public package.
 
-### The `@open-ocpp-trace` registry
+### The `@open-ocpp-trace` and `@ovarilo` registries
 
-Map the scope in the project that installs this package, before `bun add`.
+Map both scopes in the project that installs this package, before `bun add`.
 With bun, in `bunfig.toml`:
 
 ```toml
 [install.scopes]
 "@open-ocpp-trace" = { url = "https://npm.pkg.github.com/", token = "$GITHUB_TOKEN" }
+"@ovarilo" = { url = "https://npm.pkg.github.com/", token = "$GITHUB_TOKEN" }
 ```
 
 With npm, in `.npmrc`:
 
 ```ini
 @open-ocpp-trace:registry=https://npm.pkg.github.com
+@ovarilo:registry=https://npm.pkg.github.com
 //npm.pkg.github.com/:_authToken=${GITHUB_TOKEN}
 ```
 
@@ -138,7 +142,7 @@ single container pair.
 walkthrough for the other one.
 
 ```sh
-# Map @open-ocpp-trace first -- see "The @open-ocpp-trace registry" above.
+# Map both scopes first -- see "The @open-ocpp-trace and @ovarilo registries" above.
 GITHUB_TOKEN=$(gh auth token) bun add github:juherr/open-ocpp-tck#v0.3.0
 
 export CSMS_DRIVER=open-ocpp-tck/drivers/steve
@@ -284,7 +288,7 @@ selection metadata: like groups, they are absent from the pinned
 | `ocpp-tck print-sim-image` | nothing | The pinned simulator image digest |
 | `ocpp-tck driver selftest [--with-writes]` | CSMS | Every `CsmsRecords` method once, in seconds: does this driver answer the contract? `--with-writes` adds the `prepareStation` hook |
 | `ocpp-tck driver <verb>` | driver-defined | A bootstrap verb your driver contributes |
-| `ocpp-tck csms-server [--host H] [--port N] [--timeout-ms N]` | CSMS | Serves the driver over HTTP/JSON, for applications in any language: charge-point administration and OCPP 1.6 operations. See [`packages/csms-driver/server/README.md`](packages/csms-driver/server/README.md) |
+| `ocpp-tck csms-server [--host H] [--port N] [--timeout-ms N]` | CSMS | Serves the driver over HTTP/JSON, for applications in any language: charge-point administration and OCPP 1.6 operations. See [its API](https://github.com/ovarilo/csms-drivers/blob/v0.0.3/src/server/README.md) |
 
 Working in a clone, `bun run verify` runs everything CI checks before it starts
 a container — typecheck, declarations, every driver scope check and every
@@ -391,18 +395,21 @@ over with a shim that would need keeping in sync.
 
 ## Reusable CSMS library
 
-The CSMS-neutral OCPP operation contracts and bundled operation factories are
-also available from `open-ocpp-tck/csms-driver`. This module can be used without
-loading the TCK runner; the existing `open-ocpp-tck/driver` entry point remains
-the API for TCK-specific scope, lifecycle hooks and assertion records. See
-[`packages/csms-driver/README.md`](packages/csms-driver/README.md) and its
-standalone example.
+The CSMS-neutral OCPP operation contracts and the SteVe and CitrineOS
+operation factories are a library of their own,
+[`@ovarilo/csms-drivers`](https://github.com/ovarilo/csms-drivers), which this
+package depends on at an exact version and re-exports. Use it directly when you
+need no TCK; `open-ocpp-tck/csms-driver` and `open-ocpp-tck/csms-driver/server`
+re-export its root and its `./server` subpath for code that already imports
+them, and `open-ocpp-tck/driver` remains the API for TCK-specific scope,
+lifecycle hooks and assertion records. The bundled drivers under `drivers/`
+stay here: they are TCK adapters built on that library.
 
 An application that is not written in TypeScript reaches the same drivers
 through `ocpp-tck csms-server`, a small HTTP/JSON daemon over the driver
 `CSMS_DRIVER` names. Its API, with example requests, responses and the error
-codes, is in
-[`packages/csms-driver/server/README.md`](packages/csms-driver/server/README.md).
+codes, is
+[the library's server README](https://github.com/ovarilo/csms-drivers/blob/v0.0.3/src/server/README.md).
 
 ## Provenance
 
@@ -423,7 +430,7 @@ upstream licence the forked half carries.
 ## Tests
 
 ```sh
-GITHUB_TOKEN=$(gh auth token) bun install   # @open-ocpp-trace is on GitHub Packages
+GITHUB_TOKEN=$(gh auth token) bun install   # @open-ocpp-trace, @ovarilo: GitHub Packages
 bun run typecheck                 # tsc --noEmit
 bun run check:driver:steve        # offline
 bun run check:driver:citrineos    # offline

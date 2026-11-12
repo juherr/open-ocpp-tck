@@ -37,7 +37,7 @@
  *
  * The evidence is the station's wire, never the driver's word:
  * `operations16.execute` resolves once SteVe accepts the form, which says
- * nothing about the station (packages/csms-driver/contracts.ts).
+ * nothing about the station (@ovarilo/csms-drivers' contracts).
  *
  * Bring up an isolated stack -- workspaces on one machine share one docker
  * daemon. The handshakes dial the OCPP endpoint on STEVE_URL's host and port,
@@ -52,7 +52,7 @@
  *     bun tools/steve-provisioned-reset.ts --yes-isolated
  */
 import { csmsDriver } from "../drivers/steve/index";
-import type { CsmsChargePointAdmin } from "../packages/csms-driver";
+import type { CsmsChargePointAdmin } from "@ovarilo/csms-drivers";
 import { defaultSteveConfig } from "../drivers/steve/ui-client";
 import { AssertRecorder, assertResponseStatus } from "../tck/assert";
 import {

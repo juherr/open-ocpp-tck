@@ -133,6 +133,8 @@ the drivers are native here, and the name now says so.
 | `tck/sim.ts` | `upstream-forked` | `scripts/steve-verify/runner/sim.ts` | `2bf2f78afe3434e7139cd62c3ff6d70f02defd39dd700611e7c5f7614260cd35` | `—` | `—` |
 | `tck/main.ts` | `upstream-forked` | `scripts/steve-verify/runner/main.ts` | `a757b0d35d29c7627336c0e858ad7d2f305a33c0acad819b5296f3847382f4e2` | `—` | `—` |
 | `tck/driver.ts` | `local-native` | `—` | `—` | `—` | `—` |
+| `tck/csms-driver.ts` | `local-native` | `—` | `—` | `—` | `—` |
+| `tck/csms-driver-server.ts` | `local-native` | `—` | `—` | `—` | `—` |
 | `tck/index.ts` | `local-native` | `—` | `—` | `—` | `—` |
 | `tck/driver-registry.ts` | `local-native` | `—` | `—` | `—` | `—` |
 | `tck/csms-server.ts` | `local-native` | `—` | `—` | `—` | `—` |
@@ -514,8 +516,9 @@ answered all 12 record calls.
 Every URL, form action and field name the driver posts survived, and so did the
 CSRF rendering the driver reads; what changed is that the charge-point list now
 escapes ids. That moved the offline fake (`tests/fixtures/fake-steve-manager.ts`,
-re-modelled from pages captured on this digest) and exposed a lookup edge on
-the raw lists of 3.14.x, fixed in the same move: a match found only by decoding
+since moved to ovarilo/csms-drivers with the library, re-modelled from pages
+captured on this digest) and exposed a lookup edge on the raw lists of
+3.14.x, fixed in the same move: a match found only by decoding
 the list is confirmed on the details page. It is also the first pin that is a
 multi-architecture index (amd64 and arm64); `c3fbfcc3…` is an amd64-only
 manifest, and the `steve-3.14.1` tag has since been republished as an index,

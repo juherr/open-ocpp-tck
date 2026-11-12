@@ -1,7 +1,8 @@
-# @open-ocpp-trace/* is published to GitHub Packages only, which needs a token
-# with `read:packages` even to read a public package. Locally:
-# `GITHUB_TOKEN=$(gh auth token) bun install`, after
+# @open-ocpp-trace/* and @ovarilo/* are published to GitHub Packages only,
+# which needs a token with `read:packages` even to read a public package.
+# Locally: `GITHUB_TOKEN=$(gh auth token) bun install`, after
 # `gh auth refresh --hostname github.com --scopes read:packages` once;
 # in CI the job's own token.
 [install.scopes]
 "@open-ocpp-trace" = { url = "https://npm.pkg.github.com/", token = "$GITHUB_TOKEN" }
+"@ovarilo" = { url = "https://npm.pkg.github.com/", token = "$GITHUB_TOKEN" }

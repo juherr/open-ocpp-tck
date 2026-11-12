@@ -2,8 +2,8 @@
 import type { ExpectedFailureTable } from "./expected";
 import type { ScopeTable } from "./scope";
 import type { ScenarioOcppVersion } from "./spec-types";
-import type { CsmsCapabilities, CsmsDriver, CsmsEnv, ChargingProfileRef, ReservationRef, TransactionRef } from "../packages/csms-driver";
-export * from "../packages/csms-driver";
+import type { CsmsCapabilities, CsmsDriver, CsmsEnv, ChargingProfileRef, ReservationRef, TransactionRef } from "@ovarilo/csms-drivers";
+export * from "@ovarilo/csms-drivers";
 /** TCK-only observations exposed by a driver's assertion record adapters. */
 export interface CsmsTckCapabilities extends CsmsCapabilities {
     readonly reservations: boolean;

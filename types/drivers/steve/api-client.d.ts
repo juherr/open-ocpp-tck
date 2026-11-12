@@ -1,1 +1,1 @@
-export * from "../../packages/csms-driver/steve/api-client";
+export * from "@ovarilo/csms-drivers/steve/api-client";

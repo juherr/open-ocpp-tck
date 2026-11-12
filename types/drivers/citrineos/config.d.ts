@@ -19,7 +19,7 @@
  * and can be pointed at a CitrineOS nobody on this host owns.
  */
 import type { CsmsEnv } from "../../tck/driver";
-import type { CitrineApiConfig } from "../../packages/csms-driver/citrineos/config";
+import type { CitrineApiConfig } from "@ovarilo/csms-drivers/citrineos/config";
 export interface CitrineConfig extends CitrineApiConfig {
     /** GraphQL data API base, no trailing slash, e.g. http://localhost:8090.
      *  Hasura, which CitrineOS's own compose runs ungated and whose mutations

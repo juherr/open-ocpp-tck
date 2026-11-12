@@ -1804,7 +1804,7 @@ async function printUsage(): Promise<void> {
       "\n" +
       "csms-server serves the CSMS_DRIVER driver over HTTP/JSON -- charge-point " +
       "administration and OCPP 1.6 operations -- for clients in any language. " +
-      "See packages/csms-driver/server/README.md.\n" +
+      "See https://github.com/ovarilo/csms-drivers/blob/v0.0.3/src/server/README.md\n" +
       "\n" +
       "--retry-failed-isolated: after a parallel sweep, re-run any " +
       "FAIL/ERROR scenario once more, sequentially and isolated, and report " +

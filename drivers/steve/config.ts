@@ -1,7 +1,7 @@
 // Copyright 2026 Julien Herr
 // SPDX-License-Identifier: Apache-2.0
 
-import type { SteveUiConfig } from "../../packages/csms-driver/steve/ui-client";
+import type { SteveUiConfig } from "@ovarilo/csms-drivers/steve/ui-client";
 
 /** TCK deployment settings; only the UI subset belongs to the reusable factory. */
 export interface SteveConfig extends SteveUiConfig {

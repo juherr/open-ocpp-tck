@@ -291,8 +291,9 @@ done
 # The core defines the contract; drivers implement it. An import in the other
 # direction means the contract was shaped around one implementation -- and it
 # is also what would make this repository impossible to re-sync from upstream
-# without dragging a CSMS client along.
-if [ -d "$subtree/drivers" ] && grep -rnE 'from "[^"]*drivers/' "$core_dir" 2>/dev/null; then
+# without dragging a CSMS client along. `drivers/` is a whole path segment:
+# the library's package name, `@ovarilo/csms-drivers`, ends in it too.
+if [ -d "$subtree/drivers" ] && grep -rnE 'from "([^"]*/)?drivers/' "$core_dir" 2>/dev/null; then
   echo "FAIL: the core imports a driver (see above)." >&2
   echo "  → the core defines the contract; drivers implement it. An import in this" >&2
   echo "    direction means the contract was shaped around one implementation." >&2

@@ -9,9 +9,9 @@ on:
 # Read-only, for every job. None pushes anything -- the checkout steps
 # already drop the token with `persist-credentials: false` -- so the scopes
 # every job needs are the one that fetches the code and the one that lets
-# `bun install` read @open-ocpp-trace/* from GitHub Packages. Declared here
-# rather than per job so a new job starts locked down instead of inheriting
-# the repository default.
+# `bun install` read @open-ocpp-trace/* and @ovarilo/* from GitHub Packages.
+# Declared here rather than per job so a new job starts locked down instead
+# of inheriting the repository default.
 permissions:
   contents: read
   packages: read
