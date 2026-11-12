@@ -22,31 +22,36 @@
  * The projections are eventually consistent; step 0 saw every write on the
  * first poll, 40 ms after the command's answer.
  *
- * THE API CACHES ITS GETS, and that is the larger lag. EVtivity stores every
- * 200 JSON answer of a matching route in Redis, keyed by user, access scope
- * and full URL (packages/api/src/plugins/response-cache.ts, CACHE_RULES,
+ * THE API CACHES ITS GETS, and that would be the larger lag. EVtivity stores
+ * every 200 JSON answer of a matching route in Redis, keyed by user, access
+ * scope and full URL (packages/api/src/plugins/response-cache.ts, CACHE_RULES,
  * matched on the route template): `/v1/stations` and `/v1/sessions` lists
  * for 10 s, `/v1/stations/*` and `/v1/sessions/*` for 5 s, `/v1/tokens` for
  * 30 s. A write through the API invalidates its own resource's tag; an OCPP
  * event invalidates none of them (events.ts bumps only the dashboard's). So a
  * read repeats, for up to its TTL, whatever the same URL answered before the
- * station's last message. Per method:
+ * station's last message -- unless the URL is one the cache has never seen.
+ * The rule is matched on the route, the key hashes the URL with its query,
+ * and a query member a route does not name is stripped by validation
+ * (Fastify's Ajv `removeAdditional`, lib/zod-schema.ts) rather than refused.
+ * So a read that must see the station's last message carries a {@link fresh}
+ * nonce, and costs a Redis entry that expires with its TTL. Per method:
  *
  *  - `waitForActiveTransaction`, `transactionCountForIdTag`: the tag's
  *    sessions come from `/v1/tokens/{dtk}/sessions`, which no rule matches
  *    (`/v1/tokens` is an exact rule) -- uncached. The token id before it is
  *    cached 30 s, harmlessly: tokens are only written through the API.
- *  - `latestTransaction`, `openSessions`: `/v1/stations/{sta}/sessions`, 5 s.
- *    No uncached route lists a station's sessions. The station's REST id
- *    (`/v1/stations?search=`, 10 s) only changes through the API.
+ *  - `latestTransaction`, `openSessions`: `/v1/stations/{sta}/sessions`,
+ *    fresh. The station's REST id (`/v1/stations?search=`, 10 s) only changes
+ *    through the API, so it may come from the cache.
  *  - `transactionIdTag`, `transactionStopTimestamp`, `transactionStopReason`:
- *    `/v1/sessions?search=` (10 s) then `/v1/sessions/{ses}` (5 s). No
- *    uncached route carries `stoppedReason`, so a stop read within 5 s of a
- *    read of the same session made while it was active can come back empty.
- *    `/v1/sessions` is also rate limited, 60 a minute keyed by user
- *    (sessions.ts), and every lane of a sweep logs in as the same admin. Each
- *    of the three lookups spends one, cache hits included: the limit is an
- *    onRequest hook, the cache a preHandler. A 429 there is a non-dispatch.
+ *    `/v1/sessions?search=` then `/v1/sessions/{ses}`, both fresh -- a stop
+ *    read within 5 s of a read made while the session was active would
+ *    otherwise come back empty. `/v1/sessions` is also rate limited, 60 a
+ *    minute keyed by user (sessions.ts), and every lane of a sweep logs in as
+ *    the same admin. Each of the three lookups spends one, fresh or not: the
+ *    limit is an onRequest hook, the cache a preHandler. A 429 there is a
+ *    non-dispatch.
  *
  * `Omit<CsmsRecords, "reservations" | "deviceModel">`, each a declared gap:
  *

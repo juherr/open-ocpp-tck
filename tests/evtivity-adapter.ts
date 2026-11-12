@@ -20,7 +20,7 @@
  * are the library's, and this guard holds them here because nothing upstream
  * runs this copy:
  *
- * PROPERTY, in 7 parts:
+ * PROPERTY, in 8 parts:
  *  1. ONE LOGIN PER PROCESS. Concurrent clients share one
  *     `POST /v1/auth/login`, and a token near its JWT `exp` (EVtivity's lives
  *     one hour) is replaced before use.
@@ -43,7 +43,7 @@
  *     kept for one password does not block a corrected one.
  *  6. A LEFTOVER SESSION THE PREPARE HOOK CANNOT END IS NAMED. Ending a session
  *     an interrupted run left active answers 409 two ways: SESSION_NOT_ACTIVE
- *     (it ended since the cached list was read) is quiet; STATION_ONLINE
+ *     (it ended since the list was read) is quiet; STATION_ONLINE
  *     (the station is connected, so the session stays, and its tag will be
  *     answered ConcurrentTx) warns with the cp id and the session. Any other
  *     refusal is a non-dispatch. Source: packages/api/src/routes/sessions.ts,
@@ -53,6 +53,12 @@
  *     the server answered. A non-2xx answered so keeps its status-based
  *     outcome: an allowed status still returns null, another is still a
  *     non-dispatch.
+ *  8. A LIVE READ IS NOT ANSWERED FROM THE RESPONSE CACHE. EVtivity replays a
+ *     GET of `/v1/stations*` and `/v1/sessions*` for the same full URL, and
+ *     an OCPP event clears none of it; so `latestTransaction`,
+ *     `openSessions` and the stop reason see a change the station made since
+ *     their previous read. The fake models that cache, keyed as upstream
+ *     keys it; the cache itself is the guard's one assumption.
  *
  * WHAT IT DOES NOT CLAIM. That the two caches -- this client's and the
  * library's -- are one: they are not, so a process logs in twice, and a wrong
@@ -81,6 +87,7 @@ import { CsmsNotDispatchedError, type FetchLike } from "../tck/driver";
 import { EvtivityApi } from "../drivers/evtivity/api-client";
 import { defaultEvtivityConfig, type EvtivityConfig } from "../drivers/evtivity/config";
 import { endLeftoverSessions } from "../drivers/evtivity/provision";
+import { EvtivityRecords } from "../drivers/evtivity/records";
 
 let failures = 0;
 
@@ -429,8 +436,8 @@ interface EndCase {
 const END_CASES: EndCase[] = [
   { what: "ended", answer: () => json({ status: "ended" }), expect: "resolves" },
   {
-    // The list the session came from is a cached read (records.ts), so a
-    // session that ended since is expected, and says nothing.
+    // A session can end between the list and the request, so one that
+    // ended since is expected, and says nothing.
     what: "409 SESSION_NOT_ACTIVE is quiet",
     answer: () => json({ error: "The session is not active", code: "SESSION_NOT_ACTIVE" }, 409),
     expect: "resolves",
@@ -523,6 +530,127 @@ for (const kase of BODY_CASES) {
   if (got !== kase.expect) fail(what, `expected ${kase.expect}, got ${got}`);
 }
 
+// ---------------------------------------------------------------------------
+// A store-backed fake, for the parts that read records
+// ---------------------------------------------------------------------------
+
+interface FakeSession {
+  id: string;
+  stationName: string;
+  transactionId: string;
+  status: "active" | "completed";
+  stoppedReason: string | null;
+}
+
+/**
+ * The routes records.ts and provision.ts read, over a mutable store. Its one
+ * model of the server is the RESPONSE CACHE: a 200 of a `/v1/stations*` or
+ * `/v1/sessions*` GET is replayed for a later GET of the same full URL, query
+ * included -- the key EVtivity hashes (packages/api/src/plugins/
+ * response-cache.ts, `buildCacheKey(..., request.url)`, at v0.1.51). A write
+ * through the API clears it, as a write busts its tag there; a change made
+ * from outside -- an OCPP event -- does not, which is the lag the model is for.
+ * The TTL is not modelled: every row runs well inside five seconds.
+ */
+class FakeEvtivity {
+  readonly stations = [{ id: "sta_1", stationId: "CERTCP1" }];
+  sessions: FakeSession[] = [];
+  readonly urls: string[] = [];
+  private readonly cache = new Map<string, string>();
+
+  readonly fetch: FetchLike = async (input, init) => {
+    const url = new URL(input);
+    const method = init?.method ?? "GET";
+    if (method === "POST" && url.pathname === "/v1/auth/login") return LOGIN_OK();
+    this.urls.push(`${method} ${url.pathname}${url.search}`);
+    const cacheable = method === "GET" && /^\/v1\/(stations|sessions)/.test(url.pathname);
+    if (method !== "GET") this.cache.clear();
+    const key = `${url.pathname}${url.search}`;
+    const hit = cacheable ? this.cache.get(key) : undefined;
+    if (hit !== undefined) return new Response(hit, { status: 200 });
+    const res = this.answer(method, url);
+    if (cacheable && res.status === 200) this.cache.set(key, await res.clone().text());
+    return res;
+  };
+
+  private answer(method: string, url: URL): Response {
+    const p = url.searchParams;
+    const page = <T>(rows: T[]): Response => {
+      const limit = Number(p.get("limit") ?? 10);
+      const from = (Number(p.get("page") ?? 1) - 1) * limit;
+      return json({ data: rows.slice(from, from + limit), total: rows.length });
+    };
+    const search = (s: string) => s.toLowerCase().includes((p.get("search") ?? "").toLowerCase());
+    if (method !== "GET") return json({ error: "not modelled" }, 500);
+    if (url.pathname === "/v1/stations") return page(this.stations.filter((s) => search(s.stationId)));
+    const stationSessions = /^\/v1\/stations\/([^/]+)\/sessions$/.exec(url.pathname);
+    if (stationSessions) {
+      const station = this.stations.find((s) => s.id === stationSessions[1]);
+      return page(
+        this.sessions
+          .filter((s) => s.stationName === station?.stationId)
+          .filter((s) => p.get("status") === null || s.status === p.get("status")),
+      );
+    }
+    if (url.pathname === "/v1/sessions") return page(this.sessions.filter((s) => search(s.transactionId)));
+    const detail = /^\/v1\/sessions\/([^/]+)$/.exec(url.pathname);
+    const session = this.sessions.find((s) => s.id === detail?.[1]);
+    if (session) return json({ ...session, endedAt: session.status === "active" ? null : "2026-11-12T00:00:00Z" });
+    return json({ error: "Not found" }, 404);
+  }
+}
+
+function fakeSession(n: number, status: FakeSession["status"] = "active"): FakeSession {
+  return { id: `ses_${n}`, stationName: "CERTCP1", transactionId: String(n), status, stoppedReason: null };
+}
+
+// ---------------------------------------------------------------------------
+// Part 8: a live read is not answered from the response cache
+// ---------------------------------------------------------------------------
+
+{
+  const what = "part 8: latestTransaction sees a transaction started since its last read";
+  const fake = new FakeEvtivity();
+  fake.sessions = [fakeSession(7)];
+  const records = new EvtivityRecords(new EvtivityApi(freshConfig(), fake.fetch));
+  const before = await records.latestTransaction("CERTCP1");
+  fake.sessions.push(fakeSession(8));
+  const after = await records.latestTransaction("CERTCP1");
+  if (before !== "7" || after !== "8") fail(what, `expected 7 then 8, got ${before} then ${after}`);
+}
+{
+  const what = "part 8: openSessions drops a session ended since its last read";
+  const fake = new FakeEvtivity();
+  fake.sessions = [fakeSession(7)];
+  const records = new EvtivityRecords(new EvtivityApi(freshConfig(), fake.fetch));
+  const before = await records.openSessions("CERTCP1");
+  fake.sessions[0]!.status = "completed";
+  const after = await records.openSessions("CERTCP1");
+  if (before.join() !== "ses_7" || after.length !== 0) {
+    fail(what, `expected [ses_7] then [], got [${before.join()}] then [${after.join()}]`);
+  }
+}
+{
+  const what = "part 8: transactionStopReason sees a stop made since its last read";
+  const fake = new FakeEvtivity();
+  fake.sessions = [fakeSession(7)];
+  const records = new EvtivityRecords(new EvtivityApi(freshConfig(), fake.fetch));
+  const before = await records.transactionStopReason("7");
+  Object.assign(fake.sessions[0]!, { status: "completed", stoppedReason: "Remote" });
+  const after = await records.transactionStopReason("7");
+  if (before !== "" || after !== "Remote") fail(what, `expected "" then Remote, got "${before}" then "${after}"`);
+}
+{
+  // The other half of the same lookup: the search that finds the session.
+  const what = "part 8: a transaction looked up before it existed is found once it does";
+  const fake = new FakeEvtivity();
+  const records = new EvtivityRecords(new EvtivityApi(freshConfig(), fake.fetch));
+  const before = await records.transactionStopTimestamp("8");
+  fake.sessions.push(fakeSession(8, "completed"));
+  const after = await records.transactionStopTimestamp("8");
+  if (before !== "" || after === "") fail(what, `expected "" then a timestamp, got "${before}" then "${after}"`);
+}
+
 if (failures > 0) {
   process.stderr.write(
     `\n${failures} failure(s). This guard holds what the EVtivity driver owns ` +
@@ -530,7 +658,7 @@ if (failures > 0) {
       `process, renewed on a stale token, which failures it remembers and for ` +
       `how long, bound to the password -- and when a leftover session the ` +
       `prepare hook could not end is named, and a 2xx body that cannot be read ` +
-      `is an error. The command classification is ` +
+      `is an error, and a live read is not served from the response cache. The command classification is ` +
       `the library's, and its tests hold it.\n`,
   );
   process.exit(1);
