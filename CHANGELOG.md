@@ -622,7 +622,10 @@ Released as `0.3.0`. The documented install ref already points at that tag, so
   unchanged, including the one the SDK does not make: a `raw` frame that
   contradicts the record's `messageType`, `messageId` or `action`.
 - **A wire trace that starts with a UTF-8 BOM is read**, where it used to be
-  `unreadable`, as the SDK's own JSONL reader reads it.
+  `unreadable`, as the SDK's own JSONL reader reads it. The same reader's
+  notion of a blank line applies: only spaces, tabs and carriage returns, so a
+  line holding any other whitespace (a no-break space, say) is now
+  `unreadable` where it used to be skipped.
 - **`cert16-tc054-trigger-message` triggers all five messages `TC_054` lists**
   — `MeterValues` and `StatusNotification` for the connector, then
   `Heartbeat`, `DiagnosticsStatusNotification` and `FirmwareStatusNotification`
