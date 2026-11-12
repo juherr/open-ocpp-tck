@@ -408,6 +408,18 @@ jobs:
   # at the commit drivers/codetics-ev-server-lite/compose.yaml pins. Its
   # expected-failure table is empty, so any red row is new.
   #
+  # EVtivity is the fourth, source-available under BUSL-1.1: nothing of it is
+  # vendored or built here, the lane pulls the images upstream publishes,
+  # pinned by their
+  # multi-arch index digests in drivers/evtivity/compose.yaml. Two of its
+  # habits act once per station rather than once per scenario -- a push of
+  # ChangeConfigurations after a station's first boot, which no setting turns
+  # off and which TC_021 tells from its own request by key and value, and an
+  # offline-command queue that would replay into the next scenario on that cp
+  # id -- so the compose file seeds the settings that stop what can be
+  # stopped before the OCPP server starts. Its expected-failure table is
+  # empty too.
+  #
   # ONE JOB RATHER THAN NEAR-IDENTICAL COPIES, and it is only legal because
   # every lane is blocking: a matrix carries one continue-on-error for the
   # whole strategy, so the arrangement this replaced -- one lane muted, one not
@@ -423,7 +435,7 @@ jobs:
       # minute.
       fail-fast: false
       matrix:
-        driver: [steve, citrineos, codetics-ev-server-lite]
+        driver: [steve, citrineos, codetics-ev-server-lite, evtivity]
         # SHARDS, AND THE ONE PLACE THE COUNT IS WRITTEN TWICE. This list and
         # the SHARD_TOTAL below have to agree, and a disagreement is the silent
         # kind: `--shard 1/3` and `--shard 2/3` with a two-entry matrix runs two
@@ -471,6 +483,11 @@ jobs:
       # finds the setting it breaks next to the others.
       EVSL_URL: http://localhost:8380
       EVSL_NETWORK: evsl_evsl-internal
+      # 8480 for the same reason, and the network of compose project
+      # `evtivity` -- the driver's defaults again, written out for the same
+      # reader.
+      EVTIVITY_API_URL: http://localhost:8480
+      EVTIVITY_NETWORK: evtivity_evtivity-internal
     steps:
       - uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09 # v5.1.0
         with:
