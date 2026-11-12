@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 # The install command the documentation gives installs the contract it documents.
 #
-# THE PROPERTY, in four parts:
+# THE PROPERTY, in five parts:
 #   1. every tracked `*.md` citing a `github:<owner>/<repo>#<ref>` install
 #      command names THIS repository -- the slug read from package.json's
 #      `repository.url`, not spelled here -- and at least one page does;
@@ -13,6 +13,10 @@
 #      version package.json declares>`, that version being strictly greater
 #      than every `vN.N.N` tag this clone has -- and it must have one. The
 #      tree declaring, under its own name, the release that will carry it.
+#   5. In CASE A, the version of `@ovarilo/csms-drivers` package.json declares
+#      is also the one it declared at that tag -- absent there counting as
+#      different. `tck/driver.ts` re-exports that library, so the contract
+#      a reader implements is those bytes AND that version.
 #
 # WHY IT IS A GUARD AND NOT PROOFREADING. Both documented install commands were
 # broken at once, and had been for a hundred-odd commits. One was obvious in
@@ -97,13 +101,21 @@
 # guard CANNOT order -- `v0.3.0-rc1`, anything that is not three numbers --
 # is refused by name rather than guessed at.
 #
-# WHY `tck/driver.ts` ALONE, and not everything behind package.json's
-# `exports`. It is the file that carries `scope`, `capabilities` and
-# `expectedFailures` -- the shape CONTRIBUTING.md actually shows the reader and
-# asks them to implement. The rest of the surface can move without the
-# documentation lying. This is a CHOICE, not an oversight: widening it to the
-# whole export surface would turn every internal change into a release blocker,
-# for a document that never described those files.
+# WHY `tck/driver.ts` AND ONE DEPENDENCY, and not everything behind
+# package.json's `exports`. It is the file that carries `scope`,
+# `capabilities` and `expectedFailures` -- the shape CONTRIBUTING.md actually
+# shows the reader and asks them to implement. The rest of the surface can move
+# without the documentation lying. This is a CHOICE, not an oversight: widening
+# it to the whole export surface would turn every internal change into a
+# release blocker, for a document that never described those files.
+#
+# The one exception is the library that file re-exports wholesale. Since the
+# CSMS library moved to `@ovarilo/csms-drivers`, `export * from` it is a line
+# of `tck/driver.ts` whose bytes never change while what it exports does: a
+# version bump of the dependency is a contract change with no diff here. So
+# part 5 reads the version out of package.json at the tag and in the tree, and
+# a difference has exactly the consequences of a byte difference. Only that
+# dependency: the others are not re-exported as the contract.
 #
 # WHY THE REF IS EXTRACTED AND NEVER SPELLED HERE. A guard that repeats the
 # constant it checks verifies nothing but its own copy. The same reasoning
@@ -134,6 +146,12 @@ cd "$(dirname "$0")/.." || exit 1
 
 manifest=package.json
 contract=tck/driver.ts
+library=@ovarilo/csms-drivers
+
+# The version a package.json text declares for $library; empty when absent.
+library_version() {
+  sed -n "s|^    \"$library\": *\"\([^\"]*\)\".*|\1|p" | head -1
+}
 
 for f in "$manifest" "$contract"; do
   [ -s "$f" ] || { echo "FAIL: $f is missing or empty." >&2; exit 1; }
@@ -350,7 +368,7 @@ if ! git rev-parse --verify --quiet "refs/tags/$ref^{commit}" >/dev/null; then
 
   echo "Documented install ref holds, unreleased: $(wc -l < "$work/citations" | tr -d ' ')" \
        "citation(s) of '$ref', the release package.json declares, ahead of '$latest'."
-  echo "  Cutting that tag is what puts $contract back under the byte comparison."
+  echo "  Cutting that tag is what puts $contract and the $library version back under comparison."
   exit 0
 fi
 
@@ -384,5 +402,28 @@ if ! cmp -s "$work/tagged" "$contract"; then
   exit 1
 fi
 
+# ------------------------------------------------------------------ part 5
+tagged_library=$(git show "refs/tags/$ref:$manifest" 2>/dev/null | library_version)
+tree_library=$(library_version < "$manifest")
+# Reading nothing on both sides would compare equal, so the tree's own
+# declaration has to be found: this package depends on it, and a version that
+# stopped matching the pattern is a guard that stopped looking.
+if [ -z "$tree_library" ]; then
+  echo "FAIL: could not read the $library version from $manifest." >&2
+  echo "  → the dependency moved or changed shape; teach this guard the new one." >&2
+  exit 1
+fi
+if [ "$tagged_library" != "$tree_library" ]; then
+  echo "FAIL: $library has moved since tag '$ref'." >&2
+  echo "    at the tag: ${tagged_library:-<absent>}" >&2
+  echo "    in the tree: ${tree_library:-<absent>}" >&2
+  echo >&2
+  echo "  → $contract re-exports $library, so the contract 'bun add" >&2
+  echo "    github:$slug#$ref' installs is that version's, not the tree's." >&2
+  echo "    Same remedy as a byte change of $contract: bump package.json to" >&2
+  echo "    the release that will carry this and repoint both pages at it." >&2
+  exit 1
+fi
+
 echo "Documented install ref holds: $(wc -l < "$work/citations" | tr -d ' ')" \
-     "citation(s) of '$ref', a tag whose $contract matches the tree."
+     "citation(s) of '$ref', a tag whose $contract and $library version match the tree."
