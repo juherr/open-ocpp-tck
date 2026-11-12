@@ -82,18 +82,16 @@ export declare function findAllCalls(frames: readonly Frame[], direction: Direct
  * be received, and vice versa) -- never by adjacency in the log.
  *
  * THIS IS THE open-ocpp-trace CORRELATION RULE, and it is not implemented
- * here. `packages/trace-format/correlate.ts` owns it -- three clauses whose failure
+ * here. `tck/trace-correlation.ts` owns it -- three clauses whose failure
  * modes are argued in that file's header -- and this function does the two
  * things that ARE local: spell a `Frame` in the format's vocabulary, and turn
  * the whole-trace pairing into the per-call question every assertion asks.
  *
  * Writing the rule out again here is the obvious thing and it was the first
  * shape of this function. It is wrong for the reason `tck/trace.ts` gives
- * about parsers, one layer up: this suite reads the same wire two ways, and
- * `tools/trace-conformance.sh` proves the LIBRARY reproduces the
- * specification. A second copy of the rule means that proof says nothing about
- * the assertions, and agreement between the two becomes a property to measure
- * and re-measure. One copy makes it a property of the code.
+ * about parsers, one layer up: the rule is the format's, not this function's,
+ * and a second copy of it makes agreement between the two a property to
+ * measure and re-measure. One copy makes it a property of the code.
  *
  * It is not a local question, either: which response answers this call depends
  * on which calls the OTHER responses have already claimed, so the pairing is

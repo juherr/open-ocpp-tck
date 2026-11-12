@@ -1,32 +1,30 @@
 /**
- * trace-conformance.ts -- does `packages/trace-format/` actually implement the format?
+ * trace-conformance.ts -- do this repository's archived traces still read the
+ * way its logs do?
  *
- * The comparison half of `tools/trace-conformance.sh`, which does the network.
- * Split that way because the clone is the part that needs pinning and the
- * comparison is the part worth reading.
+ * The comparison half of `tools/trace-conformance.sh`, which validates the
+ * argument and documents the recipe for getting a corpus out of CI.
  *
- * TWO CORPORA, ANSWERING TWO DIFFERENT QUESTIONS.
+ * WHAT IT ANSWERS: "did changing how the trace is read change a verdict".
+ * Every trace this repository has archived must still read cleanly through
+ * `tck/trace.ts`'s `readTrace` -- no refusal -- and, where the run archived
+ * its log beside its trace, map onto the same frames `parseLog` gets from
+ * that log. That is the substrate-agreement property the runner is built on:
+ * the trace and the log are two readings of one wire, and an assertion must
+ * not be able to tell which one it was handed. A corpus of real bytes catches
+ * what a fixture cannot, because nobody wrote it to be read.
  *
- *  - THE SPECIFICATION'S FIXTURES answer "is this reader conformant". Each is
- *    a `trace.jsonl` and the `expected.json` view a conformant consumer must
- *    derive from it, so this is the only check anywhere that compares
- *    `validate.ts` and `consumer-view.ts` against the document they transcribe
- *    rather than against our opinion of it. `bun run verify` cannot: the
- *    schema is not vendored here, because `VENDOR.md` is single-upstream by
- *    construction.
+ * WHAT IT NO LONGER ANSWERS: whether the reader implements the format. This
+ * script used to clone the specification and run the reader this repository
+ * shipped against its fixtures and its schema, through ajv. That reader is
+ * gone; `@open-ocpp-trace/core` and `@open-ocpp-trace/jsonl` replaced it, and
+ * the SDK's own CI runs both of those passes on the same pinned specification
+ * commit. Running them again here would test the SDK, not this suite.
  *
- *  - OUR OWN ARCHIVED TRACES answer "did moving the reader change a verdict".
- *    Every record this repository has ever produced must still read cleanly:
- *    no refusal, no diagnostic, and -- where the run archived its log beside
- *    its trace -- the same frames `parseLog` gets from that log, which is the
- *    substrate-agreement property the runner is built on. A corpus of real
- *    bytes catches what a fixture cannot, because nobody wrote it to be read.
- *
- * NEITHER IS A SUBSTITUTE FOR THE OTHER, and neither is a substitute for
- * `tests/trace-format.ts`: the fixtures are all conformant, so they exercise
- * no refusal at all, and the archived corpus exercises none either -- across
- * 94 scenarios and 1576 records not one record is missing a member. Every
- * refusal in the library is reachable only from the offline table.
+ * NOT A SUBSTITUTE FOR `tests/trace-frames.ts`: the archived corpus exercises
+ * no refusal at all -- across 94 scenarios and 1576 records not one record is
+ * missing a member -- so every refusal is reachable only from that offline
+ * table.
  */
 
 import { readdirSync, readFileSync } from "node:fs";
@@ -34,47 +32,12 @@ import { basename, join } from "node:path";
 
 import { parseLog, type Frame } from "../tck/ocpp";
 import { readTrace } from "../tck/trace";
-import { readTraceText } from "../packages/trace-format";
-import {
-  checkFixtures,
-  formatDiagnostics,
-  formatResults,
-} from "../packages/trace-format/conformance";
 
 let failures = 0;
 const fail = (what: string, detail: string): void => {
   failures++;
   process.stderr.write(`FAIL ${what}: ${detail}\n`);
 };
-
-// --------------------------------------------------------------------------
-// 1. The specification's fixtures.
-// --------------------------------------------------------------------------
-
-/**
- * The fixture corpus, checked by the LIBRARY's own runner.
- *
- * Nothing is re-implemented here: `packages/trace-format/conformance.ts` is what is
- * meant to replace `conformance/validate.mjs` upstream, so running anything
- * else from this script would test a third implementation and prove nothing
- * about the one that would ship.
- */
-function checkSpecFixtures(fixturesDir: string): number {
-  const results = checkFixtures(fixturesDir);
-  for (const line of formatResults(results)) {
-    if (line.startsWith("FAIL")) {
-      failures++;
-      process.stderr.write(`${line}\n`);
-    } else {
-      process.stdout.write(`${line}\n`);
-    }
-  }
-  return results.length;
-}
-
-// --------------------------------------------------------------------------
-// 2. Our own archived traces.
-// --------------------------------------------------------------------------
 
 /** What a frame is, for comparison: everything an assertion can read. */
 const frameKey = (frame: Frame): string =>
@@ -90,42 +53,41 @@ const frameKey = (frame: Frame): string =>
     frame.kind === "callerror" ? null : frame.payload,
   ]);
 
-function checkArchive(dir: string): { traces: number; records: number } {
+function checkArchive(dir: string): { traces: number; frames: number; logs: number } {
   const files = readdirSync(dir).filter((name) => name.endsWith(".jsonl"));
-  let records = 0;
+  let frames = 0;
+  let logs = 0;
 
   for (const file of files.sort()) {
-    const path = join(dir, file);
-    const text = readFileSync(path, "utf8");
-
-    // The library's view first: a real record that produces a diagnostic is
-    // news whether or not the runner would have refused over it.
-    const read = readTraceText(text);
-    if (read.diagnostics.length > 0) {
-      fail(file, `real records produced diagnostics: ${formatDiagnostics(read.diagnostics, 5)}`);
-      continue;
-    }
-    records += read.records.length;
-
-    const trace = readTrace(path);
+    const trace = readTrace(join(dir, file));
     if (!trace.frames) {
       fail(file, `the runner would refuse this real trace (${trace.refusal})`);
       continue;
     }
+    frames += trace.frames.length;
 
-    // And the property the runner is actually built on: the trace and the log
-    // are two readings of the same wire, so they must agree frame for frame.
+    // The property the runner is actually built on: the trace and the log are
+    // two readings of the same wire, so they must agree frame for frame.
     const logPath = join(dir, `${basename(file, ".jsonl")}.log`);
+    // Only an ABSENT log means "nothing to compare": a log that is there and
+    // cannot be read would otherwise pass the trace as compared when it was
+    // not. `parseLog` itself does not throw -- a log it cannot parse yields
+    // fewer frames and fails the comparison below.
     let fromLog: Frame[] | undefined;
     try {
       fromLog = parseLog(readFileSync(logPath, "utf8"));
-    } catch {
+    } catch (error) {
+      if ((error as NodeJS.ErrnoException).code !== "ENOENT") {
+        fail(file, `the log beside it cannot be read (${(error as Error).message})`);
+        continue;
+      }
       fromLog = undefined;
     }
     if (fromLog === undefined) {
       process.stdout.write(`ok   ${file} (${trace.frames.length} frames, no log beside it)\n`);
       continue;
     }
+    logs++;
     const a = trace.frames.map(frameKey);
     const b = fromLog.map(frameKey);
     const at = a.findIndex((key, i) => key !== b[i]);
@@ -145,40 +107,31 @@ function checkArchive(dir: string): { traces: number; records: number } {
       `ok   ${file} (${trace.frames.length} frames, identical to its log)\n`,
     );
   }
-  return { traces: files.length, records };
+  return { traces: files.length, frames, logs };
 }
 
 // --------------------------------------------------------------------------
 
-const [fixturesDir, archiveDir] = process.argv.slice(2);
-if (!fixturesDir) {
-  process.stderr.write("usage: trace-conformance.ts <fixtures-dir> [archive-dir]\n");
+const [archiveDir] = process.argv.slice(2);
+if (!archiveDir) {
+  process.stderr.write("usage: trace-conformance.ts <archive-dir>\n");
   process.exit(2);
 }
 
-process.stdout.write("== the specification's conformance fixtures\n");
-const fixtureCount = checkSpecFixtures(fixturesDir);
-
-let archive = { traces: 0, records: 0 };
-if (archiveDir) {
-  process.stdout.write("\n== this repository's archived traces\n");
-  archive = checkArchive(archiveDir);
-} else {
-  process.stdout.write(
-    "\n== this repository's archived traces: SKIPPED (no directory given)\n" +
-      "   The fixtures say this reader is conformant; only the archive says\n" +
-      "   moving it changed no verdict. See tools/trace-conformance.sh --help.\n",
-  );
-}
+const archive = checkArchive(archiveDir);
 
 process.stdout.write("\n");
+if (archive.traces === 0) {
+  // An empty directory reads as a clean corpus otherwise -- the run would
+  // claim an agreement it never measured.
+  process.stderr.write(`no *.jsonl trace in ${archiveDir}: nothing was compared\n`);
+  process.exit(1);
+}
 if (failures > 0) {
   process.stderr.write(`${failures} problem(s) found\n`);
   process.exit(1);
 }
 process.stdout.write(
-  `all ${fixtureCount} fixtures conform` +
-    (archive.traces > 0
-      ? `, and ${archive.traces} archived trace(s) / ${archive.records} records read clean\n`
-      : "\n"),
+  `${archive.traces} archived trace(s) / ${archive.frames} frames read clean, ` +
+    `${archive.logs} of them identical to the log beside them\n`,
 );

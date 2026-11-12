@@ -206,11 +206,12 @@ function framesFrom(validated: readonly (TraceRecord | undefined)[]): FrameMappi
  * frames by: `messageType`, `messageId` or `action`. See this file's header
  * for why those three and no other.
  *
- * Ported from `checkRawFidelity` in `packages/trace-format/validate.ts`, which
- * transcribes the specification's reference consumer member for member,
- * INCLUDING which comparisons are conditional: `messageId` is optional, so it
- * is compared only when the record carries one, and only a CALL's frame has an
- * action. Only the three selecting members' rows were kept.
+ * Ported from `checkRawFidelity`, in the trace reader this repository shipped
+ * before the SDK replaced it (`packages/trace-format/validate.ts` as of
+ * f2e29f813b73), which transcribed the specification's reference consumer
+ * member for member, INCLUDING which comparisons are conditional: `messageId`
+ * is optional, so it is compared only when the record carries one, and only a
+ * CALL's frame has an action. Only the three selecting members' rows were kept.
  *
  * A `raw` that is not JSON, or not an array, is NOT a contradiction here. It
  * used to be refused in its own right, on the reasoning that saying so early

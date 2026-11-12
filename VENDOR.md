@@ -121,7 +121,7 @@ the drivers are native here, and the name now says so.
 |---|---|---|---|---|---|
 | `tck/spec-types.ts` | `upstream-forked` | `scripts/steve-verify/runner/spec-types.ts` | `db4b29ab5ee0c623c950a52a999ef4e4c0a916dab0b6cfebe8fa8eabc5da0d26` | `—` | `—` |
 | `tck/util.ts` | `upstream-verbatim` | `scripts/steve-verify/runner/util.ts` | `ba62ed29c79e04533e0725739c9c0d514caadb7bff8146e46688c867432eee9e` | `ba62ed29c79e04533e0725739c9c0d514caadb7bff8146e46688c867432eee9e` | `—` |
-| `tck/ocpp.ts` | `upstream-patched` | `src/cp/application/verification/ocpp.ts` | `a3f99c1b77b30d0ab0b22556b65aca05332d68f4b4b8d566a500d2036065368f` | `ef2aa24773c17539392d1c6156874f11114c63154806e16ffe34cda613b7e1f8` | `patches/tck/ocpp.ts.patch` |
+| `tck/ocpp.ts` | `upstream-patched` | `src/cp/application/verification/ocpp.ts` | `a3f99c1b77b30d0ab0b22556b65aca05332d68f4b4b8d566a500d2036065368f` | `902f61bf1c8c18ed392f6ed8576a3cdec5018139ba1fa3f3d0128847586f5316` | `patches/tck/ocpp.ts.patch` |
 | `tsconfig.json` | `upstream-verbatim` | `scripts/steve-verify/runner/tsconfig.json` | `b632b69c836000d80209c183b57d43ac917e3a1d50f042af65112bdf234d1931` | `b632b69c836000d80209c183b57d43ac917e3a1d50f042af65112bdf234d1931` | `—` |
 | `tck/specs/core.ts` | `upstream-forked` | `scripts/steve-verify/runner/specs/core.ts` | `ef26b803ffee2d2fa5d809ebb2e066475ed33cb7fd527aeb43d5b416566f0125` | `—` | `—` |
 | `tck/specs/authorize.ts` | `upstream-forked` | `scripts/steve-verify/runner/specs/authorize.ts` | `aaf1c5f2b4888df41cd1f0b8637b47eedc376ff2d61d29841d3668d26b66e7da` | `—` | `—` |
@@ -148,6 +148,7 @@ the drivers are native here, and the name now says so.
 | `tck/op-warn.ts` | `local-native` | `—` | `—` | `—` | `—` |
 | `tck/time.ts` | `local-native` | `—` | `—` | `—` | `—` |
 | `tck/trace.ts` | `local-native` | `—` | `—` | `—` | `—` |
+| `tck/trace-correlation.ts` | `local-native` | `—` | `—` | `—` | `—` |
 | `tck/unverifiable.ts` | `local-native` | `—` | `—` | `—` | `—` |
 | `tck/wait.ts` | `local-native` | `—` | `—` | `—` | `—` |
 | `tck/states-201.ts` | `local-native` | `—` | `—` | `—` | `—` |
