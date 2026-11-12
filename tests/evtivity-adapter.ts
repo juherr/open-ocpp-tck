@@ -20,7 +20,7 @@
  * are the library's, and this guard holds them here because nothing upstream
  * runs this copy:
  *
- * PROPERTY, in 6 parts:
+ * PROPERTY, in 7 parts:
  *  1. ONE LOGIN PER PROCESS. Concurrent clients share one
  *     `POST /v1/auth/login`, and a token near its JWT `exp` (EVtivity's lives
  *     one hour) is replaced before use.
@@ -48,6 +48,11 @@
  *     answered ConcurrentTx) warns with the cp id and the session. Any other
  *     refusal is a non-dispatch. Source: packages/api/src/routes/sessions.ts,
  *     `/sessions/:id/end`, at v0.1.51.
+ *  7. A 2XX WHOSE BODY CANNOT BE READ IS AN ERROR. Not an empty result, which
+ *     a read would take for "no such record", and not a non-dispatch, since
+ *     the server answered. A non-2xx answered so keeps its status-based
+ *     outcome: an allowed status still returns null, another is still a
+ *     non-dispatch.
  *
  * WHAT IT DOES NOT CLAIM. That the two caches -- this client's and the
  * library's -- are one: they are not, so a process logs in twice, and a wrong
@@ -475,13 +480,57 @@ for (const kase of END_CASES) {
   }
 }
 
+// ---------------------------------------------------------------------------
+// Part 7: a 2xx whose body cannot be read
+// ---------------------------------------------------------------------------
+
+/** A response whose status line arrived and whose body stream then fails. */
+function brokenBody(status: number): Response {
+  return new Response(
+    new ReadableStream({
+      start(controller) {
+        controller.error(new TypeError("terminated"));
+      },
+    }),
+    { status },
+  );
+}
+
+interface BodyCase {
+  readonly what: string;
+  readonly status: number;
+  readonly allow: readonly number[];
+  readonly expect: "null" | Classification;
+}
+
+const BODY_CASES: BodyCase[] = [
+  // The silent one: an empty result, read as "no such record".
+  { what: "a 200 whose body fails is an error, not an empty result", status: 200, allow: [], expect: "plain-error" },
+  // Controls: a non-2xx keeps its status-based answer.
+  { what: "an allowed 404 whose body fails is still null", status: 404, allow: [404], expect: "null" },
+  { what: "a 500 whose body fails is still a non-dispatch", status: 500, allow: [], expect: "not-dispatched" },
+];
+for (const kase of BODY_CASES) {
+  const what = `part 7: ${kase.what}`;
+  const srv = server({ read: [() => brokenBody(kase.status)] });
+  let got: string;
+  try {
+    const parsed = await new EvtivityApi(freshConfig(), srv.fetch).get("/v1/sessions/ses_1", kase.allow);
+    got = parsed === null ? "null" : `parsed ${JSON.stringify(parsed)}`;
+  } catch (err) {
+    got = classify(err);
+  }
+  if (got !== kase.expect) fail(what, `expected ${kase.expect}, got ${got}`);
+}
+
 if (failures > 0) {
   process.stderr.write(
     `\n${failures} failure(s). This guard holds what the EVtivity driver owns ` +
       `on top of @ovarilo/csms-drivers: its own REST client's login -- one per ` +
       `process, renewed on a stale token, which failures it remembers and for ` +
       `how long, bound to the password -- and when a leftover session the ` +
-      `prepare hook could not end is named. The command classification is ` +
+      `prepare hook could not end is named, and a 2xx body that cannot be read ` +
+      `is an error. The command classification is ` +
       `the library's, and its tests hold it.\n`,
   );
   process.exit(1);

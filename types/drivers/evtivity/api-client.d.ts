@@ -10,6 +10,9 @@ export interface RawResponse {
     status: number;
     /** The body as text; `""` when it could not be read. */
     text: string;
+    /** Why the body could not be read, when it could not: `request()` refuses
+     *  a 2xx answered so, rather than read it as an empty result. */
+    unreadable?: string;
 }
 export interface ApiResponse {
     status: number;
