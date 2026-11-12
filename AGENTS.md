@@ -252,9 +252,14 @@ session only once it is a minute old, the refusals that count toward the
 account's sign-in backoff kept for fifteen minutes, and every login failure
 a non-dispatch. A lockout, a token refused mid-sweep and a station still
 connected are answers the pinned server gives on nobody's demand, so the
-client takes its `fetch` and the guard answers from a table. Its last part
-is the prepare hook: a leftover session it cannot end because the station is
-still connected is named in a warning, not swallowed with the benign 409.
+client takes its `fetch` and the guard answers from a table. Then the prepare
+hook: a leftover session it cannot end because the station is still connected
+is named in a warning, not swallowed with the benign 409, and one the CSMS
+accepted to end is waited for, since its OCPP server ends it later. Its last
+parts are reads and teardown against a fake that models the server's response
+cache: a live read must not be served from it, an exact id past a first page
+of substring matches must be found, and a tag an open session holds keeps its
+driver active.
 `citrineos-device-model-fixture.ts`: the one whose subject is
 least visible from anywhere else. It holds a SEQUENCE of writes — which rows
 `provision` seeds, which one the prepare hook points back, which ones teardown
