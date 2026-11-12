@@ -69,10 +69,18 @@ function checkArchive(dir: string): { traces: number; frames: number; logs: numb
     // The property the runner is actually built on: the trace and the log are
     // two readings of the same wire, so they must agree frame for frame.
     const logPath = join(dir, `${basename(file, ".jsonl")}.log`);
+    // Only an ABSENT log means "nothing to compare": a log that is there and
+    // cannot be read would otherwise pass the trace as compared when it was
+    // not. `parseLog` itself does not throw -- a log it cannot parse yields
+    // fewer frames and fails the comparison below.
     let fromLog: Frame[] | undefined;
     try {
       fromLog = parseLog(readFileSync(logPath, "utf8"));
-    } catch {
+    } catch (error) {
+      if ((error as NodeJS.ErrnoException).code !== "ENOENT") {
+        fail(file, `the log beside it cannot be read (${(error as Error).message})`);
+        continue;
+      }
       fromLog = undefined;
     }
     if (fromLog === undefined) {
