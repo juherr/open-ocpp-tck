@@ -1,0 +1,185 @@
+# EVtivity CSMS 0.1.51, from its published images.
+#
+#   docker compose -f drivers/evtivity/compose.yaml up -d --wait
+#
+# Every image is pinned by its multi-arch INDEX digest (linux/amd64 and
+# linux/arm64), resolved with `docker buildx imagetools inspect`; VENDOR.md
+# records them. Only the REST API is published on the host; Postgres, Redis
+# and the OCPP server stay on the compose network, where the simulator reaches
+# the OCPP server as ws://ocpp:7103/<stationId>.
+#
+# LICENCE. EVtivity is under the Business Source License 1.1, whose terms
+# drivers/evtivity/README.md states and links. This file makes the docker
+# daemon pull its published images; this repository redistributes none of it.
+name: evtivity${TCK_SUFFIX:-}
+
+# Test-only secrets: the stack holds nothing but fixtures. The images run with
+# NODE_ENV=production, which refuses an example JWT secret and a short one.
+x-secrets: &secrets
+  SETTINGS_ENCRYPTION_KEY: 658c5fed7e15567eb06de7f5e0c12b03
+  DATABASE_URL: postgres://evtivity:evtivity@postgres:5432/evtivity
+  # No Redis ACL users: the services accept the default user, unlike
+  # upstream's own compose, which creates one per service.
+  REDIS_URL: redis://redis:6379
+
+services:
+  postgres:
+    image: postgres:17.11@sha256:ff87138949ad9a46f32ff23bd6852b52ce024a13dffe9b4087be98292cdd3b4f
+    command: ['postgres', '-c', 'max_connections=200']
+    environment:
+      POSTGRES_USER: evtivity
+      POSTGRES_PASSWORD: evtivity
+      POSTGRES_DB: evtivity
+    volumes:
+      - pgdata:/var/lib/postgresql/data
+    networks:
+      - evtivity-internal
+    healthcheck:
+      test: ['CMD-SHELL', 'pg_isready -U evtivity']
+      interval: 3s
+      timeout: 5s
+      retries: 20
+
+  redis:
+    image: redis:8.10.3@sha256:1f88291b4c57bdf249f02eb085a8669889b2d2954e91d4de5118a5da6b78dd53
+    networks:
+      - evtivity-internal
+    healthcheck:
+      test: ['CMD', 'redis-cli', 'ping']
+      interval: 3s
+      timeout: 5s
+      retries: 20
+
+  # One-shot: the image's default command applies the migrations.
+  migrate:
+    image: ghcr.io/evtivity/evtivity-csms/migrate:0.1.51@sha256:fd9d20affb0b1e595b4a8da500a96e6877bf46e84cdef0927ef0bfafa172ec9e
+    environment:
+      <<: *secrets
+    networks:
+      - evtivity-internal
+    depends_on:
+      postgres:
+        condition: service_healthy
+
+  # One-shot, the migrate image again: upstream's `seed` (not `seed:admin`,
+  # which has no --apply-config) creates the roles and the administrator the
+  # driver logs in as, and with --apply-config WRITES the explicit settings
+  # over the migration defaults -- REGISTRATION_POLICY from the environment,
+  # the rest from seed.config.json:
+  #
+  #   ocpp.registrationPolicy=open    a station the driver registered is
+  #                                   accepted at its first boot, no approval
+  #   ocpp.offlineCommandTtlHours=0   a command sent to an offline station is
+  #                                   answered 202 and queued; at 0 it expires
+  #                                   at once instead of replaying at the next
+  #                                   connect of that cp id -- into whichever
+  #                                   scenario runs next there (a stale Reset
+  #                                   would be TC_014's first Reset)
+  #   stationMessage.enabled=false    stops the DataTransfer PricingDisplay the
+  #                                   server sends after every boot
+  #   ocpp.clockAlignedInterval=0     stops the clock-aligned MeterValues every
+  #                                   quarter hour, and one of the five
+  #                                   ChangeConfiguration requests pushed at a
+  #                                   first boot (four remain; none can be
+  #                                   switched off)
+  #
+  # The settings have to be in force BEFORE `ocpp` starts: it caches them for
+  # 60 s, and a sweep starts well inside that window. Hence a seed rather than
+  # a PUT at provision time, and `ocpp` waiting for it below. Never set
+  # ocpp.meterValueInterval to 10: the boot push would then carry TC_021's own
+  # value.
+  seed:
+    image: ghcr.io/evtivity/evtivity-csms/migrate:0.1.51@sha256:fd9d20affb0b1e595b4a8da500a96e6877bf46e84cdef0927ef0bfafa172ec9e
+    command:
+      - sh
+      - -c
+      - cd packages/database && npm run seed -- --apply-config --config /tck/seed.config.json
+    environment:
+      <<: *secrets
+      SEED_DEMO: 'false'
+      REGISTRATION_POLICY: open
+      INITIAL_ADMIN_EMAIL: admin@evtivity.local
+      INITIAL_ADMIN_PASSWORD: admin123
+      INITIAL_ADMIN_MUST_RESET_PASSWORD: 'false'
+    volumes:
+      - ./seed.config.json:/tck/seed.config.json:ro
+    networks:
+      - evtivity-internal
+    depends_on:
+      migrate:
+        condition: service_completed_successfully
+
+  api:
+    image: ghcr.io/evtivity/evtivity-csms/api:0.1.51@sha256:d26274ab54a046f627edfd55dc1b00ccd43df98f3368f8952e75a10a432e4f04
+    restart: unless-stopped
+    ports:
+      - '127.0.0.1:${EVTIVITY_PORT:-8480}:7102'
+    environment:
+      <<: *secrets
+      JWT_SECRET: f09c478ffc80b8869112323860e4bf089edde9d7403655749fe9bf31680fe56b
+      # The image defaults differ from upstream's dev compose; set them.
+      API_PORT: 7102
+      OCPP_PORT: 7103
+      OCPP_SERVER_URL: ws://ocpp:7103
+      # Production mode refuses '*'; `local` allows loopback and private
+      # origins, which is upstream's own value.
+      CORS_ORIGIN: local
+      LOG_LEVEL: info
+    networks:
+      - evtivity-internal
+    healthcheck:
+      test: ['CMD', 'node', '-e', "fetch('http://localhost:7102/v1/health').then(r=>process.exit(r.ok?0:1)).catch(()=>process.exit(1))"]
+      interval: 5s
+      timeout: 5s
+      retries: 30
+    depends_on:
+      seed:
+        condition: service_completed_successfully
+      redis:
+        condition: service_healthy
+
+  ocpp:
+    image: ghcr.io/evtivity/evtivity-csms/ocpp:0.1.51@sha256:cda1fb575cf4b0eea12f8f011dd0e936187950aeb4e40f07a069414bcde67354
+    restart: unless-stopped
+    environment:
+      <<: *secrets
+      OCPP_PORT: 7103
+      OCPP_HEALTH_PORT: 8081
+      LOG_LEVEL: info
+    networks:
+      - evtivity-internal
+    healthcheck:
+      test: ['CMD', 'node', '-e', "fetch('http://localhost:8081/').then(r=>process.exit(r.ok?0:1)).catch(()=>process.exit(1))"]
+      interval: 5s
+      timeout: 5s
+      retries: 30
+    depends_on:
+      seed:
+        condition: service_completed_successfully
+      redis:
+        condition: service_healthy
+
+  worker:
+    image: ghcr.io/evtivity/evtivity-csms/worker:0.1.51@sha256:94f7a63ff3e60638f64ccbf943e1073d9a01d9b59fabc31ab517f53f64b98687
+    restart: unless-stopped
+    environment:
+      <<: *secrets
+      API_PORT: 7102
+      OCPP_PORT: 7103
+      OCPP_SERVER_URL: ws://ocpp:7103
+      API_BASE_URL: http://api:7102
+      LOG_LEVEL: info
+    networks:
+      - evtivity-internal
+    depends_on:
+      seed:
+        condition: service_completed_successfully
+      redis:
+        condition: service_healthy
+
+volumes:
+  pgdata:
+
+networks:
+  evtivity-internal:
+    driver: bridge

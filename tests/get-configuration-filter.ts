@@ -65,7 +65,8 @@ const cases: Array<{
 }> = [
   {
     // The issue #31 case. Neither of the first two bundled drivers produces
-    // it; drivers/codetics-ev-server-lite, added later, does.
+    // it; drivers/codetics-ev-server-lite and drivers/evtivity, added later,
+    // do.
     name: "the key member is omitted -- the idiomatic 'no filter'",
     lines: [req({})],
     expect: "PASS",

@@ -1,0 +1,7 @@
+{
+  "settings": {
+    "ocpp.offlineCommandTtlHours": 0,
+    "stationMessage.enabled": false,
+    "ocpp.clockAlignedInterval": 0
+  }
+}

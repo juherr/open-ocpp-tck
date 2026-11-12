@@ -197,6 +197,15 @@ the drivers are native here, and the name now says so.
 | `drivers/codetics-ev-server-lite/scope.ts` | `local-native` | `—` | `—` | `—` | `—` |
 | `drivers/codetics-ev-server-lite/expected.ts` | `local-native` | `—` | `—` | `—` | `—` |
 | `drivers/codetics-ev-server-lite/provision.ts` | `local-native` | `—` | `—` | `—` | `—` |
+| `drivers/evtivity/index.ts` | `local-native` | `—` | `—` | `—` | `—` |
+| `drivers/evtivity/config.ts` | `local-native` | `—` | `—` | `—` | `—` |
+| `drivers/evtivity/api-client.ts` | `local-native` | `—` | `—` | `—` | `—` |
+| `drivers/evtivity/profiles.ts` | `local-native` | `—` | `—` | `—` | `—` |
+| `drivers/evtivity/records.ts` | `local-native` | `—` | `—` | `—` | `—` |
+| `drivers/evtivity/scope.ts` | `local-native` | `—` | `—` | `—` | `—` |
+| `drivers/evtivity/expected.ts` | `local-native` | `—` | `—` | `—` | `—` |
+| `drivers/evtivity/provision.ts` | `local-native` | `—` | `—` | `—` | `—` |
+| `drivers/evtivity/seed.config.json` | `local-native` | `—` | `—` | `—` | `—` |
 
 Deliberately **not** imported from upstream: `steve-api.ts` (SteVe 3.13.0 REST
 client, 763 lines), `capability-probe.ts` (probes a live SteVe container),
@@ -934,6 +943,46 @@ Worth recording because it is the claim the second driver exists to test:
 **every other group passed unmodified** — core, remote-trigger, smart charging,
 local auth list and firmware — against a CSMS that had no part in writing the
 scenarios, and no scenario needed editing to accommodate it.
+
+### EVtivity
+
+The fourth driver's environment, pinned on the same terms and in the same
+two-column shape. Every image is pinned by its multi-arch **index** digest
+(linux/amd64 and linux/arm64), so one pin serves a CI runner and an arm64
+workstation alike. The `migrate` image is declared twice in the compose file --
+the `migrate` service and the one-shot `seed` that runs upstream's seed script
+from the same image -- and recorded once here.
+
+| field | value |
+|---|---|
+| image | `ghcr.io/evtivity/evtivity-csms/api` |
+| tag resolved | `0.1.51` |
+| digest | `sha256:d26274ab54a046f627edfd55dc1b00ccd43df98f3368f8952e75a10a432e4f04` |
+| image | `ghcr.io/evtivity/evtivity-csms/ocpp` |
+| tag resolved | `0.1.51` |
+| digest | `sha256:cda1fb575cf4b0eea12f8f011dd0e936187950aeb4e40f07a069414bcde67354` |
+| image | `ghcr.io/evtivity/evtivity-csms/worker` |
+| tag resolved | `0.1.51` |
+| digest | `sha256:94f7a63ff3e60638f64ccbf943e1073d9a01d9b59fabc31ab517f53f64b98687` |
+| image | `ghcr.io/evtivity/evtivity-csms/migrate` |
+| tag resolved | `0.1.51` |
+| digest | `sha256:fd9d20affb0b1e595b4a8da500a96e6877bf46e84cdef0927ef0bfafa172ec9e` |
+| image | `postgres` |
+| tag resolved | `17.11` |
+| digest | `sha256:ff87138949ad9a46f32ff23bd6852b52ce024a13dffe9b4087be98292cdd3b4f` |
+| image | `redis` |
+| tag resolved | `8.10.3` |
+| digest | `sha256:1f88291b4c57bdf249f02eb085a8669889b2d2954e91d4de5118a5da6b78dd53` |
+| resolved on | 2026-11-12, with `docker buildx imagetools inspect` |
+| declared in | `drivers/evtivity/compose.yaml` |
+
+**Images only, nothing vendored.** EVtivity is published under the Business
+Source License 1.1, not an open-source licence, and that is why this block is
+the whole of its footprint here: no row of the inventory above descends from
+it, nothing is rebuilt from its sources, and the compose file makes the daemon
+pull the images upstream publishes. The licence grants non-production use,
+which a conformance sweep is; `drivers/evtivity/README.md` states the terms and
+links upstream's `LICENSE.md` for whoever runs the stack.
 
 ## Source-built CSMS
 

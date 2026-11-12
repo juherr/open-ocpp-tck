@@ -108,6 +108,7 @@ import {
   unroutedActions201,
 } from "../drivers/citrineos/variant";
 import { csmsDriver as evServerLite } from "../drivers/codetics-ev-server-lite/index";
+import { csmsDriver as evtivity } from "../drivers/evtivity/index";
 import { csmsDriver as steve } from "../drivers/steve/index";
 
 const failures: string[] = [];
@@ -157,6 +158,14 @@ const CASES: readonly DriverCase[] = [
   {
     label: "codetics-ev-server-lite",
     module: evServerLite,
+    env: {},
+    unrouted201: new Set(),
+  },
+  // The fourth, 1.6-only for the same reason: EVtivity serves 2.x, this
+  // driver does not drive it, so it declares no operations201 either.
+  {
+    label: "evtivity",
+    module: evtivity,
     env: {},
     unrouted201: new Set(),
   },
