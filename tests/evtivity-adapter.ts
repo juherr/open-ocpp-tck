@@ -20,7 +20,7 @@
  * are the library's, and this guard holds them here because nothing upstream
  * runs this copy:
  *
- * PROPERTY, in 10 parts:
+ * PROPERTY, in 11 parts:
  *  1. ONE LOGIN PER PROCESS. Concurrent clients share one
  *     `POST /v1/auth/login`, and a token near its JWT `exp` (EVtivity's lives
  *     one hour) is replaced before use.
@@ -72,6 +72,11 @@
  *     paged helper; the rows reach it through a station and a tag read and
  *     through `ensureStation`, which would otherwise create a station that
  *     exists.
+ * 11. TEARDOWN DOES NOT FORCE A HELD TAG THROUGH ITS DRIVER. A tag an open
+ *     session holds is refused deletion (409) and reported; deleting the
+ *     fixture driver would deactivate it anyway (DELETE /drivers/:id
+ *     deactivates every token of the driver, at v0.1.51), so the driver is
+ *     kept and that is reported too. With no tag held, the driver goes.
  *
  * WHAT IT DOES NOT CLAIM. That the two caches -- this client's and the
  * library's -- are one: they are not, so a process logs in twice, and a wrong
@@ -99,7 +104,7 @@
 import { CsmsNotDispatchedError, type FetchLike } from "../tck/driver";
 import { EvtivityApi } from "../drivers/evtivity/api-client";
 import { defaultEvtivityConfig, type EvtivityConfig } from "../drivers/evtivity/config";
-import { endLeftoverSessions, ensureStation } from "../drivers/evtivity/provision";
+import { endLeftoverSessions, ensureStation, teardownFixtures } from "../drivers/evtivity/provision";
 import { EvtivityRecords } from "../drivers/evtivity/records";
 
 let failures = 0;
@@ -807,6 +812,53 @@ function crowdedFake(): FakeEvtivity {
   }
 }
 
+// ---------------------------------------------------------------------------
+// Part 11: teardown leaves the driver of a held tag active
+// ---------------------------------------------------------------------------
+
+for (const held of [true, false]) {
+  const what = held
+    ? "part 11: a tag held by an open session keeps the fixture driver active"
+    : "part 11: control -- with no tag held, the fixture driver is removed";
+  const writes: string[] = [];
+  const fetchImpl: FetchLike = async (input, init) => {
+    const url = new URL(input);
+    const method = init?.method ?? "GET";
+    if (method === "POST" && url.pathname === "/v1/auth/login") return LOGIN_OK();
+    const search = url.searchParams.get("search") ?? "";
+    if (method === "GET" && url.pathname === "/v1/tokens") {
+      return json({ data: [{ id: `dtk_${search}`, idToken: search }], total: 1 });
+    }
+    if (method === "GET" && url.pathname === "/v1/stations") return json({ data: [], total: 0 });
+    if (method === "GET" && url.pathname === "/v1/drivers") {
+      return json({ data: [{ id: "drv_1", email: search, isActive: true }], total: 1 });
+    }
+    writes.push(`${method} ${url.pathname}`);
+    if (held && url.pathname === "/v1/tokens/dtk_CERT003") {
+      return json({ error: "Token is currently in use by an active charging session" }, 409);
+    }
+    return new Response(null, { status: 204 });
+  };
+  const cfg = freshConfig();
+  let problems: string[];
+  try {
+    problems = await teardownFixtures(new EvtivityApi(cfg, fetchImpl), cfg);
+  } catch (err) {
+    fail(what, `teardown threw: ${message(err)}`);
+    continue;
+  }
+  const driverDeleted = writes.includes("DELETE /v1/drivers/drv_1");
+  if (held) {
+    if (driverDeleted) fail(what, "the driver was deleted, which deactivates the held tag");
+    if (!problems.some((p) => p.includes("CERT003")) || !problems.some((p) => p.includes("driver"))) {
+      fail(what, `expected the held tag and the kept driver among the problems, got ${JSON.stringify(problems)}`);
+    }
+  } else {
+    if (!driverDeleted) fail(what, `expected DELETE /v1/drivers/drv_1, got ${writes.join(", ")}`);
+    if (problems.length > 0) fail(what, `expected no problem, got ${JSON.stringify(problems)}`);
+  }
+}
+
 if (failures > 0) {
   process.stderr.write(
     `\n${failures} failure(s). This guard holds what the EVtivity driver owns ` +
@@ -815,7 +867,7 @@ if (failures > 0) {
       `how long, bound to the password -- and when a leftover session the ` +
       `prepare hook could not end is named, an accepted end waited for, and a 2xx body that cannot be read ` +
       `is an error, a live read is not served from the response cache, and an exact id is ` +
-      `looked for past the first page. The command classification is ` +
+      `looked for past the first page, and teardown keeps the driver of a held tag. The command classification is ` +
       `the library's, and its tests hold it.\n`,
   );
   process.exit(1);

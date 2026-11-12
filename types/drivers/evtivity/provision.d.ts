@@ -1,4 +1,5 @@
 import { EvtivityApi } from "./api-client";
+import { type EvtivityConfig } from "./config";
 /** The settings compose.yaml seeds, and the value each must hold. */
 export declare const REQUIRED_SETTINGS: Readonly<Record<string, unknown>>;
 /** What {@link endLeftoverSessions} needs besides the sessions to end. */
@@ -41,6 +42,9 @@ export declare function endLeftoverSessions(api: EvtivityApi, cpId: string, sess
  * on one id: a 409 from the create means the other one won.
  */
 export declare function ensureStation(api: EvtivityApi, cpId: string): Promise<void>;
+/** `teardown` against a given client and configuration -- the seam
+ *  tests/evtivity-adapter.ts reaches it through. */
+export declare function teardownFixtures(api: EvtivityApi, cfg: EvtivityConfig): Promise<string[]>;
 /** `ocpp-tck driver provision` */
 export declare function provisionCommand(): Promise<number>;
 /** `ocpp-tck driver verify` */
