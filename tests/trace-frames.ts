@@ -17,11 +17,13 @@
  *     with `cp-to-csms` -> "sent" and `csms-to-cp` -> "received", and the
  *     result correlates: findResponseFor pairs a CALLRESULT to its CALL, which
  *     is the only thing every assertion in the suite is built on. And it pairs
- *     them the way the FORMAT says to: `findResponseFor` and the library's
- *     `consumerView` must agree frame for frame, or the conformance run would
- *     prove the library right about a specification the assertions do not
- *     follow. They diverge only on a reused `messageId`, so that is the case
- *     the row below builds -- with unique ids a wrong implementation passes.
+ *     them the way the FORMAT says to: tck/trace-correlation.ts's `correlate`
+ *     is held to a table of pairs written out by hand, one row per clause of
+ *     the rule -- same `messageId`, opposite direction, not already answered
+ *     -- plus orphans and unanswered calls. The last two clauses only bite on a
+ *     REUSED `messageId`, so those rows build one: with unique ids a wrong
+ *     implementation passes. findResponseFor's own rows then hold the frame
+ *     adaptation to the same answers.
  *  2. A CALLERROR carries its code, description and details onto errorCode /
  *     errorDescription / errorDetails.
  *  3. A `schemaVersion` that is not `1.<minor>` refuses, through BOTH entry
@@ -98,11 +100,7 @@ import {
   type CallFrame,
   type Frame,
 } from "../tck/ocpp";
-import {
-  consumerView,
-  validateRecords,
-  type TraceRecord,
-} from "../packages/trace-format";
+import { correlate, type Correlatable } from "../tck/trace-correlation";
 import {
   readTrace,
   recordsToFrames,
@@ -176,6 +174,7 @@ function tweak(
 }
 
 let failures = 0;
+let correlationRows = 0;
 const fail = (what: string, detail: string): void => {
   failures++;
   process.stderr.write(`FAIL: ${what}\n  ${detail}\n`);
@@ -270,22 +269,116 @@ if (!frames) {
       );
     }
 
-    // And the same pairing the library derives, which is the agreement that
-    // makes tools/trace-conformance.sh a statement about this suite and not
-    // just about packages/trace-format/.
-    const { records } = validateRecords(reused);
-    const view = consumerView(records.filter((r): r is TraceRecord => r !== undefined));
-    const fromView = view.records.flatMap((entry, response) =>
-      entry.correlatesWith === undefined ? [] : [[entry.correlatesWith, response]],
+  }
+}
+
+// --------------------------------------------------------------------------
+// 1, continued. The rule itself, against pairs written out by hand.
+//
+// `correlate` is driven directly rather than through findResponseFor, because
+// the per-call question hides one of the clauses: for [CALL, RESULT, RESULT]
+// a rule that forgot "not already answered" hands BOTH responses call 0, and
+// findResponseFor still finds the first of them. The oracle is a table and not
+// another implementation -- the reader this repository used to ship derived
+// the same pairs from the same function, which made agreement a tautology.
+// Each of the three clauses has a row that only it decides; the header of
+// tck/trace-correlation.ts says why each one hides.
+// --------------------------------------------------------------------------
+
+{
+  const CP = "cp-to-csms" as const;
+  const CS = "csms-to-cp" as const;
+  // [messageType, messageId, direction], in trace order.
+  type Row = readonly [Correlatable["messageType"], string, Correlatable["direction"]];
+  const table: Array<{
+    name: string;
+    trace: readonly Row[];
+    // One entry per record: the CALL index a response answers, or null.
+    answers: readonly (number | null)[];
+    unanswered: readonly number[];
+    orphans: readonly number[];
+  }> = [
+    {
+      name: "a response answers its call",
+      trace: [["CALL", "a", CP], ["CALLRESULT", "a", CS]],
+      answers: [null, 0],
+      unanswered: [],
+      orphans: [],
+    },
+    {
+      name: "a CALLERROR answers its call",
+      trace: [["CALL", "a", CS], ["CALLERROR", "a", CP]],
+      answers: [null, 0],
+      unanswered: [],
+      orphans: [],
+    },
+    {
+      // The messageId clause: two calls outstanding, answered in call order.
+      name: "interleaved exchanges pair by messageId",
+      trace: [["CALL", "a", CP], ["CALL", "b", CP], ["CALLRESULT", "a", CS], ["CALLRESULT", "b", CS]],
+      answers: [null, null, 0, 1],
+      unanswered: [],
+      orphans: [],
+    },
+    {
+      // The not-already-answered clause, as a reused id.
+      name: "a reused messageId pairs one to one, most recent first",
+      trace: [["CALL", "a", CP], ["CALL", "a", CP], ["CALLRESULT", "a", CS], ["CALLRESULT", "a", CS]],
+      answers: [null, null, 1, 0],
+      unanswered: [],
+      orphans: [],
+    },
+    {
+      // The not-already-answered clause, as a second answer to one call.
+      name: "an already-answered call answers nothing else",
+      trace: [["CALL", "a", CP], ["CALLRESULT", "a", CS], ["CALLRESULT", "a", CS]],
+      answers: [null, 0, null],
+      unanswered: [],
+      orphans: [2],
+    },
+    {
+      // The opposite-direction clause: the nearer same-id call travels the
+      // response's own way, so it is passed over for the farther one.
+      name: "the nearer same-id call travelling the wrong way is passed over",
+      trace: [["CALL", "a", CP], ["CALL", "a", CS], ["CALLRESULT", "a", CS]],
+      answers: [null, null, 0],
+      unanswered: [1],
+      orphans: [],
+    },
+    {
+      name: "a response travelling its call's own way is no answer",
+      trace: [["CALL", "a", CP], ["CALLRESULT", "a", CP]],
+      answers: [null, null],
+      unanswered: [0],
+      orphans: [1],
+    },
+    {
+      name: "a response before its call is an orphan",
+      trace: [["CALLRESULT", "a", CS], ["CALL", "a", CP]],
+      answers: [null, null],
+      unanswered: [1],
+      orphans: [0],
+    },
+  ];
+
+  for (const row of table) {
+    const got = correlate(
+      row.trace.map(([messageType, messageId, direction]) => ({ messageType, messageId, direction })),
     );
-    const fromFrames = paired.map((response, call) => [call, response]);
-    if (JSON.stringify(fromView.sort()) !== JSON.stringify(fromFrames.sort())) {
+    const actual = {
+      answers: got.answers.map((a) => a ?? null),
+      unanswered: got.unansweredCalls,
+      orphans: got.orphanResponses,
+    };
+    const expected = { answers: row.answers, unanswered: row.unanswered, orphans: row.orphans };
+    if (JSON.stringify(actual) !== JSON.stringify(expected)) {
       fail(
-        "findResponseFor agrees with the format's consumer view",
-        `view says ${JSON.stringify(fromView)}, frames say ${JSON.stringify(fromFrames)}`,
+        `correlation: ${row.name}`,
+        `expected ${JSON.stringify(expected)}, got ${JSON.stringify(actual)}`,
       );
     }
   }
+  correlationRows = table.length;
 }
 
 // A CALL THAT IS NOT IN `frames` HAS NO ANSWER. This is the behaviour change
@@ -665,6 +758,6 @@ if (failures > 0) {
 }
 
 process.stdout.write(
-  `tck/trace.ts: ${TRACE.length} real records mapped, ${refusals.length} record refusals, ` +
-    `${namedFileRefusals} named file refusals -- OK\n`,
+  `tck/trace.ts: ${TRACE.length} real records mapped, ${correlationRows} correlation rows, ` +
+    `${refusals.length} record refusals, ${namedFileRefusals} named file refusals -- OK\n`,
 );
