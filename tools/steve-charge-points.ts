@@ -2,16 +2,18 @@
 // SPDX-License-Identifier: Apache-2.0
 /**
  * steve-charge-points.ts -- asks a live SteVe what the charge-point rows of
- * tests/csms-driver-charge-points.ts ask a fake one. **LIVE CSMS REQUIRED.**
+ * ovarilo/csms-drivers' tests/csms-driver-charge-points.ts ask a fake one,
+ * the library's own guard since it moved there. **LIVE CSMS REQUIRED.**
  * Deliberately NOT part of `bun test`, of `tools/verify.sh` or of CI: it needs
  * a running SteVe, writes and deletes charge points, and opens OCPP
  * connections.
  *
  * WHY IT EXISTS, GIVEN THERE IS ALREADY AN OFFLINE GUARD. The guard drives
- * the SteVe adapter against tests/fixtures/fake-steve-manager.ts, and that
- * fake is a reading of the pinned image: refusals answered 200, an update that
- * overwrites every column, an empty password that changes nothing, a list
- * query that matches with LIKE. The guard is worth what that reading is
+ * the SteVe adapter against that repository's
+ * tests/fixtures/fake-steve-manager.ts, and that fake is a reading of the
+ * pinned image: refusals answered 200, an update that overwrites every
+ * column, an empty password that changes nothing, a list query that matches
+ * with LIKE. The guard is worth what that reading is
  * worth, so this is how it is re-checked whenever the SteVe pin in
  * `drivers/steve/compose.yaml` moves. It prints what it observed beside what
  * the fake assumes, and exits 1 on any difference.
@@ -48,12 +50,12 @@
  * Its stations dial the OCPP endpoint on STEVE_URL's host and port, which
  * SteVe shares with the manager UI.
  */
-import { createSteveCsmsDriver } from "../packages/csms-driver/steve";
-import { unknowablePassword } from "../packages/csms-driver/steve/charge-points";
-import { listedChargeBoxes, STEVE_CHARGE_POINT_PAGES } from "../packages/csms-driver/steve/forms";
-import { SteveUiOps } from "../packages/csms-driver/steve/ui-client";
+import { createSteveCsmsDriver } from "@ovarilo/csms-drivers";
+import { unknowablePassword } from "@ovarilo/csms-drivers/steve/charge-points";
+import { listedChargeBoxes, STEVE_CHARGE_POINT_PAGES } from "@ovarilo/csms-drivers/steve/forms";
+import { SteveUiOps } from "@ovarilo/csms-drivers/steve/ui-client";
 import { defaultSteveConfig } from "../drivers/steve/ui-client";
-import { chargePointAdminViolations, clearConformanceStations } from "../tests/lib/charge-point-conformance";
+import { chargePointAdminViolations, clearConformanceStations } from "@ovarilo/csms-drivers/conformance";
 import { handshakeStatus, onManagerHost } from "./lib/ocpp-handshake";
 
 const USAGE = `Usage: bun tools/steve-charge-points.ts --yes-isolated
@@ -194,4 +196,4 @@ if (mismatches.length > 0) {
   console.error(`\n${mismatches.length} observation(s) differ from what the offline guard's fake assumes.`);
   process.exit(1);
 }
-console.log("\nThe pinned SteVe behaves as tests/fixtures/fake-steve-manager.ts models it.");
+console.log("\nThe pinned SteVe behaves as ovarilo/csms-drivers' tests/fixtures/fake-steve-manager.ts models it.");

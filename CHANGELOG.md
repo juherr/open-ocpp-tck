@@ -110,7 +110,7 @@ Released as `0.3.0`. The documented install ref already points at that tag, so
   an `Origin` header, and a `POST` or `PATCH` that is not
   `Content-Type: application/json`, never reach the driver. The
   handler is also a library, `open-ocpp-tck/csms-driver/server`. See
-  `packages/csms-driver/server/README.md`.
+  [its README](https://github.com/ovarilo/csms-drivers/blob/v0.0.3/src/server/README.md).
 - **CI proves explicit provisioning end to end against a live SteVe** (#157).
   A new `provisioning` job brings SteVe up with unknown-station
   auto-registration off (`drivers/steve/compose.no-autoregister.yaml`, a
@@ -606,6 +606,41 @@ Released as `0.3.0`. The documented install ref already points at that tag, so
 
 ### Changed
 
+- **The reusable CSMS library now comes from
+  [`@ovarilo/csms-drivers`](https://github.com/ovarilo/csms-drivers) 0.0.3**,
+  pinned at that exact version, instead of the in-tree copy under
+  `packages/csms-driver/`. It is published to GitHub Packages, so a project
+  installing this package maps the `@ovarilo` scope next to
+  `@open-ocpp-trace` (the README's "The `@open-ocpp-trace` and `@ovarilo`
+  registries"). `open-ocpp-tck/driver`, `open-ocpp-tck/csms-driver` and
+  `open-ocpp-tck/csms-driver/server` re-export it, so imports keep working,
+  but the contract they re-export is 0.0.3's, which is wider than the copy it
+  replaces:
+  - **BREAKING** for a driver implementing `chargePoints`:
+    `ChargePointSecurity` gains a profile 1 or 2 arm without
+    `basicAuthPassword`, asking a driver that declares
+    `chargePoints.basicAuthPassword: "generated"` to make the password, and
+    `create` and `update` may resolve with a `ChargePointProvisioned` carrying
+    it. A driver that does not generate passwords refuses that arm with
+    `UnsupportedOperationError`; the bundled SteVe factory does.
+  - `CsmsCapabilities.chargePoints` gains optional `registrations`,
+    `basicAuthPassword` and `description` declarations, and the package root
+    also exports factories for two more CSMSs, codetics-ev-server-lite and
+    EVtivity, beside SteVe and CitrineOS. The bundled
+    `drivers/codetics-ev-server-lite` is unchanged and does not use the
+    library's.
+  - A command surface: `CsmsDriver.commands` (`submit16`, `submit201`, `poll`)
+    reports a `CommandOutcome`, declared by `CsmsCapabilities.commands`. The
+    SteVe and CitrineOS factories declare it as `accepted` without polling.
+    `ocpp-tck csms-server` carries it for a driver module whose parts return
+    it: a dispatch's `202` keeps `status: "dispatched"` and adds `outcome`,
+    and the library's handler adds `GET /v1/commands/<ref>` for a driver that
+    polls. The bundled SteVe and CitrineOS modules inherit the declaration
+    from the library but do not return the surface yet, so their daemon
+    dispatches and answers as before. `GET /v1/driver` describes `commands`
+    and the new `chargePoints` declarations.
+  The library's own guards -- the charge-point conformance rows, the
+  standalone consumer example -- moved with it.
 - **Installing this package needs a `read:packages` GitHub token.** The runner
   now reads the simulator's wire trace through `@open-ocpp-trace/core` and
   `@open-ocpp-trace/jsonl` 0.1.0, the format organisation's own SDK, which is

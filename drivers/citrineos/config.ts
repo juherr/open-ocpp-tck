@@ -22,7 +22,7 @@
  */
 import type { CsmsEnv } from "../../tck/driver";
 import { resolveVariant } from "./variant";
-import type { CitrineApiConfig } from "../../packages/csms-driver/citrineos/config";
+import type { CitrineApiConfig } from "@ovarilo/csms-drivers/citrineos/config";
 
 export interface CitrineConfig extends CitrineApiConfig {
   /** GraphQL data API base, no trailing slash, e.g. http://localhost:8090.

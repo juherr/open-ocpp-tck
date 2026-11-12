@@ -11,8 +11,8 @@ import type {
   ChargingProfileRef,
   ReservationRef,
   TransactionRef,
-} from "../packages/csms-driver";
-export * from "../packages/csms-driver";
+} from "@ovarilo/csms-drivers";
+export * from "@ovarilo/csms-drivers";
 
 /** TCK-only observations exposed by a driver's assertion record adapters. */
 export interface CsmsTckCapabilities extends CsmsCapabilities {

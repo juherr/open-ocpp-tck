@@ -1,1 +1,1 @@
-export * from "../../packages/csms-driver/citrineos/http";
+export * from "@ovarilo/csms-drivers/citrineos/http";

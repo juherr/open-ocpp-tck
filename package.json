@@ -34,7 +34,6 @@
     "drivers/steve/",
     "drivers/citrineos/",
     "drivers/codetics-ev-server-lite/",
-    "packages/csms-driver/",
     "types/",
     "tsconfig.base.json",
     "CHANGELOG.md",
@@ -52,12 +51,12 @@
       "default": "./tck/driver.ts"
     },
     "./csms-driver": {
-      "types": "./types/packages/csms-driver/index.d.ts",
-      "default": "./packages/csms-driver/index.ts"
+      "types": "./types/tck/csms-driver.d.ts",
+      "default": "./tck/csms-driver.ts"
     },
     "./csms-driver/server": {
-      "types": "./types/packages/csms-driver/server/index.d.ts",
-      "default": "./packages/csms-driver/server/index.ts"
+      "types": "./types/tck/csms-driver-server.d.ts",
+      "default": "./tck/csms-driver-server.ts"
     },
     "./scope": {
       "types": "./types/tck/scope.d.ts",

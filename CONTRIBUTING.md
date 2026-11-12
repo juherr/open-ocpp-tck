@@ -19,15 +19,17 @@ bun init -y
 cat > bunfig.toml <<'EOF'
 [install.scopes]
 "@open-ocpp-trace" = { url = "https://npm.pkg.github.com/", token = "$GITHUB_TOKEN" }
+"@ovarilo" = { url = "https://npm.pkg.github.com/", token = "$GITHUB_TOKEN" }
 EOF
 export GITHUB_TOKEN=$(gh auth token)   # needs read:packages
 bun add github:juherr/open-ocpp-tck#v0.3.0
 bun add -d @types/bun typescript
 ```
 
-The `bunfig.toml` is there because the runner depends on `@open-ocpp-trace/*`,
-which is published to GitHub Packages only. The README's "The
-`@open-ocpp-trace` registry" has the `.npmrc` equivalent and the CI recipe.
+The `bunfig.toml` is there because the runner depends on `@open-ocpp-trace/*`
+and on the CSMS library `@ovarilo/csms-drivers`, which are published to GitHub
+Packages only. The README's "The `@open-ocpp-trace` and `@ovarilo` registries"
+has the `.npmrc` equivalent and the CI recipe.
 `gh auth token` prints the stored token as it is; if it lacks
 `read:packages`, run `gh auth refresh --hostname github.com --scopes
 read:packages` once first.

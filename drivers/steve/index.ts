@@ -51,7 +51,7 @@
  * constraint goes with them.
  */
 import type { CsmsDriverModule, CsmsDriverParts, CsmsEnv } from "../../tck/driver";
-import { createSteveCsmsDriver, STEVE_CAPABILITIES } from "../../packages/csms-driver/steve";
+import { createSteveCsmsDriver, STEVE_CAPABILITIES } from "@ovarilo/csms-drivers";
 import { defaultApiConfig, SteveWebApi } from "./api-client";
 import {
   ocppTagParentLookup,

@@ -104,10 +104,9 @@ trap 'rm -rf "$work"' EXIT INT TERM
 #
 # TWO SCOPES OF node_modules ARE COPIED, and they are the exception the rule
 # above has to make. `@open-ocpp-trace/*` and `@ovarilo/*` are published to
-# GitHub Packages, which
-# answers 401 without a token, and `bun add` resolves every dependency in
-# package.json, not only the one it adds -- so in a container holding no token
-# it fails before the extractors start. Handing the gate a token would make
+# GitHub Packages, which answers 401 without a token, and `bun add` resolves
+# every dependency in package.json, not only the one it adds -- so in a
+# container holding no token it fails before the extractors start. Handing the gate a token would make
 # `bun run verify` need credentials; copying the three installed packages is
 # about 140 files, not the ~640 behind the race above, and `bun add` takes a
 # package already in node_modules at the locked version as installed. Neither

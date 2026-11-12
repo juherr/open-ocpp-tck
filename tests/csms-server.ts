@@ -575,7 +575,6 @@ const INPUT_REFUSALS: [string, string, string, unknown][] = [
   ["an offset beyond 23 hours", "POST", "/v1/charge-points/CP-1/operations/reserve-now",
     { connectorId: 1, idTag: "T", expiryDate: "2030-01-01T10:00:00+25:00" }],
   ["a list that is not a list", "POST", "/v1/charge-points/CP-1/operations/get-configuration", { keys: "HeartbeatInterval" }],
-  ["profile 1 without a password", "POST", "/v1/charge-points", { id: "CP-9", security: { profile: 1 } }],
   ["profile 0 with a password", "POST", "/v1/charge-points", { id: "CP-9", security: { profile: 0, basicAuthPassword: "pw" } }],
   ["profile 4", "POST", "/v1/charge-points", { id: "CP-9", security: { profile: 4 } }],
   ["a registration OCPP does not define", "POST", "/v1/charge-points", { id: "CP-9", registration: "Maybe" }],
@@ -586,6 +585,12 @@ const INPUT_REFUSALS: [string, string, string, unknown][] = [
 for (const [label, method, path, body] of INPUT_REFUSALS) {
   await expectError(label, 400, "invalid_input", () => exchange(method, path, body), false);
 }
+// Well-formed since @ovarilo/csms-drivers 0.0.3, which asks a driver declaring
+// `basicAuthPassword: "generated"` to make the password; this one declares
+// nothing, i.e. "supplied", so the daemon refuses it as a capability it lacks.
+await expectError("profile 1 without a password, on a driver that does not generate one", 501,
+  "unsupported_capability",
+  () => exchange("POST", "/v1/charge-points", { id: "CP-9", security: { profile: 1 } }), false);
 
 await expectError("an operation path no action has", 404, "not_found",
   () => exchange("POST", "/v1/charge-points/CP-1/operations/remote-start-transaction", {}), false);
@@ -639,7 +644,13 @@ await expectError("a wrong method on a driver without chargePoints", 405, "metho
           { operation: "reset", action: "Reset" },
           { operation: "remote-start", action: "RemoteStartTransaction" },
         ],
-        chargePoints: { securityProfiles: [0, 1] },
+        chargePoints: {
+          securityProfiles: [0, 1],
+          registrations: ["Accepted", "Pending", "Rejected"],
+          basicAuthPassword: "supplied",
+          description: "optional",
+        },
+        commands: null,
       }),
     `GET /v1/driver describes identity and capabilities only: ${ex.text}`,
   );
@@ -723,7 +734,13 @@ for (const contentType of ["application/json; charset=utf-8", "Application/JSON"
               { operation: "reset", action: "Reset" },
               { operation: "change-configuration", action: "ChangeConfiguration" },
             ],
-            chargePoints: { securityProfiles: [0] },
+            chargePoints: {
+              securityProfiles: [0],
+              registrations: ["Accepted", "Pending", "Rejected"],
+              basicAuthPassword: "supplied",
+              description: "optional",
+            },
+            commands: { completion: "accepted", polling: false },
           }),
       `the daemon describes the loaded driver from its module: ${JSON.stringify(aboutBody)}`,
     );
@@ -743,7 +760,12 @@ for (const contentType of ["application/json; charset=utf-8", "Application/JSON"
     );
 
     const reset = await fetch(`${server.url}${RESET}`, { method: "POST", headers: JSON_REQUEST, body: JSON.stringify({ type: "Soft" }) });
+    const resetBody = (await reset.json()) as { status?: string; outcome?: { state?: string } };
     check(reset.status === 202, `the daemon dispatches through the loaded driver, got ${reset.status}`);
+    check(
+      resetBody.status === "dispatched" && resetBody.outcome?.state === "accepted",
+      `the daemon carries the loaded driver's command surface: ${JSON.stringify(resetBody)}`,
+    );
     check(
       JSON.stringify(fixture.calls) === JSON.stringify([{ cpId: "CP-1", op: { action: "Reset", type: "Soft" } }]),
       `the loaded driver saw one Reset: ${JSON.stringify(fixture.calls)}`,

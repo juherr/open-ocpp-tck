@@ -3,7 +3,7 @@ import {
   CSMS_OPERATION_201_ACTIONS as generic201,
   ChargePointAlreadyExistsError as GenericExists,
   ChargePointNotFoundError as GenericNotFound,
-} from "../packages/csms-driver";
+} from "@ovarilo/csms-drivers";
 import {
   CSMS_OPERATION_16_ACTIONS as compatible16,
   CSMS_OPERATION_201_ACTIONS as compatible201,
@@ -18,7 +18,7 @@ import type {
   CsmsDriver,
   ChargePointDefinition,
   ChargePointDetails,
-} from "../packages/csms-driver";
+} from "@ovarilo/csms-drivers";
 import type {
   CsmsOperation16 as Compatible16,
   CsmsOperation201 as Compatible201,
@@ -66,8 +66,11 @@ const basicAuthStation: ChargePointDefinition = {
   security: { profile: 1, basicAuthPassword: "secret" },
   description: "bay 1",
 };
-// @ts-expect-error profiles 1 and 2 authenticate with HTTP Basic, so they need its password.
+// Profiles 1 and 2 without a password ask a driver declaring
+// `basicAuthPassword: "generated"` to make one (@ovarilo/csms-drivers 0.0.3).
 const passwordlessBasicAuth: ChargePointDefinition = { id: "CP-1", security: { profile: 1 } };
+// @ts-expect-error profiles 0 and 3 do not authenticate with HTTP Basic, so they carry no password.
+const passwordOnTls: ChargePointDefinition = { id: "CP-1", security: { profile: 3, basicAuthPassword: "x" } };
 // @ts-expect-error OCPP defines security profiles 0 to 3 only.
 const unknownProfile: ChargePointDefinition = { id: "CP-1", security: { profile: 4 } };
 // @ts-expect-error a CSMS form field name is not part of the generic model.
@@ -84,6 +87,7 @@ void [
   adminDriver,
   basicAuthStation,
   passwordlessBasicAuth,
+  passwordOnTls,
   unknownProfile,
   vendorField,
   readBack,

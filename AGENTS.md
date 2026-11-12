@@ -79,8 +79,8 @@ bun tests/template-once.ts
 bun tests/boot-quiet.ts
 bun tests/sim-exit-rejects-waits.ts
 bun tests/ocpp-handshake.ts
-bash tests/csms-driver-boundary.sh  # module boundary, exports, charge-point
-                                    # contract + consumer example
+bash tests/csms-driver-boundary.sh  # the library is a pinned dependency,
+                                    # re-exported; contract, factories, daemon
 bash tests/cert201-declares-its-version.sh
 bash tests/cert201-scope-rows.sh       # both read tck/specs/ASSERT-INVENTORY.txt,
                                        # so a NEW scenario reaches them only once
@@ -503,15 +503,16 @@ its header is now a false claim about what the build checks.
   drivers to scan are derived from `drivers/*`; the names each one owns are a
   table in the guard, and a driver missing from it is reported rather than
   skipped. (`tests/generic-core.sh`)
-- **The reusable CSMS library depends on no TCK adapter.** Its imports point
-  only within `packages/csms-driver`, and never through its own package name,
-  which `package.json#exports` would resolve into the TCK; the TCK adapts it
-  from above, and the
-  declaration build includes the module. Its HTTP daemon, `server/`, is a
-  transport adapter over the generic contract and imports no bundled driver.
-  A standalone consumer example also exercises the package export without
-  constructing a scenario.
-  (`tests/csms-driver-boundary.sh`, `examples/csms-driver-smoke.ts`)
+- **The reusable CSMS library is a dependency, pinned, and re-exported.** It
+  is `@ovarilo/csms-drivers`, from GitHub Packages, and depending on no TCK
+  adapter is now a property of where it lives rather than of a rule here. What
+  stays here is the TCK's side: no tracked file reaches back into the old
+  in-tree copy; `package.json` pins the library at an exact version, because
+  `tck/driver.ts` re-exports it and a range would let an install move this
+  package's public contract without a commit; and the `./csms-driver` and
+  `./csms-driver/server` subpaths still resolve to re-exports of its root and
+  its `./server`. Its own guards -- the charge-point conformance rows, the
+  consumer example -- live with it upstream. (`tests/csms-driver-boundary.sh`)
 - **Every OCA obligation has a check, and every answered-check has an
   obligation.** `tck/specs/OCA-OBLIGATIONS.txt` is the table; adding an
   `assertAllAnswered` without a row, or a row without the check, fails.

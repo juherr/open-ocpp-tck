@@ -55,7 +55,7 @@ import {
   type CsmsDriverParts,
   type CsmsEnv,
 } from "../../tck/driver";
-import { createCitrineOsCsmsDriver, citrineOsCapabilities } from "../../packages/csms-driver/citrineos";
+import { createCitrineOsCsmsDriver, citrineOsCapabilities } from "@ovarilo/csms-drivers";
 import { DEFAULT_CONNECTORS } from "./device-model";
 import { defaultCitrineConfig } from "./config";
 import {

@@ -51,7 +51,7 @@
  * `ocppConnectionName`, which v1.9.1 and the GA share. It takes both facts:
  * see {@link schemaOf}.
  */
-import type { CitrineVariant } from "../../packages/csms-driver/citrineos/variant";
+import type { CitrineVariant } from "@ovarilo/csms-drivers/citrineos/variant";
 export {
   DEFAULT_VARIANT,
   NO_LOCAL_LIST,
@@ -61,8 +61,8 @@ export {
   speaksOcpp201,
   unroutedActions,
   unroutedActions201,
-} from "../../packages/csms-driver/citrineos/variant";
-export type { CitrineVariant } from "../../packages/csms-driver/citrineos/variant";
+} from "@ovarilo/csms-drivers/citrineos/variant";
+export type { CitrineVariant } from "@ovarilo/csms-drivers/citrineos/variant";
 
 /** A Hasura `where` fragment. */
 export type Where = Record<string, unknown>;
