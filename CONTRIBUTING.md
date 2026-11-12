@@ -371,6 +371,14 @@ operation, so its `execute()` is a payload builder plus a wait for dispatch,
 and the CSMS has no reservation entity and no charging-profile registry, so it
 omits one record surface and owns the other as a fixture table.
 
+A fourth, `drivers/evtivity/`, is the worked example for a CSMS whose command
+call blocks until the station answers: one HTTP status carries both whether
+the CALL left and what the station said. The line it draws between
+`CsmsNotDispatchedError`, `UnsupportedOperationError` and an ordinary failure
+lives in `@ovarilo/csms-drivers`' EVtivity factory, which the driver adapts;
+the driver itself shows what an adapter keeps — records, provisioning, a
+prepare hook — and `tests/evtivity-adapter.ts` holds its REST client offline.
+
 For the mechanics of the contract — the operation switch, the record queries,
 the bootstrap verbs — either one works as a model. For **what to do when your
 CSMS cannot do something**, read `drivers/citrineos/`: it is the one with gaps,

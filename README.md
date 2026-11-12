@@ -101,7 +101,7 @@ gh auth refresh --hostname github.com --scopes read:packages
 
 ## Bundled drivers
 
-Three ship here, on equal footing. They reach their CSMS through different
+Four ship here, on equal footing. They reach their CSMS through different
 surfaces, and each answers a question the others cannot:
 
 | Driver | Transport | What it answers | Result |
@@ -109,8 +109,9 @@ surfaces, and each answers a question the others cannot:
 | [`drivers/steve`](drivers/steve/README.md) | HTML manager UI + WebAPI + MariaDB | *Has the harness lost a capability?* SteVe is the CSMS the scenarios were originally written against, so a scope row that had to be demoted would mean the core dropped something. | 47 `DRIVABLE`, and the 26 OCPP 2.0.1 scenarios `NOT_APPLICABLE` |
 | [`drivers/citrineos`](drivers/citrineos/README.md) | JSON REST API + GraphQL | *Is the contract actually CSMS-neutral?* [CitrineOS](https://github.com/citrineos/citrineos-core) (LF Energy / S44) had no part in writing the scenarios and has a smaller OCPP 1.6 surface. | 35 `PASS`, 5 `PARTIAL`, 0 `FAIL`, 7 `NOT APPLICABLE` over the OCPP 1.6 scenarios; 49 `PASS` over the OCPP 2.0.1 ones |
 | [`drivers/codetics-ev-server-lite`](drivers/codetics-ev-server-lite/README.md) | JSON REST admin API, one generic command endpoint | *Does the contract fit a CSMS with no reservation entity and no profile registry?* [ev-server-lite](https://github.com/codetics-software/ev-server-lite) is OCPP 1.6J only and built from source at a pinned commit. | 40 `PASS`, 5 `PARTIAL`, 0 `FAIL`, 2 `NOT APPLICABLE` over the OCPP 1.6 scenarios; the OCPP 2.0.1 ones `NOT_APPLICABLE` |
+| [`drivers/evtivity`](drivers/evtivity/README.md) | JSON REST API, one synchronous route per OCPP 1.6 action | *Does the contract fit a CSMS whose command call blocks until the station answers?* [EVtivity](https://github.com/EVtivity/evtivity-csms) serves OCPP 1.6J and 2.x; this driver drives 1.6J only, against the published images pinned by digest. | 43 `PASS`, 4 `PARTIAL`, 0 `FAIL`, 2 `NOT APPLICABLE` over the OCPP 1.6 scenarios; the OCPP 2.0.1 ones `NOT_APPLICABLE` |
 
-CI sweeps all three on every pull request, each against its own CSMS
+CI sweeps all four on every pull request, each against its own CSMS
 container in two shards, and a red row any of them did not declare fails the
 build.
 
@@ -136,7 +137,7 @@ wrongly", and keeping them apart is what stops either from being noise.
 
 ## Quick start, against SteVe
 
-Either bundled driver will do; SteVe is shown here because its environment is a
+Any bundled driver will do; SteVe is shown here because its environment is a
 single container pair.
 [`drivers/citrineos/README.md`](drivers/citrineos/README.md) is the equivalent
 walkthrough for the other one.
@@ -297,8 +298,8 @@ because a rename usually breaks several at once. Shellcheck joins that list
 only where it is installed, and is skipped with a notice where it is not; CI
 always has it and always enforces it.
 
-Each of the three bundled drivers — SteVe, CitrineOS and codetics
-ev-server-lite — contributes the same three verbs: `provision` (seed the fixtures,
+Each of the four bundled drivers — SteVe, CitrineOS, codetics
+ev-server-lite and EVtivity — contributes the same three verbs: `provision` (seed the fixtures,
 idempotent), `verify` (read-only — are they there?), `teardown` (remove them).
 A driver that needs no bootstrap contributes none, and the runner never calls
 them during a scenario.
@@ -436,6 +437,7 @@ bun run check:driver:steve        # offline
 bun run check:driver:citrineos    # offline
 bun run check:driver:citrineos-v1 # offline, the other line the same driver declares
 bun run check:driver:codetics-ev-server-lite # offline
+bun run check:driver:evtivity     # offline
 bun run test                      # vendor integrity, genericity, spec invariants, driver env
 bash tests/types-current.sh       # committed declarations match the sources
 bash tools/vendor-diff.sh         # network: how far upstream has moved
