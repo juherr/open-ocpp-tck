@@ -978,6 +978,15 @@ Released as `0.3.0`. The documented install ref already points at that tag, so
 
 ### Fixed
 
+- **`cert16-tc021` checks its own `ChangeConfiguration`, not the first one on
+  the wire.** It read the first `ChangeConfiguration` the station received and
+  the answer to that, so a CSMS that pushes its own metering configuration
+  after a first boot — `MeterValueSampleInterval=60`, the very key TC_021
+  sets — made the verdict depend on whether the scenario was the first on its
+  charge point. The scenario now selects the request setting the key to `10`,
+  wherever it falls, and reads the answer to that request. A request with the
+  right key and the wrong value still fails and names the value it carried.
+  The two checks have new descriptions, visible in `ASSERT-INVENTORY.txt`.
 - **The SteVe driver no longer drops a `ReserveNow`'s `parentIdTag` in
   silence.** SteVe's form has no such field and sends the reserved tag's
   stored parent instead, so a scenario asking for a group reservation was told

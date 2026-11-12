@@ -1,8 +1,9 @@
 /**
  * tests/cert16-gap-checks.ts -- guard over the hand-rolled checks the 1.6
- * coverage-gap scenarios (cert16-tc053, cert16-tc054, spec48) decide on.
+ * coverage-gap scenarios (cert16-tc053, cert16-tc054, spec48) decide on, and
+ * over which ChangeConfiguration cert16-tc021 reads.
  *
- * PROPERTY, one claim per helper:
+ * PROPERTY, one claim per helper (and one for TC_021's assert):
  *
  * - assertTriggered (TC_054): a trigger passes only when the CSMS sent a
  *   TriggerMessage for that message, scoped to the case's connector, the CP
@@ -24,6 +25,11 @@
  *   expected idTagInfo.status, the tag selected by idTag -- a resent FIRST
  *   start is a second StartTransaction on the wire and must not be read as
  *   the busy-connector one.
+ * - TC_021's assert, whole: the ChangeConfiguration it reads, and the answer
+ *   it reads, are the ones setting MeterValueSampleInterval to 10 -- not the
+ *   first on the wire, which a CSMS pushing its own metering configuration
+ *   at boot makes the push's, same key and another value. The right key
+ *   with the wrong value stays red and names the value it got.
  *
  * Why this is TypeScript. Every red row needs a CSMS (or a station) that
  * answers a chosen way -- a CALLERROR to the second start, a reused
@@ -46,8 +52,10 @@ import {
   assertDistinctTransactionIds,
   assertStartConfirmed,
   assertStartStatus,
+  tc021ChangeConfigurationSpec,
 } from "../tck/specs/core";
 import { assertTriggered } from "../tck/specs/remotetrigger-smartcharging";
+import { FixtureLog } from "../tck/states-201";
 
 /** A Logger frame line in the shape ocpp.ts parses (see its LOG_LINE_RE). */
 function line(direction: "Sent" | "Received", frame: unknown): string {
@@ -127,6 +135,32 @@ const distinct = (rec: AssertRecorder, frames: readonly Frame[]) =>
   assertDistinctTransactionIds(rec, frames, "TAG-1", "TAG-2", "distinct");
 const statusOf = (rec: AssertRecorder, frames: readonly Frame[]) =>
   assertStartStatus(rec, frames, "TAG-2", "Accepted", "status");
+
+// --- TC_021 ------------------------------------------------------------------
+
+/** The whole scenario's assert, not one helper: what TC_021 decides on is
+ *  WHICH ChangeConfiguration it reads, and that choice is made in the spec. */
+const tc021 = (rec: AssertRecorder, frames: readonly Frame[]) =>
+  tc021ChangeConfigurationSpec.assert({
+    cpId: "CP",
+    connector: 1,
+    frames,
+    lines: [],
+    rec,
+    records: undefined as never,
+    driveState: undefined,
+    fixtures: new FixtureLog(),
+  });
+const changeConfiguration = (id: string, key: string, value: string) =>
+  receivedCall(id, "ChangeConfiguration", { key, value });
+const changeConfigurationConf = (id: string, status: string) =>
+  sentResult(id, { status });
+/** A CSMS that pushes its own metering configuration at boot, before the
+ *  scenario's request -- the same key, another value. */
+const BOOT_PUSH = [
+  changeConfiguration("p", "MeterValueSampleInterval", "60"),
+  changeConfigurationConf("p", "Accepted"),
+];
 
 /** The accepted first start every spec48 row but the resend opens with. */
 const FIRST_START_OK = [start("a", "TAG-1"), startConf("a", 10)];
@@ -372,6 +406,61 @@ const cases: Array<{
     ],
     expect: ["FAIL"],
     because: 'got "ConcurrentTx"',
+  },
+  // TC_021
+  {
+    name: "tc021: the scenario's request, accepted",
+    check: tc021,
+    lines: [
+      changeConfiguration("c", "MeterValueSampleInterval", "10"),
+      changeConfigurationConf("c", "Accepted"),
+    ],
+    expect: ["PASS", "PASS"],
+  },
+  {
+    // The CSMS's own push is the FIRST ChangeConfiguration on the wire. A
+    // positional read takes its value, 60, for the scenario's.
+    name: "tc021: a boot push of the same key does not stand for the request",
+    check: tc021,
+    lines: [
+      ...BOOT_PUSH,
+      changeConfiguration("c", "MeterValueSampleInterval", "10"),
+      changeConfigurationConf("c", "Accepted"),
+    ],
+    expect: ["PASS", "PASS"],
+  },
+  {
+    name: "tc021: the right key with the wrong value is red, and says which",
+    check: tc021,
+    lines: [
+      changeConfiguration("c", "MeterValueSampleInterval", "11"),
+      changeConfigurationConf("c", "Accepted"),
+    ],
+    expect: ["FAIL", "FAIL"],
+    because: 'value="11"',
+  },
+  {
+    // The answer is read off the scenario's request, not off the first
+    // ChangeConfiguration -- whose Accepted would stand for a refusal.
+    name: "tc021: the request refused after an accepted boot push is red",
+    check: tc021,
+    lines: [
+      ...BOOT_PUSH,
+      changeConfiguration("c", "MeterValueSampleInterval", "10"),
+      changeConfigurationConf("c", "Rejected"),
+    ],
+    expect: ["PASS", "FAIL"],
+    because: "got status=Rejected",
+  },
+  {
+    name: "tc021: the request answered with a CALLERROR is red",
+    check: tc021,
+    lines: [
+      changeConfiguration("c", "MeterValueSampleInterval", "10"),
+      line("Sent", [4, "c", "InternalError", "store failed", {}]),
+    ],
+    expect: ["PASS", "FAIL"],
+    because: "CALLERROR InternalError",
   },
 ];
 
