@@ -100,6 +100,10 @@ jobs:
       - name: Codetics ev-server-lite driver agrees with the core
         run: bun run check:driver:codetics-ev-server-lite
 
+      # The fourth, OCPP 1.6 only as well. Offline like the three above.
+      - name: EVtivity driver agrees with the core
+        run: bun run check:driver:evtivity
+
       # In-process, because the CLI can only ever pass process.env: that a
       # driver's declarations follow the env they are RESOLVED with, not the
       # one that happened to exist at import, is unreachable from a shell.
@@ -197,6 +201,14 @@ jobs:
       # budget only a restart gives back.
       - name: An accepted command is not reported undispatched
         run: bun tests/codetics-ev-server-lite-dispatch.ts
+
+      # The fourth driver's commands are the library's, and its tests hold
+      # them; what stays here is its own REST client's login and the prepare
+      # hook's warning -- a token refused mid-sweep, a login lockout, a
+      # station still connected are answers the pinned server gives on
+      # nobody's demand.
+      - name: A refused login is remembered, and for how long
+        run: bun tests/evtivity-adapter.ts
 
       # In-process because what it holds is a SEQUENCE of writes -- what was
       # inserted, what was pointed back, what was left alone -- and a CSMS
