@@ -554,6 +554,13 @@ else
     # constant -- because the property is about the string, not about the
     # syntax around it.
     #
+    # `sort -u`, because the property is a SET: one image may back two
+    # services (drivers/evtivity/compose.yaml runs `migrate` and the one-shot
+    # `seed` from the same pin), and `comm` would report the second line as a
+    # pin the manifest does not record. Deduplicated on the whole line, so the
+    # same digest declared under two different tags still survives as two
+    # lines and still fails.
+    #
     # `|| true` IS LOAD-BEARING, not defensive noise: this file runs under
     # `set -e` with `pipefail`, so a grep that matches nothing would abort the
     # whole script with no message at all -- and "no digest-pinned image in the
@@ -567,7 +574,7 @@ else
         name = $1; tag = ""
         if (match(name, /:[^:\/]+$/)) { tag = substr(name, RSTART + 1); name = substr(name, 1, RSTART - 1) }
         printf "%s@%s\t%s\n", name, $2, tag
-      }' | sort > "$work14/from-file"
+      }' | sort -u > "$work14/from-file"
 
     if [ ! -s "$work14/from-file" ]; then
       echo "FAIL: $declaring declares no digest-pinned image." >&2

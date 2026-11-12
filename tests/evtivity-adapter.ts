@@ -1,0 +1,489 @@
+// Copyright 2026 Julien Herr
+// SPDX-License-Identifier: Apache-2.0
+/**
+ * evtivity-adapter.ts -- what the EVtivity driver still owns on top of the
+ * library it adapts: its own REST client's login, and the prepare hook's
+ * reading of a leftover session it cannot end.
+ *
+ * The OPERATIONS are not here. `drivers/evtivity/index.ts` takes them from
+ * `createEvtivityCsmsDriver` in `@ovarilo/csms-drivers`, and that library's
+ * own `tests/evtivity-driver.ts` holds every line this guard used to hold
+ * about them -- which command answers are non-dispatches (202, 404, 400, a
+ * send failure's 502, a 504 nobody can place, a timeout), which are answers
+ * (a 200 Rejected, a 502 CALLERROR, a 504 for an unanswered CALL, a 500), and
+ * the 400 version mismatch that is a capability gap. Each of those rows was
+ * checked by name against that file at 0.0.3 before it left this one.
+ *
+ * What the library does not export is its REST client, so records.ts,
+ * provision.ts and the prepare hook ride a client of their own
+ * (`drivers/evtivity/api-client.ts`), with a login cache of its own. Its rules
+ * are the library's, and this guard holds them here because nothing upstream
+ * runs this copy:
+ *
+ * PROPERTY, in 6 parts:
+ *  1. ONE LOGIN PER PROCESS. Concurrent clients share one
+ *     `POST /v1/auth/login`, and a token near its JWT `exp` (EVtivity's lives
+ *     one hour) is replaced before use.
+ *  2. A TOKEN OUTLIVED. A request answered 401 renews the session and is sent
+ *     once more, only when the session is at least a minute old; a second 401
+ *     is the request's answer, a non-dispatch like every refused REST call. A
+ *     401 on a younger session renews nothing, so a 401 the server keeps
+ *     sending costs at most one login a minute.
+ *  3. WHICH LOGIN FAILURES ARE KEPT. A 401 (INVALID_CREDENTIALS -- each one
+ *     counts toward the account's sign-in backoff), a 403 (an MFA policy the
+ *     account cannot meet) and a 200 `{"mustResetPassword":true}` are kept: the
+ *     next call makes no request, and the message says the process will not
+ *     try again soon. A 429, a 5xx, a 2xx without a token and a `fetch` that
+ *     rejects or times out are forgotten, and the next call logs in again.
+ *     Kept or forgotten, every one is a `CsmsNotDispatchedError`, on every
+ *     call it answers: nothing was asked of the server.
+ *  4. A kept refusal expires after fifteen minutes.
+ *  5. THE SESSION IS BOUND TO THE CREDENTIAL. Two clients of one server and
+ *     account with different passwords do not share a session, and a refusal
+ *     kept for one password does not block a corrected one.
+ *  6. A LEFTOVER SESSION THE PREPARE HOOK CANNOT END IS NAMED. Ending a session
+ *     an interrupted run left active answers 409 two ways: SESSION_NOT_ACTIVE
+ *     (it ended since the cached list was read) is quiet; STATION_ONLINE
+ *     (the station is connected, so the session stays, and its tag will be
+ *     answered ConcurrentTx) warns with the cp id and the session. Any other
+ *     refusal is a non-dispatch. Source: packages/api/src/routes/sessions.ts,
+ *     `/sessions/:id/end`, at v0.1.51.
+ *
+ * WHAT IT DOES NOT CLAIM. That the two caches -- this client's and the
+ * library's -- are one: they are not, so a process logs in twice, and a wrong
+ * password is refused twice. drivers/evtivity/README.md states the cost. Nor
+ * that the charging-profile lookup index.ts hands the library is wired: the
+ * factory builds its client with the global `fetch`, and reaching it offline
+ * would mean patching that global or exporting the factory call, the two
+ * seams capability-parity.ts already declined. The live SetChargingProfile
+ * scenarios are its evidence.
+ *
+ * WHY THIS IS TYPESCRIPT AND NOT A SHELL GUARD. Every row needs the CSMS to
+ * answer a chosen way -- a token refused mid-sweep, a login lockout, a
+ * station still connected -- none of which the pinned stack produces on
+ * demand, and the lockout spends the account's sign-in budget. So the client
+ * takes its `fetch`, the seam `codetics-ev-server-lite-dispatch.ts` rides, and
+ * each row is a closure.
+ *
+ * Each row gets its own API URL because the session cache is module-level and
+ * keyed by server and account: a shared key would let one row's cached refusal
+ * decide the next row's verdict.
+ *
+ * Offline: answers every request from a closure. Opens no socket, starts
+ * nothing.
+ */
+import { CsmsNotDispatchedError, type FetchLike } from "../tck/driver";
+import { EvtivityApi } from "../drivers/evtivity/api-client";
+import { defaultEvtivityConfig, type EvtivityConfig } from "../drivers/evtivity/config";
+import { endLeftoverSessions } from "../drivers/evtivity/provision";
+
+let failures = 0;
+
+function fail(what: string, detail: string): void {
+  failures++;
+  process.stderr.write(`FAIL: ${what}\n  ${detail}\n`);
+}
+
+let rowSeq = 0;
+
+/** A configuration no other row shares -- see the header. */
+function freshConfig(password?: string): EvtivityConfig {
+  rowSeq++;
+  return defaultEvtivityConfig({
+    EVTIVITY_API_URL: `http://evtivity-row-${rowSeq}.test`,
+    ...(password === undefined ? {} : { EVTIVITY_PASSWORD: password }),
+  });
+}
+
+/** Another password on the same server and account as `cfg`. */
+function withPassword(cfg: EvtivityConfig, password: string): EvtivityConfig {
+  return { ...cfg, password };
+}
+
+type Classification = "not-dispatched" | "plain-error" | "not-an-error";
+
+function classify(err: unknown): Classification {
+  if (err instanceof CsmsNotDispatchedError) return "not-dispatched";
+  if (err instanceof Error) return "plain-error";
+  return "not-an-error";
+}
+
+function message(err: unknown): string {
+  return err instanceof Error ? err.message : String(err);
+}
+
+// ---------------------------------------------------------------------------
+// The fake server
+// ---------------------------------------------------------------------------
+
+type Handler = () => Response | Promise<Response>;
+
+function json(value: unknown, status = 200): Response {
+  return new Response(JSON.stringify(value), { status });
+}
+
+/** A JWT whose payload carries `exp`, seconds from now. Unsigned: the client
+ *  only reads the expiry, it never verifies. */
+function jwt(expInSecs = 3600, n = 1): string {
+  const part = (v: unknown) => Buffer.from(JSON.stringify(v)).toString("base64url");
+  const now = Math.floor(Date.now() / 1000);
+  return `${part({ alg: "HS256" })}.${part({ sub: `usr_${n}`, iat: now, exp: now + expInSecs })}.sig`;
+}
+
+const LOGIN_OK: Handler = () => json({ token: jwt(), user: { id: "usr_1" } });
+const REFUSED: Handler = () => Promise.reject(new TypeError("connect ECONNREFUSED"));
+const ABORTED: Handler = () =>
+  Promise.reject(new DOMException("The operation timed out.", "TimeoutError"));
+const UNAUTHORIZED: Handler = () => json({ error: "Unauthorized", code: "UNAUTHORIZED" }, 401);
+const READ_OK: Handler = () => json({ data: [], total: 0 });
+const INVALID_CREDENTIALS: Handler = () =>
+  json({ error: "Invalid credentials", code: "INVALID_CREDENTIALS" }, 401);
+
+interface Server {
+  readonly fetch: FetchLike;
+  readonly count: { login: number; read: number };
+  /** The authorization header of every read, in order. */
+  readonly authorizations: (string | null)[];
+}
+
+interface Routes {
+  login?: Handler[];
+  read?: Handler[];
+}
+
+/**
+ * Login on `POST /v1/auth/login`, every other request is "a read". Each route
+ * is a queue of handlers; the last one repeats, so `[fail, ok]` is "fails
+ * once, then answers".
+ */
+function server(routes: Routes): Server {
+  const count = { login: 0, read: 0 };
+  const authorizations: (string | null)[] = [];
+  const take = (queue: Handler[] | undefined, n: number, fallback: Handler): Handler => {
+    if (queue === undefined || queue.length === 0) return fallback;
+    return queue[Math.min(n, queue.length - 1)]!;
+  };
+  const fetchImpl: FetchLike = async (input, init) => {
+    const path = new URL(input).pathname;
+    if (init?.method === "POST" && path === "/v1/auth/login") {
+      return take(routes.login, count.login++, LOGIN_OK)();
+    }
+    authorizations.push(new Headers(init?.headers).get("authorization"));
+    return take(routes.read, count.read++, READ_OK)();
+  };
+  return { fetch: fetchImpl, count, authorizations };
+}
+
+/** One authenticated REST read, the shape records.ts and provision.ts use. */
+function read(cfg: EvtivityConfig, srv: Server): Promise<unknown> {
+  return new EvtivityApi(cfg, srv.fetch).get("/v1/stations?search=CERTCP1");
+}
+
+async function outcomeOf(p: Promise<unknown>): Promise<{ ok: boolean; err?: unknown }> {
+  try {
+    await p;
+    return { ok: true };
+  } catch (err) {
+    return { ok: false, err };
+  }
+}
+
+/** Runs `body` with `Date.now` moved by whatever `body` sets through `move`. */
+async function withClock(body: (move: (ms: number) => void) => Promise<void>): Promise<void> {
+  const realNow = Date.now;
+  let offsetMs = 0;
+  Date.now = () => realNow() + offsetMs;
+  try {
+    await body((ms) => {
+      offsetMs = ms;
+    });
+  } finally {
+    Date.now = realNow;
+  }
+}
+
+// ---------------------------------------------------------------------------
+// Part 1: one login, renewed when it runs out
+// ---------------------------------------------------------------------------
+
+{
+  const what = "part 1: three concurrent clients";
+  const cfg = freshConfig();
+  const srv = server({});
+  const results = await Promise.all([0, 1, 2].map(() => outcomeOf(read(cfg, srv))));
+  if (!results.every((r) => r.ok)) {
+    fail(what, `expected all three to succeed: ${results.map((r) => message(r.err)).join("; ")}`);
+  }
+  if (srv.count.login !== 1) fail(what, `expected one login, got ${srv.count.login}`);
+}
+{
+  const what = "part 1: a token about to expire is replaced before use";
+  const cfg = freshConfig();
+  const srv = server({
+    login: [() => json({ token: jwt(30, 1) }), () => json({ token: jwt(3600, 2) })],
+  });
+  const first = await outcomeOf(read(cfg, srv));
+  const second = await outcomeOf(read(cfg, srv));
+  if (!first.ok || !second.ok) {
+    fail(what, `expected both to succeed: ${message(first.err)} / ${message(second.err)}`);
+  }
+  if (srv.count.login !== 2) fail(what, `expected two logins, got ${srv.count.login}`);
+}
+
+// ---------------------------------------------------------------------------
+// Part 2: a token the server stopped honouring
+// ---------------------------------------------------------------------------
+
+await withClock(async (move) => {
+  const what = "part 2: a read answered 401 once the session is a minute old";
+  const cfg = freshConfig();
+  const srv = server({
+    login: [() => json({ token: jwt(3600, 1) }), () => json({ token: jwt(3600, 2) })],
+    read: [READ_OK, UNAUTHORIZED, READ_OK],
+  });
+  const first = await outcomeOf(read(cfg, srv));
+  move(60_000);
+  const second = await outcomeOf(read(cfg, srv));
+  if (!first.ok || !second.ok) {
+    fail(what, `expected a fresh login and a resent read: ${message(first.err)} / ${message(second.err)}`);
+  }
+  if (srv.count.login !== 2 || srv.count.read !== 3) {
+    fail(what, `expected 2 logins and 3 reads, got ${srv.count.login} and ${srv.count.read}`);
+  }
+  if (srv.authorizations[2] === srv.authorizations[1]) {
+    fail(what, "the resent read must carry the new token");
+  }
+});
+await withClock(async (move) => {
+  const what = "part 2: a read answered 401 twice";
+  const cfg = freshConfig();
+  const srv = server({ read: [READ_OK, UNAUTHORIZED] });
+  await outcomeOf(read(cfg, srv));
+  move(60_000);
+  const result = await outcomeOf(read(cfg, srv));
+  if (result.ok || classify(result.err) !== "not-dispatched") {
+    fail(what, `expected a non-dispatch, got ${result.ok ? "success" : classify(result.err)}`);
+  }
+  if (srv.count.login !== 2 || srv.count.read !== 3) {
+    fail(what, `expected one retry, got ${srv.count.login} logins and ${srv.count.read} reads`);
+  }
+});
+{
+  const what = "part 2: a 401 on a session younger than a minute renews nothing";
+  const cfg = freshConfig();
+  const srv = server({ read: [UNAUTHORIZED] });
+  const results = [];
+  for (let i = 0; i < 3; i++) results.push(await outcomeOf(read(cfg, srv)));
+  if (!results.every((r) => !r.ok && classify(r.err) === "not-dispatched")) {
+    fail(
+      what,
+      `expected three non-dispatches, got ${results.map((r) => (r.ok ? "success" : classify(r.err))).join(", ")}`,
+    );
+  }
+  if (srv.count.login !== 1 || srv.count.read !== 3) {
+    fail(what, `expected 1 login over 3 reads, got ${srv.count.login} and ${srv.count.read}`);
+  }
+}
+
+// ---------------------------------------------------------------------------
+// Part 3: kept and forgotten login failures
+// ---------------------------------------------------------------------------
+
+/** Two clients of one fresh configuration in turn: the second sees whatever
+ *  the first left in the session cache. */
+async function twoReads(routes: Routes) {
+  const cfg = freshConfig();
+  const srv = server(routes);
+  const first = await outcomeOf(read(cfg, srv));
+  const second = await outcomeOf(read(cfg, srv));
+  return { first, second, srv };
+}
+
+const FORGOTTEN: { what: string; handler: Handler }[] = [
+  { what: "login whose fetch rejects", handler: REFUSED },
+  { what: "login aborted by its own timeout", handler: ABORTED },
+  { what: "login refused 429", handler: () => json({ error: "Too Many Requests" }, 429) },
+  { what: "login refused 503", handler: () => new Response("down", { status: 503 }) },
+  { what: "login answered 200 without a token", handler: () => json({ user: {} }) },
+];
+for (const { what: name, handler } of FORGOTTEN) {
+  const what = `part 3: ${name} is forgotten`;
+  const { first, second, srv } = await twoReads({ login: [handler, LOGIN_OK] });
+  if (first.ok) {
+    fail(what, "the first call was expected to fail");
+    continue;
+  }
+  // Nothing was asked of the server, so the scenario must ERROR rather than
+  // assert.
+  if (classify(first.err) !== "not-dispatched") {
+    fail(what, `expected a non-dispatch, got ${classify(first.err)} (${message(first.err)})`);
+  }
+  if (message(first.err).includes("will not try again")) {
+    fail(what, `the first failure claims it will not retry: ${message(first.err)}`);
+  }
+  if (!second.ok) fail(what, `the second call did not log in again: ${message(second.err)}`);
+  if (srv.count.login !== 2) fail(what, `expected 2 logins, got ${srv.count.login}`);
+}
+
+const KEPT: { what: string; handler: Handler }[] = [
+  { what: "login refused 401", handler: INVALID_CREDENTIALS },
+  {
+    what: "login refused 403",
+    handler: () => json({ error: "Required MFA cannot be set up", code: "MFA_SETUP_UNAVAILABLE" }, 403),
+  },
+  { what: "login answered mustResetPassword", handler: () => json({ mustResetPassword: true }) },
+];
+for (const { what: name, handler } of KEPT) {
+  const what = `part 3: ${name} is kept`;
+  const { first, second, srv } = await twoReads({ login: [handler, LOGIN_OK] });
+  if (first.ok || second.ok) {
+    fail(what, "both calls were expected to fail");
+    continue;
+  }
+  // Neither call reached the server: the kept refusal is a non-dispatch both
+  // times, not only when it is first raised.
+  for (const [which, err] of [["first", first.err], ["second", second.err]] as const) {
+    if (classify(err) !== "not-dispatched") {
+      fail(what, `the ${which} call: expected a non-dispatch, got ${classify(err)} (${message(err)})`);
+    }
+  }
+  if (!message(first.err).includes("will not try again")) {
+    fail(what, `the message does not say the process will not retry: ${message(first.err)}`);
+  }
+  if (srv.count.login !== 1 || srv.count.read !== 0) {
+    fail(what, `expected 1 login and no read, got ${srv.count.login} and ${srv.count.read}`);
+  }
+}
+
+// ---------------------------------------------------------------------------
+// Part 4: a kept refusal expires
+// ---------------------------------------------------------------------------
+
+await withClock(async (move) => {
+  const what = "part 4: a kept 401 login refusal after fifteen minutes";
+  const cfg = freshConfig();
+  const srv = server({ login: [INVALID_CREDENTIALS, LOGIN_OK] });
+  const first = await outcomeOf(read(cfg, srv));
+  move(14 * 60_000);
+  const within = await outcomeOf(read(cfg, srv));
+  if (first.ok || within.ok || srv.count.login !== 1) {
+    fail(what, `the refusal must hold within the window, got ${srv.count.login} logins`);
+  }
+  move(15 * 60_000);
+  const after = await outcomeOf(read(cfg, srv));
+  if (!after.ok || srv.count.login !== 2) {
+    fail(
+      what,
+      `expected a new login after the window, got ${srv.count.login} logins` +
+        (after.ok ? "" : `: ${message(after.err)}`),
+    );
+  }
+});
+
+// ---------------------------------------------------------------------------
+// Part 5: the session is bound to the credential
+// ---------------------------------------------------------------------------
+
+{
+  const what = "part 5: a second password does not reuse the first one's session";
+  const cfg = freshConfig("right");
+  const srv = server({});
+  const first = await outcomeOf(read(cfg, srv));
+  const second = await outcomeOf(read(withPassword(cfg, "wrong"), srv));
+  if (!first.ok || !second.ok) fail(what, `${message(first.err)} / ${message(second.err)}`);
+  if (srv.count.login !== 2) fail(what, `expected 2 logins, got ${srv.count.login}`);
+}
+{
+  const what = "part 5: a refusal kept for one password does not block another";
+  const cfg = freshConfig("wrong");
+  const srv = server({ login: [INVALID_CREDENTIALS, LOGIN_OK] });
+  const wrong = await outcomeOf(read(cfg, srv));
+  const right = await outcomeOf(read(withPassword(cfg, "right"), srv));
+  if (wrong.ok) fail(what, "the refused password was expected to fail");
+  if (!right.ok || srv.count.login !== 2) {
+    fail(
+      what,
+      `expected the corrected password to log in, got ${srv.count.login} logins` +
+        (right.ok ? "" : `: ${message(right.err)}`),
+    );
+  }
+}
+
+// ---------------------------------------------------------------------------
+// Part 6: the prepare hook ending a session an interrupted run left active
+// ---------------------------------------------------------------------------
+
+interface EndCase {
+  readonly what: string;
+  readonly answer: Handler;
+  /** Substrings the one warning must carry; absent means no warning at all. */
+  readonly warns?: readonly string[];
+  readonly expect: "resolves" | Classification;
+}
+
+const END_CASES: EndCase[] = [
+  { what: "ended", answer: () => json({ status: "ended" }), expect: "resolves" },
+  {
+    // The list the session came from is a cached read (records.ts), so a
+    // session that ended since is expected, and says nothing.
+    what: "409 SESSION_NOT_ACTIVE is quiet",
+    answer: () => json({ error: "The session is not active", code: "SESSION_NOT_ACTIVE" }, 409),
+    expect: "resolves",
+  },
+  {
+    // The session stays active, and the next Authorize of its tag is answered
+    // ConcurrentTx: the scenario will fail for a reason the run must name.
+    what: "409 STATION_ONLINE warns, naming the station and the session",
+    answer: () => json({ error: "The station is connected", code: "STATION_ONLINE" }, 409),
+    warns: ["CERTCP1", "ses_left", "STATION_ONLINE"],
+    expect: "resolves",
+  },
+  {
+    what: "a 500 is a non-dispatch",
+    answer: () => json({ error: "Internal server error" }, 500),
+    expect: "not-dispatched",
+  },
+];
+for (const kase of END_CASES) {
+  const what = `part 6: ${kase.what}`;
+  const posted: string[] = [];
+  const fetchImpl: FetchLike = async (input, init) => {
+    const path = new URL(input).pathname;
+    if (init?.method === "POST" && path === "/v1/auth/login") return LOGIN_OK();
+    posted.push(`${init?.method ?? "GET"} ${path}`);
+    return kase.answer();
+  };
+  const warnings: string[] = [];
+  const result = await outcomeOf(
+    endLeftoverSessions(new EvtivityApi(freshConfig(), fetchImpl), "CERTCP1", ["ses_left"], (line) =>
+      warnings.push(line),
+    ),
+  );
+  const got = result.ok ? "resolves" : classify(result.err);
+  if (got !== kase.expect) {
+    fail(what, `expected ${kase.expect}, got ${got}${result.ok ? "" : ` (${message(result.err)})`}`);
+  }
+  if (posted.join() !== "POST /v1/sessions/ses_left/end") fail(what, `posted ${posted.join(", ")}`);
+  if (kase.warns === undefined) {
+    if (warnings.length > 0) fail(what, `expected no warning, got ${warnings.join(" | ")}`);
+  } else if (warnings.length !== 1) {
+    fail(what, `expected one warning, got ${warnings.length}: ${warnings.join(" | ")}`);
+  } else {
+    for (const s of kase.warns) {
+      if (!warnings[0]!.includes(s)) fail(what, `the warning lacks ${JSON.stringify(s)}: ${warnings[0]}`);
+    }
+  }
+}
+
+if (failures > 0) {
+  process.stderr.write(
+    `\n${failures} failure(s). This guard holds what the EVtivity driver owns ` +
+      `on top of @ovarilo/csms-drivers: its own REST client's login -- one per ` +
+      `process, renewed on a stale token, which failures it remembers and for ` +
+      `how long, bound to the password -- and when a leftover session the ` +
+      `prepare hook could not end is named. The command classification is ` +
+      `the library's, and its tests hold it.\n`,
+  );
+  process.exit(1);
+}
+process.stdout.write("evtivity adapter: OK\n");

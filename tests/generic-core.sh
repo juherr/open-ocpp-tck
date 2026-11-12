@@ -151,13 +151,14 @@ scan() { # scan <dir> <forbidden-alternation> <why>
 # CONTRIBUTING.md tells a driver author to edit `known_drivers` and
 # `csms_names` by name -- rename them there too, or that page sends the next
 # author looking for a variable this file no longer has.
-known_drivers='steve citrineos codetics-ev-server-lite'
+known_drivers='steve citrineos codetics-ev-server-lite evtivity'
 
 csms_names() { # <driver directory> -> alternation of the names that driver owns
   case "$1" in
     steve) printf 'steve|stevedb|mariadb' ;;
     citrineos) printf 'citrine|citrineos' ;;
     codetics-ev-server-lite) printf 'codetics|ev-server-lite|evserverlite' ;;
+    evtivity) printf 'evtivity' ;;
     *) return 1 ;;
   esac
 }
