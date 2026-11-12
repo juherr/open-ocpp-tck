@@ -22,23 +22,25 @@
  *    the response's TEXT -- which is how three of this suite's member-order
  *    couplings got written (see issue #44).
  *
- * WHAT IS HERE AND WHAT IS IN `packages/trace-format/`. Reading the FORMAT -- the
- * schema's members, its two conditionals, `raw` against the members beside it,
- * the normative consumer view -- is not specific to this suite and lives in
- * `packages/trace-format/`, which is destined for the format's own organisation and
- * depends on nothing here. What is left in this file is the two things that
- * ARE specific to this suite: which of the library's facts are worth refusing
- * a run over, and how a record becomes one of `ocpp.ts`'s frames.
+ * WHAT IS HERE AND WHAT IS IN THE SDK. Reading the FORMAT -- JSONL framing,
+ * the schema's members, its two conditionals, the `schemaVersion` rule -- is
+ * not specific to this suite and is the format organisation's own SDK:
+ * `@open-ocpp-trace/core` validates a record, `@open-ocpp-trace/jsonl` parses
+ * a line into one. A record either SDK withholds is off the format, and this
+ * file calls it `unreadable` without a second opinion. What is left here is
+ * what IS specific to this suite: the one check the SDK does not make, and how
+ * a record becomes one of `ocpp.ts`'s frames.
  *
- * That split has a sharp edge worth stating. The library reports a `raw` that
- * disagrees with its envelope on EVERY member; this file refuses on three of
- * them -- `messageType`, `messageId`, `action` -- and lets the rest through.
- * That is deliberate and it is the same rule as before the split: a
- * disagreement on a member an assertion SELECTS by silently answers the wrong
- * question, where a disagreement on one that is only ever REPORTED (an error
- * description, say) shows up in the failure detail a human is already reading.
- * Refusing a whole run's evidence is worth it for the first and not the
- * second. Detection is complete; the policy is scoped.
+ * That check is `raw` against the envelope beside it, and it has a sharp edge
+ * worth stating. The SDK compares nothing between `raw` and the other members;
+ * this file compares three of them -- `messageType`, `messageId`, `action` --
+ * and lets the rest through. That is deliberate and it is the same rule as
+ * when a local reader detected a disagreement on every member: one on a member
+ * an assertion SELECTS by silently answers the wrong question, where one on a
+ * member that is only ever REPORTED (an error description, say) shows up in
+ * the failure detail a human is already reading. Refusing a whole run's
+ * evidence is worth it for the first and not the second, so the comparison is
+ * ported for those three members only, from the reader it replaces.
  *
  * THE PARSER IS `ocpp.ts`'s, NOT A SECOND ONE. Every record carries `raw`, the
  * OCPP-J array as it went over the wire, which is exactly what
@@ -151,9 +153,17 @@ export declare function recordsToFrames(records: readonly unknown[]): FrameMappi
  * and fail every check in the scenario for a reason that has nothing to do
  * with the CSMS; refusing hands them the log, which is where the frames are.
  *
- * Blank lines are skipped rather than refused -- see `packages/trace-format/jsonl.ts`:
- * a trailing newline is a property of appending to a file, not a malformed
- * record.
+ * THREE OF THE SDK READER'S FRAMING RULES ARE MIRRORED HERE: a BOM is dropped
+ * at the start of the file only, a CR before the LF is part of the
+ * terminator, and a blank line (spaces, tabs and CRs) -- a trailing newline is
+ * a property of appending to a file, not a malformed record -- is skipped
+ * rather than refused. The SDK's streaming reader is async and this function
+ * is not, so each line goes through its synchronous `parseRecord` instead, and
+ * the rules are restated for that reason. Its other two are NOT applied: no
+ * line-length bound, and the file is decoded with `readFileSync`'s lenient
+ * UTF-8, which replaces a bad byte rather than reporting it. `empty` counts
+ * non-blank LINES, not records read, so a file whose only line is torn is
+ * `unreadable`.
  */
 export declare function readTrace(path: string): TraceRead;
 export {};

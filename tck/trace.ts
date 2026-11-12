@@ -22,23 +22,25 @@
  *    the response's TEXT -- which is how three of this suite's member-order
  *    couplings got written (see issue #44).
  *
- * WHAT IS HERE AND WHAT IS IN `packages/trace-format/`. Reading the FORMAT -- the
- * schema's members, its two conditionals, `raw` against the members beside it,
- * the normative consumer view -- is not specific to this suite and lives in
- * `packages/trace-format/`, which is destined for the format's own organisation and
- * depends on nothing here. What is left in this file is the two things that
- * ARE specific to this suite: which of the library's facts are worth refusing
- * a run over, and how a record becomes one of `ocpp.ts`'s frames.
+ * WHAT IS HERE AND WHAT IS IN THE SDK. Reading the FORMAT -- JSONL framing,
+ * the schema's members, its two conditionals, the `schemaVersion` rule -- is
+ * not specific to this suite and is the format organisation's own SDK:
+ * `@open-ocpp-trace/core` validates a record, `@open-ocpp-trace/jsonl` parses
+ * a line into one. A record either SDK withholds is off the format, and this
+ * file calls it `unreadable` without a second opinion. What is left here is
+ * what IS specific to this suite: the one check the SDK does not make, and how
+ * a record becomes one of `ocpp.ts`'s frames.
  *
- * That split has a sharp edge worth stating. The library reports a `raw` that
- * disagrees with its envelope on EVERY member; this file refuses on three of
- * them -- `messageType`, `messageId`, `action` -- and lets the rest through.
- * That is deliberate and it is the same rule as before the split: a
- * disagreement on a member an assertion SELECTS by silently answers the wrong
- * question, where a disagreement on one that is only ever REPORTED (an error
- * description, say) shows up in the failure detail a human is already reading.
- * Refusing a whole run's evidence is worth it for the first and not the
- * second. Detection is complete; the policy is scoped.
+ * That check is `raw` against the envelope beside it, and it has a sharp edge
+ * worth stating. The SDK compares nothing between `raw` and the other members;
+ * this file compares three of them -- `messageType`, `messageId`, `action` --
+ * and lets the rest through. That is deliberate and it is the same rule as
+ * when a local reader detected a disagreement on every member: one on a member
+ * an assertion SELECTS by silently answers the wrong question, where one on a
+ * member that is only ever REPORTED (an error description, say) shows up in
+ * the failure detail a human is already reading. Refusing a whole run's
+ * evidence is worth it for the first and not the second, so the comparison is
+ * ported for those three members only, from the reader it replaces.
  *
  * THE PARSER IS `ocpp.ts`'s, NOT A SECOND ONE. Every record carries `raw`, the
  * OCPP-J array as it went over the wire, which is exactly what
@@ -82,13 +84,13 @@
 import { readFileSync } from "node:fs";
 
 import {
-  readTraceText,
-  validateRecords,
-  type Diagnostic,
-  type RawEnvelopeMember,
-  type TraceDirection,
+  validateRecord,
+  type Direction as TraceDirection,
+  type MessageType,
   type TraceRecord,
-} from "../packages/trace-format";
+} from "@open-ocpp-trace/core";
+import { parseRecord } from "@open-ocpp-trace/jsonl/reader";
+
 import { parseFrameMessage, type Direction, type Frame } from "./ocpp";
 
 /** How `ocpp.ts`'s {@link parseFrameMessage} expects each direction spelled. */
@@ -97,12 +99,18 @@ const DIRECTION_PREFIX: Record<Direction, string> = {
   received: "Received:",
 };
 
-/** The record members an assertion SELECTS frames by -- see this file's header. */
-const SELECTING_MEMBERS: readonly RawEnvelopeMember[] = [
-  "messageType",
-  "messageId",
-  "action",
-];
+/** The `messageType` each OCPP-J message type id must be spelled as. */
+const MESSAGE_TYPE_OF_ID: Record<number, MessageType> = {
+  2: "CALL",
+  3: "CALLRESULT",
+  4: "CALLERROR",
+};
+
+/**
+ * A line with nothing to read, as the SDK's own JSONL reader defines one:
+ * spaces, tabs and carriage returns only.
+ */
+const BLANK_LINE = /^[ \t\r]*$/;
 
 /**
  * Why a set of records produced no frames.
@@ -158,29 +166,34 @@ export type TraceRead = FramesOr<TraceRefusal>;
  * wrong, so the rule is reachable without the I/O around it.
  */
 export function recordsToFrames(records: readonly unknown[]): FrameMapping {
-  const { records: validated, diagnostics } = validateRecords(records);
-  return framesFrom(validated, diagnostics);
+  return framesFrom(
+    records.map((value) => {
+      const result = validateRecord(value);
+      return result.ok ? result.record : undefined;
+    }),
+  );
 }
 
 /**
- * The policy, applied to what the library found. The one place a diagnostic
- * becomes a verdict about the run, so both entry points share it rather than
- * each deciding for itself.
+ * The policy, applied to what the SDK read. Both entry points share it rather
+ * than each deciding for itself.
+ *
+ * A record the SDK withheld is off the format -- a member missing or mistyped,
+ * a `schemaVersion` that is not `1.<minor>`, where a member NAME may stop
+ * meaning what this module reads it as -- and a `raw` that contradicts its
+ * envelope is a fact about the file rather than about one record. Either way
+ * the whole file goes back, BEFORE any record is mapped, so a conformant
+ * refusal further down cannot mask an unreadable record.
  */
-function framesFrom(
-  validated: readonly (TraceRecord | undefined)[],
-  diagnostics: readonly Diagnostic[],
-): FrameMapping {
-  // A record the library could not read at all is off the schema, and a
-  // diagnostic this suite refuses over is a fact about the file rather than
-  // about one record. Either way the whole file goes back.
+function framesFrom(validated: readonly (TraceRecord | undefined)[]): FrameMapping {
   if (validated.some((record) => record === undefined)) {
     return { refusal: "unreadable" };
   }
-  if (diagnostics.some(refusesOver)) return { refusal: "unreadable" };
+  const records = validated as readonly TraceRecord[];
+  if (records.some(rawContradictsSelectingMember)) return { refusal: "unreadable" };
 
   const frames: Frame[] = [];
-  for (const record of validated as readonly TraceRecord[]) {
+  for (const record of records) {
     const mapped = recordToFrame(record);
     if (mapped.refusal !== undefined) return { refusal: mapped.refusal };
     frames.push(mapped.frame);
@@ -189,41 +202,39 @@ function framesFrom(
 }
 
 /**
- * Which of the library's facts cost a whole run's evidence.
+ * Whether `raw` disagrees with the envelope on a member an assertion SELECTS
+ * frames by: `messageType`, `messageId` or `action`. See this file's header
+ * for why those three and no other.
  *
- * Everything the library reports about a SCHEMA-VALID record is a judgement
- * call here, and this function is the whole of it:
+ * Ported from `checkRawFidelity` in `packages/trace-format/validate.ts`, which
+ * transcribes the specification's reference consumer member for member,
+ * INCLUDING which comparisons are conditional: `messageId` is optional, so it
+ * is compared only when the record carries one, and only a CALL's frame has an
+ * action. Only the three selecting members' rows were kept.
  *
- *  - an unreadable `schemaVersion` major may move what a member NAME means, so
- *    every frame after it is a guess;
- *  - a `raw` that contradicts its envelope on a member assertions select by
- *    answers the wrong question silently -- and on any other member it does
- *    not, so it is left to show up in the failure detail.
- *
- * AND THAT IS ALL OF IT, deliberately. `raw-not-json` and `raw-not-array` used
- * to be rows here too, on the reasoning that saying so early "costs nothing
- * and reads better". It cost something: neither can become a frame anyway --
- * `parseFrameMessage` refuses both and the mapping below turns that into the
- * same `unreadable` -- so the rows were unfalsifiable. Deleting them left
- * `tests/trace-frames.ts` green, which is the mutation saying the table
- * claimed two judgements it did not make. A policy list whose rows nothing
- * depends on is a policy list a reader cannot trust.
- *
- * A code this suite has no opinion about is NOT refused. That is the safe
- * default in the direction that matters: a new diagnostic in the library turns
- * into a report, never into a silently red sweep.
+ * A `raw` that is not JSON, or not an array, is NOT a contradiction here. It
+ * used to be refused in its own right, on the reasoning that saying so early
+ * "costs nothing and reads better". It cost something: neither can become a
+ * frame anyway -- `parseFrameMessage` refuses both and {@link recordToFrame}
+ * turns that into the same `unreadable` -- so the rows were unfalsifiable.
+ * Deleting them left `tests/trace-frames.ts` green, which is the mutation
+ * saying the policy claimed two judgements it did not make.
  */
-function refusesOver(diagnostic: Diagnostic): boolean {
-  switch (diagnostic.code) {
-    case "unsupported-schema-major":
-      return true;
-    case "raw-envelope-mismatch":
-      return (SELECTING_MEMBERS as readonly string[]).includes(
-        diagnostic.member ?? "",
-      );
-    default:
-      return false;
+function rawContradictsSelectingMember(record: TraceRecord): boolean {
+  if (record.raw === undefined) return false;
+
+  let frame: unknown;
+  try {
+    frame = JSON.parse(record.raw);
+  } catch {
+    return false;
   }
+  if (!Array.isArray(frame)) return false;
+
+  if (MESSAGE_TYPE_OF_ID[frame[0] as number] !== record.messageType) return true;
+  if (record.messageId !== undefined && frame[1] !== record.messageId) return true;
+  if (record.messageType === "CALL" && frame[2] !== record.action) return true;
+  return false;
 }
 
 /**
@@ -282,9 +293,17 @@ function directionOf(value: TraceDirection): Direction {
  * and fail every check in the scenario for a reason that has nothing to do
  * with the CSMS; refusing hands them the log, which is where the frames are.
  *
- * Blank lines are skipped rather than refused -- see `packages/trace-format/jsonl.ts`:
- * a trailing newline is a property of appending to a file, not a malformed
- * record.
+ * THREE OF THE SDK READER'S FRAMING RULES ARE MIRRORED HERE: a BOM is dropped
+ * at the start of the file only, a CR before the LF is part of the
+ * terminator, and a blank line (spaces, tabs and CRs) -- a trailing newline is
+ * a property of appending to a file, not a malformed record -- is skipped
+ * rather than refused. The SDK's streaming reader is async and this function
+ * is not, so each line goes through its synchronous `parseRecord` instead, and
+ * the rules are restated for that reason. Its other two are NOT applied: no
+ * line-length bound, and the file is decoded with `readFileSync`'s lenient
+ * UTF-8, which replaces a bad byte rather than reporting it. `empty` counts
+ * non-blank LINES, not records read, so a file whose only line is torn is
+ * `unreadable`.
  */
 export function readTrace(path: string): TraceRead {
   let text: string;
@@ -294,8 +313,14 @@ export function readTrace(path: string): TraceRead {
     return { refusal: "absent" };
   }
 
-  const { records, diagnostics } = readTraceText(text);
+  const records: (TraceRecord | undefined)[] = [];
+  const body = text.startsWith("\uFEFF") ? text.slice(1) : text;
+  for (const line of body.split("\n")) {
+    if (BLANK_LINE.test(line)) continue;
+    const read = parseRecord(line.endsWith("\r") ? line.slice(0, -1) : line);
+    records.push(read.ok ? read.record : undefined);
+  }
   if (records.length === 0) return { refusal: "empty" };
 
-  return framesFrom(records, diagnostics);
+  return framesFrom(records);
 }

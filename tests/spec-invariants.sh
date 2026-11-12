@@ -60,6 +60,13 @@ if ! command -v docker >/dev/null 2>&1 || ! docker info >/dev/null 2>&1; then
   exit 1
 fi
 
+# Copied into the container below, because the container cannot fetch it --
+# see the comment above `docker run`.
+if [ ! -d node_modules/@open-ocpp-trace ]; then
+  echo "FAIL: node_modules/@open-ocpp-trace is missing — run 'bun install' first." >&2
+  exit 1
+fi
+
 regenerate=0
 if [ "${1:-}" = "--regenerate" ]; then
   regenerate=1
@@ -92,13 +99,24 @@ trap 'rm -rf "$work"' EXIT INT TERM
 # find, not a glob: dotfiles have to come across (tsconfig lives beside
 # .gitignore, and a missing one changes what the extractors see), and
 # `/src/.[!.]*` matching nothing would expand to itself under `set -e`.
+#
+# ONE SCOPE OF node_modules IS COPIED, and it is the exception the rule above
+# has to make. `@open-ocpp-trace/*` is published to GitHub Packages, which
+# answers 401 without a token, and `bun add` resolves every dependency in
+# package.json, not only the one it adds -- so in a container holding no token
+# it fails before the extractors start. Handing the gate a token would make
+# `bun run verify` need credentials; copying the two installed packages is
+# eighteen files, not the ~640 behind the race above, and `bun add` takes a
+# package already in node_modules at the locked version as installed. Neither
+# extractor imports the SDK: only the install needs to get past it.
 if ! docker run --rm \
   -v "$repo_root:/src:ro" \
   -v "$work:/out" \
   "$bun_image" \
   sh -c "set -e
-    mkdir -p /work
+    mkdir -p /work/node_modules
     find /src -mindepth 1 -maxdepth 1 ! -name node_modules ! -name .git -exec cp -r {} /work/ ';'
+    cp -r /src/node_modules/@open-ocpp-trace /work/node_modules/
     cd /work
     bun add -d 'typescript@$typescript_version' >/dev/null 2>&1
     bun tools/extract-assert-inventory.ts tck/specs > /out/ASSERT-INVENTORY.txt

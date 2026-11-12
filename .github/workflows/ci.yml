@@ -7,12 +7,14 @@ on:
   workflow_dispatch:
 
 # Read-only, for every job. None pushes anything -- the checkout steps
-# already drop the token with `persist-credentials: false` -- so the only
-# scope either needs is the one that fetches the code. Declared here rather
-# than per job so a new job starts locked down instead of inheriting the
-# repository default.
+# already drop the token with `persist-credentials: false` -- so the scopes
+# every job needs are the one that fetches the code and the one that lets
+# `bun install` read @open-ocpp-trace/* from GitHub Packages. Declared here
+# rather than per job so a new job starts locked down instead of inheriting
+# the repository default.
 permissions:
   contents: read
+  packages: read
 
 concurrency:
   group: ci-${{ github.ref }}
@@ -57,6 +59,11 @@ jobs:
           bun-version: ${{ env.BUN_VERSION }}
 
       - run: bun install --frozen-lockfile
+        env:
+          # @open-ocpp-trace/* comes from GitHub Packages (bunfig.toml),
+          # which wants a token even for a public package. Scoped to this
+          # step so no later one -- the sweep, the containers -- sees it.
+          GITHUB_TOKEN: ${{ github.token }}
 
       - name: Type-check
         run: bun run typecheck
@@ -520,6 +527,11 @@ jobs:
           bun-version: ${{ env.BUN_VERSION }}
 
       - run: bun install --frozen-lockfile
+        env:
+          # @open-ocpp-trace/* comes from GitHub Packages (bunfig.toml),
+          # which wants a token even for a public package. Scoped to this
+          # step so no later one -- the sweep, the containers -- sees it.
+          GITHUB_TOKEN: ${{ github.token }}
 
       - name: Wait for it to be healthy
         run: docker compose -f drivers/${{ matrix.driver }}/compose.yaml up -d --no-build --wait
@@ -704,6 +716,11 @@ jobs:
           bun-version: ${{ env.BUN_VERSION }}
 
       - run: bun install --frozen-lockfile
+        env:
+          # @open-ocpp-trace/* comes from GitHub Packages (bunfig.toml),
+          # which wants a token even for a public package. Scoped to this
+          # step so no later one -- the sweep, the containers -- sees it.
+          GITHUB_TOKEN: ${{ github.token }}
 
       - name: Wait for it to be healthy
         run: docker compose up -d --wait

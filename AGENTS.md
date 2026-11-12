@@ -14,8 +14,11 @@ moving a pinned ref. This file is the working loop.
 ## First
 
 ```sh
-bun install --frozen-lockfile
+GITHUB_TOKEN=$(gh auth token) bun install --frozen-lockfile
 ```
+
+`@open-ocpp-trace/*` comes from GitHub Packages (`bunfig.toml`), which answers
+401 without a `read:packages` token; only the install needs it, not the gate.
 
 `typecheck` and `tests/types-current.sh` shell out to `node_modules/.bin/tsc`;
 without it they fail with `tsc: command not found` rather than with a type

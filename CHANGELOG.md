@@ -606,6 +606,26 @@ Released as `0.3.0`. The documented install ref already points at that tag, so
 
 ### Changed
 
+- **Installing this package needs a `read:packages` GitHub token.** The runner
+  now reads the simulator's wire trace through `@open-ocpp-trace/core` and
+  `@open-ocpp-trace/jsonl` 0.1.0, the format organisation's own SDK, which is
+  published to GitHub Packages only. A project installing this package from
+  its git ref maps the `@open-ocpp-trace` scope to
+  `https://npm.pkg.github.com/` in its `bunfig.toml` or `.npmrc` and exports
+  the token for the install; the README's "The `@open-ocpp-trace` registry"
+  has both snippets and the GitHub Actions recipe.
+- **A wire trace record whose `schemaVersion` is not `1.<minor>` is refused.**
+  The reader this replaced only compared the text before the first dot, so
+  `"1"`, `"1.01"` and `"1.1.0"` were read; they are now `unreadable` and the
+  run falls back to the simulator's log, as it already did for `"2.0"`. No
+  producer is known to emit them. The rest of the trace refusals are
+  unchanged, including the one the SDK does not make: a `raw` frame that
+  contradicts the record's `messageType`, `messageId` or `action`.
+- **A wire trace that starts with a UTF-8 BOM is read**, where it used to be
+  `unreadable`, as the SDK's own JSONL reader reads it. The same reader's
+  notion of a blank line applies: only spaces, tabs and carriage returns, so a
+  line holding any other whitespace (a no-break space, say) is now
+  `unreadable` where it used to be skipped.
 - **`cert16-tc054-trigger-message` triggers all five messages `TC_054` lists**
   — `MeterValues` and `StatusNotification` for the connector, then
   `Heartbeat`, `DiagnosticsStatusNotification` and `FirmwareStatusNotification`
