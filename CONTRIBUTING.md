@@ -28,6 +28,9 @@ bun add -d @types/bun typescript
 The `bunfig.toml` is there because the runner depends on `@open-ocpp-trace/*`,
 which is published to GitHub Packages only. The README's "The
 `@open-ocpp-trace` registry" has the `.npmrc` equivalent and the CI recipe.
+`gh auth token` prints the stored token as it is; if it lacks
+`read:packages`, run `gh auth refresh --hostname github.com --scopes
+read:packages` once first.
 
 `tsconfig.json`:
 
