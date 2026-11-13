@@ -676,3 +676,30 @@ worked example: folding its three resolvers into one generic helper is the
 obvious de-duplication, and the type stops narrowing when you do. The note
 costs four lines and is the difference between a decision and an opinion
 someone will overturn by default.
+
+## Bundling a CSMS
+
+Wire a new `drivers/<id>/` in one pass; each miss is a red guard:
+`package.json` (`files`, `exports`, `check:driver:<id>`, the `test` link of
+its guard), `tools/verify.sh` and the CI `check` job (same order), the `e2e`
+matrix and its env, `tests/generic-core.sh` (`known_drivers` and owned
+names), `tests/capability-parity.ts`, `VENDOR.md` (provenance rows and an
+image pin table), `types/drivers/<id>/`, the counts above, README's
+bundled-drivers table, `CHANGELOG.md`.
+
+Probe the CSMS live before writing the driver:
+
+- every CALL it sends unprompted after a boot: a check that reads the first
+  CALL of an action reads that one;
+- whether a command to an offline station is queued and replayed at the next
+  boot;
+- the body of each failure answer, which decides non-dispatch vs ordinary
+  failure;
+- the read-back fields the records need, and any response cache in front of
+  them;
+- settings caches a seed has to beat;
+- what it does to a tag on its own (EVtivity stops a driverless tag's
+  transaction).
+
+Pin images by multi-arch index digest. Fixture secrets in a `compose.yaml` are
+readable low-entropy strings: hex ones trip GitGuardian.
